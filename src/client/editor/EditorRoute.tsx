@@ -5,6 +5,7 @@ import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
 import { StagingPublish } from '../publish/StagingPublish';
 import { MediaLibrary } from '../media/MediaLibrary';
+import { AdminRoute } from '../admin/AdminRoute';
 import { EditorProvider, useEditor } from './EditorProvider';
 import { PageManager } from './PageManager';
 import { StructurePanel } from './StructurePanel';
@@ -12,7 +13,7 @@ import { StructurePanel } from './StructurePanel';
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
 );
-type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish';
+type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish' | 'admin';
 
 function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
   const { draft, document, saveNow, saveState, reloadLatest } = useEditor();
@@ -58,6 +59,7 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
             'preview',
             'history',
             ...(role === 'publisher' || role === 'administrator' ? ['publish' as const] : []),
+            ...(role === 'administrator' ? ['admin' as const] : []),
           ] as Panel[]
         ).map((item) => (
           <button
@@ -109,6 +111,11 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
       {panel === 'publish' ? (
         <main id="main-content" className="single-panel">
           <StagingPublish />
+        </main>
+      ) : null}
+      {panel === 'admin' ? (
+        <main id="main-content" className="single-panel">
+          <AdminRoute />
         </main>
       ) : null}
     </div>

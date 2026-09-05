@@ -577,6 +577,50 @@ textarea {
   cursor: pointer;
   font-weight: 750;
 }
+.admin-route,
+.admin-card,
+.capacity-grid,
+.capacity-meter {
+  display: grid;
+  gap: 1rem;
+}
+.admin-card {
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+.capacity-grid {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+.capacity-meter > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.capacity-meter span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.capacity-meter--warning {
+  color: #9c1c2a;
+}
+.capacity-meter progress {
+  width: 100%;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table-scroll th,
+.table-scroll td {
+  padding: 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
 .settings-list__item label,
 .color-grid label {
   display: grid;

@@ -18,6 +18,32 @@ export interface MediaItem {
   createdAt: string;
 }
 
+export interface AdminRoleItem {
+  email: string;
+  role: Role;
+  active: boolean;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface AuditItem {
+  id: string;
+  occurredAt: string;
+  actor: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  outcome: string;
+  requestId: string;
+}
+
+export interface CapacityReport {
+  privateMedia: { used: number; limit: number; percent: number; warning: boolean; unit: string };
+  revisionData: { used: number; limit: number; percent: number; warning: boolean; unit: string };
+  writesToday: { used: number; limit: number; percent: number; warning: boolean; unit: string };
+  measuredAt: string;
+}
+
 export class ClientApiError extends Error {
   constructor(
     readonly status: number,
@@ -109,4 +135,13 @@ export const api = {
       body,
     });
   },
+  listRoles: async () => (await request<{ items: AdminRoleItem[] }>('/admin/roles')).items,
+  upsertRole: (input: { email: string; role: Role; active: boolean }) =>
+    request<AdminRoleItem>('/admin/roles', {
+      method: 'PUT',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify(input),
+    }),
+  listAudit: async () => (await request<{ items: AuditItem[] }>('/admin/audit')).items,
+  getCapacity: () => request<CapacityReport>('/admin/capacity'),
 };
