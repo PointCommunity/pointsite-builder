@@ -112,7 +112,7 @@ export function MediaLibrary({
                 </span>
                 {onSelect ? (
                   <button className="button" onClick={() => onSelect(item)}>
-                    Use image
+                    Add to site library
                   </button>
                 ) : null}
               </div>

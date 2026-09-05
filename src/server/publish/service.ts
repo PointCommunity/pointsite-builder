@@ -2,6 +2,7 @@ import { createInstallationToken } from '../github/app-auth';
 import { GitHubStagingClient } from '../github/client';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
+import type { MediaService } from '../media/service';
 
 export interface PublisherConfig {
   appId: string;
@@ -13,6 +14,7 @@ export class StagingPublisher {
   constructor(
     private readonly repository: DraftRepository,
     private readonly config: PublisherConfig,
+    private readonly media?: MediaService,
   ) {}
 
   async currentBaseSha(): Promise<string> {
@@ -21,7 +23,7 @@ export class StagingPublisher {
 
   async publish(input: { draftId: string; expectedBaseSha: string; actor: string }) {
     const draft = await this.repository.getDraft(input.draftId);
-    const candidate = await buildCandidate(draft);
+    const candidate = await buildCandidate(draft, this.media);
     const commit = await (
       await this.client()
     ).commitFiles({

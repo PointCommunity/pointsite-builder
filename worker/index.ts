@@ -24,13 +24,16 @@ export default {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     const roles = new D1RoleDirectory(env.DB);
     const repository = new D1DraftRepository(env.DB);
+    const media = new MediaService(new D1MediaRepository(env.DB), new R2PrivateBucket(env.MEDIA));
     const app = createApp({
       repository,
       authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles),
       environment: config.environment,
       version: config.appVersion,
-      ...(config.github ? { publisher: new StagingPublisher(repository, config.github) } : {}),
-      media: new MediaService(new D1MediaRepository(env.DB), new R2PrivateBucket(env.MEDIA)),
+      ...(config.github
+        ? { publisher: new StagingPublisher(repository, config.github, media) }
+        : {}),
+      media,
       admin: new D1AdminService(env.DB),
     });
     return app.fetch(request);

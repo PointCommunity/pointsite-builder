@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { githubHeaders } from './app-auth';
+import type { CandidateFile } from '../publish/candidate';
 
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const RefResponse = z.object({ object: z.object({ sha: Sha }) });
@@ -7,6 +8,7 @@ const BlobResponse = z.object({ sha: Sha });
 const TreeResponse = z.object({ sha: Sha });
 const CommitResponse = z.object({ sha: Sha, html_url: z.url() });
 const allowedPaths = new Set(['content/builder-site.json', 'content/builder-site.manifest.json']);
+const allowedMediaPath = /^public\/assets\/builder\/[0-9a-f-]{36}\.(?:avif|jpe?g|png|webp)$/;
 
 export interface StagingCommit {
   sha: string;
@@ -28,10 +30,13 @@ export class GitHubStagingClient {
   async commitFiles(input: {
     expectedBaseSha: string;
     message: string;
-    files: Array<{ path: string; content: string }>;
+    files: CandidateFile[];
   }): Promise<StagingCommit> {
     Sha.parse(input.expectedBaseSha);
-    if (!input.files.length || input.files.some((file) => !allowedPaths.has(file.path))) {
+    if (
+      !input.files.length ||
+      input.files.some((file) => !allowedPaths.has(file.path) && !allowedMediaPath.test(file.path))
+    ) {
       throw new Error('Candidate contains a path outside the staging allowlist');
     }
     const observed = await this.currentMainSha();
@@ -39,7 +44,10 @@ export class GitHubStagingClient {
     const tree = [];
     for (const file of input.files) {
       const blob = BlobResponse.parse(
-        await this.call('POST', 'git/blobs', { content: file.content, encoding: 'utf-8' }),
+        await this.call('POST', 'git/blobs', {
+          content: file.content,
+          encoding: file.encoding ?? 'utf-8',
+        }),
       );
       tree.push({ path: file.path, mode: '100644', type: 'blob', sha: blob.sha });
     }

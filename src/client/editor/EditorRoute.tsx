@@ -16,7 +16,7 @@ const VisualEditor = lazy(() =>
 type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish' | 'admin';
 
 function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
-  const { draft, document, saveNow, saveState, reloadLatest } = useEditor();
+  const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const editable = role !== 'viewer' && draft.status === 'active';
@@ -100,7 +100,23 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
       ) : null}
       {panel === 'media' ? (
         <main id="main-content" className="single-panel">
-          <MediaLibrary />
+          <MediaLibrary
+            onSelect={(item) => {
+              const extension =
+                item.contentType === 'image/jpeg' ? 'jpg' : item.contentType.replace('image/', '');
+              updateDocument((next) => {
+                if (!next.media.some((media) => media.id === item.id)) {
+                  next.media.push({
+                    id: item.id,
+                    sourcePath: `/assets/builder/${item.id}.${extension}`,
+                    alt: item.altText,
+                  });
+                }
+                return next;
+              });
+              setPanel('content');
+            }}
+          />
         </main>
       ) : null}
       {panel === 'history' ? (
