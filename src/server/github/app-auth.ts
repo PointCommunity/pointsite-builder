@@ -3,6 +3,10 @@ import { z } from 'zod';
 
 const TokenResponse = z.object({ token: z.string().min(20), expires_at: z.string() });
 
+export function unboundFetch(fetcher: typeof fetch): typeof fetch {
+  return (input, init) => fetcher(input, init);
+}
+
 export async function createInstallationToken(input: {
   appId: string;
   installationId: string;

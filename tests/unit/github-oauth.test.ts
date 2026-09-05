@@ -96,13 +96,21 @@ it('fails closed when OAuth state is invalid', async () => {
 it('exchanges the OAuth code without broad scopes and validates the stable collaborator ID', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   const { privateKey } = await generateKeyPair('RS256', { extractable: true });
-  const fetcher: typeof fetch = (input, init) => {
+  const fetcher: typeof fetch = function (this: unknown, input, init) {
+    expect(this).toBeUndefined();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     requests.push({ url, init });
     if (url.endsWith('/login/oauth/access_token'))
       return Promise.resolve(Response.json({ access_token: 'github-user-token-value' }));
     if (url === 'https://api.github.com/user')
-      return Promise.resolve(Response.json({ id: 1_202_831, login: 'brimdor' }));
+      return Promise.resolve(
+        Response.json({
+          id: 1_202_831,
+          login: 'brimdor',
+          node_id: 'MDQ6VXNlcjEyMDI4MzE=',
+          avatar_url: 'https://avatars.githubusercontent.com/u/1202831',
+        }),
+      );
     if (url.includes('/access_tokens'))
       return Promise.resolve(
         Response.json({
@@ -116,7 +124,13 @@ it('exchanges the OAuth code without broad scopes and validates the stable colla
       return Promise.resolve(
         Response.json({
           permission: 'admin',
-          user: { id: 1_202_831, login: 'brimdor' },
+          role_name: 'admin',
+          user: {
+            id: 1_202_831,
+            login: 'brimdor',
+            node_id: 'MDQ6VXNlcjEyMDI4MzE=',
+            avatar_url: 'https://avatars.githubusercontent.com/u/1202831',
+          },
         }),
       );
     return Promise.resolve(new Response('unexpected', { status: 500 }));

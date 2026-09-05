@@ -226,15 +226,15 @@
   - Acceptance: resources exist in the intended church account; no R2/Zero Trust subscription, payment action, production installation, or production secret exists; local secret scan remains clean.
   - Verify: Wrangler resource listings, role readback, GitHub installation readback.
   - Files: remote resources plus `wrangler.jsonc` IDs only.
-- [ ] T050 Deploy builder and staging Workers to non-public temporary state, then enable only custom hosts protected by GitHub App authentication before testing content.
+- [x] T050 Deploy builder and staging Workers to non-public temporary state, then enable only custom hosts protected by GitHub App authentication before testing content.
   - Acceptance: anonymous, wrong-identity, revoked-collaborator, expired-session, and alternate-host probes fail closed; approved admin succeeds.
   - Verify: curl/browser authentication matrix and Worker deployment readback.
   - Files: remote Cloudflare configuration only.
-- [ ] T051 Deploy an exact candidate through the builder and complete staging acceptance/rollback drill.
+- [x] T051 Deploy an exact candidate through the builder and complete staging acceptance/rollback drill.
   - Acceptance: exact revision to exact staging commit passes every required check; retry is idempotent; rollback restores known-good.
   - Verify: job/audit/evidence records and live protected browser run.
   - Files: staging candidate commit and evidence records.
-- [ ] T052 Add protected custom hostnames only after authentication tests pass.
+- [x] T052 Add protected custom hostnames only after authentication tests pass.
   - Acceptance: `builder.pointatx.org` and `staging.pointatx.org` are protected, HTTPS-valid, and direct Worker hosts remain protected.
   - Verify: DNS/API readback and anonymous/authenticated probes.
   - Files: remote Cloudflare DNS/Worker/Access configuration only.
@@ -260,6 +260,9 @@
 - T049-T052 require authenticated external Cloudflare/GitHub setup.
 - T053 requires fresh G5 acceptance and production-preparation approval.
 - T054 requires approval for the exact PR/head produced by T053.
+
+The builder is ready for protected staging testing when T001-T052 are checked.
+T053-T054 remain a separate, explicitly approved production promotion gate.
 
 The feature is complete only when all 54 tasks are checked, all specification
 requirements have current evidence, both repositories are clean, and production

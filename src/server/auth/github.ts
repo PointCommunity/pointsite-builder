@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RuntimeConfig } from '../config';
-import { createInstallationToken, githubHeaders } from '../github/app-auth';
+import { createInstallationToken, githubHeaders, unboundFetch } from '../github/app-auth';
 import { AuthorizationError, type Actor, type RoleDirectory } from './roles';
 
 const SESSION_COOKIE = '__Secure-pointsite_builder_session';
@@ -8,11 +8,13 @@ const OAUTH_COOKIE = '__Host-pointsite_builder_oauth';
 const SESSION_SECONDS = 8 * 60 * 60;
 const OAUTH_SECONDS = 10 * 60;
 
-const IdentitySchema = z.strictObject({
+const IdentityFields = {
   id: z.number().int().positive(),
   login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
-});
-const SessionSchema = IdentitySchema.extend({
+};
+const IdentitySchema = z.object(IdentityFields);
+const SessionSchema = z.strictObject({
+  ...IdentityFields,
   kind: z.literal('session'),
   exp: z.number().int().positive(),
 });
@@ -265,10 +267,14 @@ export class GitHubAuthenticator {
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 export class GitHubApiGateway implements GitHubIdentityGateway {
+  private readonly fetcher: typeof fetch;
+
   constructor(
     private readonly config: GitHubAuthConfig,
-    private readonly fetcher: typeof fetch = fetch,
-  ) {}
+    fetcher: typeof fetch = fetch,
+  ) {
+    this.fetcher = unboundFetch(fetcher);
+  }
 
   authorizationUrl(input: { state: string; codeChallenge: string; redirectUri: string }): URL {
     const url = new URL('https://github.com/login/oauth/authorize');

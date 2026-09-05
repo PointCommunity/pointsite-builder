@@ -1,5 +1,6 @@
 import type { AuditEventRecord, Role } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
+import { unboundFetch } from '../github/app-auth';
 
 export interface AdminRoleRecord {
   githubLogin: string;
@@ -15,7 +16,11 @@ export interface GitHubAccountResolver {
 }
 
 export class GitHubUserResolver implements GitHubAccountResolver {
-  constructor(private readonly fetcher: typeof fetch = fetch) {}
+  private readonly fetcher: typeof fetch;
+
+  constructor(fetcher: typeof fetch = fetch) {
+    this.fetcher = unboundFetch(fetcher);
+  }
 
   async resolve(login: string) {
     const response = await this.fetcher(

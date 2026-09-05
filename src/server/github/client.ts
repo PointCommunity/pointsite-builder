@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { githubHeaders } from './app-auth';
+import { githubHeaders, unboundFetch } from './app-auth';
 import type { CandidateFile } from '../publish/candidate';
 
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
@@ -49,7 +49,11 @@ export interface StagingVerificationEvidence {
 }
 
 export class GitHubProductionReader {
-  constructor(private readonly fetcher: typeof fetch = fetch) {}
+  private readonly fetcher: typeof fetch;
+
+  constructor(fetcher: typeof fetch = fetch) {
+    this.fetcher = unboundFetch(fetcher);
+  }
 
   async currentMainSha(): Promise<string> {
     const response = await this.fetcher(
@@ -69,11 +73,15 @@ export class GitHubProductionReader {
 }
 
 export class GitHubStagingClient {
+  private readonly fetcher: typeof fetch;
+
   constructor(
     private readonly repository: 'PointCommunity/pointsite-staging',
     private readonly token: string,
-    private readonly fetcher: typeof fetch = fetch,
-  ) {}
+    fetcher: typeof fetch = fetch,
+  ) {
+    this.fetcher = unboundFetch(fetcher);
+  }
 
   async currentMainSha(): Promise<string> {
     const value = await this.call('GET', 'git/ref/heads/main');

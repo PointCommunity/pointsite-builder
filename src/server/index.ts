@@ -108,6 +108,14 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof ConflictError) {
       return secured(errorResponse(new ApiError(409, 'CONFLICT', error.message), requestId));
     }
+    console.error(
+      JSON.stringify({
+        event: 'unexpected_request_error',
+        requestId,
+        name: error instanceof Error ? error.name : 'UnknownError',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      }),
+    );
     return secured(errorResponse(error, requestId));
   });
 
