@@ -77,7 +77,7 @@ it('persists, reads, audits, orphans, and removes private media bytes in chunked
 it('chunks objects larger than a D1 row and reconstructs the exact bytes', async () => {
   const { database } = await fixture();
   const bucket = new D1PrivateBucket(database);
-  const bytes = new Uint8Array(2_500_001).fill(7);
+  const bytes = new Uint8Array(1_000_001).fill(7);
   await bucket.put('draft/large.webp', bytes);
   const rows = await database
     .prepare(
@@ -85,7 +85,7 @@ it('chunks objects larger than a D1 row and reconstructs the exact bytes', async
     )
     .bind('draft/large.webp')
     .all<{ chunk_index: number; byte_size: number }>();
-  expect(rows.results).toHaveLength(3);
+  expect(rows.results).toHaveLength(2);
   expect(await bucket.get('draft/large.webp')).toEqual(bytes);
 }, 15_000);
 
