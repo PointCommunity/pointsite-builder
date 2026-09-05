@@ -56,35 +56,35 @@
 
 ## Phase 3: Persistence and authorization slice
 
-- [ ] T012 Add failing migration and repository contract tests for roles, drafts, revisions, idempotency, jobs, approvals, audit, and media.
+- [x] T012 Add failing migration and repository contract tests for roles, drafts, revisions, idempotency, jobs, approvals, audit, and media.
   - Acceptance: constraints and atomic compare-and-swap behavior are specified before SQL.
   - Verify: migration/repository tests fail as expected.
   - Files: `tests/integration/repositories.test.ts`, `tests/fixtures/database.ts`.
-- [ ] T013 Implement D1 migrations with indexes, retention fields, immutable revision constraints, and rollback notes.
+- [x] T013 Implement D1 migrations with indexes, retention fields, immutable revision constraints, and rollback notes.
   - Acceptance: fresh and repeat migration succeed; invalid references/duplicates fail.
   - Verify: local D1 migration and T012 database constraint cases.
-  - Files: `migrations/0001_initial.sql`, `migrations/0001_rollback.sql`, `migrations/meta.json`.
-- [ ] T014 Implement typed D1 repositories and in-memory test adapters.
+  - Files: `migrations/0001_initial.sql`, `docs/rollback/0001_initial.sql`, `migrations/meta.json`.
+- [x] T014 Implement typed D1 repositories and in-memory test adapters.
   - Acceptance: draft save atomically inserts a revision and advances only the expected pointer; all writes emit audit records.
   - Verify: T012 passes at least once against D1-compatible local storage and fakes.
   - Files: `src/server/repositories/d1.ts`, `src/server/repositories/memory.ts`, `src/server/repositories/contracts.ts`.
-- [ ] T015 Write failing Access assertion and role matrix tests. (FR-001, FR-002, FR-003)
+- [x] T015 Write failing Access assertion and role matrix tests. (FR-001, FR-002, FR-003)
   - Acceptance: missing, forged, expired, wrong issuer/audience, inactive role, and insufficient role cases are represented.
   - Verify: focused tests fail before middleware exists.
   - Files: `tests/unit/auth.test.ts`, `tests/fixtures/access-tokens.ts`.
-- [ ] T016 Implement Cloudflare Access verification, local-only auth adapter, actor context, and role middleware.
+- [x] T016 Implement Cloudflare Access verification, local-only auth adapter, actor context, and role middleware.
   - Acceptance: T015 passes; development bypass cannot activate outside local environment.
   - Verify: auth tests, typecheck, and production-config negative test.
   - Files: `src/server/auth/access.ts`, `src/server/auth/roles.ts`, `src/server/config.ts`.
-- [ ] T017 Implement consistent API errors, request IDs, security headers, same-origin/Fetch-Metadata controls, JSON bounds, and per-actor rate policy. (FR-017, FR-027)
+- [x] T017 Implement consistent API errors, request IDs, security headers, same-origin/Fetch-Metadata controls, JSON bounds, and per-actor rate policy. (FR-017, FR-027)
   - Acceptance: every endpoint returns one safe error shape; mutations reject cross-site or oversized input.
   - Verify: middleware contract tests and header probe.
   - Files: `src/server/http/errors.ts`, `src/server/http/security.ts`, `tests/unit/http-security.test.ts`.
-- [ ] T018 Implement Worker routing, health, identity, paginated draft list, create, read, and save APIs from the OpenAPI contract. (FR-004, FR-010-FR-012)
+- [x] T018 Implement Worker routing, health, identity, paginated draft list, create, read, and save APIs from the OpenAPI contract. (FR-004, FR-010-FR-012)
   - Acceptance: Viewer reads; Editor mutates; stale `If-Match` fails; idempotent retry returns prior result.
   - Verify: API integration and contract tests.
   - Files: `src/server/index.ts`, `src/server/routes/drafts.ts`, `tests/integration/draft-api.test.ts`.
-- [ ] T019 Implement revision list, label, restore, archive, recover, and delete APIs. (FR-011-FR-013)
+- [x] T019 Implement revision list, label, restore, archive, recover, and delete APIs. (FR-011-FR-013)
   - Acceptance: restore creates a new revision; history is immutable and paginated.
   - Verify: revision API integration tests.
   - Files: `src/server/routes/revisions.ts`, `tests/integration/revision-api.test.ts`.

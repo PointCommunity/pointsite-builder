@@ -11,6 +11,8 @@
   "vars": {
     "ENVIRONMENT": "production",
     "APP_VERSION": "0.1.0",
+    "ACCESS_TEAM_DOMAIN": "point.cloudflareaccess.com",
+    "ACCESS_AUD": "replace-with-access-application-audience",
     "STAGING_REPOSITORY": "PointCommunity/pointsite-staging",
     "PRODUCTION_ENABLED": "false",
   },
