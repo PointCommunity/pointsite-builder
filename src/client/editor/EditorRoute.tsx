@@ -4,13 +4,14 @@ import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
 import { StagingPublish } from '../publish/StagingPublish';
+import { MediaLibrary } from '../media/MediaLibrary';
 import { EditorProvider, useEditor } from './EditorProvider';
 import { StructurePanel } from './StructurePanel';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
 );
-type Panel = 'content' | 'settings' | 'preview' | 'history' | 'publish';
+type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish';
 
 function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
   const { draft, document, saveNow, saveState, reloadLatest } = useEditor();
@@ -52,6 +53,7 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
           [
             'content',
             'settings',
+            'media',
             'preview',
             'history',
             ...(role === 'publisher' || role === 'administrator' ? ['publish' as const] : []),
@@ -100,6 +102,11 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
       {panel === 'preview' ? (
         <main id="main-content" className="single-panel">
           <Preview document={document} />
+        </main>
+      ) : null}
+      {panel === 'media' ? (
+        <main id="main-content" className="single-panel">
+          <MediaLibrary />
         </main>
       ) : null}
       {panel === 'history' ? (

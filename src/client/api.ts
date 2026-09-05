@@ -6,6 +6,18 @@ export interface ActorResponse {
   role: Role;
 }
 
+export interface MediaItem {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  altText: string;
+  status: string;
+  createdAt: string;
+}
+
 export class ClientApiError extends Error {
   constructor(
     readonly status: number,
@@ -86,4 +98,15 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ draftId, expectedBaseSha }),
     }),
+  listMedia: async () => (await request<{ items: MediaItem[] }>('/media')).items,
+  uploadMedia: (file: File, altText: string) => {
+    const body = new FormData();
+    body.set('file', file);
+    body.set('altText', altText);
+    return request<MediaItem>('/media', {
+      method: 'POST',
+      headers: { 'idempotency-key': crypto.randomUUID() },
+      body,
+    });
+  },
 };
