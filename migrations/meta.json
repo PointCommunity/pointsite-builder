@@ -26,6 +26,11 @@
       "id": "0004_exact_approvals",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0005_revision_retention",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
     }
   ]
 }

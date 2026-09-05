@@ -9,6 +9,7 @@ import { D1AdminService } from '../src/server/admin/service';
 import { D1PublishJobStore } from '../src/server/publish/jobs';
 import { D1ApprovalService } from '../src/server/approvals/service';
 import { GitHubProductionReader } from '../src/server/github/client';
+import { RetentionService } from '../src/server/maintenance/retention';
 
 class D1RoleDirectory implements RoleDirectory {
   constructor(private readonly database: D1Database) {}
@@ -47,6 +48,7 @@ export default {
       admin: new D1AdminService(env.DB),
       approvals: new D1ApprovalService(env.DB),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
+      retention: new RetentionService(env.DB, new R2PrivateBucket(env.MEDIA)),
     });
     return app.fetch(request);
   },

@@ -21,7 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "db:migrate:local": "wrangler d1 migrations apply pointsite-builder --local",
-    "db:migrate:remote": "wrangler d1 migrations apply pointsite-builder --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply pointsite-builder --remote",
+    "maintenance": "node scripts/maintenance.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

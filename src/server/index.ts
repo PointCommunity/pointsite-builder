@@ -16,6 +16,7 @@ import type { D1AdminService } from './admin/service';
 import { createAdminRoutes } from './routes/admin';
 import type { D1ApprovalService } from './approvals/service';
 import { createApprovalRoutes } from './routes/approvals';
+import type { RetentionService } from './maintenance/retention';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -27,6 +28,7 @@ export interface AppDependencies {
   admin?: D1AdminService;
   approvals?: D1ApprovalService;
   productionBaseSha?: () => Promise<string>;
+  retention?: RetentionService;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -57,7 +59,10 @@ export function createApp(dependencies: AppDependencies) {
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
-  app.route('/api/admin', createAdminRoutes(dependencies.admin, mutationLimiter));
+  app.route(
+    '/api/admin',
+    createAdminRoutes(dependencies.admin, mutationLimiter, dependencies.retention),
+  );
   app.route(
     '/api/approvals',
     createApprovalRoutes(dependencies.approvals, mutationLimiter, dependencies.productionBaseSha),

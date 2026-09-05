@@ -3,18 +3,27 @@ import { z } from 'zod';
 import type { D1AdminService } from '../admin/service';
 import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
-import { requireMutationHeaders, type SlidingWindowRateLimiter } from '../http/security';
+import {
+  requireMutationHeaders,
+  requireMutationRequest,
+  type SlidingWindowRateLimiter,
+} from '../http/security';
 import type { ApiVariables } from './drafts';
+import type { RetentionService } from '../maintenance/retention';
 
 const RoleInput = z.strictObject({
   email: z.email(),
   role: z.enum(['viewer', 'editor', 'publisher', 'administrator']),
   active: z.boolean(),
 });
+const RetentionApplyInput = z.strictObject({
+  exportChecksum: z.string().regex(/^[a-f0-9]{64}$/),
+});
 
 export function createAdminRoutes(
   service: D1AdminService | undefined,
   limiter: SlidingWindowRateLimiter,
+  retention?: RetentionService,
 ) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   const available = () => {
@@ -62,5 +71,45 @@ export function createAdminRoutes(
     context.json({ items: await available().listAudit(100), nextCursor: null }),
   );
   routes.get('/capacity', async (context) => context.json(await available().capacity()));
+  routes.get('/retention', async (context) => {
+    if (!retention)
+      throw new ApiError(
+        503,
+        'RETENTION_NOT_CONFIGURED',
+        'Retention maintenance is not configured',
+      );
+    return context.json(await retention.plan());
+  });
+  routes.post('/retention/apply', async (context) => {
+    const actor = context.get('actor');
+    if (!retention)
+      throw new ApiError(
+        503,
+        'RETENTION_NOT_CONFIGURED',
+        'Retention maintenance is not configured',
+      );
+    const parsed = RetentionApplyInput.safeParse(
+      await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
+    );
+    if (!parsed.success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Provide the saved retention export checksum');
+    try {
+      return context.json(
+        await retention.applyCurrent(
+          parsed.data.exportChecksum,
+          actor.email,
+          context.get('requestId'),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'RETENTION_EXPORT_MISMATCH')
+        throw new ApiError(
+          409,
+          error.message,
+          'Retention state changed; save a new dry-run export before applying',
+        );
+      throw error;
+    }
+  });
   return routes;
 }
