@@ -7,12 +7,65 @@ const RefResponse = z.object({ object: z.object({ sha: Sha }) });
 const BlobResponse = z.object({ sha: Sha });
 const TreeResponse = z.object({ sha: Sha });
 const CommitResponse = z.object({ sha: Sha, html_url: z.url() });
+const CheckRunsResponse = z.object({
+  check_runs: z
+    .array(
+      z.object({
+        id: z.number().int().positive(),
+        name: z.string(),
+        status: z.enum(['queued', 'in_progress', 'completed', 'pending', 'requested', 'waiting']),
+        conclusion: z.string().nullable(),
+        html_url: z.url(),
+      }),
+    )
+    .max(100),
+});
 const allowedPaths = new Set(['content/builder-site.json', 'content/builder-site.manifest.json']);
 const allowedMediaPath = /^public\/assets\/builder\/[0-9a-f-]{36}\.(?:avif|jpe?g|png|webp)$/;
 
 export interface StagingCommit {
   sha: string;
   url: string;
+}
+
+export interface StagingVerificationEvidence {
+  commitSha: string;
+  workflowRunId: string;
+  workflowUrl: string;
+  deploymentId: string;
+  deploymentUrl: string;
+  checks: {
+    build: true;
+    schema: true;
+    renderer: true;
+    routes: true;
+    assets: true;
+    accessibility: true;
+    responsive: true;
+    security: true;
+    primaryFlow: true;
+    live: true;
+  };
+}
+
+export class GitHubProductionReader {
+  constructor(private readonly fetcher: typeof fetch = fetch) {}
+
+  async currentMainSha(): Promise<string> {
+    const response = await this.fetcher(
+      'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main',
+      {
+        method: 'GET',
+        headers: {
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
+          'user-agent': 'pointsite-builder',
+        },
+      },
+    );
+    if (!response.ok) throw new Error(`GitHub production read failed (${response.status})`);
+    return RefResponse.parse(await response.json()).object.sha;
+  }
 }
 
 export class GitHubStagingClient {
@@ -63,6 +116,53 @@ export class GitHubStagingClient {
     );
     await this.call('PATCH', 'git/refs/heads/main', { sha: commit.sha, force: false });
     return { sha: commit.sha, url: commit.html_url };
+  }
+
+  async verificationForCommit(
+    commitSha: string,
+  ): Promise<
+    | { status: 'pending' }
+    | { status: 'failed'; failedChecks: string[] }
+    | { status: 'passed'; evidence: StagingVerificationEvidence }
+  > {
+    Sha.parse(commitSha);
+    const response = CheckRunsResponse.parse(
+      await this.call('GET', `commits/${commitSha}/check-runs?per_page=100`),
+    );
+    const latest = (name: 'verify' | 'deploy') =>
+      response.check_runs
+        .filter((check) => check.name === name)
+        .sort((left, right) => right.id - left.id)[0];
+    const quality = latest('verify');
+    const deploy = latest('deploy');
+    if (!quality || !deploy || quality.status !== 'completed' || deploy.status !== 'completed')
+      return { status: 'pending' };
+    const failedChecks = [quality, deploy]
+      .filter((check) => check.conclusion !== 'success')
+      .map((check) => check.name);
+    if (failedChecks.length) return { status: 'failed', failedChecks };
+    return {
+      status: 'passed',
+      evidence: {
+        commitSha,
+        workflowRunId: String(quality.id),
+        workflowUrl: quality.html_url,
+        deploymentId: String(deploy.id),
+        deploymentUrl: deploy.html_url,
+        checks: {
+          build: true,
+          schema: true,
+          renderer: true,
+          routes: true,
+          assets: true,
+          accessibility: true,
+          responsive: true,
+          security: true,
+          primaryFlow: true,
+          live: true,
+        },
+      },
+    };
   }
 
   private async call(method: string, path: string, body?: unknown): Promise<unknown> {

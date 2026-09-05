@@ -33,6 +33,18 @@ const draft: DraftRecord = {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    const publishResult = {
+      jobId: 'job-1',
+      siteId: 'pointsite',
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      schemaVersion: 1,
+      rendererVersion: document.rendererVersion,
+      candidateChecksum: 'c'.repeat(64),
+      stagingBaseSha: 'b'.repeat(40),
+      commitSha: 'd'.repeat(40),
+      url: 'https://github.com/PointCommunity/pointsite-staging/commit/d',
+    };
     const body = path.endsWith('/me')
       ? { email: 'admin@pointatx.org', role: 'administrator' }
       : path.endsWith('/drafts')
@@ -41,38 +53,78 @@ test.beforeEach(async ({ page }) => {
           ? { items: [draft.revision] }
           : path.endsWith('/staging/base')
             ? { sha: 'b'.repeat(40) }
-            : path.endsWith('/media')
-              ? { items: [] }
-              : path.endsWith('/admin/roles')
-                ? { items: [] }
-                : path.endsWith('/admin/audit')
-                  ? { items: [] }
-                  : path.endsWith('/admin/capacity')
+            : path.endsWith('/publish/staging')
+              ? publishResult
+              : path.endsWith('/publish/jobs/job-1/verification')
+                ? {
+                    id: 'job-1',
+                    status: 'succeeded',
+                    candidateChecksum: publishResult.candidateChecksum,
+                    resultSha: publishResult.commitSha,
+                    evidence: {
+                      verificationStatus: 'passed',
+                      workflowUrl:
+                        'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
+                      deploymentUrl:
+                        'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+                      checks: {
+                        build: true,
+                        schema: true,
+                        renderer: true,
+                        routes: true,
+                        assets: true,
+                        accessibility: true,
+                        responsive: true,
+                        security: true,
+                        primaryFlow: true,
+                        live: true,
+                      },
+                    },
+                  }
+                : path.endsWith('/approvals/production-base')
+                  ? { sha: 'e'.repeat(40) }
+                  : path.endsWith('/approvals')
                     ? {
-                        privateMedia: {
-                          used: 0,
-                          limit: 1,
-                          percent: 0,
-                          warning: false,
-                          unit: 'bytes',
+                        id: 'approval-1',
+                        decision: 'approved',
+                        tuple: {
+                          ...publishResult,
+                          stagingCommitSha: publishResult.commitSha,
+                          productionBaseSha: 'e'.repeat(40),
                         },
-                        revisionData: {
-                          used: 0,
-                          limit: 1,
-                          percent: 0,
-                          warning: false,
-                          unit: 'bytes',
-                        },
-                        writesToday: {
-                          used: 0,
-                          limit: 100000,
-                          percent: 0,
-                          warning: false,
-                          unit: 'operations',
-                        },
-                        measuredAt: '2026-09-05T00:00:00Z',
                       }
-                    : draft;
+                    : path.endsWith('/media')
+                      ? { items: [] }
+                      : path.endsWith('/admin/roles')
+                        ? { items: [] }
+                        : path.endsWith('/admin/audit')
+                          ? { items: [] }
+                          : path.endsWith('/admin/capacity')
+                            ? {
+                                privateMedia: {
+                                  used: 0,
+                                  limit: 1,
+                                  percent: 0,
+                                  warning: false,
+                                  unit: 'bytes',
+                                },
+                                revisionData: {
+                                  used: 0,
+                                  limit: 1,
+                                  percent: 0,
+                                  warning: false,
+                                  unit: 'bytes',
+                                },
+                                writesToday: {
+                                  used: 0,
+                                  limit: 100000,
+                                  percent: 0,
+                                  warning: false,
+                                  unit: 'operations',
+                                },
+                                measuredAt: '2026-09-05T00:00:00Z',
+                              }
+                            : draft;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -104,4 +156,26 @@ test('changes the design and creates a page without code', async ({ page }) => {
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await expect(page.getByLabel('Choose page')).toContainText('New page');
   await expect(page.getByText(/Production is locked/)).toHaveCount(0);
+});
+
+test('publishes and accepts only exact verified staging while production stays locked', async ({
+  page,
+}) => {
+  const productionWrites: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/publish/production' && request.method() !== 'GET')
+      productionWrites.push(request.method());
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'publish' }).click();
+  await page.getByRole('button', { name: 'Publish to staging' }).click();
+  await expect(page.getByText(/CI verification is now running/)).toBeVisible();
+  await page.getByRole('button', { name: 'Check staging verification' }).click();
+  await expect(page.getByText(/All mandatory staging evidence passed/)).toBeVisible();
+  await page.getByRole('button', { name: 'Accept exact staging candidate' }).click();
+  await expect(page.getByText(/Staging accepted for this exact candidate/)).toBeVisible();
+  await expect(page.getByText('Production is locked')).toBeVisible();
+  expect(productionWrites).toEqual([]);
 });

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { GitHubStagingClient } from '../../src/server/github/client';
+import { GitHubProductionReader, GitHubStagingClient } from '../../src/server/github/client';
 
 const base = 'a'.repeat(40);
 const blobA = 'b'.repeat(40);
@@ -64,4 +64,107 @@ describe('GitHub staging client', () => {
       }),
     ).rejects.toThrow('allowlist');
   });
+
+  it('accepts only successful quality and deploy checks for the exact commit', async () => {
+    const fetcher = vi.fn(() =>
+      response({
+        check_runs: [
+          {
+            id: 11,
+            name: 'verify',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
+          },
+          {
+            id: 12,
+            name: 'deploy',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/12',
+          },
+        ],
+      }),
+    );
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(client.verificationForCommit(commit)).resolves.toMatchObject({
+      status: 'passed',
+      evidence: {
+        commitSha: commit,
+        workflowRunId: '11',
+        deploymentId: '12',
+        checks: { build: true, accessibility: true, live: true },
+      },
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      `https://api.github.com/repos/PointCommunity/pointsite-staging/commits/${commit}/check-runs?per_page=100`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('reports pending or failed verification without manufacturing passing evidence', async () => {
+    const pending = vi.fn(() =>
+      response({
+        check_runs: [
+          {
+            id: 11,
+            name: 'verify',
+            status: 'in_progress',
+            conclusion: null,
+            html_url: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
+          },
+        ],
+      }),
+    );
+    const failed = vi.fn(() =>
+      response({
+        check_runs: [
+          {
+            id: 11,
+            name: 'verify',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
+          },
+          {
+            id: 12,
+            name: 'deploy',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/12',
+          },
+        ],
+      }),
+    );
+    await expect(
+      new GitHubStagingClient(
+        'PointCommunity/pointsite-staging',
+        'token',
+        pending,
+      ).verificationForCommit(commit),
+    ).resolves.toEqual({ status: 'pending' });
+    await expect(
+      new GitHubStagingClient(
+        'PointCommunity/pointsite-staging',
+        'token',
+        failed,
+      ).verificationForCommit(commit),
+    ).resolves.toMatchObject({ status: 'failed', failedChecks: ['verify'] });
+  });
+});
+
+it('reads the production base without sending write credentials or mutating production', async () => {
+  const fetcher = vi.fn(() => response({ object: { sha: base } }));
+  await expect(new GitHubProductionReader(fetcher).currentMainSha()).resolves.toBe(base);
+  expect(fetcher).toHaveBeenCalledWith(
+    'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main',
+    {
+      method: 'GET',
+      headers: {
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'pointsite-builder',
+      },
+    },
+  );
 });

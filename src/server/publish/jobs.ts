@@ -9,7 +9,7 @@ export interface PublishJobRecord {
   baseSha: string;
   resultSha: string | null;
   externalUrl: string | null;
-  evidence: Record<string, string>;
+  evidence: Record<string, unknown>;
   requestedBy: string;
   requestedAt: string;
   completedAt: string | null;
@@ -39,7 +39,7 @@ const fromRow = (row: JobRow): PublishJobRecord => ({
   baseSha: row.base_sha,
   resultSha: row.result_sha,
   externalUrl: row.external_url,
-  evidence: JSON.parse(row.evidence_json) as Record<string, string>,
+  evidence: JSON.parse(row.evidence_json) as Record<string, unknown>,
   requestedBy: row.requested_by,
   requestedAt: row.requested_at,
   completedAt: row.completed_at,
@@ -54,6 +54,16 @@ export class D1PublishJobStore {
         'SELECT id,idempotency_key,status,candidate_checksum,candidate_json,base_sha,result_sha,external_url,evidence_json,requested_by,requested_at,completed_at FROM publish_jobs WHERE idempotency_key=?',
       )
       .bind(key)
+      .first<JobRow>();
+    return row ? fromRow(row) : null;
+  }
+
+  async getById(id: string): Promise<PublishJobRecord | null> {
+    const row = await this.database
+      .prepare(
+        "SELECT id,idempotency_key,status,candidate_checksum,candidate_json,base_sha,result_sha,external_url,evidence_json,requested_by,requested_at,completed_at FROM publish_jobs WHERE id=? AND environment='staging'",
+      )
+      .bind(id)
       .first<JobRow>();
     return row ? fromRow(row) : null;
   }
@@ -134,6 +144,27 @@ export class D1PublishJobStore {
         .bind(JSON.stringify({ failureCode: code }), new Date().toISOString(), id),
       this.audit(actor, 'publish.failed', id, requestId, { failureCode: code }),
     ]);
+  }
+
+  async recordVerification(
+    id: string,
+    actor: string,
+    requestId: string,
+    evidence: Record<string, unknown>,
+  ): Promise<void> {
+    const serialized = JSON.stringify(evidence);
+    if (serialized.length > 32_768) throw new Error('PUBLISH_EVIDENCE_TOO_LARGE');
+    const update = await this.database
+      .prepare("UPDATE publish_jobs SET evidence_json=? WHERE id=? AND status='succeeded'")
+      .bind(serialized, id)
+      .run();
+    if (!update.meta.changes) throw new Error('PUBLISH_JOB_NOT_VERIFIABLE');
+    await this.audit(actor, 'publish.verification-recorded', id, requestId, {
+      verificationStatus:
+        typeof evidence.verificationStatus === 'string'
+          ? evidence.verificationStatus.slice(0, 30)
+          : 'unknown',
+    }).run();
   }
 
   private audit(

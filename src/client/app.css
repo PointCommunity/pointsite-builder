@@ -399,6 +399,29 @@ textarea {
   font-family: ui-monospace, monospace;
   font-size: 0.82rem;
 }
+.publish-result,
+.acceptance-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  margin-top: 1rem;
+}
+.publish-result p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.publish-result > .button,
+.acceptance-panel > .button {
+  width: fit-content;
+  max-width: 100%;
+}
+.acceptance-panel {
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.acceptance-panel h3 {
+  margin: 0;
+}
 .production-lock {
   margin-top: 2rem;
   padding: 1rem;

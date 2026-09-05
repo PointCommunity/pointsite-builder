@@ -7,6 +7,8 @@ import { StagingPublisher } from '../src/server/publish/service';
 import { D1MediaRepository, MediaService, R2PrivateBucket } from '../src/server/media/service';
 import { D1AdminService } from '../src/server/admin/service';
 import { D1PublishJobStore } from '../src/server/publish/jobs';
+import { D1ApprovalService } from '../src/server/approvals/service';
+import { GitHubProductionReader } from '../src/server/github/client';
 
 class D1RoleDirectory implements RoleDirectory {
   constructor(private readonly database: D1Database) {}
@@ -43,6 +45,8 @@ export default {
         : {}),
       media,
       admin: new D1AdminService(env.DB),
+      approvals: new D1ApprovalService(env.DB),
+      productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
     });
     return app.fetch(request);
   },

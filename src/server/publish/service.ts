@@ -31,6 +31,34 @@ export class StagingPublisher {
     return (await this.client()).currentMainSha();
   }
 
+  async getJob(id: string) {
+    if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    return this.jobs.getById(id);
+  }
+
+  async refreshVerification(id: string, actor: string, requestId: string) {
+    if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    const job = await this.jobs.getById(id);
+    if (!job || job.status !== 'succeeded' || !job.resultSha)
+      throw new Error('PUBLISH_JOB_NOT_VERIFIABLE');
+    const result = await (await this.client()).verificationForCommit(job.resultSha);
+    const evidence =
+      result.status === 'passed'
+        ? {
+            ...result.evidence,
+            candidateChecksum: job.candidateChecksum,
+            verificationStatus: 'passed',
+          }
+        : {
+            candidateChecksum: job.candidateChecksum,
+            commitSha: job.resultSha,
+            verificationStatus: result.status,
+            ...(result.status === 'failed' ? { failedChecks: result.failedChecks } : {}),
+          };
+    await this.jobs.recordVerification(id, actor, requestId, evidence);
+    return { ...job, evidence };
+  }
+
   async publish(input: PublishInput) {
     const draft = await this.repository.getDraft(input.draftId);
     const candidate = await buildCandidate(draft, this.media);
@@ -57,9 +85,11 @@ export class StagingPublisher {
         idempotencyKey: input.idempotencyKey,
         candidateChecksum: candidate.candidateChecksum,
         candidate: {
+          siteId: 'pointsite',
           draftId: draft.id,
           revisionId: draft.revision.id,
           revisionChecksum: draft.revision.checksum,
+          schemaVersion: draft.document.schemaVersion,
           rendererVersion: draft.document.rendererVersion,
           fileCount: candidate.files.length,
         },
@@ -102,10 +132,14 @@ export class StagingPublisher {
   ) {
     return {
       environment: 'staging' as const,
+      siteId: 'pointsite' as const,
+      schemaVersion: draft.document.schemaVersion,
+      rendererVersion: draft.document.rendererVersion,
       revisionId: draft.revision.id,
       revisionChecksum: draft.revision.checksum,
       candidateChecksum,
       baseSha: input.expectedBaseSha,
+      stagingBaseSha: input.expectedBaseSha,
       commitSha: sha,
       url,
       ...(jobId ? { jobId } : {}),

@@ -55,6 +55,33 @@ export function createPublishRoutes(publisher?: StagingPublisher) {
       throw error;
     }
   });
+  routes.get('/jobs/:jobId', async (context) => {
+    requireRole(context.get('actor'), 'publisher');
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
+    const job = await publisher.getJob(context.req.param('jobId'));
+    if (!job) throw new ApiError(404, 'NOT_FOUND', 'Publish job was not found');
+    return context.json(job);
+  });
+  routes.post('/jobs/:jobId/verification', async (context) => {
+    const actor = requireRole(context.get('actor'), 'publisher');
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
+    await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    try {
+      return context.json(
+        await publisher.refreshVerification(
+          context.req.param('jobId'),
+          actor.email,
+          context.get('requestId'),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_JOB_NOT_VERIFIABLE')
+        throw new ApiError(409, error.message, 'The publish job is not ready for verification');
+      throw error;
+    }
+  });
   routes.post('/production', () => {
     throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');
   });

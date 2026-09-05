@@ -44,6 +44,44 @@ export interface CapacityReport {
   measuredAt: string;
 }
 
+export interface CandidateTuple {
+  siteId: 'pointsite';
+  revisionId: string;
+  revisionChecksum: string;
+  schemaVersion: number;
+  rendererVersion: string;
+  candidateChecksum: string;
+  stagingBaseSha: string;
+  stagingCommitSha: string;
+  productionBaseSha: string;
+}
+
+export interface StagingPublishResult {
+  jobId?: string;
+  siteId: 'pointsite';
+  revisionId: string;
+  revisionChecksum: string;
+  schemaVersion: number;
+  rendererVersion: string;
+  candidateChecksum: string;
+  stagingBaseSha: string;
+  commitSha: string;
+  url: string;
+}
+
+export interface PublishJobResponse {
+  id: string;
+  status: string;
+  candidateChecksum: string;
+  resultSha: string | null;
+  evidence: {
+    verificationStatus?: string;
+    workflowUrl?: string;
+    deploymentUrl?: string;
+    checks?: Record<string, boolean>;
+  };
+}
+
 export class ClientApiError extends Error {
   constructor(
     readonly status: number,
@@ -119,10 +157,28 @@ export const api = {
     }),
   stagingBase: () => request<{ sha: string }>('/publish/staging/base'),
   publishStaging: (draftId: string, expectedBaseSha: string) =>
-    request<{ commitSha: string; candidateChecksum: string; url: string }>('/publish/staging', {
+    request<StagingPublishResult>('/publish/staging', {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ draftId, expectedBaseSha }),
+    }),
+  refreshStagingVerification: (jobId: string) =>
+    request<PublishJobResponse>(`/publish/jobs/${jobId}/verification`, {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: '{}',
+    }),
+  productionBase: () => request<{ sha: string }>('/approvals/production-base'),
+  acceptStaging: (publishJobId: string, expectedTuple: CandidateTuple, note?: string) =>
+    request<{ id: string; decision: string; tuple: CandidateTuple }>('/approvals', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({
+        publishJobId,
+        expectedTuple,
+        decision: 'approved',
+        ...(note ? { note } : {}),
+      }),
     }),
   listMedia: async () => (await request<{ items: MediaItem[] }>('/media')).items,
   uploadMedia: (file: File, altText: string) => {
