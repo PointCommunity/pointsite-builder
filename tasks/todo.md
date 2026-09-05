@@ -14,7 +14,7 @@
   - Acceptance: local config contains no secret; production integration is absent; transient browser/media files are ignored.
   - Verify: configuration tests and `git status --ignored` inspection.
   - Files: `.gitignore`, `.dev.vars.example`, `wrangler.jsonc`, `worker-configuration.d.ts`.
-- [ ] T003 Add CI for format, lint, types, tests/coverage, build, secret/SCA/SAST scans, and artifacts.
+- [x] T003 Add CI for format, lint, types, tests/coverage, build, secret/SCA/SAST scans, and artifacts.
   - Acceptance: pull requests cannot pass with a failing required stage and permissions are least privilege.
   - Verify: action syntax validation and first branch run.
   - Files: `.github/workflows/quality.yml`, `.github/dependabot.yml`, `.github/CODEOWNERS`, `.pre-commit-config.yaml`, `docs/security-scanning.html`.
@@ -25,31 +25,31 @@
 
 ## Phase 2: Foundational contracts
 
-- [ ] T005 [US2] Write failing schema tests for strict fields, route uniqueness, URL safety, component discriminators, and bounds. (FR-004-FR-009, FR-017)
+- [x] T005 [US2] Write failing schema tests for strict fields, route uniqueness, URL safety, component discriminators, and bounds. (FR-004-FR-009, FR-017)
   - Acceptance: tests fail because implementation does not exist.
   - Verify: focused Vitest command reports expected failures.
   - Files: `tests/unit/site-document.test.ts`, `tests/fixtures/site-documents.ts`.
-- [ ] T006 [US2] Implement SiteDocument, theme, navigation, forms, collections, and block schemas.
+- [x] T006 [US2] Implement SiteDocument, theme, navigation, forms, collections, and block schemas.
   - Acceptance: T005 passes and unknown/unsafe data is rejected with field paths.
   - Verify: focused tests plus typecheck.
   - Files: `src/site-kit/schema.ts`, `src/site-kit/types.ts`, `src/site-kit/url-policy.ts`.
-- [ ] T007 [US2] Write failing canonicalization, checksum, and migration tests.
+- [x] T007 [US2] Write failing canonicalization, checksum, and migration tests.
   - Acceptance: v1 fixtures and unordered equivalent documents specify deterministic behavior.
   - Verify: focused tests fail for missing functions.
   - Files: `tests/unit/document-versioning.test.ts`, `tests/fixtures/v1-document.json`.
-- [ ] T008 [US2] Implement canonical serialization, SHA-256 checksum, schema migration registry, and renderer version identity.
+- [x] T008 [US2] Implement canonical serialization, SHA-256 checksum, schema migration registry, and renderer version identity.
   - Acceptance: equivalent content has one checksum; supported old drafts migrate once; unknown future versions fail closed.
   - Verify: T007 plus deterministic repeat run.
   - Files: `src/site-kit/canonicalize.ts`, `src/site-kit/migrations.ts`, `src/site-kit/version.ts`.
-- [ ] T009 [US2] Build the exact initial PointSite document and asset mapping.
+- [x] T009 [US2] Build the exact initial PointSite document and asset mapping.
   - Acceptance: every existing route, navigation entry, organization field, form, collection, and asset reference is represented.
   - Verify: fixture coverage test against production source inventory.
   - Files: `src/site-kit/default-site.ts`, `tests/unit/default-site.test.ts`, `scripts/audit-production-content.mjs`.
-- [ ] T010 [US2] Write failing renderer registry and safe-output tests for all required blocks. (FR-005, FR-006)
+- [x] T010 [US2] Write failing renderer registry and safe-output tests for all required blocks. (FR-005, FR-006)
   - Acceptance: tests cover unknown block rejection, escaping, links, headings, images, forms, maps, and non-drag metadata.
   - Verify: focused tests fail for missing registry/renderer.
   - Files: `tests/unit/renderer.test.tsx`, `tests/fixtures/block-data.tsx`.
-- [ ] T011 [US2] Implement public block registry, explicit variants, token mapping, renderer, and public styles.
+- [x] T011 [US2] Implement public block registry, explicit variants, token mapping, renderer, and public styles.
   - Acceptance: all required blocks render from validated data using semantic tokens and native controls.
   - Verify: T010, component tests, and build.
   - Files: `src/site-kit/registry.tsx`, `src/site-kit/SiteRenderer.tsx`, `src/site-kit/site.css`, `src/site-kit/tokens.ts`.
