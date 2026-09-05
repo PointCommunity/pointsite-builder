@@ -6,6 +6,7 @@ import { SiteSettings } from '../settings/SiteSettings';
 import { StagingPublish } from '../publish/StagingPublish';
 import { MediaLibrary } from '../media/MediaLibrary';
 import { EditorProvider, useEditor } from './EditorProvider';
+import { PageManager } from './PageManager';
 import { StructurePanel } from './StructurePanel';
 
 const VisualEditor = lazy(() =>
@@ -71,16 +72,7 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
       {panel === 'content' ? (
         <main id="main-content" className="content-workspace">
           <aside>
-            <label>
-              <span>Page</span>
-              <select value={pageId} onChange={(event) => setPageId(event.target.value)}>
-                {document.pages.map((page) => (
-                  <option value={page.id} key={page.id}>
-                    {page.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <PageManager pageId={pageId} onPageIdChange={setPageId} />
             <StructurePanel pageId={pageId} />
           </aside>
           <section className="canvas-shell">

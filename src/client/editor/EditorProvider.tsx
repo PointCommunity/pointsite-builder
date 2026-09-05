@@ -36,6 +36,10 @@ export function EditorProvider({
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const saveNow = useCallback(async () => {
     if (saveState === 'saved' || saveState === 'saving') return;
+    if (!navigator.onLine) {
+      setSaveState('offline');
+      return;
+    }
     setSaveState('saving');
     try {
       const saved = await api.saveDraft(draft.id, draft.revision.checksum, document);
@@ -62,6 +66,21 @@ export function EditorProvider({
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [saveState]);
+
+  useEffect(() => {
+    const markOffline = () => {
+      if (saveState !== 'saved') setSaveState('offline');
+    };
+    const retry = () => {
+      if (saveState === 'offline' || saveState === 'error') void saveNow();
+    };
+    window.addEventListener('offline', markOffline);
+    window.addEventListener('online', retry);
+    return () => {
+      window.removeEventListener('offline', markOffline);
+      window.removeEventListener('online', retry);
+    };
+  }, [saveNow, saveState]);
 
   const reloadLatest = useCallback(async () => {
     const latest = await api.getDraft(draft.id);
