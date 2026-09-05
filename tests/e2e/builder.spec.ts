@@ -46,7 +46,7 @@ test.beforeEach(async ({ page }) => {
       url: 'https://github.com/PointCommunity/pointsite-staging/commit/d',
     };
     const body = path.endsWith('/me')
-      ? { email: 'admin@pointatx.org', role: 'administrator' }
+      ? { email: 'admin@pointatx.org', role: 'administrator', repositoryPermission: 'admin' }
       : path.endsWith('/drafts')
         ? { items: [draft] }
         : path.includes('/revisions')

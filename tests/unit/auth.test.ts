@@ -7,7 +7,7 @@ import {
   authenticateRequest,
   type GitHubIdentityGateway,
 } from '../../src/server/auth/github';
-import { AuthorizationError, requireRole } from '../../src/server/auth/roles';
+import { AuthorizationError, requirePublishAccess, requireRole } from '../../src/server/auth/roles';
 import { parseConfig } from '../../src/server/config';
 
 const github = {
@@ -37,14 +37,14 @@ const config = parseConfig({
 
 const identity = { id: 1_202_831, login: 'brimdor' };
 
-function gateway(collaborator = true): GitHubIdentityGateway {
+function gateway(permission: 'admin' | 'write' | 'read' | null = 'read'): GitHubIdentityGateway {
   return {
     authorizationUrl: ({ state, codeChallenge }) =>
       new URL(
         `https://github.com/login/oauth/authorize?client_id=Iv1.pointsite&state=${state}&code_challenge=${codeChallenge}`,
       ),
     exchangeCode: () => Promise.resolve(identity),
-    isCollaborator: () => Promise.resolve(collaborator),
+    repositoryPermission: () => Promise.resolve(permission),
   };
 }
 
@@ -89,7 +89,33 @@ describe('GitHub collaborator authentication', () => {
       email: 'github:1202831',
       displayName: '@brimdor',
       role: 'editor',
+      repositoryPermission: 'read',
     });
+  });
+
+  it('revokes the existing session on the next request when GitHub access is removed', async () => {
+    const codec = new GitHubSessionCodec(github.sessionSecret);
+    const token = await codec.encode(identity, new Date('2026-09-05T00:00:00Z'));
+    let permission: 'write' | null = 'write';
+    const authenticator = new GitHubAuthenticator(
+      github,
+      {
+        ...gateway('write'),
+        repositoryPermission: () => Promise.resolve(permission),
+      },
+      codec,
+    );
+    const request = new Request('https://builder.pointatx.org/api/me', {
+      headers: { cookie: `__Secure-pointsite_builder_session=${token}` },
+    });
+
+    await expect(
+      authenticator.verifySession(request, new Date('2026-09-05T00:01:00Z')),
+    ).resolves.toMatchObject({ repositoryPermission: 'write' });
+    permission = null;
+    await expect(
+      authenticator.verifySession(request, new Date('2026-09-05T00:02:00Z')),
+    ).rejects.toThrow(/no longer active/i);
   });
 
   it('denies a revoked collaborator and missing or inactive application roles', async () => {
@@ -103,7 +129,7 @@ describe('GitHub collaborator authentication', () => {
         request,
         config,
         { getRole: () => Promise.resolve({ role: 'editor', active: true }) },
-        new GitHubAuthenticator(github, gateway(false), codec),
+        new GitHubAuthenticator(github, gateway(null), codec),
         new Date('2026-09-05T00:01:00Z'),
       ),
     ).rejects.toBeInstanceOf(AuthorizationError);
@@ -136,6 +162,37 @@ describe('GitHub collaborator authentication', () => {
       email: 'github:2',
       role: 'publisher',
     });
+  });
+
+  it('requires both a publishing role and current GitHub write authority', () => {
+    expect(() =>
+      requirePublishAccess({
+        email: 'github:1',
+        role: 'publisher',
+        repositoryPermission: 'read',
+      }),
+    ).toThrow(/GitHub write/i);
+    expect(() =>
+      requirePublishAccess({
+        email: 'github:2',
+        role: 'editor',
+        repositoryPermission: 'write',
+      }),
+    ).toThrow(AuthorizationError);
+    expect(
+      requirePublishAccess({
+        email: 'github:3',
+        role: 'publisher',
+        repositoryPermission: 'write',
+      }).email,
+    ).toBe('github:3');
+    expect(
+      requirePublishAccess({
+        email: 'github:4',
+        role: 'administrator',
+        repositoryPermission: 'admin',
+      }).email,
+    ).toBe('github:4');
   });
 
   it('allows development identity only on local loopback and never in production config', async () => {

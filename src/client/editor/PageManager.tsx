@@ -59,6 +59,9 @@ export function PageManager({
           next.pages.map((item) => item.route),
         ),
         status: 'draft',
+        template: 'standard',
+        eyebrow: 'New page',
+        intro: 'Add a short introduction for this page.',
         metadata: { title, description: 'Add a short description for this page.' },
         blocks: [],
       });
@@ -189,6 +192,62 @@ export function PageManager({
               <option value="draft">Draft</option>
               <option value="published">Published</option>
               <option value="hidden">Hidden</option>
+            </select>
+          </label>
+          <label>
+            <span>Page layout</span>
+            <select
+              value={page.template ?? (page.route === '/' ? 'home' : 'standard')}
+              onChange={(event) =>
+                updatePage((target) => {
+                  target.template = event.target.value as 'home' | 'standard';
+                })
+              }
+            >
+              <option value="standard">Standard page</option>
+              <option value="home">Homepage</option>
+            </select>
+          </label>
+          <label>
+            <span>Page eyebrow</span>
+            <input
+              maxLength={80}
+              value={page.eyebrow ?? ''}
+              onChange={(event) =>
+                updatePage((target) => {
+                  target.eyebrow = event.target.value || undefined;
+                })
+              }
+            />
+          </label>
+          <label className="field-wide">
+            <span>Page introduction</span>
+            <textarea
+              maxLength={500}
+              value={page.intro ?? ''}
+              onChange={(event) =>
+                updatePage((target) => {
+                  target.intro = event.target.value || undefined;
+                })
+              }
+            />
+          </label>
+          <label>
+            <span>Page hero image</span>
+            <select
+              value={page.heroMediaId ?? ''}
+              onChange={(event) =>
+                updatePage((target) => {
+                  target.heroMediaId = event.target.value || undefined;
+                })
+              }
+            >
+              <option value="">No hero image</option>
+              {document.media.map((media) => (
+                <option value={media.id} key={media.id}>
+                  {media.alt || media.sourcePath}
+                </option>
+              ))}
             </select>
           </label>
           <label>

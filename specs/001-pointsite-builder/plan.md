@@ -180,3 +180,20 @@ staging acceptance.
 No constitution violations. Separate repositories, database, object storage, and
 GitHub integration are required by isolation, recoverability, media, and review
 requirements rather than speculative scale.
+
+## Parity Recovery Plan
+
+1. Record the production route/content/style inventory and add failing renderer,
+   seed, canvas, and GitHub-permission tests.
+2. Extend the backward-compatible SiteDocument presentation contract so page
+   chrome and approved module variants are explicit editable data.
+3. Make the editing canvas, preview, and staging consume one SiteFrame and one
+   Point Classic stylesheet; remove the approximate parallel rendering path.
+4. Rebuild the default document from every current production content surface,
+   then sync the exact site-kit snapshot to staging.
+5. Add deterministic production-versus-staging screenshot comparison at 360,
+   768, and 1280 pixels, plus hands-on interaction coverage for every editor
+   surface and the GitHub read-versus-write publication boundary.
+6. Deploy Builder first, create a new immutable parity-baseline draft, publish it
+   through Builder to staging, and run the full local, CI, live, security, and
+   browser acceptance matrix. Production remains read-only throughout.

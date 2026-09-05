@@ -31,7 +31,11 @@ const original = (): DraftRecord => {
   };
 };
 
-async function installApi(page: Page, role: Role = 'administrator') {
+async function installApi(
+  page: Page,
+  role: Role = 'administrator',
+  repositoryPermission: 'admin' | 'maintain' | 'write' | 'triage' | 'read' = 'admin',
+) {
   const draft = original();
   const drafts = [draft];
   const oldRevision: RevisionRecord = {
@@ -66,7 +70,7 @@ async function installApi(page: Page, role: Role = 'administrator') {
     const method = request.method();
     let body: unknown = {};
     let status = 200;
-    if (path.endsWith('/me')) body = { email: `${role}@pointatx.org`, role };
+    if (path.endsWith('/me')) body = { email: `${role}@pointatx.org`, role, repositoryPermission };
     else if (path === '/api/drafts' && method === 'GET') body = { items: drafts, nextCursor: null };
     else if (path === '/api/drafts' && method === 'POST') {
       const input = request.postDataJSON() as { name: string };
@@ -198,6 +202,47 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
     await expect(frame).toHaveCSS('max-width', width);
   }
   await expect(frame.getByRole('heading', { level: 1 })).toBeVisible();
+});
+
+test('shows the complete production-style site chrome and content inside the editing canvas', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(canvas.locator('.site-header.site-header--overlay')).toBeVisible();
+  await expect(
+    canvas.getByRole('heading', {
+      level: 1,
+      name: /We are a family of Jesus-followers empowered by the Holy Spirit/,
+    }),
+  ).toBeVisible();
+  await expect(canvas.locator('.home-intro')).toBeVisible();
+  await expect(canvas.locator('.home-feature--photo')).toBeVisible();
+  await expect(canvas.locator('.home-feature--split')).toBeVisible();
+  await expect(canvas.locator('.gathering-section')).toBeVisible();
+  await expect(canvas.locator('.site-footer')).toBeVisible();
+
+  const pageSelector = page.getByLabel('Choose page');
+  for (const [title, landmark] of [
+    ['Who We Are', '.split-section'],
+    ['Our Beliefs', '.belief-list'],
+    ['Leadership', '.people-grid'],
+    ['Next Generation', '.image-split'],
+    ['Connect Card', '.standalone-form'],
+    ['Neighborhood Groups', '.group-grid'],
+    ['Prayer Requests', '.standalone-form'],
+    ['Giving', '.giving-options'],
+    ['Contact Us', '.contact-grid'],
+    ['Building Rental', '.standalone-form'],
+  ] as const) {
+    await pageSelector.selectOption({ label: title });
+    await expect(canvas.getByRole('heading', { level: 1, name: title })).toBeVisible();
+    await expect(canvas.locator(landmark).first()).toBeVisible();
+    await expect(canvas.locator('.site-header')).toBeVisible();
+    await expect(canvas.locator('.site-footer')).toBeVisible();
+  }
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {

@@ -247,6 +247,29 @@
   - Verify: GitHub Actions, Pages API, public route/CSS/media probes, browser suite.
   - Files: approved production merge and audit evidence.
 
+## Phase 10: Production-parity recovery (staging only)
+
+- [x] T055 Specify and test the canonical Point Classic page chrome and module variants. (FR-033, FR-034)
+  - Acceptance: failing tests identify every production route/content surface and require production-compatible structure in both canvas and renderer.
+  - Verify: focused Vitest tests fail before implementation and pass afterward.
+  - Files: `src/site-kit/schema.ts`, `src/site-kit/default-site.ts`, `tests/unit/default-site.test.ts`, `tests/unit/renderer.test.tsx`, `tests/unit/foundation.test.tsx`.
+- [x] T056 Replace the approximate canvas/preview renderer with one canonical responsive SiteFrame.
+  - Acceptance: editor canvas, preview, and staging use the same header, page hero, modules, footer, semantic tokens, typography, and responsive behavior.
+  - Verify: focused component tests, typecheck, build, and browser screenshots.
+  - Files: `src/site-kit/SiteRenderer.tsx`, `src/site-kit/registry.tsx`, `src/site-kit/site.css`, `src/site-kit/tokens.ts`, `src/client/editor/VisualEditor.tsx`.
+- [x] T057 Enforce live GitHub repository permission independently from Builder roles. (FR-001, FR-032)
+  - Acceptance: read/triage collaborators can create and edit drafts; only write/maintain/admin plus Publisher/Admin can publish or accept.
+  - Verify: auth, route, and permission E2E tests including permission revocation on the next request.
+  - Files: `src/server/auth/github.ts`, `src/server/auth/roles.ts`, `src/server/routes/publish.ts`, `src/server/routes/approvals.ts`, `tests/unit/auth.test.ts`.
+- [x] T058 Sync the exact renderer/default document to staging and add deterministic parity gates.
+  - Acceptance: all current routes build from builder JSON and production/staging screenshots match at 360, 768, and 1280 pixels with only documented environment exclusions.
+  - Verify: staging unit/E2E suite, screenshot comparison, and exact site-kit checksum.
+  - Files: `pointsite-staging/site-kit/*`, `pointsite-staging/content/builder-site.json`, `pointsite-staging/tests/e2e/staging.spec.ts`, `pointsite-staging/tests/e2e/parity.spec.ts`.
+- [ ] T059 Complete hands-on staging acceptance through the deployed Builder.
+  - Acceptance: every editor surface/control and public route/navigation/form/menu/link works; staging was published from an immutable Builder revision; Production is unchanged.
+  - Verify: full Builder and staging suites, CI, live browser matrix, security scans, and production repository SHA/status comparison.
+  - Files: staging candidate/evidence only; no production files.
+
 ## Dependencies and completion rule
 
 - T001-T004 establish governance and tooling.

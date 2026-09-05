@@ -12,13 +12,6 @@ function block<T extends Omit<SiteBlock, 'id'>>(value: T): T & { id: string } {
   return { id: uid(blockSequence), ...value };
 }
 
-function richText(...paragraphs: string[]): SiteBlock {
-  return block({
-    type: 'richText',
-    content: paragraphs.map((text) => ({ type: 'paragraph' as const, children: [{ text }] })),
-  });
-}
-
 const media = [
   ['/assets/austin-skyline.jpeg', 'Austin skyline over the Colorado River'],
   ['/assets/neighborhood-table.jpeg', 'Friends and families sharing a meal'],
@@ -305,106 +298,175 @@ const page = (
   route: string,
   description: string,
   blocks: SiteBlock[],
+  chrome: {
+    eyebrow?: string;
+    intro?: string;
+    heroMediaId?: string;
+    template?: 'home' | 'standard';
+  } = {},
 ): SiteDocument['pages'][number] => ({
   id: uid(5_000 + sequence),
   title,
   route,
   status: 'published',
+  template: chrome.template ?? (route === '/' ? 'home' : 'standard'),
+  ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
+  intro: chrome.intro ?? description,
+  ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
   metadata: { title: `${title} | Point Community Church`, description },
   blocks,
 });
 
 const pages: SiteDocument['pages'] = [
-  page(0, 'Home', '/', 'Point Community Church in Manchaca, Texas.', [
-    block({
-      type: 'hero',
-      heading:
-        'We are a family of Jesus-followers empowered by the Holy Spirit to make disciples of Jesus in all of life for the glory of God',
-      mediaId: mediaId('/assets/austin-skyline.jpeg'),
-      align: 'left',
-      surface: 'image',
-      actions: [],
-    }),
-    block({
-      type: 'heading',
-      text: 'A diverse group of ordinary people',
-      level: 2,
-      align: 'left',
-      width: 'wide',
-      supportingText:
-        'We are a family of Jesus followers, empowered by the Spirit to make disciples of Jesus in all of life for the glory of God.',
-    }),
-    block({
-      type: 'splitFeature',
-      eyebrow: 'Life together',
-      heading: 'Neighborhood Groups',
-      body: 'Being the Church is more than a Sunday gathering. Discipleship happens in the everyday stuff of life within a community.',
-      mediaId: mediaId('/assets/neighborhood-table.jpeg'),
-      mediaAlt: 'Friends and families sharing a meal',
-      mediaSide: 'left',
-      proportion: 'half',
-      align: 'center',
-      surface: 'canvas',
-      action: { label: 'Learn more', href: '/neighborhood-groups', style: 'primary' },
-    }),
-    block({
-      type: 'splitFeature',
-      eyebrow: 'Kids ministry',
-      heading: 'Next Generation',
-      body: 'Kids are not the Church of tomorrow, but the Church today. Elementary-age kids and up worship with their parents in a multi-generational environment, while birth through preschool children have a safe, fun place to learn.',
-      mediaId: mediaId('/assets/next-generation.jpeg'),
-      mediaAlt: 'Families worshiping together at Point ATX',
-      mediaSide: 'left',
-      proportion: 'half',
-      align: 'center',
-      surface: 'surface',
-      action: { label: 'Learn more', href: '/next-generation', style: 'primary' },
-    }),
-    block({
-      type: 'map',
-      query: '11300 Old San Antonio Rd, Manchaca, TX 78652',
-      title: 'Map to Point Community Church',
-    }),
-  ]),
-  page(1, 'Who We Are', '/who-we-are', 'We are a family of disciples on mission.', [
-    block({
-      type: 'hero',
+  page(
+    0,
+    'Home',
+    '/',
+    'Point Community Church in Manchaca, Texas.',
+    [
+      block({
+        type: 'hero',
+        variant: 'homeHero',
+        heading:
+          'We are a family of Jesus-followers empowered by the Holy Spirit to make disciples of Jesus in all of life for the glory of God',
+        mediaId: mediaId('/assets/austin-skyline.jpeg'),
+        align: 'left',
+        surface: 'image',
+        actions: [],
+      }),
+      block({
+        type: 'heading',
+        variant: 'homeIntro',
+        eyebrow: 'Point ATX',
+        text: 'A diverse group\nof ordinary people',
+        level: 2,
+        align: 'center',
+        width: 'wide',
+        supportingText:
+          'We are a family of Jesus followers, empowered by the Spirit to make disciples of Jesus in all of life for the glory of God.',
+        actions: [
+          { label: 'Who we are', href: '/who-we-are', style: 'secondary' },
+          { label: 'Our beliefs', href: '/what-we-believe', style: 'secondary' },
+        ],
+      }),
+      block({
+        type: 'splitFeature',
+        variant: 'photoBanner',
+        eyebrow: 'Life together',
+        heading: 'Neighborhood Groups',
+        body: 'Being the Church is more than a Sunday gathering. Discipleship happens in the everyday stuff of life within a community.',
+        mediaId: mediaId('/assets/neighborhood-table.jpeg'),
+        mediaAlt: 'Friends and families sharing a meal',
+        mediaSide: 'left',
+        proportion: 'half',
+        align: 'center',
+        surface: 'canvas',
+        action: { label: 'Learn more', href: '/neighborhood-groups', style: 'primary' },
+      }),
+      block({
+        type: 'splitFeature',
+        variant: 'splitFeature',
+        eyebrow: 'Kids ministry',
+        heading: 'Next Generation',
+        body: 'Kids are not the Church of tomorrow, but the Church today. Elementary-age kids and up worship with their parents in a multi-generational environment, while birth through preschool children have a safe, fun place to learn.',
+        mediaId: mediaId('/assets/next-generation.jpeg'),
+        mediaAlt: 'Families worshiping together at Point ATX',
+        mediaSide: 'left',
+        proportion: 'half',
+        align: 'center',
+        surface: 'canvas',
+        action: { label: 'Learn more', href: '/next-generation', style: 'primary' },
+      }),
+      block({
+        type: 'map',
+        variant: 'gathering',
+        eyebrow: 'Come as you are',
+        heading: 'Gathering Times',
+        body: 'Sunday Gatherings: 10:30 AM\n11300 Old San Antonio Rd., Manchaca, TX 78652',
+        query: '11300 Old San Antonio Rd, Manchaca, TX 78652',
+        title: 'Map to Point Community Church',
+      }),
+    ],
+    { eyebrow: 'Point ATX', template: 'home' },
+  ),
+  page(
+    1,
+    'Who We Are',
+    '/who-we-are',
+    'We are a family of disciples on mission.',
+    [
+      block({
+        type: 'cards',
+        variant: 'splitEditorial',
+        columns: 2,
+        items: [
+          {
+            eyebrow: 'Our Gatherings',
+            title: 'Worship Gathering',
+            body: 'Every Sunday at 10:30am, we gather at 11300 Old San Antonio Rd. to celebrate what God has done for us in the Gospel of Jesus and what God is doing through us as a body of believers. Everyone is welcome.\n\nWe worship through singing, the study of the Bible and preaching, communion, testimonies of God’s faithfulness, baptism, and prayer.',
+          },
+          {
+            eyebrow: 'Life together',
+            title: 'Neighborhood Groups',
+            body: 'A Neighborhood Group is a family of Jesus followers living together on God’s mission. It is a smaller expression of the church—ordinary people growing as disciples while making disciples in everyday life.\n\nOur groups meet at various times and places throughout the week.',
+          },
+        ],
+      }),
+      block({
+        type: 'cards',
+        variant: 'identity',
+        eyebrow: 'Our Identity',
+        heading: 'Family. Disciples. Mission.',
+        columns: 3,
+        items: [
+          {
+            title: 'Family',
+            body: 'As children of God, we provide care and encouragement for one another.',
+            supportingText: 'Ephesians 2:19–22',
+          },
+          {
+            title: 'Disciples',
+            body: 'We are Jesus-followers growing in the good news that God loves us, Jesus saves us, and the Spirit empowers us.',
+            supportingText: '2 Corinthians 5:17–21',
+          },
+          {
+            title: 'Mission',
+            body: 'We all have a purpose to make more disciples by pointing others to Jesus.',
+            supportingText: 'Matthew 28:18–20',
+          },
+        ],
+      }),
+      block({
+        type: 'richText',
+        variant: 'prose',
+        eyebrow: 'More than a building',
+        heading: 'What is the Church anyway?',
+        content: [
+          {
+            type: 'paragraph',
+            children: [
+              {
+                text: 'The Bible uses the word “church” to describe people connected to one another because of Jesus. While we have a building and gatherings, the church is not defined by a building we enter or an event we attend. We, the people, are the church.',
+              },
+            ],
+          },
+          {
+            type: 'paragraph',
+            children: [
+              {
+                text: 'God rescued his people through Jesus and calls the church to be his family living on his mission together. Joyfully living out the New Testament’s “one another” commands in light of the gospel is what we mean by being the church together.',
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+    {
       eyebrow: 'About Point',
-      heading: 'Who We Are',
-      body: 'We are a family of disciples on mission.',
-      mediaId: mediaId('/assets/pages/who-we-are.jpeg'),
-      align: 'left',
-      surface: 'image',
-      actions: [],
-    }),
-    richText(
-      'Every Sunday at 10:30am, we gather at 11300 Old San Antonio Rd. to celebrate what God has done for us in the Gospel of Jesus and what God is doing through us as a body of believers. Everyone is welcome.',
-      'We worship through singing, the study of the Bible and preaching, communion, testimonies of God’s faithfulness, baptism, and prayer.',
-    ),
-    block({
-      type: 'cards',
-      heading: 'Family. Disciples. Mission.',
-      columns: 3,
-      items: [
-        {
-          title: 'Family',
-          body: 'As children of God, we provide care and encouragement for one another. Ephesians 2:19–22',
-        },
-        {
-          title: 'Disciples',
-          body: 'We are Jesus-followers growing in the good news that God loves us, Jesus saves us, and the Spirit empowers us. 2 Corinthians 5:17–21',
-        },
-        {
-          title: 'Mission',
-          body: 'We all have a purpose to make more disciples by pointing others to Jesus. Matthew 28:18–20',
-        },
-      ],
-    }),
-    richText(
-      'The Bible uses the word “church” to describe people connected to one another because of Jesus. While we have a building and gatherings, the church is not defined by a building we enter or an event we attend. We, the people, are the church.',
-      'God rescued his people through Jesus and calls the church to be his family living on his mission together. Joyfully living out the New Testament’s “one another” commands in light of the gospel is what we mean by being the church together.',
-    ),
-  ]),
+      intro: 'We are a family of disciples on mission.',
+      heroMediaId: mediaId('/assets/pages/who-we-are.jpeg'),
+    },
+  ),
   page(
     2,
     'Our Beliefs',
@@ -412,52 +474,91 @@ const pages: SiteDocument['pages'] = [
     'Seven core beliefs form the foundation of our identity and practice.',
     [
       block({
-        type: 'heading',
-        text: 'Our Beliefs',
-        level: 2,
-        align: 'left',
-        width: 'wide',
-        supportingText:
-          'We hold to seven core beliefs as the foundation of our identity and practice as a local church. Regardless of your beliefs, you are welcome to learn with us.',
-      }),
-      block({
         type: 'cards',
-        heading: 'Core Beliefs',
+        variant: 'beliefs',
+        eyebrow: 'Core Beliefs',
         columns: 2,
         items: beliefs.map(([title, body, references]) => ({
           title,
-          body: `${body} ${references}`,
+          body,
+          supportingText: references,
         })),
       }),
-      block({ type: 'form', formId: formId('beliefs'), heading: 'Want to learn more?' }),
+      block({
+        type: 'form',
+        variant: 'panel',
+        formId: formId('beliefs'),
+        heading: 'Want to learn more?',
+        supportingText: "We'd love to hear from you. Fill out the form below to get started.",
+      }),
     ],
+    {
+      eyebrow: 'What We Believe',
+      intro:
+        'We hold to seven core beliefs as the foundation of our identity and practice as a local church. Regardless of your beliefs, you are welcome to learn with us.',
+    },
   ),
-  page(3, 'Leadership', '/leadership', 'Meet the leaders who equip our church family.', [
-    block({
-      type: 'people',
-      personIds: people.map((_, index) => uid(6_000 + index)),
-      layout: 'grid',
-    }),
-    block({
-      type: 'cards',
-      heading: 'Leadership',
-      columns: 2,
-      items: [
-        {
-          title: 'Structure',
-          body: 'Jesus Christ is the head of the Church. At each local expression, he calls specific followers to provide leadership and care. Their primary role is to equip the church to be the church.',
-        },
-        {
-          title: 'Shared leadership',
-          body: 'Elders are biblically qualified men who govern and teach sound doctrine. Point Community’s Elder Team leads together—equal in authority and accountability, unique in function, and unified in direction and vision.',
-        },
-      ],
-    }),
-    richText(
-      'The local church was not created to operate in isolation. Our strongest partnership is the Association of Hill Country Churches, committed to reaching every person in Greater Austin with the life-changing reality of Jesus.',
-      'Other partners include Christ Together Austin, Austin Church Planting Network, Austin Disaster Relief Network, TruCare Pregnancy Center, South Austin Young Life, Austin Bridge Builders Alliance, and Akins High School.',
-    ),
-  ]),
+  page(
+    3,
+    'Leadership',
+    '/leadership',
+    'Meet the leaders who equip our church family.',
+    [
+      block({
+        type: 'people',
+        variant: 'leadership',
+        personIds: people.map((_, index) => uid(6_000 + index)),
+        layout: 'grid',
+      }),
+      block({
+        type: 'cards',
+        variant: 'splitEditorialTone',
+        heading: 'Leadership',
+        columns: 2,
+        items: [
+          {
+            eyebrow: 'Leadership',
+            title: 'Structure',
+            body: 'Jesus Christ is the head of the Church. At each local expression, he calls specific followers to provide leadership and care. Their primary role is to equip the church to be the church, not to take on the entire ministry of the congregation themselves.',
+          },
+          {
+            eyebrow: 'Elders',
+            title: 'Shared leadership',
+            body: 'Elders are biblically qualified men who govern and teach sound doctrine. Point Community’s Elder Team leads together—equal in authority and accountability, unique in function, and unified in direction and vision.',
+          },
+        ],
+      }),
+      block({
+        type: 'richText',
+        variant: 'prose',
+        eyebrow: 'Partnerships',
+        heading: 'Serving Austin together',
+        content: [
+          {
+            type: 'paragraph',
+            children: [
+              {
+                text: 'The local church was not created to operate in isolation. Our strongest partnership is the Association of Hill Country Churches, committed to reaching every person in Greater Austin with the life-changing reality of Jesus.',
+              },
+            ],
+          },
+          {
+            type: 'paragraph',
+            children: [
+              {
+                text: 'Other partners include Christ Together Austin, Austin Church Planting Network, Austin Disaster Relief Network, TruCare Pregnancy Center, South Austin Young Life, Austin Bridge Builders Alliance, and Akins High School.',
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+    {
+      eyebrow: 'Team & Staff',
+      intro:
+        'Meet the elders, ministry leaders, and staff who equip our church family to be the church.',
+    },
+  ),
   page(
     4,
     'Next Generation',
@@ -465,43 +566,57 @@ const pages: SiteDocument['pages'] = [
     'Kids are not the Church of tomorrow, but the Church today.',
     [
       block({
-        type: 'hero',
-        eyebrow: 'Kids Ministry',
-        heading: 'Next Generation',
-        body: 'We believe kids are not the Church of tomorrow, but the Church today.',
-        mediaId: mediaId('/assets/pages/kids-ministry-1.jpeg'),
-        align: 'left',
-        surface: 'image',
-        actions: [],
-      }),
-      block({
         type: 'splitFeature',
+        variant: 'imageSplit',
         eyebrow: 'First Point',
-        heading: 'Next Generation Kids Ministry',
-        body: 'First Point is our ministry for our youngest children. The goal is to point children from birth through preschool toward the amazing love of God. Children are always welcome in the main gathering. All volunteers are required to pass a background check.',
+        heading: 'Next Generation\nKids Ministry',
+        body: 'First Point is our ministry for our youngest children. The goal is to point children from birth through preschool toward the amazing love of God. Our volunteers love and serve these little lives week in and week out using the First Look curriculum.\n\nChildren are always welcome in the main gathering. If you need to step out with an infant, audio of the message is available in the lobby.',
+        note: 'All volunteers are required to pass a background check before working in kids ministry.',
         mediaId: mediaId('/assets/pages/kids-ministry-2.jpeg'),
         mediaAlt: 'Point ATX kids ministry',
         mediaSide: 'left',
         proportion: 'half',
         align: 'center',
         surface: 'canvas',
+        calloutLabel: 'Sunday Morning Child Care',
+        calloutValue: '10:30am',
       }),
       block({
         type: 'image',
+        variant: 'wide',
         mediaId: mediaId('/assets/pages/kids-ministry-3.jpeg'),
         alt: 'Children and families at Point ATX',
         aspect: 'natural',
         fit: 'cover',
       }),
-      block({ type: 'form', formId: formId('kids'), heading: 'Contact Us' }),
+      block({
+        type: 'form',
+        variant: 'panel',
+        formId: formId('kids'),
+        heading: 'Contact Us',
+        supportingText: "We'd love to answer your questions about kids ministry.",
+      }),
     ],
+    {
+      eyebrow: 'Kids Ministry',
+      intro: 'We believe kids are not the Church of tomorrow, but the Church today.',
+      heroMediaId: mediaId('/assets/pages/kids-ministry-1.jpeg'),
+    },
   ),
   page(
     5,
     'Connect Card',
     '/connect-card',
-    "We're glad you're here. Tell us a little about yourself.",
-    [block({ type: 'form', formId: formId('connect-card'), heading: 'Connect Card' })],
+    "We're glad you're here. Tell us a little about yourself so we can help you get connected.",
+    [
+      block({
+        type: 'form',
+        variant: 'standalone',
+        formId: formId('connect-card'),
+        heading: 'Connect Card',
+      }),
+    ],
+    { eyebrow: 'Welcome to our family' },
   ),
   page(
     6,
@@ -510,17 +625,8 @@ const pages: SiteDocument['pages'] = [
     'Smaller groups where we can be the church together.',
     [
       block({
-        type: 'hero',
-        eyebrow: 'Church in everyday life',
-        heading: 'Neighborhood Groups',
-        body: 'Neighborhood Groups are smaller groups where we can be the church together in the places we live, work, play, and learn.',
-        mediaId: mediaId('/assets/pages/neighborhood-map.png'),
-        align: 'left',
-        surface: 'image',
-        actions: [],
-      }),
-      block({
         type: 'cards',
+        variant: 'groups',
         columns: 3,
         items: groups.map(([title, schedule, location, leaders]) => ({
           title,
@@ -529,77 +635,131 @@ const pages: SiteDocument['pages'] = [
       }),
       block({
         type: 'form',
+        variant: 'panel',
         formId: formId('groups'),
         heading: 'Live in community with a mission',
+        supportingText: 'Submit this form and we will help you find a Neighborhood Group near you.',
       }),
       block({
         type: 'faq',
+        variant: 'groups',
+        eyebrow: 'Common questions',
         heading: 'Finding your group',
         items: groupFaqs.map(([question, answer]) => ({ question, answer })),
       }),
     ],
+    {
+      eyebrow: 'Church in everyday life',
+      intro:
+        'Neighborhood Groups are smaller groups where we can be the church together in the places we live, work, play, and learn.',
+      heroMediaId: mediaId('/assets/pages/neighborhood-map.png'),
+    },
   ),
-  page(7, 'Prayer Requests', '/prayer-request', 'Our team prays for every request we receive.', [
-    block({ type: 'form', formId: formId('prayer-request'), heading: 'Prayer Request Form' }),
-  ]),
-  page(8, 'Giving', '/give', 'God is generous, and so he calls us to be as well.', [
-    block({
-      type: 'hero',
-      eyebrow: 'Generosity',
-      heading: 'Giving',
-      body: 'God is generous, and so he calls us to be as well.',
-      mediaId: mediaId('/assets/pages/giving.png'),
-      align: 'left',
-      surface: 'image',
-      actions: [],
-    }),
-    richText(
-      'What we do with what God has given us shows the world where our hearts are and helps proclaim the gospel. We want to glorify God with every area of our lives, including our finances.',
-    ),
-    block({
-      type: 'cards',
-      columns: 2,
-      items: [
-        {
-          title: 'Give Online',
-          body: 'Give a one-time donation or set up a recurring gift securely through our current giving partner.',
-          href: 'https://subsplash.com/u/-W69J2R/give',
-        },
-        {
-          title: 'Give In Person',
-          body: 'A giving box is available in the back of the sanctuary for cash and check donations.',
-        },
-      ],
-    }),
-    block({ type: 'form', formId: formId('giving'), heading: 'Have questions or need help?' }),
-  ]),
-  page(9, 'Contact Us', '/contact', 'We would love to hear from you.', [
-    richText(
-      'Office Hours: Monday–Friday, 9am–5pm',
-      'connect@pointaustin.org',
-      '11300 Old San Antonio Rd, Manchaca, TX 78652',
-    ),
-    block({ type: 'form', formId: formId('contact'), heading: 'Get In Touch' }),
-    block({
-      type: 'cta',
-      heading: 'Building Rental',
-      body: 'Need a space?',
-      action: { label: 'Request the building', href: '/building-rental', style: 'primary' },
-      surface: 'surface',
-    }),
-  ]),
+  page(
+    7,
+    'Prayer Requests',
+    '/prayer-request',
+    'Our team prays for every request we receive on a regular basis.',
+    [
+      block({
+        type: 'form',
+        variant: 'standalone',
+        formId: formId('prayer-request'),
+        heading: 'Prayer Request Form',
+      }),
+    ],
+    { eyebrow: 'We would be honored to pray' },
+  ),
+  page(
+    8,
+    'Giving',
+    '/give',
+    'God is generous, and so he calls us to be as well.',
+    [
+      block({
+        type: 'richText',
+        variant: 'prose',
+        eyebrow: 'Why we give',
+        heading: 'Generosity is worship',
+        content: [
+          {
+            type: 'paragraph',
+            children: [
+              {
+                text: 'What we do with what God has given us shows the world where our hearts are and helps proclaim the gospel. We want to glorify God with every area of our lives, including our finances.',
+              },
+            ],
+          },
+        ],
+      }),
+      block({
+        type: 'cards',
+        variant: 'giving',
+        columns: 2,
+        items: [
+          {
+            title: 'Give Online',
+            body: 'Give a one-time donation or set up a recurring gift securely through our current giving partner.',
+            href: 'https://subsplash.com/u/-W69J2R/give',
+          },
+          {
+            title: 'Give In Person',
+            body: 'A giving box is available in the back of the sanctuary for cash and check donations.',
+          },
+        ],
+      }),
+      block({
+        type: 'form',
+        variant: 'panel',
+        formId: formId('giving'),
+        heading: 'Have questions or need help?',
+        supportingText: "We'd love to hear from you.",
+      }),
+    ],
+    { eyebrow: 'Generosity', heroMediaId: mediaId('/assets/pages/giving.png') },
+  ),
+  page(
+    9,
+    'Contact Us',
+    '/contact',
+    'If you have questions or would like more information about Point ATX, we would love to hear from you.',
+    [
+      block({
+        type: 'form',
+        variant: 'contact',
+        formId: formId('contact'),
+        heading: 'Monday–Friday\n9am–5pm',
+        supportingText: 'Fill out the form and we will get back to you as soon as possible.',
+        eyebrow: 'Office Hours',
+        body: 'connect@pointaustin.org\n11300 Old San Antonio Rd, Manchaca, TX 78652',
+        linkLabel: 'Get directions →',
+        linkHref: 'https://maps.google.com/?q=11300+Old+San+Antonio+Rd+Manchaca+TX+78652',
+      }),
+      block({
+        type: 'cta',
+        variant: 'rental',
+        eyebrow: 'Need a space?',
+        heading: 'Building Rental',
+        action: { label: 'Request the building', href: '/building-rental', style: 'primary' },
+        surface: 'surface',
+      }),
+    ],
+    { eyebrow: 'Get in touch' },
+  ),
   page(
     10,
     'Building Rental',
     '/building-rental',
-    'Tell us about your organization and requested rental.',
+    'Tell us about your organization and the date, time, and length of your requested rental.',
     [
       block({
         type: 'form',
+        variant: 'standalone',
         formId: formId('building-rental'),
         heading: 'Building Rental Request',
       }),
     ],
+    { eyebrow: 'Request the space' },
   ),
 ];
 
@@ -636,18 +796,18 @@ const rawDocument = {
   theme: {
     preset: 'point-classic',
     colors: {
-      canvas: '#f3f0e8',
-      surface: '#ffffff',
-      text: '#20251f',
-      mutedText: '#4e594d',
+      canvas: '#ffffff',
+      surface: '#f3f1eb',
+      text: '#171a17',
+      mutedText: '#60665e',
       primary: '#3e522c',
       onPrimary: '#ffffff',
-      border: '#c9d0c7',
+      border: '#d9d9d2',
     },
-    headingFont: 'serif',
+    headingFont: 'sans',
     bodyFont: 'sans',
     spacingDensity: 'comfortable',
-    radius: 'soft',
+    radius: 'square',
     buttonStyle: 'solid',
     surfaceStyle: 'warm',
   },

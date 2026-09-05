@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { requireRole } from '../auth/roles';
+import { requirePublishAccess } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest } from '../http/security';
 import type { StagingPublisher } from '../publish/service';
@@ -14,13 +14,13 @@ const PublishSchema = z.strictObject({
 export function createPublishRoutes(publisher?: StagingPublisher) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   routes.get('/staging/base', async (context) => {
-    requireRole(context.get('actor'), 'publisher');
+    requirePublishAccess(context.get('actor'));
     if (!publisher)
       throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
     return context.json({ sha: await publisher.currentBaseSha() });
   });
   routes.post('/staging', async (context) => {
-    const actor = requireRole(context.get('actor'), 'publisher');
+    const actor = requirePublishAccess(context.get('actor'));
     if (!publisher)
       throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
     const body = PublishSchema.safeParse(
@@ -56,7 +56,7 @@ export function createPublishRoutes(publisher?: StagingPublisher) {
     }
   });
   routes.get('/jobs/:jobId', async (context) => {
-    requireRole(context.get('actor'), 'publisher');
+    requirePublishAccess(context.get('actor'));
     if (!publisher)
       throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
     const job = await publisher.getJob(context.req.param('jobId'));
@@ -64,7 +64,7 @@ export function createPublishRoutes(publisher?: StagingPublisher) {
     return context.json(job);
   });
   routes.post('/jobs/:jobId/verification', async (context) => {
-    const actor = requireRole(context.get('actor'), 'publisher');
+    const actor = requirePublishAccess(context.get('actor'));
     if (!publisher)
       throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
     await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);

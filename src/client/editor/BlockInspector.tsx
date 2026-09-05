@@ -162,6 +162,15 @@ export function BlockInspector({
     case 'hero':
       return (
         <div className="block-inspector">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard hero', value: 'standard' },
+              { label: 'Point homepage hero', value: 'homeHero' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
           <Text
             label="Eyebrow"
             value={block.eyebrow}
@@ -245,6 +254,20 @@ export function BlockInspector({
     case 'heading':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard heading', value: 'standard' },
+              { label: 'Point homepage introduction', value: 'homeIntro' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
           <Text
             label="Heading"
             value={block.text}
@@ -284,11 +307,72 @@ export function BlockInspector({
             area
             onChange={(supportingText) => onChange({ ...block, supportingText })}
           />
+          <fieldset className="inspector-group">
+            <legend>Buttons</legend>
+            {(block.actions ?? []).map((action, index) => (
+              <Row
+                key={`${action.href}-${index}`}
+                onRemove={() =>
+                  onChange({
+                    ...block,
+                    actions: block.actions?.filter((_, item) => item !== index),
+                  })
+                }
+              >
+                <ActionEditor
+                  action={action}
+                  onChange={(next) =>
+                    onChange({
+                      ...block,
+                      actions: block.actions?.map((item, itemIndex) =>
+                        itemIndex === index ? next : item,
+                      ),
+                    })
+                  }
+                />
+              </Row>
+            ))}
+            <button
+              type="button"
+              className="button"
+              disabled={(block.actions?.length ?? 0) >= 2}
+              onClick={() =>
+                onChange({
+                  ...block,
+                  actions: [
+                    ...(block.actions ?? []),
+                    { label: 'Learn more', href: '/', style: 'primary' },
+                  ],
+                })
+              }
+            >
+              Add button
+            </button>
+          </fieldset>
         </div>
       );
     case 'richText':
       return (
         <div className="block-inspector">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard text', value: 'standard' },
+              { label: 'Point editorial section', value: 'prose' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
+          <Text
+            label="Section heading"
+            value={block.heading}
+            onChange={(heading) => onChange({ ...block, heading })}
+          />
           <p className="field-help">Use one content item per paragraph, list, quote, or link.</p>
           {block.content.map((node, index) => (
             <Row
@@ -442,6 +526,15 @@ export function BlockInspector({
     case 'image':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard image', value: 'standard' },
+              { label: 'Point wide photo', value: 'wide' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
           <Media
             label="Image"
             value={block.mediaId}
@@ -483,6 +576,17 @@ export function BlockInspector({
     case 'splitFeature':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard split', value: 'standard' },
+              { label: 'Point photo banner', value: 'photoBanner' },
+              { label: 'Point image and text', value: 'splitFeature' },
+              { label: 'Point content image split', value: 'imageSplit' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
           <Text
             label="Eyebrow"
             value={block.eyebrow}
@@ -498,6 +602,12 @@ export function BlockInspector({
             value={block.body}
             area
             onChange={(body) => body && onChange({ ...block, body })}
+          />
+          <Text
+            label="Small note"
+            value={block.note}
+            area
+            onChange={(note) => onChange({ ...block, note })}
           />
           <Media
             label="Image"
@@ -544,6 +654,16 @@ export function BlockInspector({
             options={surfaceOptions}
             onChange={(surface) => onChange({ ...block, surface })}
           />
+          <Text
+            label="Callout label"
+            value={block.calloutLabel}
+            onChange={(calloutLabel) => onChange({ ...block, calloutLabel })}
+          />
+          <Text
+            label="Callout value"
+            value={block.calloutValue}
+            onChange={(calloutValue) => onChange({ ...block, calloutValue })}
+          />
           <fieldset className="inspector-group">
             <legend>Optional button</legend>
             {block.action ? (
@@ -573,6 +693,20 @@ export function BlockInspector({
     case 'cta':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard call to action', value: 'standard' },
+              { label: 'Point wide callout', value: 'rental' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
           <Text
             label="Heading"
             value={block.heading}
@@ -599,6 +733,28 @@ export function BlockInspector({
     case 'cards':
       return (
         <div className="block-inspector">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard cards', value: 'standard' },
+              { label: 'Point split editorial', value: 'splitEditorial' },
+              {
+                label: 'Point split editorial on warm background',
+                value: 'splitEditorialTone',
+              },
+              { label: 'Point identity columns', value: 'identity' },
+              { label: 'Point beliefs list', value: 'beliefs' },
+              { label: 'Point neighborhood groups', value: 'groups' },
+              { label: 'Point giving options', value: 'giving' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
           <Text
             label="Section heading"
             value={block.heading}
@@ -628,6 +784,18 @@ export function BlockInspector({
                 }
               >
                 <Text
+                  label="Eyebrow"
+                  value={item.eyebrow}
+                  onChange={(eyebrow) =>
+                    onChange({
+                      ...block,
+                      items: block.items.map((candidate, itemIndex) =>
+                        itemIndex === index ? { ...candidate, eyebrow } : candidate,
+                      ),
+                    })
+                  }
+                />
+                <Text
                   label="Title"
                   value={item.title}
                   onChange={(title) =>
@@ -650,6 +818,18 @@ export function BlockInspector({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
                         itemIndex === index ? { ...candidate, body } : candidate,
+                      ),
+                    })
+                  }
+                />
+                <Text
+                  label="Supporting text"
+                  value={item.supportingText}
+                  onChange={(supportingText) =>
+                    onChange({
+                      ...block,
+                      items: block.items.map((candidate, itemIndex) =>
+                        itemIndex === index ? { ...candidate, supportingText } : candidate,
                       ),
                     })
                   }
@@ -713,6 +893,15 @@ export function BlockInspector({
     case 'people':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard people', value: 'standard' },
+              { label: 'Point leadership grid', value: 'leadership' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
           <Text
             label="Section heading"
             value={block.heading}
@@ -752,6 +941,20 @@ export function BlockInspector({
     case 'faq':
       return (
         <div className="block-inspector">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard questions', value: 'standard' },
+              { label: 'Point questions section', value: 'groups' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
           <Text
             label="Section heading"
             value={block.heading}
@@ -835,6 +1038,17 @@ export function BlockInspector({
     case 'form':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard form section', value: 'standard' },
+              { label: 'Point form panel', value: 'panel' },
+              { label: 'Point standalone form', value: 'standalone' },
+              { label: 'Point contact and form', value: 'contact' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
           <label className="inspector-field">
             <span>Form</span>
             <select
@@ -854,16 +1068,62 @@ export function BlockInspector({
             onChange={(heading) => onChange({ ...block, heading })}
           />
           <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
+          <Text
+            label="Contact details"
+            value={block.body}
+            area
+            onChange={(body) => onChange({ ...block, body })}
+          />
+          <Text
             label="Supporting text"
             value={block.supportingText}
             area
             onChange={(supportingText) => onChange({ ...block, supportingText })}
+          />
+          <Text
+            label="Supporting link label"
+            value={block.linkLabel}
+            onChange={(linkLabel) => onChange({ ...block, linkLabel })}
+          />
+          <Text
+            label="Supporting link destination"
+            value={block.linkHref}
+            onChange={(linkHref) => onChange({ ...block, linkHref })}
           />
         </div>
       );
     case 'map':
       return (
         <div className="block-inspector inspector-grid">
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard map', value: 'standard' },
+              { label: 'Point gathering section', value: 'gathering' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Text
+            label="Eyebrow"
+            value={block.eyebrow}
+            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+          />
+          <Text
+            label="Section heading"
+            value={block.heading}
+            onChange={(heading) => onChange({ ...block, heading })}
+          />
+          <Text
+            label="Details"
+            value={block.body}
+            area
+            onChange={(body) => onChange({ ...block, body })}
+          />
           <Text
             label="Title"
             value={block.title}

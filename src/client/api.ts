@@ -5,6 +5,7 @@ export interface ActorResponse {
   email: string;
   displayName?: string;
   role: Role;
+  repositoryPermission?: 'admin' | 'maintain' | 'write' | 'triage' | 'read';
 }
 
 export interface MediaItem {
