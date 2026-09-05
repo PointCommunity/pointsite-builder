@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "pointsite-builder",
+  "account_id": "bc890091d86ddf9ce669e96e79d47746",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-09-05",
   "compatibility_flags": ["nodejs_compat"],
@@ -20,7 +21,7 @@
     {
       "binding": "DB",
       "database_name": "pointsite-builder",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d4f44410-3f61-47bd-976a-5595973fa6f1",
       "migrations_dir": "migrations",
     },
   ],

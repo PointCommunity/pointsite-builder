@@ -13,6 +13,7 @@ const riskRegister = JSON.parse(
   await readFile(new URL('tests/reports/security-risk-register.json', root), 'utf8'),
 );
 const requiredRunbooks = [
+  'cloudflare-account-isolation',
   'local-verification',
   'failed-publish',
   'backup-restore',
