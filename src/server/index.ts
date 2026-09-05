@@ -12,6 +12,8 @@ import { createPublishRoutes } from './routes/publish';
 import type { StagingPublisher } from './publish/service';
 import type { MediaService } from './media/service';
 import { createMediaRoutes } from './routes/media';
+import type { D1AdminService } from './admin/service';
+import { createAdminRoutes } from './routes/admin';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -20,6 +22,7 @@ export interface AppDependencies {
   version: string;
   publisher?: StagingPublisher;
   media?: MediaService;
+  admin?: D1AdminService;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -50,6 +53,7 @@ export function createApp(dependencies: AppDependencies) {
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
+  app.route('/api/admin', createAdminRoutes(dependencies.admin, mutationLimiter));
 
   app.notFound(() => {
     throw new ApiError(404, 'NOT_FOUND', 'The requested API operation does not exist');

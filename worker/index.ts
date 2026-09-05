@@ -5,6 +5,7 @@ import { createApp } from '../src/server/index';
 import { D1DraftRepository } from '../src/server/repositories/d1';
 import { StagingPublisher } from '../src/server/publish/service';
 import { D1MediaRepository, MediaService, R2PrivateBucket } from '../src/server/media/service';
+import { D1AdminService } from '../src/server/admin/service';
 
 class D1RoleDirectory implements RoleDirectory {
   constructor(private readonly database: D1Database) {}
@@ -30,6 +31,7 @@ export default {
       version: config.appVersion,
       ...(config.github ? { publisher: new StagingPublisher(repository, config.github) } : {}),
       media: new MediaService(new D1MediaRepository(env.DB), new R2PrivateBucket(env.MEDIA)),
+      admin: new D1AdminService(env.DB),
     });
     return app.fetch(request);
   },
