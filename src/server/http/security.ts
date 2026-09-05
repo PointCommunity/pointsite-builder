@@ -3,29 +3,31 @@ import { ApiError } from './errors';
 const MAX_JSON_BYTES = 1_048_576;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{16,100}$/;
 
+export function requireMutationHeaders(
+  request: Request,
+  allowedOrigin: string,
+  allowedContentType: string,
+  maxBytes: number,
+): void {
+  if (request.headers.get('origin') !== allowedOrigin)
+    throw new ApiError(403, 'ORIGIN_DENIED', 'The request origin is not allowed');
+  if (request.headers.get('sec-fetch-site') !== 'same-origin')
+    throw new ApiError(403, 'FETCH_METADATA_DENIED', 'Cross-site requests are not allowed');
+  const contentType = request.headers.get('content-type')?.split(';')[0]?.trim();
+  if (contentType !== allowedContentType)
+    throw new ApiError(415, 'CONTENT_TYPE_REQUIRED', `Use ${allowedContentType}`);
+  if (!IDEMPOTENCY_KEY.test(request.headers.get('idempotency-key') ?? ''))
+    throw new ApiError(400, 'IDEMPOTENCY_REQUIRED', 'A valid Idempotency-Key is required');
+  const declaredSize = Number(request.headers.get('content-length') ?? 0);
+  if (declaredSize > maxBytes)
+    throw new ApiError(413, 'REQUEST_TOO_LARGE', 'The request body is too large');
+}
+
 export async function requireMutationRequest(
   request: Request,
   allowedOrigin: string,
 ): Promise<unknown> {
-  if (request.headers.get('origin') !== allowedOrigin) {
-    throw new ApiError(403, 'ORIGIN_DENIED', 'The request origin is not allowed');
-  }
-  const fetchSite = request.headers.get('sec-fetch-site');
-  if (fetchSite !== 'same-origin') {
-    throw new ApiError(403, 'FETCH_METADATA_DENIED', 'Cross-site requests are not allowed');
-  }
-  const contentType = request.headers.get('content-type')?.split(';')[0]?.trim();
-  if (contentType !== 'application/json') {
-    throw new ApiError(415, 'CONTENT_TYPE_REQUIRED', 'Use application/json');
-  }
-  const idempotencyKey = request.headers.get('idempotency-key') ?? '';
-  if (!IDEMPOTENCY_KEY.test(idempotencyKey)) {
-    throw new ApiError(400, 'IDEMPOTENCY_REQUIRED', 'A valid Idempotency-Key is required');
-  }
-  const declaredSize = Number(request.headers.get('content-length') ?? 0);
-  if (declaredSize > MAX_JSON_BYTES) {
-    throw new ApiError(413, 'REQUEST_TOO_LARGE', 'The request body is too large');
-  }
+  requireMutationHeaders(request, allowedOrigin, 'application/json', MAX_JSON_BYTES);
   const text = await request.text();
   if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) {
     throw new ApiError(413, 'REQUEST_TOO_LARGE', 'The request body is too large');
