@@ -569,6 +569,14 @@ textarea {
 .checkbox-field input {
   width: auto;
 }
+.collection-list {
+  margin-block: 0.8rem;
+}
+.settings-section details > summary,
+.page-manager summary {
+  cursor: pointer;
+  font-weight: 750;
+}
 .settings-list__item label,
 .color-grid label {
   display: grid;

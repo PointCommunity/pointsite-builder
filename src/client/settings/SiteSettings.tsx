@@ -3,6 +3,7 @@ import { useEditor } from '../editor/EditorProvider';
 import { ThemeEditor } from './ThemeEditor';
 import { NavigationEditor } from './NavigationEditor';
 import { FormsEditor } from './FormsEditor';
+import { CollectionsEditor } from './CollectionsEditor';
 
 export function SiteSettings() {
   const { document, updateDocument } = useEditor();
@@ -264,6 +265,10 @@ export function SiteSettings() {
       <FormsEditor
         forms={document.forms}
         onChange={(forms) => updateDocument((next) => ({ ...next, forms }))}
+      />
+      <CollectionsEditor
+        document={document}
+        onChange={(collections) => updateDocument((next) => ({ ...next, collections }))}
       />
       <ThemeEditor
         theme={document.theme}
