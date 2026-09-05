@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -44,5 +45,12 @@ describe('PointSite Cloudflare account guard', () => {
       /not authenticated/,
     );
     expect(() => validatePointSiteCloudflareIdentity('unexpected')).toThrow(/invalid response/);
+  });
+
+  it('pins the account and disables every workers.dev route in deployment config', async () => {
+    const config = await readFile('wrangler.jsonc', 'utf8');
+    expect(config).toContain(`"account_id": "${POINTSITE_CLOUDFLARE_ACCOUNT_ID}"`);
+    expect(config).toContain('"workers_dev": false');
+    expect(config).toContain('"preview_urls": false');
   });
 });
