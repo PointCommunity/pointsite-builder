@@ -52,6 +52,8 @@ describe('PointSite Cloudflare account guard', () => {
     expect(config).toContain(`"account_id": "${POINTSITE_CLOUDFLARE_ACCOUNT_ID}"`);
     expect(config).toContain('"workers_dev": false');
     expect(config).toContain('"preview_urls": false');
+    expect(config).toContain('"pattern": "builder.pointatx.org"');
+    expect(config).toContain('"custom_domain": true');
     expect(config).toContain('"d1_databases"');
     expect(config).not.toMatch(/r2_buckets|cloudflareaccess|ACCESS_AUD|ACCESS_TEAM_DOMAIN/i);
   });
