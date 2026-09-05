@@ -40,13 +40,11 @@ function draft(): DraftRecord {
 
 it('packages only referenced builder media under the strict staging path', async () => {
   const media = {
-    read: vi
-      .fn()
-      .mockResolvedValue({
-        bytes: Uint8Array.from([1, 2, 3]),
-        contentType: 'image/png',
-        filename: 'upload.png',
-      }),
+    read: vi.fn().mockResolvedValue({
+      bytes: Uint8Array.from([1, 2, 3]),
+      contentType: 'image/png',
+      filename: 'upload.png',
+    }),
   };
   const candidate = await buildCandidate(draft(), media as never);
   expect(candidate.files).toContainEqual({
