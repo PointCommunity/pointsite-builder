@@ -45,6 +45,7 @@ describe('D1 draft repository', () => {
     expect((await repository.listDrafts())[0]?.id).toBe(created.id);
     expect(await repository.listDrafts('archived')).toEqual([]);
     expect((await repository.getDraft(created.id)).revision.id).toBe(created.revision.id);
+    expect((await repository.getRevision(created.revision.id)).draftId).toBe(created.id);
     expect(
       (
         await repository.createDraft({

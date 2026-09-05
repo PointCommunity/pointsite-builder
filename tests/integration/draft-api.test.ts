@@ -95,6 +95,28 @@ describe('draft API', () => {
     await expect(retry.json()).resolves.toMatchObject({ revision: { id: saved.revision.id } });
   });
 
+  it('duplicates an existing immutable revision into a new draft', async () => {
+    const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
+    const sourceResponse = await app.request(`${origin}/api/drafts`, {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({ name: 'Source' }),
+    });
+    const source = await responseJson<{ revision: { id: string }; document: SiteDocument }>(
+      sourceResponse,
+    );
+    const duplicateResponse = await app.request(`${origin}/api/drafts`, {
+      method: 'POST',
+      headers: { ...requestHeaders, 'idempotency-key': 'duplicate-draft-01' },
+      body: JSON.stringify({ name: 'Duplicate', fromRevisionId: source.revision.id }),
+    });
+    expect(duplicateResponse.status).toBe(201);
+    await expect(duplicateResponse.json()).resolves.toMatchObject({
+      name: 'Duplicate',
+      document: source.document,
+    });
+  });
+
   it('returns precondition failure for a stale save without overwriting', async () => {
     const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
     const createdResponse = await app.request(`${origin}/api/drafts`, {

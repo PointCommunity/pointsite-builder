@@ -1,0 +1,119 @@
+import { lazy, Suspense, useState } from 'react';
+import type { DraftRecord, Role } from '../../server/repositories/contracts';
+import { Preview } from '../preview/Preview';
+import { RevisionHistory } from '../revisions/RevisionHistory';
+import { SiteSettings } from '../settings/SiteSettings';
+import { EditorProvider, useEditor } from './EditorProvider';
+import { StructurePanel } from './StructurePanel';
+
+const VisualEditor = lazy(() =>
+  import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
+);
+type Panel = 'content' | 'settings' | 'preview' | 'history';
+
+function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
+  const { draft, document, saveNow, saveState, reloadLatest } = useEditor();
+  const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
+  const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
+  const editable = role !== 'viewer' && draft.status === 'active';
+  return (
+    <div className="editor-workspace">
+      <header className="editor-header">
+        <button className="button" onClick={onClose}>
+          ← All drafts
+        </button>
+        <div>
+          <strong>{draft.name}</strong>
+          <span>Revision {draft.revision.sequence}</span>
+        </div>
+        <div className="save-cluster">
+          <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">
+            {saveState === 'saved' ? 'All changes saved' : saveState}
+          </span>
+          {saveState === 'conflict' ? (
+            <button className="button" onClick={() => void reloadLatest()}>
+              Load latest
+            </button>
+          ) : null}
+          {editable ? (
+            <button
+              className="button button--primary"
+              disabled={saveState === 'saved' || saveState === 'saving'}
+              onClick={() => void saveNow()}
+            >
+              Save now
+            </button>
+          ) : null}
+        </div>
+      </header>
+      <nav className="editor-tabs" aria-label="Editor sections">
+        {(['content', 'settings', 'preview', 'history'] as Panel[]).map((item) => (
+          <button
+            key={item}
+            aria-current={panel === item ? 'page' : undefined}
+            onClick={() => setPanel(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+      {panel === 'content' ? (
+        <main id="main-content" className="content-workspace">
+          <aside>
+            <label>
+              <span>Page</span>
+              <select value={pageId} onChange={(event) => setPageId(event.target.value)}>
+                {document.pages.map((page) => (
+                  <option value={page.id} key={page.id}>
+                    {page.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <StructurePanel pageId={pageId} />
+          </aside>
+          <section className="canvas-shell">
+            {editable ? (
+              <Suspense fallback={<p>Loading visual editor…</p>}>
+                <VisualEditor pageId={pageId} />
+              </Suspense>
+            ) : (
+              <Preview document={document} />
+            )}
+          </section>
+        </main>
+      ) : null}
+      {panel === 'settings' ? (
+        <main id="main-content" className="single-panel">
+          {editable ? <SiteSettings /> : <p>Viewer access is read only.</p>}
+        </main>
+      ) : null}
+      {panel === 'preview' ? (
+        <main id="main-content" className="single-panel">
+          <Preview document={document} />
+        </main>
+      ) : null}
+      {panel === 'history' ? (
+        <main id="main-content" className="single-panel">
+          <RevisionHistory />
+        </main>
+      ) : null}
+    </div>
+  );
+}
+
+export function EditorRoute({
+  draft,
+  role,
+  onClose,
+}: {
+  draft: DraftRecord;
+  role: Role;
+  onClose: () => void;
+}) {
+  return (
+    <EditorProvider initialDraft={draft}>
+      <Workspace role={role} onClose={onClose} />
+    </EditorProvider>
+  );
+}

@@ -54,6 +54,14 @@ export class InMemoryRepository implements DraftRepository {
     return clone(draft);
   }
 
+  async getRevision(id: string): Promise<RevisionRecord> {
+    for (const revisions of this.#revisions.values()) {
+      const revision = revisions.find((candidate) => candidate.id === id);
+      if (revision) return clone(revision);
+    }
+    throw new NotFoundError(`Revision ${id} was not found`);
+  }
+
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
     const operationKey = `draft.create:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);

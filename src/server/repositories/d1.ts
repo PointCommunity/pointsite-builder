@@ -128,6 +128,19 @@ export class D1DraftRepository implements DraftRepository {
     return parseDraft(row);
   }
 
+  async getRevision(id: string): Promise<RevisionRecord> {
+    const row = await this.database
+      .prepare(
+        `SELECT r.id, r.draft_id, r.sequence, r.parent_revision_id, r.checksum, r.document_json,
+        COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
+        r.schema_version, r.renderer_version, r.created_by, r.created_at FROM revisions r WHERE r.id = ?`,
+      )
+      .bind(id)
+      .first<RevisionRow>();
+    if (!row) throw new NotFoundError(`Revision ${id} was not found`);
+    return parseRevision(row);
+  }
+
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
     const prior = await this.readIdempotent('draft.create', input.actor, input.idempotencyKey);
     if (prior) return prior;

@@ -59,16 +59,12 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
     const parsed = CreateDraftSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
-    if (parsed.data.fromRevisionId) {
-      throw new ApiError(
-        400,
-        'SOURCE_REVISION_UNAVAILABLE',
-        'Select an existing draft to duplicate',
-      );
-    }
+    const document = parsed.data.fromRevisionId
+      ? (await repository.getRevision(parsed.data.fromRevisionId)).document
+      : defaultSiteDocument;
     const draft = await repository.createDraft({
       name: parsed.data.name,
-      document: defaultSiteDocument,
+      document,
       actor: actor.email,
       idempotencyKey: context.req.header('idempotency-key') ?? '',
       requestId: context.get('requestId'),

@@ -49,27 +49,24 @@ export function createApp(dependencies: AppDependencies) {
 
   app.onError((error, context) => {
     const requestId = context.get('requestId') || crypto.randomUUID();
+    const secured = (response: Response) => {
+      const result = applySecurityHeaders(response);
+      result.headers.set('x-request-id', requestId);
+      return result;
+    };
     if (error instanceof AuthenticationError) {
-      return applySecurityHeaders(
-        errorResponse(new ApiError(401, 'UNAUTHENTICATED', error.message), requestId),
-      );
+      return secured(errorResponse(new ApiError(401, 'UNAUTHENTICATED', error.message), requestId));
     }
     if (error instanceof AuthorizationError) {
-      return applySecurityHeaders(
-        errorResponse(new ApiError(403, 'FORBIDDEN', error.message), requestId),
-      );
+      return secured(errorResponse(new ApiError(403, 'FORBIDDEN', error.message), requestId));
     }
     if (error instanceof NotFoundError) {
-      return applySecurityHeaders(
-        errorResponse(new ApiError(404, 'NOT_FOUND', error.message), requestId),
-      );
+      return secured(errorResponse(new ApiError(404, 'NOT_FOUND', error.message), requestId));
     }
     if (error instanceof ConflictError) {
-      return applySecurityHeaders(
-        errorResponse(new ApiError(409, 'CONFLICT', error.message), requestId),
-      );
+      return secured(errorResponse(new ApiError(409, 'CONFLICT', error.message), requestId));
     }
-    return applySecurityHeaders(errorResponse(error, requestId));
+    return secured(errorResponse(error, requestId));
   });
 
   return app;

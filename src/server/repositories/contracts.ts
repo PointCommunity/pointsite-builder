@@ -73,6 +73,7 @@ export interface RestoreRevisionInput {
 export interface DraftRepository {
   listDrafts(status?: DraftStatus): Promise<DraftRecord[]>;
   getDraft(id: string): Promise<DraftRecord>;
+  getRevision(id: string): Promise<RevisionRecord>;
   createDraft(input: CreateDraftInput): Promise<DraftRecord>;
   saveDraft(input: SaveDraftInput): Promise<DraftRecord>;
   listRevisions(draftId: string): Promise<RevisionRecord[]>;
