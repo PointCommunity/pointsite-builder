@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PointSite Builder Operator Handbook</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.6 system-ui;
+        background: #101510;
+        color: #edf3e9;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: 3rem;
+      }
+      h2 {
+        color: #b8d49e;
+        margin-top: 2em;
+      }
+      .runbook {
+        background: #192018;
+        border: 1px solid #3c4938;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      .stop {
+        color: #ffb4a9;
+      }
+      code {
+        display: block;
+        background: #0b0e0b;
+        padding: 12px;
+        overflow: auto;
+        color: #c8e0b1;
+      }
+      dt {
+        font-weight: 800;
+      }
+      dd {
+        margin-bottom: 0.8em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Operator handbook</h1>
+    <p>
+      All commands are run from the named repository. Stop on any failed check; never “fix” staging
+      by writing to production.
+    </p>
+    <section class="runbook">
+      <h2>Local verification</h2>
+      <dl>
+        <dt>Builder</dt>
+        <dd>
+          <code
+            >npm ci &amp;&amp; npm run format:check &amp;&amp; npm run typecheck &amp;&amp; npm run
+            lint -- --max-warnings=0 &amp;&amp; npm run test:coverage &amp;&amp; npm run build</code
+          >
+        </dd>
+        <dt>Staging</dt>
+        <dd>
+          <code>npm ci &amp;&amp; npm run check &amp;&amp; npm audit --audit-level=high</code>
+        </dd>
+        <dt>Expected</dt>
+        <dd>Every command exits zero; staging exports all document routes.</dd>
+      </dl>
+    </section>
+    <section class="runbook">
+      <h2>Failed staging publish</h2>
+      <ol>
+        <li>Record request ID, revision/checksum and displayed base SHA.</li>
+        <li>If <code>STAGING_BASE_DRIFT</code> appears, refresh; never force the ref.</li>
+        <li>If CI fails, keep the last passing staging commit and inspect the failed job.</li>
+        <li>Retry with a new idempotency key only after the cause is fixed.</li>
+      </ol>
+      <p class="stop">
+        Stop if the requested path is not one of the two allowlisted content files.
+      </p>
+    </section>
+    <section class="runbook">
+      <h2>Backup and restore</h2>
+      <p>
+        Export D1 before schema maintenance and retain the staging content commit SHA. Restore a
+        draft through revision history, which creates a new revision. Roll staging back by reverting
+        its content commit through a reviewed staging PR. Never rewrite history.
+      </p>
+    </section>
+    <section class="runbook">
+      <h2>Credential rotation</h2>
+      <ol>
+        <li>Create the replacement credential with the same or narrower scope.</li>
+        <li>Update the Worker/GitHub environment secret.</li>
+        <li>Verify identity and one no-op staging-base read.</li>
+        <li>Revoke the old credential and audit events.</li>
+      </ol>
+      <p class="stop">
+        Private keys must never be pasted into issues, logs, D1, source, or client configuration.
+      </p>
+    </section>
+    <section class="runbook">
+      <h2>Quota response</h2>
+      <p>
+        At 70%, pause nonessential uploads/publishes, review per-actor rates and retention dry-run
+        output, and measure the source of growth. Do not delete current revisions, named revisions,
+        referenced media, or audit evidence.
+      </p>
+    </section>
+    <section class="runbook">
+      <h2>Production gate</h2>
+      <p>
+        Production is disabled in code and configuration. Before any future preparation, capture
+        accepted staging URL, revision ID, document checksum, renderer version, staging commit,
+        evidence, and current production base SHA. Any drift invalidates approval.
+      </p>
+      <p class="stop">
+        Required exact wording: a new explicit production-preparation approval, followed later by a
+        separate publication approval for that unchanged tuple.
+      </p>
+    </section>
+  </body>
+</html>
