@@ -8,12 +8,15 @@ import type { DraftRepository } from './repositories/contracts';
 import { ConflictError, NotFoundError } from './repositories/memory';
 import { createDraftRoutes, type ApiVariables } from './routes/drafts';
 import { createRevisionRoutes } from './routes/revisions';
+import { createPublishRoutes } from './routes/publish';
+import type { StagingPublisher } from './publish/service';
 
 export interface AppDependencies {
   repository: DraftRepository;
   authenticate(request: Request): Promise<Actor>;
   environment: string;
   version: string;
+  publisher?: StagingPublisher;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -42,6 +45,7 @@ export function createApp(dependencies: AppDependencies) {
   app.get('/api/me', (context) => context.json(context.get('actor')));
   app.route('/api/drafts', createDraftRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
+  app.route('/api/publish', createPublishRoutes(dependencies.publisher));
 
   app.notFound(() => {
     throw new ApiError(404, 'NOT_FOUND', 'The requested API operation does not exist');

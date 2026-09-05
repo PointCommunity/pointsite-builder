@@ -3,13 +3,14 @@ import type { DraftRecord, Role } from '../../server/repositories/contracts';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
+import { StagingPublish } from '../publish/StagingPublish';
 import { EditorProvider, useEditor } from './EditorProvider';
 import { StructurePanel } from './StructurePanel';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
 );
-type Panel = 'content' | 'settings' | 'preview' | 'history';
+type Panel = 'content' | 'settings' | 'preview' | 'history' | 'publish';
 
 function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
   const { draft, document, saveNow, saveState, reloadLatest } = useEditor();
@@ -47,7 +48,15 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
         </div>
       </header>
       <nav className="editor-tabs" aria-label="Editor sections">
-        {(['content', 'settings', 'preview', 'history'] as Panel[]).map((item) => (
+        {(
+          [
+            'content',
+            'settings',
+            'preview',
+            'history',
+            ...(role === 'publisher' || role === 'administrator' ? ['publish' as const] : []),
+          ] as Panel[]
+        ).map((item) => (
           <button
             key={item}
             aria-current={panel === item ? 'page' : undefined}
@@ -96,6 +105,11 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
       {panel === 'history' ? (
         <main id="main-content" className="single-panel">
           <RevisionHistory />
+        </main>
+      ) : null}
+      {panel === 'publish' ? (
+        <main id="main-content" className="single-panel">
+          <StagingPublish />
         </main>
       ) : null}
     </div>

@@ -367,6 +367,47 @@ textarea {
   color: var(--muted);
   font-size: 0.82rem;
 }
+.publish-panel {
+  max-width: 48rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 1.5rem;
+}
+.publish-panel h2 {
+  margin-top: 0;
+  font-size: 2rem;
+}
+.publish-panel dl {
+  display: grid;
+  gap: 0.6rem;
+}
+.publish-panel dl div {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+.publish-panel dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+.publish-panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.production-lock {
+  margin-top: 2rem;
+  padding: 1rem;
+  border-left: 0.35rem solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.production-lock p {
+  margin-bottom: 0;
+}
 .foundation-panel {
   width: min(46rem, 100%);
   margin: clamp(4rem, 12vw, 9rem) auto;

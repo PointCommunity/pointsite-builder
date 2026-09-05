@@ -79,4 +79,11 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ revisionId, expectedChecksum }),
     }),
+  stagingBase: () => request<{ sha: string }>('/publish/staging/base'),
+  publishStaging: (draftId: string, expectedBaseSha: string) =>
+    request<{ commitSha: string; candidateChecksum: string; url: string }>('/publish/staging', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ draftId, expectedBaseSha }),
+    }),
 };
