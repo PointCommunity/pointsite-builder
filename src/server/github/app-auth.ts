@@ -1,7 +1,7 @@
 import { importPKCS8, SignJWT } from 'jose';
 import { z } from 'zod';
 
-const TokenResponse = z.strictObject({ token: z.string().min(20), expires_at: z.string() });
+const TokenResponse = z.object({ token: z.string().min(20), expires_at: z.string() });
 
 export async function createInstallationToken(input: {
   appId: string;

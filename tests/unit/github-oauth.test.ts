@@ -108,6 +108,8 @@ it('exchanges the OAuth code without broad scopes and validates the stable colla
         Response.json({
           token: 'github-installation-token-value',
           expires_at: '2026-09-05T12:00:00Z',
+          permissions: { contents: 'write', metadata: 'read' },
+          repository_selection: 'selected',
         }),
       );
     if (url.includes('/collaborators/brimdor/permission'))
