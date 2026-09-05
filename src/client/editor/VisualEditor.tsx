@@ -3,9 +3,10 @@ import '@puckeditor/core/puck.css';
 import { blockDefinitions, renderBlock } from '../../site-kit/registry';
 import { SiteBlockSchema } from '../../site-kit/schema';
 import type { SiteBlock } from '../../site-kit/types';
+import { BlockInspector } from './BlockInspector';
 import { useEditor } from './EditorProvider';
 
-type CanvasProps = { block: string };
+type CanvasProps = { block: SiteBlock };
 type ComponentMap = Record<SiteBlock['type'], CanvasProps>;
 
 function defaultBlock(
@@ -92,10 +93,22 @@ export function VisualEditor({ pageId }: { pageId: string }) {
       type,
       {
         label: type.replace(/([A-Z])/g, ' $1'),
-        fields: {},
-        defaultProps: { block: JSON.stringify(defaultBlock(type, document)) },
+        fields: {
+          block: {
+            type: 'custom',
+            label: 'Module settings',
+            render: ({
+              value,
+              onChange,
+            }: {
+              value: SiteBlock;
+              onChange: (value: SiteBlock) => void;
+            }) => <BlockInspector block={value} document={document} onChange={onChange} />,
+          },
+        },
+        defaultProps: { block: defaultBlock(type, document) },
         render: ({ block }: CanvasProps) => {
-          const parsed = SiteBlockSchema.safeParse(JSON.parse(block || '{}'));
+          const parsed = SiteBlockSchema.safeParse(block);
           return parsed.success ? (
             renderBlock(parsed.data, document)
           ) : (
@@ -109,7 +122,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
   const data: Data = {
     content: page.blocks.map((block) => ({
       type: block.type,
-      props: { id: block.id, block: JSON.stringify(block) },
+      props: { id: block.id, block },
     })),
     root: { props: {} },
   };
@@ -121,8 +134,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
         data={data}
         onChange={(next) => {
           const blocks = next.content.map((item) => {
-            const source = typeof item.props.block === 'string' ? item.props.block : '{}';
-            return SiteBlockSchema.parse(JSON.parse(source));
+            return SiteBlockSchema.parse(item.props.block);
           });
           updateDocument((draft) => {
             const target = draft.pages.find((candidate) => candidate.id === pageId);

@@ -447,6 +447,52 @@ textarea {
   color: var(--muted);
   font-size: 0.8rem;
 }
+.block-inspector,
+.inspector-grid,
+.inspector-group,
+.inspector-row {
+  display: grid;
+  gap: 0.8rem;
+}
+.block-inspector {
+  gap: 1rem;
+}
+.inspector-field {
+  display: grid;
+  gap: 0.35rem;
+}
+.inspector-field > span,
+.inspector-group > legend {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.inspector-field textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.inspector-group {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+}
+.inspector-row {
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.inspector-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.inspector-check input {
+  width: auto;
+}
+.button--danger {
+  color: #9c1c2a;
+  border-color: #b5545f;
+  justify-self: start;
+}
 .foundation-panel {
   width: min(46rem, 100%);
   margin: clamp(4rem, 12vw, 9rem) auto;
