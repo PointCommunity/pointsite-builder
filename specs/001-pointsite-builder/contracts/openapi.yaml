@@ -1,0 +1,416 @@
+openapi: 3.1.0
+info:
+  title: PointSite Builder API
+  version: 1.0.0
+  description: Private API behind Cloudflare Access. All mutation responses include a request ID.
+servers:
+  - url: /api
+security:
+  - cloudflareAccess: []
+paths:
+  /health:
+    get:
+      security: []
+      operationId: health
+      responses:
+        '200':
+          description: Process health without private state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+  /me:
+    get:
+      operationId: getMe
+      responses:
+        '200':
+          description: Authenticated identity and application role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Actor' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /drafts:
+    get:
+      operationId: listDrafts
+      responses:
+        '200':
+          description: Draft summaries visible to actor
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DraftSummary' }
+    post:
+      operationId: createDraft
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                fromRevisionId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Created draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    get:
+      operationId: getDraft
+      responses:
+        '200':
+          description: Draft and latest immutable revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      operationId: saveDraft
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+          description: Current revision checksum in quotes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                document: { $ref: '#/components/schemas/SiteDocument' }
+                label: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Saved revision or idempotent prior result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '412': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    get:
+      operationId: listRevisions
+      responses:
+        '200':
+          description: Revision metadata newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Revision' }
+  /drafts/{draftId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      operationId: restoreRevision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revisionId, expectedChecksum]
+              properties:
+                revisionId: { type: string, format: uuid }
+                expectedChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200':
+          description: Restored content as a new revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+        '412': { $ref: '#/components/responses/Error' }
+  /media:
+    get:
+      operationId: listMedia
+      responses:
+        '200':
+          description: Media metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Media' }
+    post:
+      operationId: uploadMedia
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, altText]
+              properties:
+                file: { type: string, contentMediaType: application/octet-stream }
+                altText: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '201':
+          description: Validated private media
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Media' }
+        '413': { $ref: '#/components/responses/Error' }
+  /media/{mediaId}:
+    get:
+      operationId: readMedia
+      parameters:
+        - name: mediaId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Private media bytes }
+        '404': { $ref: '#/components/responses/Error' }
+  /publish/staging:
+    post:
+      operationId: publishStaging
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revisionId, expectedStagingBaseSha]
+              properties:
+                revisionId: { type: string, format: uuid }
+                expectedStagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+      responses:
+        '202':
+          description: Staging publish job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishJob' }
+        '409': { $ref: '#/components/responses/Error' }
+  /publish/production:
+    post:
+      operationId: prepareProductionPullRequest
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '403':
+          description: Always disabled until production-preparation configuration and approval exist
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '202':
+          description: Production pull-request job after gate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishJob' }
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Exact publish job and evidence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishJob' }
+  /approvals:
+    post:
+      operationId: recordApproval
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [gate, candidateChecksum, decision]
+              properties:
+                gate:
+                  {
+                    type: string,
+                    enum: [staging-acceptance, production-preparation, production-publication],
+                  }
+                candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+                decision: { type: string, enum: [approved, rejected, revoked] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '201': { description: Recorded approval }
+  /admin/roles:
+    get:
+      operationId: listRoles
+      responses:
+        '200': { description: Active and disabled role mappings }
+    put:
+      operationId: upsertRole
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role, active]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [viewer, editor, publisher, administrator] }
+                active: { type: boolean }
+      responses:
+        '200': { description: Role mapping }
+  /admin/audit:
+    get:
+      operationId: listAudit
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Paginated audit events }
+  /admin/capacity:
+    get:
+      operationId: getCapacity
+      responses:
+        '200': { description: Storage and operation estimates with warning thresholds }
+components:
+  securitySchemes:
+    cloudflareAccess:
+      type: http
+      scheme: bearer
+      bearerFormat: Cloudflare Access JWT
+  parameters:
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 100 }
+  responses:
+    Error:
+      description: Structured error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Health:
+      type: object
+      required: [ok, environment, version]
+      properties:
+        ok: { type: boolean }
+        environment: { type: string }
+        version: { type: string }
+    Actor:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [viewer, editor, publisher, administrator] }
+    DraftSummary:
+      type: object
+      required: [id, name, status, revisionId, checksum, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [active, archived, deleted] }
+        revisionId: { type: string, format: uuid }
+        checksum: { type: string }
+        updatedAt: { type: string, format: date-time }
+    Draft:
+      allOf:
+        - $ref: '#/components/schemas/DraftSummary'
+        - type: object
+          required: [document]
+          properties:
+            document: { $ref: '#/components/schemas/SiteDocument' }
+    Revision:
+      type: object
+      required: [id, sequence, checksum, schemaVersion, rendererVersion, createdBy, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1 }
+        checksum: { type: string }
+        schemaVersion: { type: integer }
+        rendererVersion: { type: string }
+        label: { type: string }
+        createdBy: { type: string, format: email }
+        createdAt: { type: string, format: date-time }
+    Media:
+      type: object
+      required: [id, filename, contentType, byteSize, altText, status]
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/avif] }
+        byteSize: { type: integer, minimum: 1, maximum: 5242880 }
+        altText: { type: string, minLength: 1 }
+        status: { type: string, enum: [ready, rejected, published, orphaned] }
+    SiteDocument:
+      type: object
+      required: [schemaVersion, rendererVersion, site, theme, navigation, pages, forms, collections]
+      additionalProperties: false
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        rendererVersion: { type: string }
+        site: { type: object }
+        theme: { type: object }
+        navigation: { type: array, items: { type: object } }
+        pages: { type: array, items: { type: object } }
+        forms: { type: object }
+        collections: { type: object }
+    PublishJob:
+      type: object
+      required: [id, environment, status, candidateChecksum, requestedBy, requestedAt]
+      properties:
+        id: { type: string, format: uuid }
+        environment: { type: string, enum: [staging, production-pr, production-merge, rollback] }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        candidateChecksum: { type: string }
+        resultSha: { type: string }
+        externalUrl: { type: string, format: uri }
+        requestedBy: { type: string, format: email }
+        requestedAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path: { type: string }
+              message: { type: string }
