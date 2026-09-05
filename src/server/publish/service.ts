@@ -1,5 +1,6 @@
 import { createInstallationToken } from '../github/app-auth';
 import { GitHubStagingClient } from '../github/client';
+import type { StagingCommit, StagingVerificationEvidence } from '../github/client';
 import type { MediaService } from '../media/service';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
@@ -19,12 +20,29 @@ interface PublishInput {
   requestId: string;
 }
 
+interface StagingClient {
+  currentMainSha(): Promise<string>;
+  commitFiles(input: {
+    expectedBaseSha: string;
+    message: string;
+    files: Awaited<ReturnType<typeof buildCandidate>>['files'];
+  }): Promise<StagingCommit>;
+  verificationForCommit(
+    commitSha: string,
+  ): Promise<
+    | { status: 'pending' }
+    | { status: 'failed'; failedChecks: string[] }
+    | { status: 'passed'; evidence: StagingVerificationEvidence }
+  >;
+}
+
 export class StagingPublisher {
   constructor(
     private readonly repository: DraftRepository,
     private readonly config: PublisherConfig,
     private readonly media?: MediaService,
     private readonly jobs?: D1PublishJobStore,
+    private readonly clientFactory?: () => Promise<StagingClient>,
   ) {}
 
   async currentBaseSha(): Promise<string> {
@@ -148,7 +166,8 @@ export class StagingPublisher {
     };
   }
 
-  private async client() {
+  private async client(): Promise<StagingClient> {
+    if (this.clientFactory) return this.clientFactory();
     const token = await createInstallationToken({
       appId: this.config.appId,
       installationId: this.config.installationId,

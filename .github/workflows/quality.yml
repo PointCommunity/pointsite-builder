@@ -38,6 +38,7 @@ jobs:
       - run: npm run contract:lint
       - run: npm run test:coverage
       - run: npm run build
+      - run: npm run test:performance
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
 
@@ -49,6 +50,7 @@ jobs:
           path: |
             coverage/
             dist/
+            artifacts/
           if-no-files-found: warn
           retention-days: 14
 
