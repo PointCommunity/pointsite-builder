@@ -2,6 +2,7 @@ import type { SiteDocument } from '../../site-kit/types';
 import { useEditor } from '../editor/EditorProvider';
 import { ThemeEditor } from './ThemeEditor';
 import { NavigationEditor } from './NavigationEditor';
+import { FormsEditor } from './FormsEditor';
 
 export function SiteSettings() {
   const { document, updateDocument } = useEditor();
@@ -259,6 +260,10 @@ export function SiteSettings() {
       <NavigationEditor
         navigation={document.navigation}
         onChange={(navigation) => updateDocument((next) => ({ ...next, navigation }))}
+      />
+      <FormsEditor
+        forms={document.forms}
+        onChange={(forms) => updateDocument((next) => ({ ...next, forms }))}
       />
       <ThemeEditor
         theme={document.theme}
