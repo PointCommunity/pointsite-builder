@@ -207,11 +207,11 @@
   - Acceptance: Chromium, Firefox, and WebKit primary flows pass at target widths; pragmatic UX findings are remediated.
   - Verify: Playwright projects and screenshot review.
   - Files: `tests/e2e/*.spec.ts`, `playwright.config.ts`, `tests/reports/ux.html`.
-- [ ] T046 Complete performance and free-capacity verification. (QR-003, QR-006)
+- [x] T046 Complete performance and free-capacity verification. (QR-003, QR-006)
   - Acceptance: API p95 target passes at expected load; bundle/CWV budgets and 70 percent warnings are evidenced.
   - Verify: repeatable load script, bundle report, Lighthouse on deployed staging.
   - Files: `tests/performance/api-load.mjs`, `tests/reports/performance.html`, `vite.config.ts`.
-- [ ] T047 Complete threat-model controls, secret/history scan, SCA, SAST, DAST, and least-privilege CI review.
+- [x] T047 Complete threat-model controls, secret/history scan, SCA, SAST, DAST, and least-privilege CI review.
   - Acceptance: no critical/high unresolved vulnerability; all TM-01-TM-12 controls have evidence.
   - Verify: security workflow and dark-mode HTML report.
   - Files: `.github/workflows/security.yml`, `tests/reports/security.html`, affected security code only.
@@ -222,7 +222,7 @@
 
 ## Phase 9: Remote staging and production gates
 
-- [ ] T049 Authenticate Cloudflare, retain Workers Free and D1 only, apply migrations, seed the GitHub administrator identity, register a staging-only GitHub App, and store secrets.
+- [x] T049 Authenticate Cloudflare, retain Workers Free and D1 only, apply migrations, seed the GitHub administrator identity, register a staging-only GitHub App, and store secrets.
   - Acceptance: resources exist in the intended church account; no R2/Zero Trust subscription, payment action, production installation, or production secret exists; local secret scan remains clean.
   - Verify: Wrangler resource listings, role readback, GitHub installation readback.
   - Files: remote resources plus `wrangler.jsonc` IDs only.
