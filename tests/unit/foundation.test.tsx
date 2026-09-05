@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { App } from '../../src/client/App';
+import { App, BuilderErrorBoundary } from '../../src/client/App';
 
 describe('PointSite Builder foundation', () => {
   it('identifies the private authoring surface and production lock', async () => {
@@ -26,4 +26,19 @@ describe('PointSite Builder foundation', () => {
     expect(screen.getByText(/production remains locked/i)).toBeVisible();
     expect(screen.getByText('viewer@pointatx.org')).toBeVisible();
   });
+});
+
+it('contains unexpected rendering failures without implying the public site is affected', () => {
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const Broken = () => {
+    throw new Error('test render failure');
+  };
+  render(
+    <BuilderErrorBoundary>
+      <Broken />
+    </BuilderErrorBoundary>,
+  );
+  expect(screen.getByRole('heading', { name: 'Builder view interrupted' })).toBeVisible();
+  expect(screen.getByText(/public website are unaffected/i)).toBeVisible();
+  consoleError.mockRestore();
 });

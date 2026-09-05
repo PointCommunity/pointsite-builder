@@ -1,8 +1,36 @@
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import type { DraftRecord } from '../server/repositories/contracts';
 import { api, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
 import { EditorRoute } from './editor/EditorRoute';
+
+export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('PointSite Builder rendering failed', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.failed)
+      return (
+        <main id="main-content" className="state-page">
+          <h1>Builder view interrupted</h1>
+          <p>
+            Your draft and public website are unaffected. Reload the private workspace to continue.
+          </p>
+          <button className="button" onClick={() => window.location.reload()}>
+            Reload builder
+          </button>
+        </main>
+      );
+    return this.props.children;
+  }
+}
 
 export function App() {
   const [actor, setActor] = useState<ActorResponse | null>(null);
