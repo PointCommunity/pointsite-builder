@@ -514,6 +514,83 @@ textarea {
   display: grid;
   gap: 0.3rem;
 }
+.settings-panel,
+.settings-section,
+.settings-list,
+.settings-list__item {
+  display: grid;
+  gap: 1rem;
+}
+.settings-section {
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+.settings-section h3,
+.settings-heading p {
+  margin: 0;
+}
+.settings-list__item {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.settings-list__item label,
+.color-grid label {
+  display: grid;
+  gap: 0.3rem;
+}
+.preset-grid,
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+.preset-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  color: var(--ink);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--canvas);
+}
+.preset-card[aria-pressed='true'] {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand);
+}
+.preset-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+.preset-swatches,
+.color-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.preset-swatches i {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.settings-fieldset {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+}
+.color-control input {
+  width: 3rem;
+  padding: 0.15rem;
+}
+.color-control output {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
 .foundation-panel {
   width: min(46rem, 100%);
   margin: clamp(4rem, 12vw, 9rem) auto;
@@ -597,6 +674,9 @@ textarea {
     grid-column: auto;
   }
   .media-upload {
+    grid-template-columns: 1fr;
+  }
+  .settings-list__item {
     grid-template-columns: 1fr;
   }
 }
