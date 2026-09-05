@@ -6,16 +6,17 @@
 
 Deliver a private full-stack visual site builder whose typed, versioned JSON
 document controls all PointSite content, pages, modules, navigation, and theme.
-Cloudflare Access authenticates every deployed request; D1 stores role mappings,
-drafts, immutable revisions, jobs, approvals, and audit records; R2 stores private
-draft media. A GitHub App promotes exact candidates to an isolated staging
+GitHub App OAuth authenticates every deployed request and current staging
+collaboration is rechecked server-side; D1 stores role mappings, drafts, immutable
+revisions, jobs, approvals, audit records, and chunked private draft media. The
+same least-privilege GitHub App promotes exact candidates to an isolated staging
 repository, then only after separate gates opens a production pull request.
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.9 on Node.js 22; Cloudflare Workers runtime  
 **Primary Dependencies**: React 19, Puck 0.23, Vite 8, Cloudflare Vite plugin, Hono 4, Zod 4, jose 6  
-**Storage**: Cloudflare D1 and private R2; in-memory adapters for deterministic tests  
+**Storage**: Cloudflare D1 only; chunked BLOB media and in-memory adapters for deterministic tests
 **Testing**: Vitest 4 with V8 coverage, Testing Library, Playwright, axe-core, TypeScript, ESLint, npm audit  
 **Target Platform**: Cloudflare Workers Free; evergreen Chromium, Firefox, WebKit  
 **Project Type**: Full-stack web application plus shared site-kit package  
@@ -30,7 +31,7 @@ repository, then only after separate gates opens a production pull request.
 | Spec-first traceability  | Pass   | Requirements and task coverage are explicit                        |
 | Production isolation     | Pass   | No production configuration in initial deployment; hard allowlists |
 | Controlled design system | Pass   | Typed Puck registry and schema; no code fields                     |
-| Security and privacy     | Pass   | Access assertion verification, server roles, private drafts/media  |
+| Security and privacy     | Pass   | Signed GitHub sessions, live collaboration checks, server roles    |
 | Test before promotion    | Pass   | Exact-candidate gates and complete test matrix                     |
 | Recoverable operations   | Pass   | Immutable revisions, idempotency, audit, rollback                  |
 | Free-first controls      | Pass   | Debounce, quotas, retention, concurrency limits                    |
@@ -42,15 +43,14 @@ No constitutional exception is required.
 ```text
 Authenticated browser
         |
-Cloudflare Access
+GitHub App OAuth
         |
 pointsite-builder Worker + static UI
-   |          |             |
-  D1         R2       GitHub App installation
- drafts    private       staging repository only
- roles     media                |
- jobs                       staging Worker
- audit                    protected by Access
+   |                        |
+  D1                 GitHub App installation
+ drafts + roles       staging repository only
+ jobs + audit                 |
+ private media            staging Worker
                                 |
                        acceptance evidence
                                 |
@@ -61,12 +61,15 @@ pointsite-builder Worker + static UI
 
 ### Trust boundaries
 
-1. Access authenticates at the edge; the API revalidates the signed assertion.
+1. GitHub OAuth establishes identity; signed HttpOnly sessions and current
+   staging-repository collaboration are revalidated server-side.
 2. D1 role lookup authorizes every request; client state never grants permission.
 3. Media is private and served through authorized, bounded endpoints.
 4. GitHub installations issue short-lived tokens and targets are hard-allowlisted.
 5. Production variables, repository ID, installation ID, and UI actions are absent
    until the production-preparation gate.
+6. Workers and D1 remain on hard-limited free plans. R2 and Zero Trust are absent;
+   no deployment step may add a subscription or payment method.
 
 ## Project Structure
 
@@ -143,7 +146,7 @@ staging acceptance.
 ## Testing Strategy
 
 - Unit: schema, sanitization, checksums, permissions, reducer/state, quota math.
-- Integration: D1 repositories, R2 media lifecycle, Access assertion, GitHub client,
+- Integration: D1 repositories and media lifecycle, GitHub OAuth/session, GitHub client,
   concurrency, idempotency, rollback state.
 - Contract: OpenAPI request/response validation and permission matrix.
 - Component: editor controls, saving states, errors, keyboard alternatives.

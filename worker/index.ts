@@ -1,10 +1,10 @@
-import { authenticateRequest } from '../src/server/auth/access';
+import { authenticateRequest, createGitHubAuthenticator } from '../src/server/auth/github';
 import type { RoleDirectory, RoleRecord } from '../src/server/auth/roles';
 import { parseConfig } from '../src/server/config';
 import { createApp } from '../src/server/index';
 import { D1DraftRepository } from '../src/server/repositories/d1';
 import { StagingPublisher } from '../src/server/publish/service';
-import { D1MediaRepository, MediaService, R2PrivateBucket } from '../src/server/media/service';
+import { D1MediaRepository, D1PrivateBucket, MediaService } from '../src/server/media/service';
 import { D1AdminService } from '../src/server/admin/service';
 import { D1PublishJobStore } from '../src/server/publish/jobs';
 import { D1ApprovalService } from '../src/server/approvals/service';
@@ -28,10 +28,11 @@ export default {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     const roles = new D1RoleDirectory(env.DB);
     const repository = new D1DraftRepository(env.DB);
-    const media = new MediaService(new D1MediaRepository(env.DB), new R2PrivateBucket(env.MEDIA));
+    const media = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
+    const auth = config.github ? createGitHubAuthenticator(config.github) : undefined;
     const app = createApp({
       repository,
-      authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles),
+      authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles, auth),
       environment: config.environment,
       version: config.appVersion,
       ...(config.github
@@ -48,7 +49,8 @@ export default {
       admin: new D1AdminService(env.DB),
       approvals: new D1ApprovalService(env.DB),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
-      retention: new RetentionService(env.DB, new R2PrivateBucket(env.MEDIA)),
+      retention: new RetentionService(env.DB, new D1PrivateBucket(env.DB)),
+      ...(auth ? { auth } : {}),
     });
     return app.fetch(request);
   },

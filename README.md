@@ -12,5 +12,8 @@ inside the public website and never gives public visitors a write path.
 - `PointCommunity/pointsite-staging` receives and proves candidates first.
 - Production access is absent until a separately approved production gate.
 - Published changes are commits and pull requests, never direct browser writes.
+- Authentication uses a staging-only GitHub App and current collaborator checks.
+- Hosting uses hard-limited Workers Free and D1 Free only; Zero Trust, R2,
+  paid plans, payment setup, and usage-based overages are excluded.
 
 Implementation and operating instructions are developed under `specs/`.

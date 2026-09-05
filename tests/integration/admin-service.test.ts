@@ -18,34 +18,51 @@ async function fixture() {
   await database.exec(
     (await readFile('migrations/0001_initial.sql', 'utf8')).replace(/\s+/g, ' ').trim(),
   );
-  return { database, service: new D1AdminService(database) };
+  await database.exec(
+    (await readFile('migrations/0006_free_only_auth_media.sql', 'utf8'))
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
+  return {
+    database,
+    service: new D1AdminService(database, {
+      resolve: (login) =>
+        Promise.resolve({
+          id: login.toLowerCase() === 'brimdor' ? 1_202_831 : 9_999,
+          login: login.toLowerCase(),
+        }),
+    }),
+  };
 }
 
 describe('administrator service', () => {
   it('manages roles with audit records and never removes the final administrator', async () => {
     const { service } = await fixture();
     await service.upsertRole({
-      email: 'admin@pointatx.org',
+      githubLogin: 'Brimdor',
       role: 'administrator',
       active: true,
       actor: 'bootstrap',
       requestId: 'one',
     });
     await service.upsertRole({
-      email: 'editor@pointatx.org',
+      githubLogin: 'point-editor',
       role: 'editor',
       active: true,
-      actor: 'admin@pointatx.org',
+      actor: 'github:1202831',
       requestId: 'two',
     });
-    expect(await service.listRoles()).toHaveLength(2);
+    expect(await service.listRoles()).toMatchObject([
+      { githubLogin: 'brimdor', githubUserId: 1202831, role: 'administrator' },
+      { githubLogin: 'point-editor', githubUserId: 9999, role: 'editor' },
+    ]);
     expect((await service.listAudit()).map((event) => event.action)).toContain('role.upsert');
     await expect(
       service.upsertRole({
-        email: 'admin@pointatx.org',
+        githubLogin: 'brimdor',
         role: 'viewer',
         active: false,
-        actor: 'admin@pointatx.org',
+        actor: 'github:1202831',
         requestId: 'three',
       }),
     ).rejects.toThrow(/one active administrator/i);

@@ -88,7 +88,7 @@
           <td>Deployed Lighthouse/Core Web Vitals</td>
           <td>Measure protected staging</td>
           <td>Target not deployed</td>
-          <td class="pending">Pending Cloudflare</td>
+          <td class="pending">Pending authenticated staging</td>
         </tr>
       </tbody>
     </table>
@@ -98,8 +98,8 @@
       gzip budgets, and writes bounded JSON artifacts. CI uploads the evidence for the exact commit.
     </p>
     <p>
-      Local latency excludes Cloudflare edge, Access, and GitHub API time. It proves
-      application-handler headroom, not internet response time.
+      Local latency excludes Cloudflare edge and GitHub API time. It proves application-handler
+      headroom, not internet response time.
     </p>
   </body>
 </html>

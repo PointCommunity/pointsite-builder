@@ -97,7 +97,7 @@
       <tr>
         <td>DAST</td>
         <td class="pending">
-          Pending a protected Cloudflare staging URL; no public target was created to simulate
+          Pending a GitHub-authenticated staging URL; no public target was created to simulate
           success.
         </td>
       </tr>
@@ -111,8 +111,10 @@
       </tr>
       <tr>
         <td>TM-01</td>
-        <td>Access JWT issuer/audience/expiry/signature tests and per-request D1 role lookup.</td>
-        <td class="pending">Live Access policy matrix pending.</td>
+        <td>
+          OAuth state/PKCE, signed session, expiry, collaborator, and per-request D1 role tests.
+        </td>
+        <td class="pending">Live GitHub authentication matrix pending.</td>
       </tr>
       <tr>
         <td>TM-02, TM-12</td>
@@ -133,10 +135,10 @@
       <tr>
         <td>TM-04</td>
         <td>
-          Magic-byte/MIME/size/dimension validation, random private R2 keys, quotas, lifecycle
-          tests.
+          Magic-byte/MIME/size/dimension validation, random private D1 keys, chunks, hard cap,
+          lifecycle tests.
         </td>
-        <td>Remote R2 binding pending.</td>
+        <td>Remote D1 migration/readback pending.</td>
       </tr>
       <tr>
         <td>TM-05, TM-06</td>
@@ -178,7 +180,7 @@
       </tr>
       <tr>
         <td>SR-01</td>
-        <td>Misconfigured live Access/alternate hostname could expose the private builder.</td>
+        <td>Misconfigured live auth routing or alternate hostname could expose private APIs.</td>
         <td>2</td>
         <td>5</td>
         <td class="medium">10 Medium</td>

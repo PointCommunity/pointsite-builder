@@ -3,6 +3,7 @@
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS approvals;
 DROP TABLE IF EXISTS publish_jobs;
+DROP TABLE IF EXISTS media_object_chunks;
 DROP TABLE IF EXISTS media_assets;
 DROP TABLE IF EXISTS idempotency_keys;
 DROP TABLE IF EXISTS revisions;

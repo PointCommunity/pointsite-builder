@@ -39,13 +39,15 @@
 
 ## Remote setup order
 
-1. Create D1 database and private R2 bucket.
-2. Apply remote migrations and seed exact administrator identity.
-3. Register/install the GitHub App on staging only and store credentials as Worker secrets.
-4. Deploy builder and staging Workers to temporary protected Worker hostnames.
-5. Configure and verify Cloudflare Access for all production and preview hostnames.
-6. Add `builder.pointatx.org` and `staging.pointatx.org` only after protected temporary-host testing passes.
-7. Do not configure production integration until G6.
+1. Confirm the account remains on Workers Free; use the existing D1 database only.
+2. Apply remote migrations and seed the exact GitHub administrator ID/login.
+3. Register/install the GitHub App on staging only and store its OAuth, installation,
+   and session-signing values as Worker secrets.
+4. Deploy builder and staging Workers with `workers.dev` and preview URLs disabled.
+5. Verify anonymous, forged, expired, revoked-collaborator, and inactive-role requests fail closed.
+6. Add `builder.pointatx.org` and `staging.pointatx.org` only after the GitHub authentication matrix passes.
+7. Never activate Zero Trust, R2, a Workers Paid plan, or any payment method for this system.
+8. Do not configure production integration until G6.
 
 ## Recovery drills
 
@@ -53,4 +55,5 @@
 - Interrupt and retry a publish with the same idempotency key.
 - Create an out-of-band staging commit and verify base-SHA conflict.
 - Remove a user role and verify the next request is denied.
+- Remove staging collaboration and verify the next request is denied.
 - Roll staging back to its previous known-good candidate.

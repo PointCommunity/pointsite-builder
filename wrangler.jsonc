@@ -9,13 +9,12 @@
   "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
+    "run_worker_first": ["/api/*", "/auth/*"],
   },
   "vars": {
     "ENVIRONMENT": "production",
     "APP_VERSION": "0.1.0",
-    "ACCESS_TEAM_DOMAIN": "point.cloudflareaccess.com",
-    "ACCESS_AUD": "replace-with-access-application-audience",
+    "BUILDER_ORIGIN": "https://builder.pointatx.org",
     "STAGING_REPOSITORY": "PointCommunity/pointsite-staging",
     "PRODUCTION_ENABLED": "false",
   },
@@ -25,12 +24,6 @@
       "database_name": "pointsite-builder",
       "database_id": "d4f44410-3f61-47bd-976a-5595973fa6f1",
       "migrations_dir": "migrations",
-    },
-  ],
-  "r2_buckets": [
-    {
-      "binding": "MEDIA",
-      "bucket_name": "pointsite-builder-media",
     },
   ],
   "observability": {

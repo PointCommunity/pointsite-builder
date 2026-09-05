@@ -12,7 +12,7 @@ import type { ApiVariables } from './drafts';
 import type { RetentionService } from '../maintenance/retention';
 
 const RoleInput = z.strictObject({
-  email: z.email(),
+  githubLogin: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
   role: z.enum(['viewer', 'editor', 'publisher', 'administrator']),
   active: z.boolean(),
 });
@@ -53,7 +53,7 @@ export function createAdminRoutes(
       throw new ApiError(
         422,
         'VALIDATION_FAILED',
-        'Enter a valid email, role, and status',
+        'Enter a valid GitHub username, role, and status',
         parsed.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,

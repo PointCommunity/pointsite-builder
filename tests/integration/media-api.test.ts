@@ -20,6 +20,9 @@ class MemoryMedia implements MediaRepository {
   async get(id: string) {
     return this.items.find((item) => item.id === id) ?? null;
   }
+  async totalBytes() {
+    return this.items.reduce((total, item) => total + item.byteSize, 0);
+  }
   async create(record: MediaRecord) {
     this.items.push(record);
   }
@@ -99,4 +102,35 @@ it('denies media upload to a viewer', async () => {
     body: form,
   });
   expect(response.status).toBe(403);
+});
+
+it('fails visibly before private media can exceed the configured hard capacity', async () => {
+  const repository = new MemoryMedia();
+  const objects = new Map<string, Uint8Array>();
+  const bucket: PrivateBucket = {
+    put: async (key, bytes) => void objects.set(key, bytes),
+    get: async (key) => objects.get(key) ?? null,
+    delete: async (key) => void objects.delete(key),
+  };
+  const service = new MediaService(repository, bucket, 30);
+  await service.upload({
+    filename: 'first.png',
+    contentType: 'image/png',
+    bytes: image(),
+    altText: 'First',
+    actor: 'editor',
+    requestId: 'capacity-1',
+  });
+  const secondImage = image();
+  new DataView(secondImage.buffer).setUint32(16, 101);
+  await expect(
+    service.upload({
+      filename: 'second.png',
+      contentType: 'image/png',
+      bytes: secondImage,
+      altText: 'Second',
+      actor: 'editor',
+      requestId: 'capacity-2',
+    }),
+  ).rejects.toThrow('MEDIA_CAPACITY_EXCEEDED');
 });

@@ -31,14 +31,15 @@ Validation rules:
 
 ## UserRole
 
-| Field      | Type              | Rule                                     |
-| ---------- | ----------------- | ---------------------------------------- |
-| email      | normalized string | Primary key; exact authenticated email   |
-| role       | enum              | viewer, editor, publisher, administrator |
-| active     | boolean           | False denies all application operations  |
-| created_at | timestamp         | Immutable                                |
-| updated_at | timestamp         | Changes on role/status mutation          |
-| updated_by | string            | Authenticated administrator identity     |
+| Field        | Type              | Rule                                     |
+| ------------ | ----------------- | ---------------------------------------- |
+| email        | canonical string  | Primary key; `github:<stable-user-id>`   |
+| github_login | normalized string | Unique administrator-facing login        |
+| role         | enum              | viewer, editor, publisher, administrator |
+| active       | boolean           | False denies all application operations  |
+| created_at   | timestamp         | Immutable                                |
+| updated_at   | timestamp         | Changes on role/status mutation          |
+| updated_by   | string            | Authenticated administrator identity     |
 
 ## Draft
 
@@ -77,7 +78,7 @@ Unique constraints: `(draft_id, sequence)`, `(draft_id, checksum)`.
 | Field                   | Type           | Rule                                            |
 | ----------------------- | -------------- | ----------------------------------------------- |
 | id                      | UUID           | Primary key                                     |
-| object_key              | string         | Random private R2 key                           |
+| object_key              | string         | Random key for private D1 chunks                |
 | filename                | string         | Sanitized display name                          |
 | content_type            | enum           | image/jpeg, image/png, image/webp, image/avif   |
 | byte_size               | integer        | 1–5,242,880                                     |
@@ -87,6 +88,11 @@ Unique constraints: `(draft_id, sequence)`, `(draft_id, checksum)`.
 | status                  | enum           | uploading, ready, rejected, published, orphaned |
 | created_by / created_at | identity/time  | Immutable                                       |
 | last_referenced_at      | timestamp/null | Retention input                                 |
+
+Media bytes are stored in `media_object_chunks` using ordered chunks of at most
+1,000,000 bytes. The `(object_key, chunk_index)` pair is unique, each recorded
+size must match the BLOB length, and the application refuses uploads above a
+250 MB total-media cap.
 
 ## PublishJob
 

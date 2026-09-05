@@ -33,12 +33,14 @@ control).
 ## Runtime and hosting
 
 **Decision**: Deploy one React/Vite application and Hono API as a Cloudflare
-Worker with static assets. Use D1 for relational metadata/revisions and R2 for
+Worker with static assets. Use D1 for relational metadata, revisions, and chunked
 private draft media. Deploy staging as a separate Worker with static assets.
 
-**Rationale**: One origin simplifies Access, CSRF protection, previews, and the
-free-plan request budget. D1 supports transactional metadata and optimistic
-concurrency. R2 keeps unpublished media private without repository churn.
+**Rationale**: One origin simplifies sessions, CSRF protection, previews, and the
+free-plan request budget. D1 supports transactional metadata, optimistic
+concurrency, and hard free-plan failure instead of overage billing. One-megabyte
+chunks remain below D1's two-megabyte BLOB/row limit; a 250 MB application cap
+leaves room inside the 500 MB Free database limit.
 
 **Alternatives considered**: Pages Functions (equivalent billing but less explicit
 Worker boundary), external database/storage (cost and more credentials), browser
@@ -46,18 +48,22 @@ local storage (not collaborative or durable).
 
 ## Authentication and authorization
 
-**Decision**: Protect all Worker domains with Cloudflare Access using GitHub as
-the identity provider. Validate Access JWTs in the API and map exact email identity
-to a D1 application role on every request. Local development uses an explicit
-development-auth mode that cannot be enabled in deployed environments.
+**Decision**: Use the staging-only GitHub App's OAuth web flow with state and
+PKCE. Issue signed, Secure, HttpOnly, SameSite cookies; verify the signed session,
+stable GitHub user ID, current staging-repository collaboration, and D1 role on
+every request. Local development uses an explicit development-auth mode that
+cannot be enabled in deployed environments.
 
-**Rationale**: Gateway identity and application authorization address different
-risks. Server-side role lookup makes removal immediate and prevents hidden client
-controls from becoming the security boundary.
+**Rationale**: Cloudflare documents Zero Trust Free as $0 for up to 50 users but
+still requires payment details during onboarding, which violates the no-payment
+boundary. GitHub App OAuth requires no Cloudflare subscription, reuses the
+least-privilege staging integration, and lets collaboration or role removal take
+effect on the next request.
 
-**Alternatives considered**: application passwords (new credential surface),
-GitHub OAuth implemented in-app (more session/security code), email one-time PIN
-as the only identity method (cannot enforce organization/team membership).
+**Alternatives considered**: Cloudflare Access (payment details required),
+application passwords (new credential surface), email one-time PIN (cannot enforce
+repository collaboration), and broad OAuth App scopes (less granular than a
+GitHub App).
 
 ## GitHub integration
 
@@ -95,15 +101,17 @@ version and checksum are part of candidate identity.
 **Decision**: Design for at most 10 concurrent administrators, five-second
 debounced autosave, revisions only on semantic changes, five-megabyte individual
 images, 250-megabyte private media warning threshold, one publish job at a time,
-and quota warnings at 70 percent.
+and quota warnings at 70 percent. Only Workers Free and D1 Free are allowed;
+exhaustion returns errors until reset or space is reclaimed.
 
 **Rationale**: Current Cloudflare documentation lists 100,000 Worker requests/day,
 5 million D1 rows read/day, and 100,000 D1 rows written/day on Free. This workload
 is far below those thresholds while leaving room for tests and operations. Limits
 are rechecked before deployment because platform pricing can change.
 
-**Alternatives considered**: paid plan from day one (unnecessary), no limits
-(unexpected failure/cost risk), save on every keystroke (wasteful writes).
+**Alternatives considered**: any paid plan or subscription (rejected), R2 (requires
+a billing subscription), no limits (unexpected failure risk), save on every
+keystroke (wasteful writes).
 
 ## Accessibility and browser support
 
@@ -117,10 +125,11 @@ technology. Drag-only authoring would exclude keyboard users.
 ## Sources reviewed 2026-09-05
 
 - Cloudflare Workers pricing: https://developers.cloudflare.com/workers/platform/pricing/
-- Cloudflare Access for Workers: https://developers.cloudflare.com/workers/configuration/cloudflare-access/
-- Cloudflare GitHub identity provider: https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/github/
+- Cloudflare Zero Trust onboarding and payment-detail requirement: https://developers.cloudflare.com/cloudflare-one/setup/
 - Cloudflare D1 pricing: https://developers.cloudflare.com/d1/platform/pricing/
-- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
+- Cloudflare D1 limits: https://developers.cloudflare.com/d1/platform/limits/
+- GitHub App user access tokens: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app
+- GitHub collaborator permissions: https://docs.github.com/en/rest/collaborators/collaborators
 - GitHub forks: https://docs.github.com/en/pull-requests/reference/forks
 - GitHub App permissions: https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app
 - GitHub protected branches: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches

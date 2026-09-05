@@ -26,6 +26,28 @@ describe('PointSite Builder foundation', () => {
     expect(screen.getByText(/production remains locked/i)).toBeVisible();
     expect(screen.getByText('viewer@pointatx.org')).toBeVisible();
   });
+
+  it('offers GitHub sign-in without exposing private data when no session exists', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          Response.json(
+            { code: 'UNAUTHENTICATED', message: 'Sign in with GitHub' },
+            { status: 401 },
+          ),
+        ),
+      ),
+    );
+    render(<App />);
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to PointSite Builder' }),
+    ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Sign in with GitHub' })).toHaveAttribute(
+      'href',
+      '/auth/login',
+    );
+  });
 });
 
 it('contains unexpected rendering failures without implying the public site is affected', () => {

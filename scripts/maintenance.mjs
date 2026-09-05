@@ -14,14 +14,9 @@ if (!baseUrl)
     'Usage: node scripts/maintenance.mjs --url <builder-url> [--export path] [--apply]',
   );
 
-const headers = {
-  ...(process.env.CF_ACCESS_CLIENT_ID
-    ? { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }
-    : {}),
-  ...(process.env.CF_ACCESS_CLIENT_SECRET
-    ? { 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }
-    : {}),
-};
+const session = process.env.BUILDER_SESSION_COOKIE;
+if (!session) throw new Error('BUILDER_SESSION_COOKIE is required');
+const headers = { cookie: `__Secure-pointsite_builder_session=${session}` };
 const dryRun = await fetch(`${baseUrl}/api/admin/retention`, { headers });
 if (!dryRun.ok) throw new Error(`Retention dry run failed (${dryRun.status})`);
 const plan = await dryRun.json();

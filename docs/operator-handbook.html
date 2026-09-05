@@ -221,7 +221,10 @@
           export.
         </dd>
         <dt>Safe command</dt>
-        <dd><code>npm run maintenance -- --url "$BUILDER_URL" --token "$ACCESS_TOKEN"</code></dd>
+        <dd>
+          Export a current <code>BUILDER_SESSION_COOKIE</code>, then run
+          <code>npm run maintenance -- --url "$BUILDER_URL"</code>.
+        </dd>
         <dt>Expected result</dt>
         <dd class="expected">
           Dry-run only: candidate counts and an export checksum are returned; no object is deleted.
@@ -261,7 +264,7 @@
         </dd>
         <dt>Stop condition</dt>
         <dd class="stop">
-          Unknown known-good SHA, unrelated diff, failed check, missing Access protection, or
+          Unknown known-good SHA, unrelated diff, failed check, missing GitHub authentication, or
           production remote in the write target.
         </dd>
         <dt>Recovery</dt>

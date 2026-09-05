@@ -31,6 +31,11 @@
       "id": "0005_revision_retention",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0006_free_only_auth_media",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
     }
   ]
 }

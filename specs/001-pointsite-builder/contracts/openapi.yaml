@@ -2,11 +2,11 @@ openapi: 3.1.0
 info:
   title: PointSite Builder API
   version: 1.0.0
-  description: Private API behind Cloudflare Access. All mutation responses include a request ID.
+  description: Private API using GitHub collaborator sessions. All mutation responses include a request ID.
 servers:
   - url: /api
 security:
-  - cloudflareAccess: []
+  - githubSession: []
 paths:
   /health:
     get:
@@ -375,9 +375,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, role, active]
+              required: [githubLogin, role, active]
               properties:
-                email: { type: string, format: email }
+                githubLogin: { type: string, pattern: '^[A-Za-z0-9-]{1,39}$' }
                 role: { type: string, enum: [viewer, editor, publisher, administrator] }
                 active: { type: boolean }
       responses:
@@ -421,10 +421,10 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
-    cloudflareAccess:
+    githubSession:
       type: apiKey
-      in: header
-      name: Cf-Access-Jwt-Assertion
+      in: cookie
+      name: __Secure-pointsite_builder_session
   parameters:
     DraftId:
       name: draftId
@@ -454,7 +454,8 @@ components:
       type: object
       required: [email, role]
       properties:
-        email: { type: string, format: email }
+        email: { type: string, description: Canonical authenticated identity }
+        displayName: { type: string }
         role: { type: string, enum: [viewer, editor, publisher, administrator] }
     DraftSummary:
       type: object
@@ -465,7 +466,7 @@ components:
         name: { type: string }
         status: { type: string, enum: [active, archived, deleted] }
         latestRevisionId: { type: string, format: uuid }
-        createdBy: { type: string, format: email }
+        createdBy: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         deletedAt: { type: [string, 'null'], format: date-time }
@@ -512,7 +513,7 @@ components:
         schemaVersion: { type: integer }
         rendererVersion: { type: string }
         label: { type: [string, 'null'] }
-        createdBy: { type: string, format: email }
+        createdBy: { type: string }
         createdAt: { type: string, format: date-time }
     RevisionList:
       type: object
@@ -568,7 +569,7 @@ components:
         candidateChecksum: { type: string }
         resultSha: { type: string }
         externalUrl: { type: string, format: uri }
-        requestedBy: { type: string, format: email }
+        requestedBy: { type: string }
         requestedAt: { type: string, format: date-time }
         evidence: { type: object }
     GitSha:
@@ -634,7 +635,7 @@ components:
         commitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         url: { type: string, format: uri }
         jobId: { type: string }
-        requestedBy: { type: string, format: email }
+        requestedBy: { type: string }
         status: { type: string, const: succeeded }
     Error:
       type: object

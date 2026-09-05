@@ -46,7 +46,7 @@ export function AdminRoute() {
   const [roleItems, setRoleItems] = useState<AdminRoleItem[]>([]);
   const [audit, setAudit] = useState<AuditItem[]>([]);
   const [capacity, setCapacity] = useState<CapacityReport | null>(null);
-  const [email, setEmail] = useState('');
+  const [githubLogin, setGithubLogin] = useState('');
   const [role, setRole] = useState<Role>('viewer');
   const [status, setStatus] = useState('Loading administration…');
   const load = async () => {
@@ -77,15 +77,15 @@ export function AdminRoute() {
       active = false;
     };
   }, []);
-  const save = async (input: { email: string; role: Role; active: boolean }) => {
-    setStatus(`Saving ${input.email}…`);
+  const save = async (input: { githubLogin: string; role: Role; active: boolean }) => {
+    setStatus(`Saving @${input.githubLogin}…`);
     try {
       await api.upsertRole(input);
       await load();
-      setEmail('');
-      setStatus(`${input.email} updated`);
+      setGithubLogin('');
+      setStatus(`@${input.githubLogin} updated`);
     } catch {
-      setStatus(`${input.email} could not be updated`);
+      setStatus(`@${input.githubLogin} could not be updated`);
     }
   };
   return (
@@ -106,16 +106,17 @@ export function AdminRoute() {
           className="inline-editor"
           onSubmit={(event) => {
             event.preventDefault();
-            void save({ email, role, active: true });
+            void save({ githubLogin, role, active: true });
           }}
         >
           <label>
-            <span>Email</span>
+            <span>GitHub username</span>
             <input
               required
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="off"
+              pattern="[A-Za-z0-9-]{1,39}"
+              value={githubLogin}
+              onChange={(event) => setGithubLogin(event.target.value)}
             />
           </label>
           <label>
@@ -132,7 +133,7 @@ export function AdminRoute() {
           <table>
             <thead>
               <tr>
-                <th>Email</th>
+                <th>GitHub account</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -140,15 +141,15 @@ export function AdminRoute() {
             </thead>
             <tbody>
               {roleItems.map((item) => (
-                <tr key={item.email}>
-                  <td>{item.email}</td>
+                <tr key={item.githubUserId}>
+                  <td>@{item.githubLogin}</td>
                   <td>
                     <select
-                      aria-label={`Role for ${item.email}`}
+                      aria-label={`Role for ${item.githubLogin}`}
                       value={item.role}
                       onChange={(event) =>
                         void save({
-                          email: item.email,
+                          githubLogin: item.githubLogin,
                           role: event.target.value as Role,
                           active: item.active,
                         })
@@ -165,7 +166,11 @@ export function AdminRoute() {
                       type="button"
                       className="button"
                       onClick={() =>
-                        void save({ email: item.email, role: item.role, active: !item.active })
+                        void save({
+                          githubLogin: item.githubLogin,
+                          role: item.role,
+                          active: !item.active,
+                        })
                       }
                     >
                       {item.active ? 'Disable' : 'Enable'}

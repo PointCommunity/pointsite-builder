@@ -68,14 +68,14 @@
   - Acceptance: draft save atomically inserts a revision and advances only the expected pointer; all writes emit audit records.
   - Verify: T012 passes at least once against D1-compatible local storage and fakes.
   - Files: `src/server/repositories/d1.ts`, `src/server/repositories/memory.ts`, `src/server/repositories/contracts.ts`.
-- [x] T015 Write failing Access assertion and role matrix tests. (FR-001, FR-002, FR-003)
-  - Acceptance: missing, forged, expired, wrong issuer/audience, inactive role, and insufficient role cases are represented.
+- [x] T015 Write failing authentication and role matrix tests. (FR-001, FR-002, FR-003)
+  - Acceptance: missing, forged, expired, revoked-collaborator, inactive-role, and insufficient-role cases are represented.
   - Verify: focused tests fail before middleware exists.
-  - Files: `tests/unit/auth.test.ts`, `tests/fixtures/access-tokens.ts`.
-- [x] T016 Implement Cloudflare Access verification, local-only auth adapter, actor context, and role middleware.
+  - Files: `tests/unit/auth.test.ts`, `tests/unit/github-oauth.test.ts`.
+- [x] T016 Implement GitHub App OAuth, signed HttpOnly sessions, live collaborator verification, local-only auth adapter, actor context, and role middleware.
   - Acceptance: T015 passes; development bypass cannot activate outside local environment.
   - Verify: auth tests, typecheck, and production-config negative test.
-  - Files: `src/server/auth/access.ts`, `src/server/auth/roles.ts`, `src/server/config.ts`.
+  - Files: `src/server/auth/github.ts`, `src/server/auth/roles.ts`, `src/server/config.ts`.
 - [x] T017 Implement consistent API errors, request IDs, security headers, same-origin/Fetch-Metadata controls, JSON bounds, and per-actor rate policy. (FR-017, FR-027)
   - Acceptance: every endpoint returns one safe error shape; mutations reject cross-site or oversized input.
   - Verify: middleware contract tests and header probe.
@@ -130,9 +130,9 @@
   - Acceptance: supported signatures and every rejection/orphan path are specified.
   - Verify: focused tests fail before service exists.
   - Files: `tests/unit/media-policy.test.ts`, `tests/integration/media-api.test.ts`.
-- [x] T029 Implement private R2 media service, signature/dimension validation, random keys, deduplication, authorized reads, and lifecycle transitions.
+- [x] T029 Implement private chunked-D1 media service, signature/dimension validation, hard capacity cap, random keys, deduplication, authorized reads, and lifecycle transitions.
   - Acceptance: only ready media with alt text can attach; bytes are never public by default.
-  - Verify: T028 passes with R2 fake and local Worker binding.
+  - Verify: T028 passes with chunked D1 and local Worker binding.
   - Files: `src/server/media/policy.ts`, `src/server/media/service.ts`, `src/server/routes/media.ts`.
 - [x] T030 Build accessible upload and media library UI with progress, retry, validation, alt text, and selection.
   - Acceptance: empty/upload/rejected/ready/orphan states work at all target widths.
@@ -222,19 +222,19 @@
 
 ## Phase 9: Remote staging and production gates
 
-- [ ] T049 Authenticate Cloudflare, create D1/R2, apply migrations, seed administrator, register staging-only GitHub App, and store secrets.
-  - Acceptance: resources exist in the intended account; no production installation/secret exists; local secret scan remains clean.
+- [ ] T049 Authenticate Cloudflare, retain Workers Free and D1 only, apply migrations, seed the GitHub administrator identity, register a staging-only GitHub App, and store secrets.
+  - Acceptance: resources exist in the intended church account; no R2/Zero Trust subscription, payment action, production installation, or production secret exists; local secret scan remains clean.
   - Verify: Wrangler resource listings, role readback, GitHub installation readback.
   - Files: remote resources plus `wrangler.jsonc` IDs only.
-- [ ] T050 Deploy builder and staging Workers to temporary hosts and protect production/preview hosts with Access before testing content.
-  - Acceptance: anonymous, wrong-identity, expired-session, and alternate-host probes fail closed; approved admin succeeds.
-  - Verify: curl/browser Access matrix and Worker deployment readback.
+- [ ] T050 Deploy builder and staging Workers to non-public temporary state, then enable only custom hosts protected by GitHub App authentication before testing content.
+  - Acceptance: anonymous, wrong-identity, revoked-collaborator, expired-session, and alternate-host probes fail closed; approved admin succeeds.
+  - Verify: curl/browser authentication matrix and Worker deployment readback.
   - Files: remote Cloudflare configuration only.
 - [ ] T051 Deploy an exact candidate through the builder and complete staging acceptance/rollback drill.
   - Acceptance: exact revision to exact staging commit passes every required check; retry is idempotent; rollback restores known-good.
   - Verify: job/audit/evidence records and live protected browser run.
   - Files: staging candidate commit and evidence records.
-- [ ] T052 Add protected custom hostnames only after temporary-host Access tests pass.
+- [ ] T052 Add protected custom hostnames only after authentication tests pass.
   - Acceptance: `builder.pointatx.org` and `staging.pointatx.org` are protected, HTTPS-valid, and direct Worker hosts remain protected.
   - Verify: DNS/API readback and anonymous/authenticated probes.
   - Files: remote Cloudflare DNS/Worker/Access configuration only.

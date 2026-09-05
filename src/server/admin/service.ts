@@ -2,11 +2,44 @@ import type { AuditEventRecord, Role } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
 
 export interface AdminRoleRecord {
-  email: string;
+  githubLogin: string;
+  githubUserId: number;
   role: Role;
   active: boolean;
   updatedAt: string;
   updatedBy: string;
+}
+
+export interface GitHubAccountResolver {
+  resolve(login: string): Promise<{ id: number; login: string }>;
+}
+
+export class GitHubUserResolver implements GitHubAccountResolver {
+  constructor(private readonly fetcher: typeof fetch = fetch) {}
+
+  async resolve(login: string) {
+    const response = await this.fetcher(
+      `https://api.github.com/users/${encodeURIComponent(login)}`,
+      {
+        headers: {
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
+          'user-agent': 'PointSite-Builder',
+        },
+      },
+    );
+    if (!response.ok) throw new Error('GITHUB_IDENTITY_NOT_FOUND');
+    const value: { id?: unknown; login?: unknown } = await response.json();
+    if (
+      typeof value.id !== 'number' ||
+      !Number.isSafeInteger(value.id) ||
+      value.id < 1 ||
+      typeof value.login !== 'string' ||
+      !/^[A-Za-z0-9-]{1,39}$/.test(value.login)
+    )
+      throw new Error('GITHUB_IDENTITY_INVALID');
+    return { id: value.id, login: value.login.toLowerCase() };
+  }
 }
 
 export interface CapacityMetric {
@@ -33,14 +66,27 @@ const metric = (used: number, limit: number, unit: CapacityMetric['unit']): Capa
 });
 
 export class D1AdminService {
-  constructor(private readonly database: D1Database) {}
+  constructor(
+    private readonly database: D1Database,
+    private readonly identities: GitHubAccountResolver = new GitHubUserResolver(),
+  ) {}
 
   async listRoles(): Promise<AdminRoleRecord[]> {
     const rows = await this.database
-      .prepare('SELECT email, role, active, updated_at, updated_by FROM user_roles ORDER BY email')
-      .all<{ email: string; role: Role; active: number; updated_at: string; updated_by: string }>();
+      .prepare(
+        'SELECT email, github_login, role, active, updated_at, updated_by FROM user_roles WHERE github_login IS NOT NULL ORDER BY github_login',
+      )
+      .all<{
+        email: string;
+        github_login: string;
+        role: Role;
+        active: number;
+        updated_at: string;
+        updated_by: string;
+      }>();
     return rows.results.map((row) => ({
-      email: row.email,
+      githubLogin: row.github_login,
+      githubUserId: Number(row.email.replace(/^github:/, '')),
       role: row.role,
       active: row.active === 1,
       updatedAt: row.updated_at,
@@ -49,24 +95,26 @@ export class D1AdminService {
   }
 
   async upsertRole(input: {
-    email: string;
+    githubLogin: string;
     role: Role;
     active: boolean;
     actor: string;
     requestId: string;
   }): Promise<AdminRoleRecord> {
-    const email = input.email.trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('VALIDATION_FAILED');
+    const requestedLogin = input.githubLogin.trim().toLowerCase();
+    if (!/^[a-z0-9-]{1,39}$/.test(requestedLogin)) throw new Error('VALIDATION_FAILED');
+    const account = await this.identities.resolve(requestedLogin);
+    const identity = `github:${account.id}`;
     if (!input.active || input.role !== 'administrator') {
       const remaining = await this.database
         .prepare(
-          "SELECT COUNT(*) AS count FROM user_roles WHERE role = 'administrator' AND active = 1 AND email != ? COLLATE NOCASE",
+          "SELECT COUNT(*) AS count FROM user_roles WHERE role = 'administrator' AND active = 1 AND github_login IS NOT NULL AND email != ? COLLATE NOCASE",
         )
-        .bind(email)
+        .bind(identity)
         .first<{ count: number }>();
       const existing = await this.database
         .prepare('SELECT role, active FROM user_roles WHERE email = ? COLLATE NOCASE')
-        .bind(email)
+        .bind(identity)
         .first<{ role: Role; active: number }>();
       if (
         existing?.role === 'administrator' &&
@@ -80,9 +128,9 @@ export class D1AdminService {
     await this.database.batch([
       this.database
         .prepare(
-          'INSERT INTO user_roles (email, role, active, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role=excluded.role, active=excluded.active, updated_at=excluded.updated_at, updated_by=excluded.updated_by',
+          'INSERT INTO user_roles (email, role, active, created_at, updated_at, updated_by, github_login) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role=excluded.role, active=excluded.active, updated_at=excluded.updated_at, updated_by=excluded.updated_by, github_login=excluded.github_login',
         )
-        .bind(email, input.role, input.active ? 1 : 0, now, now, input.actor),
+        .bind(identity, input.role, input.active ? 1 : 0, now, now, input.actor, account.login),
       this.database
         .prepare(
           "INSERT INTO audit_events (id, occurred_at, actor, action, target_type, target_id, outcome, request_id, metadata_json) VALUES (?, ?, ?, 'role.upsert', 'role', ?, 'succeeded', ?, ?)",
@@ -91,13 +139,14 @@ export class D1AdminService {
           id,
           now,
           input.actor,
-          email,
+          identity,
           input.requestId,
           JSON.stringify({ role: input.role, active: input.active }),
         ),
     ]);
     return {
-      email,
+      githubLogin: account.login,
+      githubUserId: account.id,
       role: input.role,
       active: input.active,
       updatedAt: now,

@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import type { DraftRecord } from '../server/repositories/contracts';
-import { api, type ActorResponse } from './api';
+import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
 import { EditorRoute } from './editor/EditorRoute';
 
@@ -36,7 +36,14 @@ export function App() {
   const [actor, setActor] = useState<ActorResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [selected, setSelected] = useState<DraftRecord | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'signed-out' | 'denied' | 'error'>(
+    'loading',
+  );
+  const failureState = (error: unknown) => {
+    if (error instanceof ClientApiError && error.status === 401) return 'signed-out' as const;
+    if (error instanceof ClientApiError && error.status === 403) return 'denied' as const;
+    return 'error' as const;
+  };
   const load = async () => {
     try {
       const [identity, items] = await Promise.all([api.me(), api.listDrafts()]);
@@ -44,11 +51,7 @@ export function App() {
       setDrafts(items);
       setState('ready');
     } catch (error) {
-      setState(
-        error instanceof Error && error.message.toLowerCase().includes('access')
-          ? 'denied'
-          : 'error',
-      );
+      setState(failureState(error));
     }
   };
   useEffect(() => {
@@ -62,11 +65,7 @@ export function App() {
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setState(
-          error instanceof Error && error.message.toLowerCase().includes('access')
-            ? 'denied'
-            : 'error',
-        );
+        setState(failureState(error));
       });
     return () => {
       active = false;
@@ -83,7 +82,18 @@ export function App() {
     return (
       <main id="main-content" className="state-page">
         <h1>Access not assigned</h1>
-        <p>Your Cloudflare login is valid, but a builder role has not been assigned.</p>
+        <p>Your GitHub login is valid, but collaboration or a Builder role is not active.</p>
+      </main>
+    );
+  if (state === 'signed-out')
+    return (
+      <main id="main-content" className="state-page">
+        <p className="eyebrow">Private workspace</p>
+        <h1>Sign in to PointSite Builder</h1>
+        <p>Use an approved PointCommunity GitHub collaborator account.</p>
+        <a className="button button--primary" href="/auth/login">
+          Sign in with GitHub
+        </a>
       </main>
     );
   if (state === 'error' || !actor)
@@ -120,8 +130,13 @@ export function App() {
           <span>PointSite Builder</span>
         </div>
         <div className="identity">
-          <span>{actor.email}</span>
+          <span>{actor.displayName ?? actor.email}</span>
           <span className="environment-label">{actor.role}</span>
+          <form action="/auth/logout" method="post">
+            <button className="button" type="submit">
+              Sign out
+            </button>
+          </form>
         </div>
       </header>
       <main id="main-content">

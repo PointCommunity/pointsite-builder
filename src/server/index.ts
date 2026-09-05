@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { AuthenticationError } from './auth/access';
+import { AuthenticationError, type GitHubAuthenticator } from './auth/github';
 import type { Actor } from './auth/roles';
 import { AuthorizationError } from './auth/roles';
 import { ApiError, errorResponse } from './http/errors';
@@ -29,6 +29,7 @@ export interface AppDependencies {
   approvals?: D1ApprovalService;
   productionBaseSha?: () => Promise<string>;
   retention?: RetentionService;
+  auth?: GitHubAuthenticator;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -55,6 +56,22 @@ export function createApp(dependencies: AppDependencies) {
     }),
   );
   app.get('/api/me', (context) => context.json(context.get('actor')));
+  app.get('/auth/login', (context) => {
+    if (!dependencies.auth) throw new AuthenticationError();
+    return dependencies.auth.beginLogin(context.req.raw);
+  });
+  app.get('/auth/callback', (context) => {
+    if (!dependencies.auth) throw new AuthenticationError();
+    return dependencies.auth.completeLogin(context.req.raw);
+  });
+  app.post('/auth/logout', (context) => {
+    if (!dependencies.auth) throw new AuthenticationError();
+    const origin = context.req.header('origin');
+    const fetchSite = context.req.header('sec-fetch-site');
+    if (origin !== new URL(context.req.url).origin || fetchSite !== 'same-origin')
+      throw new AuthenticationError('Invalid logout request');
+    return dependencies.auth.logout();
+  });
   app.route('/api/drafts', createDraftRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher));

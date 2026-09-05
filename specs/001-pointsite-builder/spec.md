@@ -13,6 +13,15 @@ components; it does not execute arbitrary administrator-provided code. Every
 candidate is proven in a separate staging repository and environment before any
 production capability is enabled.
 
+## Cost and Identity Boundary
+
+The deployed system MUST use only hard-limited free services that stop serving or
+writing when an allowance is exhausted. It MUST NOT require a paid subscription,
+new payment method, or usage-based overage billing. Cloudflare Zero Trust Access
+and R2 are excluded because their onboarding requires payment details or a
+billable subscription. GitHub App OAuth authenticates approved staging-repository
+collaborators; D1 stores drafts, roles, sessions, and chunked private media.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Safely author and preview a page (Priority: P1)
@@ -109,7 +118,7 @@ be bypassed with client state or a forged header.
 
 ## Edge Cases
 
-- Access is removed during an active session.
+- GitHub collaboration or a Builder role is removed during an active session.
 - A stale browser edits a deleted or renamed page.
 - Two drafts attempt to claim the same route.
 - A publish job is retried after a network timeout or Worker restart.
@@ -118,14 +127,14 @@ be bypassed with client state or a forged header.
 - Uploaded media is corrupt, deceptively typed, excessively large, or orphaned.
 - A theme combination fails contrast or text remains unreadable over an image.
 - A schema or component version cannot render an old draft.
-- Cloudflare, GitHub, D1, or R2 is temporarily unavailable.
+- Cloudflare, GitHub, or D1 is temporarily unavailable.
 - Daily free-tier capacity is exhausted.
 
 ## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: Every builder, API, preview, and staging request MUST be authenticated by the configured access gateway and fail closed when identity evidence is missing or invalid.
+- **FR-001**: Every builder, API, preview, and staging request MUST be authenticated through the PointSite GitHub App; the server MUST verify the signed session, current staging-repository collaboration, and active application role, and fail closed when any evidence is missing, invalid, expired, or revoked.
 - **FR-002**: Server-side authorization MUST enforce Viewer, Editor, Publisher, and Administrator capabilities independently from client controls.
 - **FR-003**: Administrators MUST be able to grant, change, disable, and audit application roles for exact authenticated identities.
 - **FR-004**: Editors MUST be able to create, duplicate, rename, archive, restore, reorder, and delete draft pages with validated unique routes.
@@ -140,7 +149,7 @@ be bypassed with client state or a forged header.
 - **FR-013**: Editors MUST be able to name a revision, compare revision metadata, and restore an earlier revision as a new revision.
 - **FR-014**: Preview MUST render the same schema and component version used by staging at mobile, tablet, and desktop widths.
 - **FR-015**: Media uploads MUST validate authentication, role, size, MIME signature, extension, dimensions, and required alternative text before use.
-- **FR-016**: Draft media MUST remain private and unreferenced media MUST be lifecycle-deleted after 30 days.
+- **FR-016**: Draft media MUST remain private in chunked D1 storage, total private media MUST be capped below the D1 Free database limit, and unreferenced media MUST be lifecycle-deleted after 30 days.
 - **FR-017**: The system MUST sanitize or reject unsafe URLs and content and MUST NOT accept arbitrary JavaScript or unrestricted HTML.
 - **FR-018**: A Publisher MUST be able to deploy an exact immutable revision to staging through an idempotent, auditable job.
 - **FR-019**: Staging deployment MUST write only to the configured staging repository and MUST reject any repository outside a compile-time and runtime allowlist.
@@ -155,6 +164,7 @@ be bypassed with client state or a forged header.
 - **FR-028**: The system MUST expose actionable health, quota, publish, storage, and audit views to Administrators.
 - **FR-029**: The system MUST provide documented and tested backup, restore, credential rotation, failed-publish recovery, and production rollback procedures.
 - **FR-030**: Public PointSite MUST remain a static export with no public authentication, draft storage, database, or mutation endpoint.
+- **FR-031**: Deployment MUST NOT activate a paid Cloudflare plan, R2 subscription, usage-based overage billing, or require a new payment method; free-tier exhaustion MUST fail closed and surface an actionable capacity message.
 
 ### Quality Requirements
 
@@ -163,7 +173,7 @@ be bypassed with client state or a forged header.
 - **QR-003**: At 10 simultaneous administrative sessions, save and read APIs MUST remain below 500 ms p95 excluding third-party publish operations.
 - **QR-004**: The editor MUST remain usable at 360, 768, and 1280 CSS-pixel widths and all controls MUST be keyboard reachable.
 - **QR-005**: A validated draft MUST render identically from the same schema and renderer version in editor preview and staging, excluding environment chrome.
-- **QR-006**: Free-plan controls MUST warn at 70 percent of known daily or monthly allowances and fail visibly rather than silently generating cost.
+- **QR-006**: Free-plan controls MUST warn at 70 percent of hard allowances and fail visibly rather than generating cost; no configured service may automatically bill overages.
 
 ### Key Entities
 
@@ -194,3 +204,5 @@ be bypassed with client state or a forged header.
 - Staging and builder repositories are private independent repositories. Production promotion uses a branch and PR in production, not a same-owner fork.
 - Drafts are private service data; only reviewed candidate data is committed to staging.
 - Production preparation and exact publication remain separate gates even though the overall implementation is authorized.
+- “Login” means GitHub App OAuth plus live PointCommunity staging-collaborator verification and a Builder role; it does not require Cloudflare Zero Trust enrollment.
+- The accepted zero-cost failure mode is temporary Builder unavailability when a hard free-tier limit is reached; the public PointSite remains unaffected.

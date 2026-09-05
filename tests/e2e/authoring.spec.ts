@@ -43,14 +43,16 @@ async function installApi(page: Page, role: Role = 'administrator') {
     label: 'Before refresh',
   };
   let roles: Array<{
-    email: string;
+    githubLogin: string;
+    githubUserId: number;
     role: Role;
     active: boolean;
     updatedAt: string;
     updatedBy: string;
   }> = [
     {
-      email: 'admin@pointatx.org',
+      githubLogin: 'brimdor',
+      githubUserId: 1_202_831,
       role: 'administrator' as const,
       active: true,
       updatedAt: '2026-09-05T00:00:00Z',
@@ -121,13 +123,18 @@ async function installApi(page: Page, role: Role = 'administrator') {
     } else if (path.endsWith('/admin/roles') && method === 'GET')
       body = { items: roles, nextCursor: null };
     else if (path.endsWith('/admin/roles') && method === 'PUT') {
-      const input = request.postDataJSON() as { email: string; role: Role; active: boolean };
+      const input = request.postDataJSON() as {
+        githubLogin: string;
+        role: Role;
+        active: boolean;
+      };
       const item = {
         ...input,
+        githubUserId: input.githubLogin === 'brimdor' ? 1_202_831 : 9_999,
         updatedAt: '2026-09-05T00:00:01Z',
         updatedBy: 'admin@pointatx.org',
       };
-      roles = [item, ...roles.filter((candidate) => candidate.email !== item.email)];
+      roles = [item, ...roles.filter((candidate) => candidate.githubUserId !== item.githubUserId)];
       body = item;
     } else if (path.endsWith('/admin/audit')) body = { items: [], nextCursor: null };
     else if (path.endsWith('/admin/capacity'))
@@ -228,11 +235,11 @@ test('manages roles and exposes capacity warnings to administrators', async ({ p
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'admin' }).click();
   await expect(page.getByText('80% — action recommended')).toBeVisible();
-  await page.getByLabel('Email').fill('publisher@pointatx.org');
+  await page.getByLabel('GitHub username').fill('point-publisher');
   await page.locator('.inline-editor select').selectOption('publisher');
   await page.getByRole('button', { name: 'Add person' }).click();
-  await expect(page.getByText('publisher@pointatx.org updated')).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'publisher@pointatx.org' })).toBeVisible();
+  await expect(page.getByText('@point-publisher updated')).toBeVisible();
+  await expect(page.getByRole('cell', { name: '@point-publisher' })).toBeVisible();
 });
 
 test('recovers from a server-side revision conflict without overwriting', async ({

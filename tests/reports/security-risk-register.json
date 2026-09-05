@@ -1,7 +1,7 @@
 [
   {
     "id": "SR-01",
-    "description": "Misconfigured Cloudflare Access or an alternate hostname could expose the private builder.",
+    "description": "Misconfigured GitHub authentication routing or an alternate hostname could expose private Builder APIs.",
     "likelihood": 2,
     "impact": 5,
     "score": 10,

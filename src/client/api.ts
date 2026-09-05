@@ -3,6 +3,7 @@ import type { DraftRecord, RevisionRecord, Role } from '../server/repositories/c
 
 export interface ActorResponse {
   email: string;
+  displayName?: string;
   role: Role;
 }
 
@@ -19,7 +20,8 @@ export interface MediaItem {
 }
 
 export interface AdminRoleItem {
-  email: string;
+  githubLogin: string;
+  githubUserId: number;
   role: Role;
   active: boolean;
   updatedAt: string;
@@ -192,7 +194,7 @@ export const api = {
     });
   },
   listRoles: async () => (await request<{ items: AdminRoleItem[] }>('/admin/roles')).items,
-  upsertRole: (input: { email: string; role: Role; active: boolean }) =>
+  upsertRole: (input: { githubLogin: string; role: Role; active: boolean }) =>
     request<AdminRoleItem>('/admin/roles', {
       method: 'PUT',
       headers: mutationHeaders(crypto.randomUUID()),

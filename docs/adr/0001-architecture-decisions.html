@@ -120,7 +120,7 @@
         an explicit schema, renderer, tests, and migration rather than ad hoc HTML.
       </p>
 
-      <h2>Decision 3: Store drafts in D1 and private media in R2</h2>
+      <h2>Decision 3: Store drafts and chunked private media in D1</h2>
       <h3>Context</h3>
       <p>
         Drafts need revisions, optimistic concurrency, auditability, recovery, and low operational
@@ -130,8 +130,8 @@
       <h3>Decision</h3>
       <p class="decision">
         Use Cloudflare D1 for roles, drafts, immutable revisions, jobs, approvals, audit records,
-        and media metadata. Use a private R2 bucket for validated media bytes. Publish a
-        deterministic document and only referenced, approved assets to staging Git.
+        media metadata, and one-megabyte private media chunks. Enforce a 250 MB media cap below the
+        500 MB Free database limit. Publish only referenced, approved assets to staging Git.
       </p>
       <h3>Alternatives considered</h3>
       <ul>
@@ -147,11 +147,11 @@
       </ul>
       <h3>Consequences</h3>
       <p>
-        Atomic D1 transactions protect revision pointers; R2 lifecycle and quota controls are
-        required. The free tier is monitored rather than assumed unlimited.
+        Atomic D1 transactions protect revision pointers and chunk writes. Free-tier exhaustion
+        fails closed instead of billing; lifecycle and capacity controls remain mandatory.
       </p>
 
-      <h2>Decision 4: Authenticate at Cloudflare Access and verify every request</h2>
+      <h2>Decision 4: Authenticate with the staging-only GitHub App</h2>
       <h3>Context</h3>
       <p>
         The builder is private and role-sensitive. An edge login alone does not remove the need for
@@ -159,19 +159,18 @@
       </p>
       <h3>Decision</h3>
       <p class="decision">
-        Protect the builder hostname with Cloudflare Access. The Worker validates the Access JWT
-        issuer, audience, signature, and expiry, resolves the email to an active local role, and
-        enforces Viewer, Editor, Publisher, or Administrator authorization per route. Development
-        bypass is local-only and fails closed elsewhere.
+        Use GitHub App OAuth with state and PKCE. The Worker validates a signed, Secure, HttpOnly
+        session, stable GitHub user ID, current staging-repository collaboration, and active local
+        role on every request. Development bypass is local-only and fails closed elsewhere.
       </p>
       <h3>Alternatives considered</h3>
       <ul>
         <li>
-          Trust request headers without JWT verification: rejected as forgeable outside a correctly
-          enforced proxy path.
+          Cloudflare Zero Trust Access: rejected because even its Free onboarding requires payment
+          details, violating the no-payment boundary.
         </li>
         <li>
-          Build passwords and sessions: rejected because it duplicates identity and account-security
+          Build application passwords: rejected because it duplicates identity and account-security
           work.
         </li>
         <li>
@@ -181,8 +180,8 @@
       </ul>
       <h3>Consequences</h3>
       <p>
-        Access configuration and the Worker audience must match. Role removal takes effect on the
-        next request, and authorization decisions are audited without logging tokens.
+        Collaboration or role removal takes effect on the next request. OAuth, App, and session
+        secrets stay in Worker secrets; authorization decisions are audited without logging tokens.
       </p>
 
       <h2>Decision 5: Distribute a versioned renderer snapshot</h2>

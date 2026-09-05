@@ -29,6 +29,9 @@ class MemoryMedia implements MediaRepository {
   async get(id: string) {
     return structuredClone(this.items.find((item) => item.id === id) ?? null);
   }
+  async totalBytes() {
+    return this.items.reduce((total, item) => total + item.byteSize, 0);
+  }
   async create(record: MediaRecord) {
     this.items.push(structuredClone(record));
   }

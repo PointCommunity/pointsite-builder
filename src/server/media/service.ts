@@ -22,6 +22,7 @@ export interface MediaRepository {
   list(): Promise<MediaRecord[]>;
   findDuplicate(checksum: string, byteSize: number): Promise<MediaRecord | null>;
   get(id: string): Promise<MediaRecord | null>;
+  totalBytes(): Promise<number>;
   create(record: MediaRecord, requestId: string): Promise<void>;
   markOrphaned(
     referencedIds: Set<string>,
@@ -47,6 +48,7 @@ export class MediaService {
   constructor(
     private readonly repository: MediaRepository,
     private readonly bucket: PrivateBucket,
+    private readonly capacityBytes = 250 * 1024 * 1024,
   ) {}
 
   list(): Promise<MediaRecord[]> {
@@ -65,6 +67,8 @@ export class MediaService {
     const checksum = await sha256(input.bytes);
     const duplicate = await this.repository.findDuplicate(checksum, input.bytes.byteLength);
     if (duplicate?.status === 'ready' || duplicate?.status === 'published') return duplicate;
+    if ((await this.repository.totalBytes()) + input.bytes.byteLength > this.capacityBytes)
+      throw new Error('MEDIA_CAPACITY_EXCEEDED');
     const id = crypto.randomUUID();
     const objectKey = `draft/${crypto.randomUUID()}.${policy.extension}`;
     const record: MediaRecord = {
@@ -155,6 +159,14 @@ export class D1MediaRepository implements MediaRepository {
     const row = await this.database.prepare(`${select} WHERE id=?`).bind(id).first<MediaRow>();
     return row ? fromRow(row) : null;
   }
+  async totalBytes() {
+    const row = await this.database
+      .prepare(
+        "SELECT COALESCE(SUM(byte_size), 0) AS total FROM media_assets WHERE status != 'rejected'",
+      )
+      .first<{ total: number }>();
+    return row?.total ?? 0;
+  }
   async create(record: MediaRecord, requestId: string) {
     await this.database.batch([
       this.database
@@ -234,16 +246,52 @@ export class D1MediaRepository implements MediaRepository {
   }
 }
 
-export class R2PrivateBucket implements PrivateBucket {
-  constructor(private readonly bucket: R2Bucket) {}
-  async put(key: string, bytes: Uint8Array, options?: { contentType: string }) {
-    await this.bucket.put(key, bytes, { httpMetadata: { contentType: options?.contentType } });
+const D1_CHUNK_BYTES = 1_000_000;
+
+export class D1PrivateBucket implements PrivateBucket {
+  constructor(private readonly database: D1Database) {}
+
+  async put(key: string, bytes: Uint8Array) {
+    const statements = [
+      this.database.prepare('DELETE FROM media_object_chunks WHERE object_key=?').bind(key),
+    ];
+    for (let offset = 0, index = 0; offset < bytes.byteLength; offset += D1_CHUNK_BYTES, index++) {
+      const chunk = bytes.slice(offset, offset + D1_CHUNK_BYTES);
+      statements.push(
+        this.database
+          .prepare(
+            'INSERT INTO media_object_chunks (object_key,chunk_index,byte_size,bytes) VALUES (?,?,?,?)',
+          )
+          .bind(key, index, chunk.byteLength, chunk.buffer),
+      );
+    }
+    await this.database.batch(statements);
   }
+
   async get(key: string) {
-    const object = await this.bucket.get(key);
-    return object ? new Uint8Array(await object.arrayBuffer()) : null;
+    const result = await this.database
+      .prepare(
+        'SELECT chunk_index,byte_size,bytes FROM media_object_chunks WHERE object_key=? ORDER BY chunk_index',
+      )
+      .bind(key)
+      .all<{ chunk_index: number; byte_size: number; bytes: ArrayBuffer }>();
+    if (!result.results.length) return null;
+    const size = result.results.reduce((total, row) => total + row.byte_size, 0);
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const row of result.results) {
+      const chunk = new Uint8Array(row.bytes);
+      if (chunk.byteLength !== row.byte_size) throw new Error('MEDIA_STORAGE_CORRUPT');
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
+
   async delete(key: string) {
-    await this.bucket.delete(key);
+    await this.database
+      .prepare('DELETE FROM media_object_chunks WHERE object_key=?')
+      .bind(key)
+      .run();
   }
 }

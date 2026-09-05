@@ -71,7 +71,7 @@
     <div class="grid">
       <section class="card">
         <h3>Private builder</h3>
-        <p>Cloudflare Worker + Access, React/Puck UI, D1 immutable revisions, private R2 media.</p>
+        <p>Cloudflare Worker, GitHub collaborator login, React/Puck UI, and D1 drafts/media.</p>
       </section>
       <section class="card">
         <h3>Isolated staging</h3>
@@ -83,7 +83,7 @@
       <section class="card">
         <h3>Public site</h3>
         <p>
-          Static export only. No Access tokens, database bindings, media credentials, or GitHub
+          Static export only. No session tokens, database bindings, media credentials, or GitHub
           credentials enter the bundle.
         </p>
       </section>
@@ -96,7 +96,7 @@
           <li>Research, spec, threat model, ADRs, design system</li>
           <li>Strict document schema and 13 safe modules</li>
           <li>D1 drafts, autosave, conflicts, history and restore</li>
-          <li>Cloudflare Access JWT and application roles</li>
+          <li>Signed GitHub sessions, live collaborator checks, and application roles</li>
         </ul>
       </section>
       <section class="card done">
@@ -110,8 +110,8 @@
       <section class="card gate">
         <h3>G5: External configuration</h3>
         <ul>
-          <li>Create D1/R2/Worker and Access policy</li>
-          <li>Create staging-only GitHub App and secrets</li>
+          <li>Keep Worker and D1 on hard-limited Free plans</li>
+          <li>Create staging-only GitHub App OAuth and secrets</li>
           <li>Deploy, browser-test and accept exact candidate</li>
         </ul>
       </section>
@@ -126,8 +126,8 @@
     <h2>Acceptance</h2>
     <ol>
       <li>
-        Admins authenticate through Cloudflare Access; application roles are rechecked on every
-        request.
+        Admins authenticate through GitHub; staging collaboration and application roles are
+        rechecked on every request.
       </li>
       <li>
         Editors create, duplicate, autosave, preview, compare and restore drafts without overwriting
@@ -143,9 +143,9 @@
     </ol>
     <h2>Cost posture</h2>
     <p>
-      Free-first: static public delivery, Workers request allowance, D1/R2 free quotas, and GitHub
-      private repositories. Capacity warnings begin at 70%; paid plans are considered only after
-      measured use warrants them.
+      Free-only: static public delivery, hard-limited Workers and D1 allowances, and GitHub private
+      repositories. Zero Trust and R2 are excluded; no subscription, new payment method, or
+      usage-based overage path is permitted. Capacity warnings begin at 70%.
     </p>
   </body>
 </html>
