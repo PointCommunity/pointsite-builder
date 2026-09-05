@@ -28,10 +28,30 @@ export function createPublishRoutes(publisher?: StagingPublisher) {
     );
     if (!body.success) throw new ApiError(422, 'VALIDATION_FAILED', 'Review the publish candidate');
     try {
-      return context.json(await publisher.publish({ ...body.data, actor: actor.email }), 201);
+      return context.json(
+        await publisher.publish({
+          ...body.data,
+          actor: actor.email,
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+          requestId: context.get('requestId'),
+        }),
+        201,
+      );
     } catch (error) {
       if (error instanceof Error && error.message === 'STAGING_BASE_DRIFT')
         throw new ApiError(409, 'STAGING_BASE_DRIFT', 'Staging changed; refresh the candidate');
+      if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT')
+        throw new ApiError(
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'This publish retry belongs to a different candidate',
+        );
+      if (error instanceof Error && error.message === 'PUBLISH_JOB_NOT_CLAIMABLE')
+        throw new ApiError(
+          409,
+          'PUBLISH_IN_PROGRESS',
+          'Another staging publish is already running',
+        );
       throw error;
     }
   });
