@@ -17,11 +17,11 @@
 - [ ] T003 Add CI for format, lint, types, tests/coverage, build, secret/SCA/SAST scans, and artifacts.
   - Acceptance: pull requests cannot pass with a failing required stage and permissions are least privilege.
   - Verify: action syntax validation and first branch run.
-  - Files: `.github/workflows/quality.yml`, `.github/dependabot.yml`, `.github/CODEOWNERS`.
-- [ ] T004 Record ADRs for repository isolation, visual editor, storage, auth, renderer distribution, and production gates.
+  - Files: `.github/workflows/quality.yml`, `.github/dependabot.yml`, `.github/CODEOWNERS`, `.pre-commit-config.yaml`, `docs/security-scanning.html`.
+- [x] T004 Record ADRs for repository isolation, visual editor, storage, auth, renderer distribution, and production gates in dark-mode HTML.
   - Acceptance: every architectural decision has context, decision, consequences, and alternatives.
   - Verify: ADR index and link check.
-  - Files: `docs/adr/*.md`, `docs/adr/index.md`.
+  - Files: `docs/adr/0001-architecture-decisions.html`, `docs/adr/index.html`.
 
 ## Phase 2: Foundational contracts
 

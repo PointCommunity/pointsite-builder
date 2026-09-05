@@ -1,0 +1,8 @@
+* @brimdor
+
+/.github/ @brimdor
+/migrations/ @brimdor
+/src/server/ @brimdor
+/src/site-kit/ @brimdor
+/worker/ @brimdor
+/wrangler.jsonc @brimdor

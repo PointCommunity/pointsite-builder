@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PointSite Builder Security Scanning</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 Inter,
+          system-ui,
+          sans-serif;
+        background: #101512;
+        color: #e7eee9;
+      }
+      body {
+        max-width: 68rem;
+        margin: auto;
+        padding: 2rem;
+      }
+      h1,
+      h2 {
+        color: #f7faf8;
+        line-height: 1.2;
+      }
+      a {
+        color: #91d7ad;
+      }
+      code {
+        background: #202a23;
+        padding: 0.15rem 0.35rem;
+        border-radius: 0.25rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #405046;
+        padding: 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #202a23;
+      }
+      .callout {
+        border-left: 0.25rem solid #75c996;
+        background: #18221b;
+        padding: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>PointSite Builder security scanning</h1>
+      <p class="callout">
+        All pull-request security stages are blocking. A staging URL is required before DAST is
+        enabled.
+      </p>
+      <h2>Scan inventory</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Tool</th>
+            <th>Gate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Local commit</td>
+            <td>Gitleaks 8.28.0</td>
+            <td>Any detected credential blocks the commit.</td>
+          </tr>
+          <tr>
+            <td>Pull request and weekly</td>
+            <td>npm audit</td>
+            <td>High or critical advisories block.</td>
+          </tr>
+          <tr>
+            <td>Pull request and weekly</td>
+            <td>TruffleHog 3.97.4</td>
+            <td>Verified and unknown credentials block.</td>
+          </tr>
+          <tr>
+            <td>Pull request and weekly</td>
+            <td>Semgrep 1.176.1</td>
+            <td>Configured TypeScript, JavaScript, and OWASP findings block.</td>
+          </tr>
+          <tr>
+            <td>Staging candidate</td>
+            <td>Runtime probes and DAST</td>
+            <td>Enabled only after a private staging URL exists.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Triage</h2>
+      <ol>
+        <li>Stop promotion and preserve the scanner output as private CI evidence.</li>
+        <li>Confirm reachability and exploitability; do not suppress an unreviewed finding.</li>
+        <li>Fix the source or dependency, add a regression test, and rerun every gate.</li>
+        <li>Document a false positive narrowly with its evidence and an owner.</li>
+      </ol>
+      <h2>Credential response</h2>
+      <p>
+        Revoke and rotate a detected credential immediately, remove it from current and historical
+        Git data where appropriate, audit its use, and store the replacement only in Cloudflare or
+        GitHub secret storage. Never paste a live value into an issue, log, fixture, or report.
+      </p>
+      <h2>Database freshness</h2>
+      <p>
+        Scanners run on each pull request and every Monday. A newly disclosed advisory may appear
+        between scheduled refreshes, so a candidate also reruns scans immediately before release.
+      </p>
+    </main>
+  </body>
+</html>
