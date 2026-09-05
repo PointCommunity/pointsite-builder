@@ -91,119 +91,119 @@
 
 ## Phase 4: Authoring UI slice
 
-- [ ] T020 Build application shell, routing, identity loading, skip link, error boundary, loading/empty/denied states, and responsive navigation.
+- [x] T020 Build application shell, routing, identity loading, skip link, error boundary, loading/empty/denied states, and responsive navigation.
   - Acceptance: role-appropriate navigation is semantic and keyboard reachable at 320-1280 widths.
   - Verify: component tests and initial axe checks.
   - Files: `src/client/App.tsx`, `src/client/app.css`, `src/client/main.tsx`, `index.html`.
-- [ ] T021 Build draft picker and create/duplicate/archive flows against the API.
+- [x] T021 Build draft picker and create/duplicate/archive flows against the API.
   - Acceptance: Editor can manage drafts; Viewer gets read-only affordances; long/empty/error states are usable.
   - Verify: component and API-backed browser tests.
   - Files: `src/client/drafts/DraftList.tsx`, `src/client/drafts/DraftActions.tsx`, `src/client/api.ts`, `tests/unit/draft-list.test.tsx`.
-- [ ] T022 Build EditorProvider state/actions/meta contract, five-second autosave, offline retry, unload guard, and conflict recovery.
+- [x] T022 Build EditorProvider state/actions/meta contract, five-second autosave, offline retry, unload guard, and conflict recovery.
   - Acceptance: saving state is announced; acknowledged data survives reload; stale data is never overwritten.
   - Verify: fake-timer and integration tests for saved/offline/conflict flows.
   - Files: `src/client/editor/EditorProvider.tsx`, `src/client/editor/useAutosave.ts`, `tests/unit/autosave.test.tsx`.
-- [ ] T023 Integrate Puck as a lazy editor canvas with typed registry, explicit viewports, inspector, outline, and preview.
+- [x] T023 Integrate Puck as a lazy editor canvas with typed registry, explicit viewports, inspector, outline, and preview.
   - Acceptance: required modules can be added/configured/reordered without shipping Puck on non-editor routes.
   - Verify: build chunk inspection and editor browser test.
   - Files: `src/client/editor/VisualEditor.tsx`, `src/client/editor/puck-config.tsx`, `src/client/editor/EditorRoute.tsx`.
-- [ ] T024 Add non-drag structure controls, focus management, status announcements, and mobile sheets.
+- [x] T024 Add non-drag structure controls, focus management, status announcements, and mobile sheets.
   - Acceptance: every block operation works by buttons/keyboard without drag and focus remains predictable.
   - Verify: keyboard Playwright test and manual accessibility matrix.
   - Files: `src/client/editor/StructurePanel.tsx`, `src/client/editor/MobilePanels.tsx`, `tests/e2e/editor-keyboard.spec.ts`.
-- [ ] T025 Build global site, metadata, navigation, footer, forms, collections, and theme editors. (FR-007-FR-008)
+- [x] T025 Build global site, metadata, navigation, footer, forms, collections, and theme editors. (FR-007-FR-008)
   - Acceptance: every seeded current PointSite surface is editable through bounded fields.
   - Verify: coverage audit and whole-site authoring E2E.
   - Files: `src/client/settings/SiteSettings.tsx`, `src/client/settings/NavigationEditor.tsx`, `src/client/settings/ThemeEditor.tsx`, `src/client/settings/CollectionsEditor.tsx`.
-- [ ] T026 Build responsive same-renderer preview and preset gallery. (FR-014, QR-005)
+- [x] T026 Build responsive same-renderer preview and preset gallery. (FR-014, QR-005)
   - Acceptance: preview uses the exact document/renderer identity at 360, 768, 1280; current Point and overhaul presets are available.
   - Verify: deterministic component snapshots and browser screenshots.
   - Files: `src/client/preview/Preview.tsx`, `src/site-kit/presets.ts`, `tests/e2e/preview.spec.ts`.
-- [ ] T027 Build revision history, labeling, comparison metadata, and restore confirmation UI.
+- [x] T027 Build revision history, labeling, comparison metadata, and restore confirmation UI.
   - Acceptance: an Editor can inspect paginated history and restore as a new revision without losing the current revision.
   - Verify: browser restore flow and focus-return test.
   - Files: `src/client/revisions/RevisionHistory.tsx`, `src/client/revisions/RestoreDialog.tsx`, `tests/e2e/revisions.spec.ts`.
 
 ## Phase 5: Private media and administration
 
-- [ ] T028 Write failing media validation, quota, access, reference, and retention tests. (FR-015-FR-016)
+- [x] T028 Write failing media validation, quota, access, reference, and retention tests. (FR-015-FR-016)
   - Acceptance: supported signatures and every rejection/orphan path are specified.
   - Verify: focused tests fail before service exists.
   - Files: `tests/unit/media-policy.test.ts`, `tests/integration/media-api.test.ts`.
-- [ ] T029 Implement private R2 media service, signature/dimension validation, random keys, deduplication, authorized reads, and lifecycle transitions.
+- [x] T029 Implement private R2 media service, signature/dimension validation, random keys, deduplication, authorized reads, and lifecycle transitions.
   - Acceptance: only ready media with alt text can attach; bytes are never public by default.
   - Verify: T028 passes with R2 fake and local Worker binding.
   - Files: `src/server/media/policy.ts`, `src/server/media/service.ts`, `src/server/routes/media.ts`.
-- [ ] T030 Build accessible upload and media library UI with progress, retry, validation, alt text, and selection.
+- [x] T030 Build accessible upload and media library UI with progress, retry, validation, alt text, and selection.
   - Acceptance: empty/upload/rejected/ready/orphan states work at all target widths.
   - Verify: media component and E2E tests with fixture images.
   - Files: `src/client/media/MediaLibrary.tsx`, `src/client/media/MediaUpload.tsx`, `tests/e2e/media.spec.ts`.
-- [ ] T031 Implement role administration, paginated audit view, and capacity estimates/warnings. (FR-003, FR-026, FR-028)
+- [x] T031 Implement role administration, paginated audit view, and capacity estimates/warnings. (FR-003, FR-026, FR-028)
   - Acceptance: only Administrators mutate roles; role removal applies next request; audit excludes payloads/secrets; 70 percent warnings are visible.
   - Verify: authorization integration tests and admin browser flow.
   - Files: `src/server/routes/admin.ts`, `src/client/admin/AdminRoute.tsx`, `src/client/admin/RoleTable.tsx`, `src/client/admin/AuditView.tsx`.
-- [ ] T032 Implement revision/media/audit retention maintenance and export-safe reporting.
+- [x] T032 Implement revision/media/audit retention maintenance and export-safe reporting.
   - Acceptance: dry-run is default; named/current data is preserved; every deletion is audited.
   - Verify: retention unit/integration tests with fixed clock.
   - Files: `src/server/maintenance/retention.ts`, `tests/unit/retention.test.ts`, `scripts/maintenance.mjs`.
 
 ## Phase 6: Staging renderer and deployment
 
-- [ ] T033 Add staging governance, production-remote documentation, branch safety, Worker static deployment config, and CI without changing production.
+- [x] T033 Add staging governance, production-remote documentation, branch safety, Worker static deployment config, and CI without changing production.
   - Acceptance: staging is independent/private; deployment target is staging-only; current baseline checks pass.
   - Verify: staging repo audit, lint/build, production status check.
   - Files: `pointsite-staging/AGENTS.md`, `pointsite-staging/wrangler.jsonc`, `pointsite-staging/.github/workflows/quality.yml`, `pointsite-staging/.github/workflows/deploy-staging.yml`.
-- [ ] T034 Vendor exact site-kit snapshot and canonical PointSite document into staging.
+- [x] T034 Vendor exact site-kit snapshot and canonical PointSite document into staging.
   - Acceptance: snapshot version/checksum matches builder; production routes/content are represented.
   - Verify: package checksum and migration tests in both repositories.
   - Files: `pointsite-staging/site-kit/*`, `pointsite-staging/content/builder-site.json`, `pointsite-staging/scripts/sync-site-kit.mjs`.
-- [ ] T035 Integrate builder document renderer into staging static export while preserving static/read-only forms and base-path safety. (FR-009, FR-030)
+- [x] T035 Integrate builder document renderer into staging static export while preserving static/read-only forms and base-path safety. (FR-009, FR-030)
   - Acceptance: all routes export from JSON; no API/database/auth code enters public site bundle.
   - Verify: PointSite expert verification plus exported-route/source scan.
   - Files: `pointsite-staging/app/page.tsx`, `pointsite-staging/app/[slug]/page.tsx`, `pointsite-staging/components/BuilderSite.tsx`, `pointsite-staging/app/globals.css`.
-- [ ] T036 Add exact-candidate staging verification script for routes, assets, content checksum, accessibility, headers, and live probes.
+- [x] T036 Add exact-candidate staging verification script for routes, assets, content checksum, accessibility, headers, and live probes.
   - Acceptance: one command produces bounded JSON evidence and fails on any mandatory check.
   - Verify: deliberate bad fixture fails, restored candidate passes.
   - Files: `pointsite-staging/scripts/verify-staging.mjs`, `pointsite-staging/tests/staging-contract.test.ts`, `pointsite-staging/package.json`.
 
 ## Phase 7: GitHub publishing and staging acceptance
 
-- [ ] T037 Write failing GitHub App, allowlist, base-SHA, response-validation, idempotency, and job-state tests. (FR-018-FR-020, FR-023-FR-025)
+- [x] T037 Write failing GitHub App, allowlist, base-SHA, response-validation, idempotency, and job-state tests. (FR-018-FR-020, FR-023-FR-025)
   - Acceptance: staging success/failure/retry/drift and all production-disabled cases are specified.
   - Verify: focused tests fail before client/service exists.
   - Files: `tests/unit/github-client.test.ts`, `tests/integration/publish-service.test.ts`, `tests/fixtures/github.ts`.
-- [ ] T038 Implement GitHub App token exchange and strictly validated GitHub client for staging-only file commits. (FR-019)
+- [x] T038 Implement GitHub App token exchange and strictly validated GitHub client for staging-only file commits. (FR-019)
   - Acceptance: short-lived token, exact installation, response schemas, path allowlist, and base SHA are enforced.
   - Verify: T037 client cases pass without real secrets.
   - Files: `src/server/github/app-auth.ts`, `src/server/github/client.ts`, `src/server/github/schemas.ts`.
-- [ ] T039 Implement resumable, idempotent staging publish jobs and deterministic candidate package. (FR-018-FR-020)
+- [x] T039 Implement resumable, idempotent staging publish jobs and deterministic candidate package. (FR-018-FR-020)
   - Acceptance: same revision/key creates one result; failed steps resume; one job runs; evidence is exact.
   - Verify: T037 service cases and local fake-GitHub integration.
   - Files: `src/server/publish/candidate.ts`, `src/server/publish/service.ts`, `src/server/routes/publish.ts`.
-- [ ] T040 Build staging publish panel, exact candidate review, progress, failure recovery, and evidence display.
+- [x] T040 Build staging publish panel, exact candidate review, progress, failure recovery, and evidence display.
   - Acceptance: only Publishers act; exact revision/checksum/base are visible; buttons cannot imply production availability.
   - Verify: permission and publish browser tests.
   - Files: `src/client/publish/StagingPublish.tsx`, `src/client/publish/JobStatus.tsx`, `tests/e2e/publish-staging.spec.ts`.
-- [ ] T041 Implement staging acceptance and invalidation rules bound to the full candidate tuple. (FR-021-FR-022)
+- [x] T041 Implement staging acceptance and invalidation rules bound to the full candidate tuple. (FR-021-FR-022)
   - Acceptance: only complete passing evidence accepts; any tuple or production-base drift invalidates.
   - Verify: approval state-machine unit/integration tests.
   - Files: `src/server/approvals/service.ts`, `src/server/routes/approvals.ts`, `tests/unit/approvals.test.ts`.
-- [ ] T042 Implement production endpoint as a compile-time and runtime hard-disabled capability with no repository or credential fields. (FR-023)
+- [x] T042 Implement production endpoint as a compile-time and runtime hard-disabled capability with no repository or credential fields. (FR-023)
   - Acceptance: endpoint and UI both report `PRODUCTION_DISABLED`; network spy proves no GitHub production call.
   - Verify: unit, integration, and browser negative tests.
   - Files: `src/server/publish/production-disabled.ts`, `src/client/publish/ProductionLocked.tsx`, `tests/integration/production-lock.test.ts`.
 
 ## Phase 8: Quality, security, and staging operations
 
-- [ ] T043 Run and remediate the source web-design checklist over all builder UI files.
+- [x] T043 Run and remediate the source web-design checklist over all builder UI files.
   - Acceptance: each scoped file has a pass or fixed line-specific finding.
   - Verify: guideline search, lint, component suite, `git diff --check`.
   - Files: `tests/reports/web-design-audit.html`, affected `src/client/*` files only.
-- [ ] T044 Complete automated and manual WCAG 2.2 AA evidence matrix including keyboard, zoom/reflow, contrast, reduced motion, and screen-reader spot checks. (QR-002, QR-004)
+- [x] T044 Complete automated and manual WCAG 2.2 AA evidence matrix including keyboard, zoom/reflow, contrast, reduced motion, and screen-reader spot checks. (QR-002, QR-004)
   - Acceptance: no critical/serious automated findings; manual outcomes are recorded without unsupported conformance claims.
   - Verify: Playwright axe suite plus signed evidence report.
   - Files: `tests/accessibility/*.spec.ts`, `tests/reports/accessibility.html`.
-- [ ] T045 Complete cross-browser, responsive, visual, offline, conflict, permission, and adversarial UX journeys.
+- [x] T045 Complete cross-browser, responsive, visual, offline, conflict, permission, and adversarial UX journeys.
   - Acceptance: Chromium, Firefox, and WebKit primary flows pass at target widths; pragmatic UX findings are remediated.
   - Verify: Playwright projects and screenshot review.
   - Files: `tests/e2e/*.spec.ts`, `playwright.config.ts`, `tests/reports/ux.html`.
@@ -215,7 +215,7 @@
   - Acceptance: no critical/high unresolved vulnerability; all TM-01-TM-12 controls have evidence.
   - Verify: security workflow and dark-mode HTML report.
   - Files: `.github/workflows/security.yml`, `tests/reports/security.html`, affected security code only.
-- [ ] T048 Create and verify dark-mode HTML operator handbook, backup/restore, credential rotation, failed-publish, quota, staging rollback, and production rollback runbooks. (FR-029)
+- [x] T048 Create and verify dark-mode HTML operator handbook, backup/restore, credential rotation, failed-publish, quota, staging rollback, and production rollback runbooks. (FR-029)
   - Acceptance: each procedure has prerequisites, safe command, expected result, stop condition, and recovery.
   - Verify: link/HTML validation and non-destructive drill.
   - Files: `docs/operator-handbook.html`, `scripts/verify-runbooks.mjs`.

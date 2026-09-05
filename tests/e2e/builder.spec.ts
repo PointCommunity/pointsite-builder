@@ -143,6 +143,77 @@ test('loads an accessible private draft workspace', async ({ page }) => {
   ).toEqual([]);
 });
 
+test('keeps every editor panel semantic and free of serious axe findings', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Sunday update' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
+    'href',
+    '#main-content',
+  );
+
+  for (const panel of ['settings', 'media', 'preview', 'history', 'publish', 'admin']) {
+    await page.getByRole('button', { name: panel, exact: true }).click();
+    const serious = (await new AxeBuilder({ page }).analyze()).violations.filter((item) =>
+      ['critical', 'serious'].includes(item.impact ?? ''),
+    );
+    expect(serious, `${panel} panel axe findings`).toEqual([]);
+    expect(
+      await page.evaluate(
+        () => globalThis.document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      `${panel} panel horizontal overflow`,
+    ).toBe(true);
+  }
+});
+
+test('supports keyboard bypass, text resizing, reflow, and reduced motion', async ({
+  page,
+  browserName,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Website drafts' })).toBeVisible();
+
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+  if (browserName === 'webkit') {
+    // Desktop Safari follows the host's keyboard-navigation preference for links.
+    await skipLink.focus();
+    await expect(skipLink).toBeFocused();
+    await page.keyboard.press('Enter');
+  } else {
+    await page.keyboard.press('Tab');
+    await expect(skipLink).toBeFocused();
+    await page.keyboard.press('Enter');
+  }
+  await expect(page).toHaveURL(/#main-content$/);
+
+  await page.evaluate(() => {
+    globalThis.document.documentElement.style.fontSize = '200%';
+  });
+  const overflow = await page.evaluate(() =>
+    [...globalThis.document.querySelectorAll<HTMLElement>('body *')]
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.right > window.innerWidth + 1 || rect.left < -1;
+      })
+      .map((element) => ({
+        element: element.tagName.toLowerCase(),
+        className: element.className,
+        right: Math.round(element.getBoundingClientRect().right),
+      })),
+  );
+  expect(overflow).toEqual([]);
+  expect(
+    await page.getByRole('button', { name: 'Open editor' }).evaluate((element) =>
+      getComputedStyle(element)
+        .transitionDuration.split(',')
+        .every((duration) => Number.parseFloat(duration) <= 0.00001),
+    ),
+  ).toBe(true);
+});
+
 test('changes the design and creates a page without code', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();

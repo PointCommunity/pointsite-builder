@@ -23,6 +23,7 @@
     "db:migrate:local": "wrangler d1 migrations apply pointsite-builder --local",
     "db:migrate:remote": "wrangler d1 migrations apply pointsite-builder --remote",
     "maintenance": "node scripts/maintenance.mjs",
+    "verify:runbooks": "node scripts/verify-runbooks.mjs",
     "contract:lint": "redocly lint specs/001-pointsite-builder/contracts/openapi.yaml",
     "test:performance": "npm run build && tsx tests/performance/api-load.mjs && node scripts/verify-budgets.mjs"
   },

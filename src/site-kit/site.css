@@ -145,7 +145,7 @@
   padding: 0.65rem 1rem;
   text-decoration: none;
 }
-.point-button--primary {
+.point-site .point-button--primary {
   background: var(--point-primary);
   border-color: var(--point-primary);
   color: var(--point-on-primary);

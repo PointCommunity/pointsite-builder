@@ -22,12 +22,15 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
   const editable = role !== 'viewer' && draft.status === 'active';
   return (
     <div className="editor-workspace">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="editor-header">
-        <button className="button" onClick={onClose}>
+        <button className="button" type="button" onClick={onClose}>
           ← All drafts
         </button>
         <div>
-          <strong>{draft.name}</strong>
+          <h1 className="editor-title">{draft.name}</h1>
           <span>Revision {draft.revision.sequence}</span>
         </div>
         <div className="save-cluster">
@@ -35,13 +38,14 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
             {saveState === 'saved' ? 'All changes saved' : saveState}
           </span>
           {saveState === 'conflict' ? (
-            <button className="button" onClick={() => void reloadLatest()}>
+            <button className="button" type="button" onClick={() => void reloadLatest()}>
               Load latest
             </button>
           ) : null}
           {editable ? (
             <button
               className="button button--primary"
+              type="button"
               disabled={saveState === 'saved' || saveState === 'saving'}
               onClick={() => void saveNow()}
             >
@@ -64,6 +68,7 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
         ).map((item) => (
           <button
             key={item}
+            type="button"
             aria-current={panel === item ? 'page' : undefined}
             onClick={() => setPanel(item)}
           >

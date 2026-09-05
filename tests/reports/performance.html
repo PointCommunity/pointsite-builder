@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Performance Evidence</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.55 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1000px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 2rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #151d16;
+      }
+      th,
+      td {
+        padding: 0.7rem;
+        border: 1px solid #39463a;
+        text-align: left;
+      }
+      .pass {
+        color: #9ee6a0;
+      }
+      .pending {
+        color: #ffb4a9;
+      }
+      code {
+        color: #d4efbd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Performance & capacity evidence</h1>
+    <p><strong>Date:</strong> 2026-09-05 · deterministic local Worker-compatible test harness</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Gate</th>
+          <th>Budget</th>
+          <th>Observed</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>API latency, 1,000 GETs at concurrency 25</td>
+          <td>p95 &lt; 100 ms</td>
+          <td>p50 0.41 ms · p95 0.84 ms · p99 3.72 ms</td>
+          <td class="pass">Pass</td>
+        </tr>
+        <tr>
+          <td>Total JavaScript gzip</td>
+          <td>≤ 500,000 bytes</td>
+          <td>386,539 bytes</td>
+          <td class="pass">Pass</td>
+        </tr>
+        <tr>
+          <td>Lazy visual-editor gzip</td>
+          <td>≤ 200,000 bytes</td>
+          <td>147,012 bytes</td>
+          <td class="pass">Pass</td>
+        </tr>
+        <tr>
+          <td>Capacity warning</td>
+          <td>Visible at ≥ 70%</td>
+          <td>Role-admin browser journey displays 70% warning</td>
+          <td class="pass">Pass</td>
+        </tr>
+        <tr>
+          <td>Deployed Lighthouse/Core Web Vitals</td>
+          <td>Measure protected staging</td>
+          <td>Target not deployed</td>
+          <td class="pending">Pending Cloudflare</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>Repeatable commands</h2>
+    <p>
+      <code>npm run test:performance</code> builds the candidate, runs the load harness, validates
+      gzip budgets, and writes bounded JSON artifacts. CI uploads the evidence for the exact commit.
+    </p>
+    <p>
+      Local latency excludes Cloudflare edge, Access, and GitHub API time. It proves
+      application-handler headroom, not internet response time.
+    </p>
+  </body>
+</html>

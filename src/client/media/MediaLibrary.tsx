@@ -104,14 +104,20 @@ export function MediaLibrary({
         <ul className="media-grid">
           {items.map((item) => (
             <li key={item.id}>
-              <img src={`/api/media/${item.id}`} alt={item.altText} loading="lazy" />
+              <img
+                src={`/api/media/${item.id}`}
+                alt={item.altText}
+                width={item.width}
+                height={item.height}
+                loading="lazy"
+              />
               <div>
                 <strong>{item.filename}</strong>
                 <span>
                   {item.width} × {item.height} · {(item.byteSize / 1024).toFixed(1)} KiB
                 </span>
                 {onSelect ? (
-                  <button className="button" onClick={() => onSelect(item)}>
+                  <button className="button" type="button" onClick={() => onSelect(item)}>
                     Add to site library
                   </button>
                 ) : null}

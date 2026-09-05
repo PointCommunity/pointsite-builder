@@ -1,0 +1,22 @@
+[
+  {
+    "id": "SR-01",
+    "description": "Misconfigured Cloudflare Access or an alternate hostname could expose the private builder.",
+    "likelihood": 2,
+    "impact": 5,
+    "score": 10,
+    "owner": "PointSite operator",
+    "due_date": "before protected staging acceptance",
+    "status": "open-external-gate"
+  },
+  {
+    "id": "SR-02",
+    "description": "Runtime injection behavior cannot be assessed until a protected live DAST target exists.",
+    "likelihood": 2,
+    "impact": 4,
+    "score": 8,
+    "owner": "PointSite operator",
+    "due_date": "before protected staging acceptance",
+    "status": "open-external-gate"
+  }
+]

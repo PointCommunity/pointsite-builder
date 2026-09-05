@@ -55,19 +55,24 @@ export function RevisionHistory() {
                   <span className="visually-hidden">Label for revision {revision.sequence}</span>
                   <input
                     maxLength={100}
-                    placeholder="Name this revision"
+                    name={`revision-label-${revision.id}`}
+                    autoComplete="off"
+                    placeholder="Name this revision…"
                     value={labels[revision.id] ?? revision.label ?? ''}
                     onChange={(event) =>
                       setLabels((current) => ({ ...current, [revision.id]: event.target.value }))
                     }
                   />
                 </label>
-                <button className="button">Save label</button>
+                <button className="button" type="submit">
+                  Save label
+                </button>
               </form>
             </div>
             {revision.id !== draft.revision.id ? (
               <button
                 className="button"
+                type="button"
                 onClick={() => {
                   if (window.confirm(`Restore revision ${revision.sequence} as a new revision?`))
                     void api

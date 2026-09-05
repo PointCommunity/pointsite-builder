@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Web Design Audit</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.55 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1100px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+        text-wrap: balance;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 2rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #151d16;
+      }
+      th,
+      td {
+        padding: 0.7rem;
+        border: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #b9d99d;
+      }
+      code {
+        color: #d4efbd;
+      }
+      .pass {
+        color: #9ee6a0;
+      }
+      .limit {
+        color: #ffd28c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Web design audit</h1>
+    <p>
+      <strong>Date:</strong> 2026-09-05 · <strong>Scope:</strong> <code>src/client/**/*</code> and
+      <code>index.html</code>
+    </p>
+    <p class="pass">Result: no unresolved release-blocking source or rendered-interface finding.</p>
+
+    <h2>Remediated findings</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Location</th>
+          <th>Finding</th>
+          <th>Resolution</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>src/client/media/MediaLibrary.tsx</code></td>
+          <td>Uploaded previews lacked intrinsic dimensions.</td>
+          <td>
+            Uses validated media width and height, lazy loading, and meaningful alternative text.
+          </td>
+        </tr>
+        <tr>
+          <td><code>src/client/editor/EditorRoute.tsx</code></td>
+          <td>The editor route lacked its own bypass link and page-level heading.</td>
+          <td>Added a keyboard-visible skip link and draft-name <code>h1</code>.</td>
+        </tr>
+        <tr>
+          <td><code>src/client/app.css</code></td>
+          <td>The identity cluster overflowed at 200% text size in a 320 CSS-pixel viewport.</td>
+          <td>Header wraps, flex children may shrink, and long identities wrap safely.</td>
+        </tr>
+        <tr>
+          <td><code>src/site-kit/site.css</code></td>
+          <td>A general link-color selector overrode primary-button foreground contrast.</td>
+          <td>
+            Raised component selector specificity; axe verifies the intended white-on-green text.
+          </td>
+        </tr>
+        <tr>
+          <td><code>src/client/revisions/RevisionHistory.tsx</code></td>
+          <td>Revision-label input metadata and placeholder copy were incomplete.</td>
+          <td>Added name, autocomplete policy, explicit button types, and ellipsis copy.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>File disposition</h2>
+    <p class="pass">✓ Pass after remediation:</p>
+    <p>
+      <code>App.tsx</code>, <code>AdminRoute.tsx</code>, <code>api.ts</code>, <code>app.css</code>,
+      <code>DraftList.tsx</code>, <code>BlockInspector.tsx</code>, <code>EditorProvider.tsx</code>,
+      <code>EditorRoute.tsx</code>, <code>PageManager.tsx</code>, <code>StructurePanel.tsx</code>,
+      <code>VisualEditor.tsx</code>, <code>main.tsx</code>, <code>MediaLibrary.tsx</code>,
+      <code>Preview.tsx</code>, <code>StagingPublish.tsx</code>, <code>RevisionHistory.tsx</code>,
+      <code>CollectionsEditor.tsx</code>, <code>FormsEditor.tsx</code>,
+      <code>NavigationEditor.tsx</code>, <code>SiteSettings.tsx</code>, and
+      <code>ThemeEditor.tsx</code>.
+    </p>
+
+    <h2>Evidence</h2>
+    <ul>
+      <li>
+        No <code>transition: all</code>, zoom disabling, paste blocking, unjustified autofocus, or
+        outline suppression found.
+      </li>
+      <li>
+        Actions use native buttons; navigation uses links; controls are visibly labeled; status
+        changes use live regions.
+      </li>
+      <li>
+        All editor panels pass serious/critical axe checks and horizontal-overflow checks in the
+        browser suite.
+      </li>
+      <li>
+        Keyboard alternatives exist for block and navigation movement; destructive revision restore
+        requires confirmation.
+      </li>
+      <li>
+        Reduced-motion, safe-area, focus-visible, dark-theme, long-text, empty, loading, denied,
+        error, conflict, and offline states are represented.
+      </li>
+    </ul>
+    <p class="limit">
+      This is an engineering audit of the current English-language admin experience, not a legal
+      certification or a substitute for testing with actual administrators.
+    </p>
+  </body>
+</html>
