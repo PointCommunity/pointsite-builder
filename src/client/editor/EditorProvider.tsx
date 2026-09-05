@@ -88,6 +88,8 @@ export function EditorProvider({
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
 }
 
+// The provider and its colocated hook intentionally form one context module.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useEditor(): EditorValue {
   const value = useContext(EditorContext);
   if (!value) throw new Error('useEditor must be used inside EditorProvider');
