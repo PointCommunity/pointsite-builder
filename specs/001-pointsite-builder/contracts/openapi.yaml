@@ -38,8 +38,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/DraftSummary' }
+                $ref: '#/components/schemas/DraftList'
     post:
       operationId: createDraft
       parameters:
@@ -104,6 +103,37 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '412': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateDraftLifecycle
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                status: { type: string, enum: [active, archived] }
+      responses:
+        '200':
+          description: Updated draft lifecycle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+    delete:
+      operationId: softDeleteDraft
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Soft-deleted draft retained for recovery
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
   /drafts/{draftId}/revisions:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -115,8 +145,34 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/Revision' }
+                $ref: '#/components/schemas/RevisionList'
+  /drafts/{draftId}/revisions/{revisionId}:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - name: revisionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: labelRevision
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label]
+              properties:
+                label: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        '200':
+          description: Revision metadata with an immutable label record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Revision' }
   /drafts/{draftId}/restore:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -150,8 +206,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/Media' }
+                $ref: '#/components/schemas/MediaList'
     post:
       operationId: uploadMedia
       parameters:
@@ -196,17 +251,26 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [revisionId, expectedStagingBaseSha]
+              required: [draftId, expectedBaseSha]
               properties:
-                revisionId: { type: string, format: uuid }
-                expectedStagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+                draftId: { type: string, format: uuid }
+                expectedBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
       responses:
-        '202':
-          description: Staging publish job
+        '201':
+          description: Staging candidate commit and durable publish job
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PublishJob' }
+              schema: { $ref: '#/components/schemas/StagingPublishResult' }
         '409': { $ref: '#/components/responses/Error' }
+  /publish/staging/base:
+    get:
+      operationId: getStagingBase
+      responses:
+        '200':
+          description: Exact current staging main commit
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitSha' }
   /publish/production:
     post:
       operationId: prepareProductionPullRequest
@@ -218,12 +282,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-        '202':
-          description: Production pull-request job after gate
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PublishJob' }
-  /jobs/{jobId}:
+  /publish/jobs/{jobId}:
     get:
       operationId: getJob
       parameters:
@@ -237,6 +296,30 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PublishJob' }
+  /publish/jobs/{jobId}/verification:
+    post:
+      operationId: refreshStagingVerification
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Publish job with exact GitHub check evidence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishJob' }
+  /approvals/production-base:
+    get:
+      operationId: getProductionBaseReadOnly
+      responses:
+        '200':
+          description: Read-only observation of the production main commit
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitSha' }
   /approvals:
     post:
       operationId: recordApproval
@@ -249,18 +332,33 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [gate, candidateChecksum, decision]
+              required: [publishJobId, expectedTuple, decision]
               properties:
-                gate:
-                  {
-                    type: string,
-                    enum: [staging-acceptance, production-preparation, production-publication],
-                  }
-                candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+                publishJobId: { type: string, minLength: 1, maxLength: 100 }
+                expectedTuple: { $ref: '#/components/schemas/CandidateTuple' }
                 decision: { type: string, enum: [approved, rejected, revoked] }
                 note: { type: string, maxLength: 500 }
       responses:
         '201': { description: Recorded approval }
+        '409': { $ref: '#/components/responses/Error' }
+  /approvals/eligibility:
+    post:
+      operationId: checkStagingEligibility
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tuple, observedProductionBaseSha]
+              properties:
+                tuple: { $ref: '#/components/schemas/CandidateTuple' }
+                observedProductionBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+      responses:
+        '200': { description: Current exact-candidate eligibility }
   /admin/roles:
     get:
       operationId: listRoles
@@ -298,12 +396,35 @@ paths:
       operationId: getCapacity
       responses:
         '200': { description: Storage and operation estimates with warning thresholds }
+  /admin/retention:
+    get:
+      operationId: planRetention
+      responses:
+        '200': { description: Dry-run retention plan and checksummed export }
+  /admin/retention/apply:
+    post:
+      operationId: applyRetention
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [exportChecksum]
+              properties:
+                exportChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200': { description: 'Applied exact, previously exported retention plan' }
+        '409': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     cloudflareAccess:
-      type: http
-      scheme: bearer
-      bearerFormat: Cloudflare Access JWT
+      type: apiKey
+      in: header
+      name: Cf-Access-Jwt-Assertion
   parameters:
     DraftId:
       name: draftId
@@ -337,33 +458,71 @@ components:
         role: { type: string, enum: [viewer, editor, publisher, administrator] }
     DraftSummary:
       type: object
-      required: [id, name, status, revisionId, checksum, updatedAt]
+      required: [id, siteId, name, status, latestRevisionId, createdBy, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
+        siteId: { type: string, const: pointsite }
         name: { type: string }
         status: { type: string, enum: [active, archived, deleted] }
-        revisionId: { type: string, format: uuid }
-        checksum: { type: string }
+        latestRevisionId: { type: string, format: uuid }
+        createdBy: { type: string, format: email }
+        createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        deletedAt: { type: [string, 'null'], format: date-time }
+    DraftList:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Draft' }
+        nextCursor: { type: ['string', 'null'] }
     Draft:
       allOf:
         - $ref: '#/components/schemas/DraftSummary'
         - type: object
-          required: [document]
+          required: [document, revision]
           properties:
             document: { $ref: '#/components/schemas/SiteDocument' }
+            revision: { $ref: '#/components/schemas/Revision' }
     Revision:
       type: object
-      required: [id, sequence, checksum, schemaVersion, rendererVersion, createdBy, createdAt]
+      required:
+        [
+          id,
+          draftId,
+          sequence,
+          parentRevisionId,
+          checksum,
+          document,
+          label,
+          schemaVersion,
+          rendererVersion,
+          createdBy,
+          createdAt,
+        ]
       properties:
         id: { type: string, format: uuid }
+        draftId: { type: string, format: uuid }
         sequence: { type: integer, minimum: 1 }
-        checksum: { type: string }
+        parentRevisionId: { type: [string, 'null'], format: uuid }
+        checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        document: { $ref: '#/components/schemas/SiteDocument' }
         schemaVersion: { type: integer }
         rendererVersion: { type: string }
-        label: { type: string }
+        label: { type: [string, 'null'] }
         createdBy: { type: string, format: email }
         createdAt: { type: string, format: date-time }
+    RevisionList:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Revision' }
+        nextCursor: { type: ['string', 'null'] }
     Media:
       type: object
       required: [id, filename, contentType, byteSize, altText, status]
@@ -372,8 +531,20 @@ components:
         filename: { type: string }
         contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/avif] }
         byteSize: { type: integer, minimum: 1, maximum: 5242880 }
+        width: { type: integer, minimum: 1, maximum: 8000 }
+        height: { type: integer, minimum: 1, maximum: 8000 }
         altText: { type: string, minLength: 1 }
         status: { type: string, enum: [ready, rejected, published, orphaned] }
+        createdAt: { type: string, format: date-time }
+    MediaList:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Media' }
+        nextCursor: { type: ['string', 'null'] }
     SiteDocument:
       type: object
       required: [schemaVersion, rendererVersion, site, theme, navigation, pages, forms, collections]
@@ -399,6 +570,72 @@ components:
         externalUrl: { type: string, format: uri }
         requestedBy: { type: string, format: email }
         requestedAt: { type: string, format: date-time }
+        evidence: { type: object }
+    GitSha:
+      type: object
+      additionalProperties: false
+      required: [sha]
+      properties:
+        sha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    CandidateTuple:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          siteId,
+          revisionId,
+          revisionChecksum,
+          schemaVersion,
+          rendererVersion,
+          candidateChecksum,
+          stagingBaseSha,
+          stagingCommitSha,
+          productionBaseSha,
+        ]
+      properties:
+        siteId: { type: string, const: pointsite }
+        revisionId: { type: string, format: uuid }
+        revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schemaVersion: { type: integer, minimum: 1 }
+        rendererVersion: { type: string }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        stagingCommitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        productionBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    StagingPublishResult:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          environment,
+          siteId,
+          revisionId,
+          revisionChecksum,
+          schemaVersion,
+          rendererVersion,
+          candidateChecksum,
+          baseSha,
+          stagingBaseSha,
+          commitSha,
+          url,
+          requestedBy,
+          status,
+        ]
+      properties:
+        environment: { type: string, const: staging }
+        siteId: { type: string, const: pointsite }
+        revisionId: { type: string, format: uuid }
+        revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schemaVersion: { type: integer, minimum: 1 }
+        rendererVersion: { type: string }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        baseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        commitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        url: { type: string, format: uri }
+        jobId: { type: string }
+        requestedBy: { type: string, format: email }
+        status: { type: string, const: succeeded }
     Error:
       type: object
       required: [code, message, requestId]
