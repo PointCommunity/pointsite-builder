@@ -35,6 +35,11 @@ export interface GitHubIdentity {
   login: string;
 }
 
+export type GitHubRepositoryPermission = 'admin' | 'maintain' | 'write' | 'triage' | 'read';
+export type AuthorizedGitHubIdentity = GitHubIdentity & {
+  repositoryPermission: GitHubRepositoryPermission;
+};
+
 export interface GitHubAuthConfig {
   appId: string;
   installationId: string;
@@ -49,7 +54,7 @@ export interface GitHubAuthConfig {
 export interface GitHubIdentityGateway {
   authorizationUrl(input: { state: string; codeChallenge: string; redirectUri: string }): URL;
   exchangeCode(code: string, codeVerifier: string): Promise<GitHubIdentity>;
-  isCollaborator(identity: GitHubIdentity): Promise<boolean>;
+  repositoryPermission(identity: GitHubIdentity): Promise<GitHubRepositoryPermission | null>;
 }
 
 export class AuthenticationError extends Error {
@@ -224,7 +229,7 @@ export class GitHubAuthenticator {
     const saved = await this.sessions.decodeOAuth(stateCookie, now);
     if (saved.state !== state) throw new AuthenticationError('GitHub sign-in state does not match');
     const identity = await this.gateway.exchangeCode(code, saved.verifier);
-    if (!(await this.gateway.isCollaborator(identity)))
+    if (!(await this.gateway.repositoryPermission(identity)))
       throw new AuthorizationError('GitHub account is not an approved staging collaborator');
     const response = new Response(null, {
       status: 302,
@@ -238,7 +243,7 @@ export class GitHubAuthenticator {
     return response;
   }
 
-  async verifySession(request: Request, now = new Date()): Promise<GitHubIdentity> {
+  async verifySession(request: Request, now = new Date()): Promise<AuthorizedGitHubIdentity> {
     assertOrigin(request, this.config.builderOrigin);
     const token = cookie(request, SESSION_COOKIE);
     if (!token) throw new AuthenticationError();
@@ -248,9 +253,10 @@ export class GitHubAuthenticator {
     } catch {
       throw new AuthenticationError();
     }
-    if (!(await this.gateway.isCollaborator(identity)))
+    const repositoryPermission = await this.gateway.repositoryPermission(identity);
+    if (!repositoryPermission)
       throw new AuthorizationError('GitHub collaboration is no longer active');
-    return identity;
+    return { ...identity, repositoryPermission };
   }
 
   logout(): Response {
@@ -317,12 +323,16 @@ export class GitHubApiGateway implements GitHubIdentityGateway {
   }
 
   async isCollaborator(identity: GitHubIdentity): Promise<boolean> {
+    return (await this.repositoryPermission(identity)) !== null;
+  }
+
+  async repositoryPermission(identity: GitHubIdentity): Promise<GitHubRepositoryPermission | null> {
     const token = await this.installationToken();
     const response = await this.fetcher(
       `https://api.github.com/repos/${this.config.repository}/collaborators/${encodeURIComponent(identity.login)}/permission`,
       { headers: githubHeaders(token) },
     );
-    if (response.status === 404) return false;
+    if (response.status === 404) return null;
     if (!response.ok) throw new AuthenticationError('GitHub collaboration could not be verified');
     let permission: z.infer<typeof PermissionSchema>;
     try {
@@ -330,7 +340,9 @@ export class GitHubApiGateway implements GitHubIdentityGateway {
     } catch {
       throw new AuthenticationError('GitHub collaboration response was invalid');
     }
-    return permission.permission !== 'none' && permission.user.id === identity.id;
+    return permission.permission !== 'none' && permission.user.id === identity.id
+      ? permission.permission
+      : null;
   }
 
   private async installationToken(): Promise<string> {
@@ -372,7 +384,12 @@ export async function authenticateRequest(
     const role = await roles.getRole(config.devAuthEmail);
     if (!role?.active)
       throw new AuthorizationError('Your identity does not have an active builder role');
-    return { email: config.devAuthEmail, displayName: config.devAuthEmail, role: role.role };
+    return {
+      email: config.devAuthEmail,
+      displayName: config.devAuthEmail,
+      role: role.role,
+      repositoryPermission: 'admin',
+    };
   }
   if (!config.github) throw new AuthenticationError();
   const identity = await (authenticator ?? createGitHubAuthenticator(config.github)).verifySession(
@@ -383,5 +400,10 @@ export async function authenticateRequest(
   const role = await roles.getRole(subject);
   if (!role?.active)
     throw new AuthorizationError('Your identity does not have an active builder role');
-  return { email: subject, displayName: `@${identity.login}`, role: role.role };
+  return {
+    email: subject,
+    displayName: `@${identity.login}`,
+    role: role.role,
+    repositoryPermission: identity.repositoryPermission,
+  };
 }

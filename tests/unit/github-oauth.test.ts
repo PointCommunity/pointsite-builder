@@ -34,7 +34,7 @@ it('uses state and PKCE, then issues a secure HttpOnly session after collaborato
       observedVerifier = codeVerifier;
       return Promise.resolve({ id: 1_202_831, login: 'brimdor' });
     },
-    isCollaborator: () => Promise.resolve(true),
+    repositoryPermission: () => Promise.resolve('write'),
   };
   const authenticator = new GitHubAuthenticator(
     config,
@@ -72,7 +72,7 @@ it('fails closed when OAuth state is invalid', async () => {
     authorizationUrl: ({ state }) =>
       new URL(`https://github.com/login/oauth/authorize?state=${state}`),
     exchangeCode: () => Promise.resolve({ id: 404, login: 'outsider' }),
-    isCollaborator: () => Promise.resolve(false),
+    repositoryPermission: () => Promise.resolve(null),
   };
   const authenticator = new GitHubAuthenticator(
     config,
@@ -142,6 +142,7 @@ it('exchanges the OAuth code without broad scopes and validates the stable colla
   const account = await gateway.exchangeCode('temporary', 'pkce-verifier');
   expect(account).toEqual({ id: 1_202_831, login: 'brimdor' });
   expect(await gateway.isCollaborator(account)).toBe(true);
+  expect(await gateway.repositoryPermission(account)).toBe('admin');
   const rawBody = requests[0]?.init?.body;
   expect(typeof rawBody).toBe('string');
   const exchangeBody = JSON.parse(rawBody as string) as Record<string, unknown>;

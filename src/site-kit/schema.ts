@@ -41,6 +41,7 @@ const HeroBlockSchema = z.strictObject({
   align: z.enum(['left', 'center']),
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
+  variant: z.enum(['standard', 'homeHero']).optional(),
 });
 
 const HeadingBlockSchema = z.strictObject({
@@ -51,6 +52,9 @@ const HeadingBlockSchema = z.strictObject({
   align: z.enum(['left', 'center']),
   width: z.enum(['narrow', 'wide']),
   supportingText: optionalBodyText,
+  eyebrow: z.string().trim().max(80).optional(),
+  actions: z.array(ActionSchema).max(2).optional(),
+  variant: z.enum(['standard', 'homeIntro']).optional(),
 });
 
 const InlineTextSchema = z.strictObject({
@@ -74,6 +78,9 @@ const RichTextBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('richText'),
   content: z.array(RichTextNodeSchema).min(1).max(100),
+  eyebrow: z.string().trim().max(80).optional(),
+  heading: z.string().trim().max(180).optional(),
+  variant: z.enum(['standard', 'prose']).optional(),
 });
 
 const ImageBlockSchema = z.strictObject({
@@ -84,6 +91,7 @@ const ImageBlockSchema = z.strictObject({
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
   fit: z.enum(['cover', 'contain']),
   caption: z.string().trim().max(500).optional(),
+  variant: z.enum(['standard', 'wide']).optional(),
 });
 
 const SplitFeatureBlockSchema = z.strictObject({
@@ -99,6 +107,10 @@ const SplitFeatureBlockSchema = z.strictObject({
   align: z.enum(['start', 'center']),
   surface: z.enum(['canvas', 'surface', 'primary']),
   action: ActionSchema.optional(),
+  note: z.string().trim().max(500).optional(),
+  calloutLabel: z.string().trim().max(120).optional(),
+  calloutValue: z.string().trim().max(120).optional(),
+  variant: z.enum(['standard', 'photoBanner', 'splitFeature', 'imageSplit']).optional(),
 });
 
 const CtaBlockSchema = z.strictObject({
@@ -108,18 +120,23 @@ const CtaBlockSchema = z.strictObject({
   body: optionalBodyText,
   action: ActionSchema,
   surface: z.enum(['canvas', 'surface', 'primary']),
+  eyebrow: z.string().trim().max(80).optional(),
+  variant: z.enum(['standard', 'rental']).optional(),
 });
 
 const CardsBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('cards'),
+  eyebrow: z.string().trim().max(80).optional(),
   heading: z.string().trim().max(180).optional(),
   columns: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   items: z
     .array(
       z.strictObject({
+        eyebrow: z.string().trim().max(80).optional(),
         title: shortText,
         body: bodyText,
+        supportingText: z.string().trim().max(500).optional(),
         mediaId: uuid.optional(),
         mediaAlt: z.string().trim().min(1).max(300).optional(),
         href: SafeHrefSchema.optional(),
@@ -127,6 +144,17 @@ const CardsBlockSchema = z.strictObject({
     )
     .min(1)
     .max(12),
+  variant: z
+    .enum([
+      'standard',
+      'splitEditorial',
+      'splitEditorialTone',
+      'identity',
+      'beliefs',
+      'groups',
+      'giving',
+    ])
+    .optional(),
 });
 
 const PeopleBlockSchema = z.strictObject({
@@ -135,6 +163,7 @@ const PeopleBlockSchema = z.strictObject({
   heading: z.string().trim().max(180).optional(),
   personIds: z.array(uuid).min(1).max(24),
   layout: z.enum(['grid', 'featured']),
+  variant: z.enum(['standard', 'leadership']).optional(),
 });
 
 const FaqBlockSchema = z.strictObject({
@@ -151,6 +180,8 @@ const FaqBlockSchema = z.strictObject({
     )
     .min(1)
     .max(30),
+  eyebrow: z.string().trim().max(80).optional(),
+  variant: z.enum(['standard', 'groups']).optional(),
 });
 
 const FormBlockSchema = z.strictObject({
@@ -159,6 +190,11 @@ const FormBlockSchema = z.strictObject({
   formId: uuid,
   heading: z.string().trim().max(180).optional(),
   supportingText: optionalBodyText,
+  eyebrow: z.string().trim().max(80).optional(),
+  body: optionalBodyText,
+  linkLabel: z.string().trim().max(80).optional(),
+  linkHref: SafeHrefSchema.optional(),
+  variant: z.enum(['standard', 'panel', 'standalone', 'contact']).optional(),
 });
 
 const MapBlockSchema = z.strictObject({
@@ -171,18 +207,24 @@ const MapBlockSchema = z.strictObject({
     .max(300)
     .refine(isSafePlainText, 'Map query contains unsafe content'),
   title: z.string().trim().min(1).max(180),
+  eyebrow: z.string().trim().max(80).optional(),
+  heading: z.string().trim().max(180).optional(),
+  body: optionalBodyText,
+  variant: z.enum(['standard', 'gathering']).optional(),
 });
 
 const DividerBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('divider'),
   style: z.enum(['line', 'space']),
+  variant: z.enum(['standard']).optional(),
 });
 
 const SpacerBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('spacer'),
   size: z.enum(['small', 'medium', 'large']),
+  variant: z.enum(['standard']).optional(),
 });
 
 function isSafePlainText(value: string): boolean {
@@ -349,6 +391,10 @@ const PageSchema = z.strictObject({
   title: z.string().trim().min(1).max(120),
   route: CanonicalRouteSchema,
   status: z.enum(['draft', 'published', 'hidden']),
+  template: z.enum(['home', 'standard']).optional(),
+  eyebrow: z.string().trim().max(80).optional(),
+  intro: z.string().trim().max(500).optional(),
+  heroMediaId: uuid.optional(),
   metadata: z.strictObject({
     title: z.string().trim().min(1).max(70),
     description: z.string().trim().min(1).max(180),

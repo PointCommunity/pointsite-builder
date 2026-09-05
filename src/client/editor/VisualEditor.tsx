@@ -3,6 +3,7 @@ import '@puckeditor/core/puck.css';
 import { blockDefinitions, renderBlock } from '../../site-kit/registry';
 import { SiteBlockSchema } from '../../site-kit/schema';
 import type { SiteBlock } from '../../site-kit/types';
+import { SiteFrame } from '../../site-kit/SiteRenderer';
 import { BlockInspector } from './BlockInspector';
 import { useEditor } from './EditorProvider';
 
@@ -118,7 +119,16 @@ export function VisualEditor({ pageId }: { pageId: string }) {
       },
     ]),
   ) as unknown as Config<ComponentMap>['components'];
-  const config: Config<ComponentMap> = { components };
+  const config: Config<ComponentMap> = {
+    components,
+    root: {
+      render: ({ children }) => (
+        <SiteFrame document={document} page={page}>
+          {children}
+        </SiteFrame>
+      ),
+    },
+  };
   const data: Data = {
     content: page.blocks.map((block) => ({
       type: block.type,
@@ -130,6 +140,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
   return (
     <div className="visual-editor" aria-label={`Visual canvas for ${page.title}`}>
       <Puck
+        key={page.id}
         config={config}
         data={data}
         onChange={(next) => {
@@ -144,6 +155,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
         }}
         onPublish={() => undefined}
         headerTitle={page.title}
+        iframe={{ enabled: true, waitForStyles: true, syncHostStyles: true }}
       />
     </div>
   );

@@ -771,6 +771,18 @@ textarea {
 }
 
 @media (max-width: 720px) {
+  .app-header {
+    align-items: stretch;
+  }
+  .app-header > div,
+  .app-header > .identity {
+    width: 100%;
+  }
+  .app-header > .identity {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
   .section-heading,
   .create-draft,
   .preview-toolbar {

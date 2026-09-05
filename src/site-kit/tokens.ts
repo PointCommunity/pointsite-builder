@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { ThemeDocument } from './types';
 
-export type SiteTokenStyle = CSSProperties & Record<`--point-${string}`, string>;
+export type SiteTokenStyle = CSSProperties & Record<`--${string}`, string>;
 
 const spacingScale = {
   compact: ['0.75rem', '1.5rem', '3rem'],
@@ -28,5 +28,20 @@ export function themeToTokens(theme: ThemeDocument): SiteTokenStyle {
     '--point-heading-font':
       theme.headingFont === 'serif' ? 'Georgia, serif' : 'Inter, system-ui, sans-serif',
     '--point-body-font': 'Inter, system-ui, sans-serif',
+    '--paper': theme.colors.canvas,
+    '--soft': theme.colors.surface,
+    '--ink': theme.colors.text,
+    '--muted': theme.colors.mutedText,
+    '--green': theme.colors.primary,
+    '--green-deep': theme.preset === 'point-classic' ? '#29381f' : theme.colors.primary,
+    '--line': theme.colors.border,
+    '--font-sans':
+      theme.headingFont === 'serif'
+        ? "'Point Libre Baskerville', Georgia, serif"
+        : "'Point Lato', Arial, sans-serif",
+    '--font-serif':
+      theme.bodyFont === 'humanist'
+        ? "'Point Lato', Arial, sans-serif"
+        : "'Point Libre Baskerville', Georgia, serif",
   };
 }

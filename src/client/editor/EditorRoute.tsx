@@ -15,7 +15,15 @@ const VisualEditor = lazy(() =>
 );
 type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish' | 'admin';
 
-function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
+function Workspace({
+  role,
+  canPublish,
+  onClose,
+}: {
+  role: Role;
+  canPublish: boolean;
+  onClose: () => void;
+}) {
   const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
@@ -62,7 +70,7 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
             'media',
             'preview',
             'history',
-            ...(role === 'publisher' || role === 'administrator' ? ['publish' as const] : []),
+            ...(canPublish ? ['publish' as const] : []),
             ...(role === 'administrator' ? ['admin' as const] : []),
           ] as Panel[]
         ).map((item) => (
@@ -146,15 +154,17 @@ function Workspace({ role, onClose }: { role: Role; onClose: () => void }) {
 export function EditorRoute({
   draft,
   role,
+  canPublish,
   onClose,
 }: {
   draft: DraftRecord;
   role: Role;
+  canPublish: boolean;
   onClose: () => void;
 }) {
   return (
     <EditorProvider initialDraft={draft}>
-      <Workspace role={role} onClose={onClose} />
+      <Workspace role={role} canPublish={canPublish} onClose={onClose} />
     </EditorProvider>
   );
 }

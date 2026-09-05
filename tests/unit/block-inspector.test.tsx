@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { BlockInspector } from '../../src/client/editor/BlockInspector';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { allBlocks } from '../fixtures/block-data';
 
 describe('BlockInspector', () => {
   it('edits a hero through human-readable fields', () => {
@@ -30,4 +31,32 @@ describe('BlockInspector', () => {
       }),
     );
   });
+
+  it.each([
+    ['hero', 'Layout style', 'homeHero', 'variant'],
+    ['heading', 'Layout style', 'homeIntro', 'variant'],
+    ['richText', 'Layout style', 'prose', 'variant'],
+    ['image', 'Layout style', 'wide', 'variant'],
+    ['splitFeature', 'Layout style', 'imageSplit', 'variant'],
+    ['cta', 'Layout style', 'rental', 'variant'],
+    ['cards', 'Layout style', 'identity', 'variant'],
+    ['people', 'Layout style', 'leadership', 'variant'],
+    ['faq', 'Layout style', 'groups', 'variant'],
+    ['form', 'Layout style', 'panel', 'variant'],
+    ['map', 'Layout style', 'gathering', 'variant'],
+    ['divider', 'Divider style', 'space', 'style'],
+    ['spacer', 'Space size', 'small', 'size'],
+  ] as const)(
+    'edits the %s module through its primary presentation control',
+    (type, label, value, property) => {
+      const block = allBlocks.find((item) => item.type === type)!;
+      const onChange = vi.fn();
+      const { unmount } = render(
+        <BlockInspector block={block} document={defaultSiteDocument} onChange={onChange} />,
+      );
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ [property]: value }));
+      unmount();
+    },
+  );
 });

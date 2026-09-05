@@ -41,6 +41,7 @@ an earlier revision, and preview the exact saved data without any Git write.
 2. **Given** an unsaved network failure, **When** the connection returns, **Then** the interface retries safely and clearly reports the final save state.
 3. **Given** two Editors on one draft, **When** the second saves a stale revision, **Then** the system refuses to overwrite newer work and offers reload or copy recovery.
 4. **Given** a draft, **When** the Editor selects mobile, tablet, or desktop preview, **Then** the same validated page data renders at that viewport.
+5. **Given** the seeded PointSite, **When** an Editor opens any page in the visual canvas, **Then** the canvas includes the same header, page chrome, modules, footer, typography, spacing, imagery, and responsive layout that staging will publish.
 
 ### User Story 2 - Manage the whole site without code (Priority: P1)
 
@@ -57,6 +58,7 @@ different page using only approved modules and design controls.
 2. **Given** a new page, **When** an Editor selects a preset and rearranges modules, **Then** the page is accessible through a unique validated route.
 3. **Given** invalid or unsafe content, **When** an Editor attempts to save, **Then** validation identifies the exact field and prevents unsafe output.
 4. **Given** uploaded media, **When** it lacks required alternative text or exceeds policy, **Then** it cannot be attached to publishable content.
+5. **Given** the production PointSite baseline, **When** it is imported into a fresh draft and published to staging, **Then** every current route is visually equivalent to production at 360, 768, and 1280 CSS pixels before any redesign is applied.
 
 ### User Story 3 - Deploy an exact candidate to staging (Priority: P1)
 
@@ -73,6 +75,7 @@ divergent commits, while an Editor cannot invoke the action.
 2. **Given** the same revision and idempotency key, **When** deployment is retried, **Then** the original result is returned without a duplicate release.
 3. **Given** a failed build or probe, **When** the job completes, **Then** staging is not marked accepted and the failure is actionable.
 4. **Given** a user without Publisher permission, **When** staging deployment is requested, **Then** it fails server-side and is audited.
+5. **Given** a Publisher or Administrator whose current GitHub permission for the staging repository is read or triage, **When** staging deployment or acceptance is requested, **Then** it fails server-side even though draft authoring remains available.
 
 ### User Story 4 - Review and approve staging (Priority: P2)
 
@@ -134,7 +137,7 @@ be bypassed with client state or a forged header.
 
 ### Functional Requirements
 
-- **FR-001**: Every builder, API, preview, and staging request MUST be authenticated through the PointSite GitHub App; the server MUST verify the signed session, current staging-repository collaboration, and active application role, and fail closed when any evidence is missing, invalid, expired, or revoked.
+- **FR-001**: Every builder, API, preview, and staging request MUST be authenticated through the PointSite GitHub App; the server MUST verify the signed session, current staging-repository collaboration and exact repository permission, and active application role, and fail closed when any evidence is missing, invalid, expired, or revoked.
 - **FR-002**: Server-side authorization MUST enforce Viewer, Editor, Publisher, and Administrator capabilities independently from client controls.
 - **FR-003**: Administrators MUST be able to grant, change, disable, and audit application roles for exact authenticated identities.
 - **FR-004**: Editors MUST be able to create, duplicate, rename, archive, restore, reorder, and delete draft pages with validated unique routes.
@@ -165,6 +168,9 @@ be bypassed with client state or a forged header.
 - **FR-029**: The system MUST provide documented and tested backup, restore, credential rotation, failed-publish recovery, and production rollback procedures.
 - **FR-030**: Public PointSite MUST remain a static export with no public authentication, draft storage, database, or mutation endpoint.
 - **FR-031**: Deployment MUST NOT activate a paid Cloudflare plan, R2 subscription, usage-based overage billing, or require a new payment method; free-tier exhaustion MUST fail closed and surface an actionable capacity message.
+- **FR-032**: Draft creation and editing MUST be available to active Builder Editors who currently hold at least GitHub read access to the staging repository; staging publication and acceptance MUST additionally require current GitHub write, maintain, or admin permission on every request, independent of the Builder role.
+- **FR-033**: The Point Classic baseline MUST use one canonical data-driven renderer in the editing canvas, preview, and staging, and MUST reproduce the current production header, footer, page chrome, route content, typography, responsive behavior, and public asset placement without relying on production source at runtime.
+- **FR-034**: Every visible baseline content surface MUST be represented by an editable page, global setting, collection, form, media record, or approved module field; no baseline-only hard-coded copy may become uneditable in the builder.
 
 ### Quality Requirements
 
@@ -174,6 +180,7 @@ be bypassed with client state or a forged header.
 - **QR-004**: The editor MUST remain usable at 360, 768, and 1280 CSS-pixel widths and all controls MUST be keyboard reachable.
 - **QR-005**: A validated draft MUST render identically from the same schema and renderer version in editor preview and staging, excluding environment chrome.
 - **QR-006**: Free-plan controls MUST warn at 70 percent of hard allowances and fail visibly rather than generating cost; no configured service may automatically bill overages.
+- **QR-007**: Automated parity checks MUST compare production and staging route screenshots in a deterministic browser at 360, 768, and 1280 CSS pixels, with reviewed masks limited to documented environment-only differences and no unreviewed baseline updates.
 
 ### Key Entities
 
@@ -196,6 +203,8 @@ be bypassed with client state or a forged header.
 - **SC-006**: All specified local, contract, integration, browser, accessibility, responsive, build, security, staging, and live verification gates pass for their exact candidates.
 - **SC-007**: Normal operation for the expected church administrator workload remains within configured free allowances.
 - **SC-008**: A documented rollback drill restores the last known-good candidate without losing draft history.
+- **SC-009**: All current production routes pass structural, content-inventory, and reviewed visual-parity comparisons against the builder-authored staging candidate at all required viewports.
+- **SC-010**: Hands-on browser testing proves page selection, field editing, module add/reorder/duplicate/delete, global settings, preview, save/reload, staging publication, navigation, forms, responsive menus, links, and GitHub permission denial paths.
 
 ## Clarifications
 
@@ -206,3 +215,5 @@ be bypassed with client state or a forged header.
 - Production preparation and exact publication remain separate gates even though the overall implementation is authorized.
 - “Login” means GitHub App OAuth plus live PointCommunity staging-collaborator verification and a Builder role; it does not require Cloudflare Zero Trust enrollment.
 - The accepted zero-cost failure mode is temporary Builder unavailability when a hard free-tier limit is reached; the public PointSite remains unaffected.
+- Visual equivalence means the same public layout and appearance from the same content at the required viewports; builder controls and staging authentication chrome are excluded.
+- Builder roles never elevate GitHub repository authority: read/triage collaborators can author drafts, while write/maintain/admin is mandatory for staging publication and acceptance.

@@ -4,6 +4,7 @@ export interface Actor {
   email: string;
   displayName?: string;
   role: Role;
+  repositoryPermission?: 'admin' | 'maintain' | 'write' | 'triage' | 'read';
 }
 
 export interface RoleRecord {
@@ -31,5 +32,16 @@ export class AuthorizationError extends Error {
 
 export function requireRole(actor: Actor, minimumRole: Role): Actor {
   if (authority[actor.role] < authority[minimumRole]) throw new AuthorizationError();
+  return actor;
+}
+
+export function requirePublishAccess(actor: Actor): Actor {
+  requireRole(actor, 'publisher');
+  if (
+    !actor.repositoryPermission ||
+    !['write', 'maintain', 'admin'].includes(actor.repositoryPermission)
+  ) {
+    throw new AuthorizationError('Current GitHub write access to PointSite staging is required');
+  }
   return actor;
 }

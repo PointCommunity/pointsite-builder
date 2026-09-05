@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { CandidateTupleSchema, type D1ApprovalService } from '../approvals/service';
-import { requireRole } from '../auth/roles';
+import { requirePublishAccess } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { ApiVariables } from './drafts';
@@ -47,7 +47,7 @@ export function createApprovalRoutes(
     return service;
   };
   routes.get('/production-base', async (context) => {
-    requireRole(context.get('actor'), 'publisher');
+    requirePublishAccess(context.get('actor'));
     if (!productionBaseSha)
       throw new ApiError(
         503,
@@ -57,7 +57,7 @@ export function createApprovalRoutes(
     return context.json({ sha: await productionBaseSha() });
   });
   routes.post('/', async (context) => {
-    const actor = requireRole(context.get('actor'), 'publisher');
+    const actor = requirePublishAccess(context.get('actor'));
     if (!limiter.consume(`approval:${actor.email}`))
       throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
     const parsed = ApprovalInputSchema.safeParse(
@@ -80,7 +80,7 @@ export function createApprovalRoutes(
     }
   });
   routes.post('/eligibility', async (context) => {
-    requireRole(context.get('actor'), 'publisher');
+    requirePublishAccess(context.get('actor'));
     const parsed = EligibilitySchema.safeParse(
       await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
     );

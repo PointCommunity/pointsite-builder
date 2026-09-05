@@ -41,7 +41,7 @@ describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
     expect(defaultSiteDocument.schemaVersion).toBe(1);
-    expect(defaultSiteDocument.rendererVersion).toBe('1.0.0');
+    expect(defaultSiteDocument.rendererVersion).toBe('1.1.0');
   });
 
   it('represents every current generated route and navigation link', () => {
@@ -97,5 +97,42 @@ describe('default PointSite document', () => {
     expect(serialized).toContain('How can I get connected?');
     expect(serialized).toContain('Give In Person');
     expect(serialized).toContain('Building Rental');
+  });
+
+  it('models every production visual surface as editable page and module data', () => {
+    const home = defaultSiteDocument.pages.find((page) => page.route === '/');
+    const about = defaultSiteDocument.pages.find((page) => page.route === '/who-we-are');
+    const beliefs = defaultSiteDocument.pages.find((page) => page.route === '/what-we-believe');
+
+    expect(home).toMatchObject({ eyebrow: 'Point ATX', template: 'home' });
+    expect(home?.blocks.map((block) => block.variant)).toEqual([
+      'homeHero',
+      'homeIntro',
+      'photoBanner',
+      'splitFeature',
+      'gathering',
+    ]);
+    expect(about).toMatchObject({
+      eyebrow: 'About Point',
+      intro: 'We are a family of disciples on mission.',
+      template: 'standard',
+    });
+    expect(about?.heroMediaId).toBeTruthy();
+    expect(about?.blocks.map((block) => block.variant)).toEqual([
+      'splitEditorial',
+      'identity',
+      'prose',
+    ]);
+    expect(beliefs?.blocks.some((block) => block.variant === 'beliefs')).toBe(true);
+    expect(
+      defaultSiteDocument.pages
+        .find((page) => page.route === '/next-generation')
+        ?.blocks.some((block) => block.variant === 'imageSplit'),
+    ).toBe(true);
+    expect(
+      defaultSiteDocument.pages
+        .find((page) => page.route === '/contact')
+        ?.blocks.map((block) => block.variant),
+    ).toEqual(['contact', 'rental']);
   });
 });

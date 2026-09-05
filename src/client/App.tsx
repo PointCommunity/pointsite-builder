@@ -111,6 +111,13 @@ export function App() {
       <EditorRoute
         draft={selected}
         role={actor.role}
+        canPublish={
+          (actor.role === 'publisher' || actor.role === 'administrator') &&
+          Boolean(
+            actor.repositoryPermission &&
+            ['write', 'maintain', 'admin'].includes(actor.repositoryPermission),
+          )
+        }
         onClose={() => {
           setSelected(null);
           void load();
