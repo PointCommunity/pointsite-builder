@@ -1,0 +1,10 @@
+ENVIRONMENT=local
+DEV_AUTH_EMAIL=admin@example.com
+BUILDER_ORIGIN=http://127.0.0.1:5173
+STAGING_REPOSITORY=PointCommunity/pointsite-staging
+GITHUB_APP_ID=replace-with-github-app-id
+GITHUB_STAGING_INSTALLATION_ID=replace-with-staging-installation-id
+GITHUB_APP_PRIVATE_KEY=replace-with-private-key-through-wrangler-secret
+GITHUB_CLIENT_ID=replace-with-github-app-client-id
+GITHUB_CLIENT_SECRET=replace-with-client-secret-through-wrangler-secret
+SESSION_SECRET=replace-with-random-32-byte-secret-through-wrangler-secret

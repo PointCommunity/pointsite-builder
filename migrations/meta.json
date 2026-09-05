@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "migrations": [
+    {
+      "id": "0001_initial",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": "../docs/rollback/0001_initial.sql",
+      "retention": {
+        "automaticRevisionsDays": 90,
+        "deletedDraftRecoveryDays": 30,
+        "orphanMediaDeletionDays": 30,
+        "auditDays": 400
+      }
+    },
+    {
+      "id": "0002_integrity_triggers",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0003_revision_labels",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0004_exact_approvals",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0005_revision_retention",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0006_free_only_auth_media",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    }
+  ]
+}

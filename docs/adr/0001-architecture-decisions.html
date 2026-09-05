@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0001: PointSite Builder Architecture</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+        background: #101512;
+        color: #e7eee9;
+      }
+      body {
+        max-width: 72rem;
+        margin: auto;
+        padding: 2rem;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #f7faf8;
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 3rem;
+        border-top: 1px solid #405046;
+        padding-top: 2rem;
+      }
+      a {
+        color: #91d7ad;
+      }
+      code {
+        background: #202a23;
+        padding: 0.15rem 0.35rem;
+        border-radius: 0.25rem;
+      }
+      .meta,
+      .decision {
+        border-left: 0.25rem solid #75c996;
+        background: #18221b;
+        padding: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="index.html">← Architecture decision index</a></p>
+      <h1>ADR 0001: PointSite Builder architecture and release boundary</h1>
+      <p class="meta">
+        <strong>Status:</strong> Accepted<br /><strong>Date:</strong> 2026-09-05<br /><strong
+          >Owners:</strong
+        >
+        PointCommunity administrators
+      </p>
+
+      <h2>Decision 1: Isolate production with independent repositories</h2>
+      <h3>Context</h3>
+      <p>
+        The existing public site must remain unchanged while nontechnical authoring, renderer, and
+        release behavior are proven. A same-owner GitHub fork is not a reliable organizational
+        topology, and direct production branches would expose unfinished work to the production
+        repository.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        <code>PointCommunity/pointsite-builder</code> contains the private authoring application.
+        The independent private <code>PointCommunity/pointsite-staging</code> repository contains
+        the candidate public renderer. <code>PointCommunity/pointsite</code> remains production and
+        receives no implementation until the staging acceptance gate passes.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>Build inside production: rejected because it weakens isolation.</li>
+        <li>
+          Use a same-owner fork: rejected because GitHub does not support the desired topology
+          consistently.
+        </li>
+        <li>
+          Use only feature branches: rejected because repository-level deployments and permissions
+          would still be shared.
+        </li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Renderer snapshots and documents cross a controlled repository boundary. This adds
+        synchronization checks, but production remains auditable and untouched throughout
+        development.
+      </p>
+
+      <h2>Decision 2: Use Puck behind a controlled component registry</h2>
+      <h3>Context</h3>
+      <p>
+        Administrators need visual layout editing without arbitrary code, while PointSite needs
+        predictable semantics, accessibility, security, and static output.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        Use Puck as the lazy-loaded editor canvas. Puck may only author strict, versioned PointSite
+        blocks and bounded variants. The same project-owned renderer consumes the validated document
+        for preview and public output.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>
+          Build drag-and-drop infrastructure from scratch: rejected for cost and accessibility risk.
+        </li>
+        <li>
+          Embed an unrestricted page builder: rejected because arbitrary markup and scripts violate
+          the trust boundary.
+        </li>
+        <li>Use a text-only CMS: rejected because it does not meet visual editing needs.</li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Admins gain visual editing and keyboard/button alternatives. New public capabilities require
+        an explicit schema, renderer, tests, and migration rather than ad hoc HTML.
+      </p>
+
+      <h2>Decision 3: Store drafts and chunked private media in D1</h2>
+      <h3>Context</h3>
+      <p>
+        Drafts need revisions, optimistic concurrency, auditability, recovery, and low operational
+        cost. Media must stay private before publication and cannot safely live in public Git
+        history while being edited.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        Use Cloudflare D1 for roles, drafts, immutable revisions, jobs, approvals, audit records,
+        media metadata, and one-megabyte private media chunks. Enforce a 250 MB media cap below the
+        500 MB Free database limit. Publish only referenced, approved assets to staging Git.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>
+          Store drafts directly in Git: rejected because autosave would create noisy history and
+          complex conflicts.
+        </li>
+        <li>Store media publicly: rejected because unpublished material would leak.</li>
+        <li>
+          Add a separate hosted database vendor: rejected because it adds cost and another
+          operational surface without a first-release need.
+        </li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Atomic D1 transactions protect revision pointers and chunk writes. Free-tier exhaustion
+        fails closed instead of billing; lifecycle and capacity controls remain mandatory.
+      </p>
+
+      <h2>Decision 4: Authenticate with the staging-only GitHub App</h2>
+      <h3>Context</h3>
+      <p>
+        The builder is private and role-sensitive. An edge login alone does not remove the need for
+        application-level identity and authorization.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        Use GitHub App OAuth with state and PKCE. The Worker validates a signed, Secure, HttpOnly
+        session, stable GitHub user ID, current staging-repository collaboration, and active local
+        role on every request. Development bypass is local-only and fails closed elsewhere.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>
+          Cloudflare Zero Trust Access: rejected because even its Free onboarding requires payment
+          details, violating the no-payment boundary.
+        </li>
+        <li>
+          Build application passwords: rejected because it duplicates identity and account-security
+          work.
+        </li>
+        <li>
+          Authorize all logged-in users equally: rejected because publishing and role administration
+          need separation of duties.
+        </li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Collaboration or role removal takes effect on the next request. OAuth, App, and session
+        secrets stay in Worker secrets; authorization decisions are audited without logging tokens.
+      </p>
+
+      <h2>Decision 5: Distribute a versioned renderer snapshot</h2>
+      <h3>Context</h3>
+      <p>
+        Preview and published output must not drift, but the public site must remain static and must
+        not import private builder services.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        Package the site schema, renderer, styles, migration registry, and version identity as a
+        deterministic site-kit snapshot. Staging vendors the exact snapshot with checksums. Preview
+        and static export both render the same validated <code>SiteDocument</code>.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>
+          Fetch drafts from the public site at runtime: rejected because it creates a public dynamic
+          dependency.
+        </li>
+        <li>
+          Maintain separate preview and public renderers: rejected because their behavior would
+          drift.
+        </li>
+        <li>
+          Publish an unpinned floating package: rejected because a candidate could change without a
+          matching content revision.
+        </li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Every candidate records document checksum, schema version, renderer version, and Git SHA.
+        Sync tooling must reject unexpected differences.
+      </p>
+
+      <h2>Decision 6: Make production a separately approved exact-candidate gate</h2>
+      <h3>Context</h3>
+      <p>
+        A convenient publish button must not convert a drafting mistake or compromised builder
+        session into an immediate public-site change.
+      </p>
+      <h3>Decision</h3>
+      <p class="decision">
+        Publishing first creates an idempotent staging job and exact candidate evidence. Production
+        integration is absent until staging acceptance. Later, a Publisher may prepare a production
+        pull request for that exact candidate, but merge and production publication require separate
+        recorded approval and passing protected checks. No browser action pushes directly to
+        production.
+      </p>
+      <h3>Alternatives considered</h3>
+      <ul>
+        <li>
+          One-click direct production deploy: rejected because it lacks review and rollback
+          evidence.
+        </li>
+        <li>
+          Automatically merge after staging: rejected because staging success is readiness evidence,
+          not production authorization.
+        </li>
+        <li>Copy files manually: rejected because it is error-prone and difficult to audit.</li>
+      </ul>
+      <h3>Consequences</h3>
+      <p>
+        Publishing remains simple for admins but deliberately has visible stages: save, preview,
+        publish to staging, verify, prepare production, approve exact candidate, merge, and verify
+        production.
+      </p>
+    </main>
+  </body>
+</html>

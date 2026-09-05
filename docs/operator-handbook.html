@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Operator Handbook</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.6 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1050px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4.5rem);
+        line-height: 1;
+        text-wrap: balance;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 0;
+      }
+      .runbook {
+        background: #151d16;
+        border: 1px solid #39463a;
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin: 1.25rem 0;
+      }
+      .stop {
+        color: #ffb4a9;
+      }
+      .expected {
+        color: #9ee6a0;
+      }
+      .recovery {
+        color: #ffd28c;
+      }
+      code {
+        display: block;
+        background: #080c09;
+        color: #d4efbd;
+        padding: 0.8rem;
+        overflow: auto;
+        border-radius: 6px;
+      }
+      dt {
+        font-weight: 800;
+        margin-top: 0.8rem;
+      }
+      dd {
+        margin: 0.2rem 0 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Operator handbook</h1>
+    <p>
+      Production instructions are documentation, not authorization. Stop on any failed gate. Never
+      repair staging by writing directly to production.
+    </p>
+
+    <section class="runbook" id="cloudflare-account-isolation">
+      <h2>Cloudflare account isolation</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          PointSite uses <code>connect@pointaustin.org</code> and account
+          <code>bc890091d86ddf9ce669e96e79d47746</code>. Personal Cloudflare accounts are out of
+          scope.
+        </dd>
+        <dt>Safe command</dt>
+        <dd><code>npm run cloudflare:verify-account</code></dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          The command prints the exact PointSite email and account ID; both Wrangler files declare
+          the same account ID.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Any other email, missing membership, different account ID, or an unbound remote command.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Stop before mutation, authenticate the church account, rerun the guard, and recheck the
+          target resource name. Never continue against a personal account.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="local-verification">
+      <h2>Local verification</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>Node 22, clean dependency installation, builder and staging checkouts.</dd>
+        <dt>Safe command</dt>
+        <dd>
+          <code
+            >npm ci &amp;&amp; npm run format:check &amp;&amp; npm run typecheck &amp;&amp; npm run
+            lint -- --max-warnings=0 &amp;&amp; npm run contract:lint &amp;&amp; npm run
+            test:coverage &amp;&amp; npm run build &amp;&amp; npm run test:performance &amp;&amp;
+            npm run test:e2e</code
+          >
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">Every command exits zero and CI attaches exact-commit evidence.</dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Any failure, unreviewed dependency drift, or unexpected production-tree change.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Fix on the feature branch, rerun the whole gate, and retain the failed output.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="failed-publish">
+      <h2>Failed staging publish</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Request ID, job ID, revision/checksum, candidate checksum, and displayed staging base SHA.
+        </dd>
+        <dt>Safe command</dt>
+        <dd>
+          <code
+            >gh run list --repo PointCommunity/pointsite-staging --branch codex/builder-renderer
+            --limit 10</code
+          >
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          The exact candidate run identifies a deterministic failure or completes both
+          <code>verify</code> and <code>deploy</code>.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Base drift, a path outside the 2 allowlisted candidate files, incomplete live evidence, or
+          an unknown commit.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Refresh the base; fix the cause; retry the stored job. A repeated idempotency key must
+          return the same outcome.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="backup-restore">
+      <h2>Backup &amp; restore</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Authenticated Wrangler, intended Cloudflare account confirmed, encrypted destination,
+          maintenance window, and retention dry-run.
+        </dd>
+        <dt>Safe command</dt>
+        <dd>
+          <code
+            >npx wrangler d1 export pointsite-builder --remote --output
+            ./backups/pointsite-builder.sql</code
+          >
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          A non-empty export exists outside source control and its SHA-256 checksum is recorded with
+          the maintenance event.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Wrong account/database, missing encryption, incomplete export, or checksum mismatch.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Validate restore into a new/local database first. For a single draft, restore through
+          immutable revision history; never rewrite revision history.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="credential-rotation">
+      <h2>Credential rotation</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Administrator access, credential inventory, narrow replacement scope, and rollback owner.
+        </dd>
+        <dt>Safe command</dt>
+        <dd><code>npx wrangler secret put GITHUB_APP_PRIVATE_KEY</code></dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          Identity succeeds and one read-only staging-base request returns the expected repository
+          SHA.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Unexpected App installation, production repository access, secret in output/source, or
+          failed identity check.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Restore the prior secret if still valid; otherwise disable publishing, revoke both
+          credentials, issue a new narrow credential, and audit the event.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="quota-response">
+      <h2>Quota response</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Administrator capacity view, provider usage readback, audit sample, and retention dry-run
+          export.
+        </dd>
+        <dt>Safe command</dt>
+        <dd>
+          Export a current <code>BUILDER_SESSION_COOKIE</code>, then run
+          <code>npm run maintenance -- --url "$BUILDER_URL"</code>.
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          Dry-run only: candidate counts and an export checksum are returned; no object is deleted.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Usage disagrees with provider readback, current/named/referenced data appears in
+          candidates, or export is unavailable.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Pause uploads/publishes, find the growth source, then apply the unchanged exported plan
+          through the administrator endpoint.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="staging-rollback">
+      <h2>Staging rollback</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Last accepted staging commit, failed exact commit, passing evidence for the known-good
+          commit, and reviewed rollback branch.
+        </dd>
+        <dt>Safe command</dt>
+        <dd>
+          <code
+            >gh pr create --repo PointCommunity/pointsite-staging --base main --head
+            codex/staging-rollback --title "Rollback staging candidate"</code
+          >
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          The reviewed revert deploys; all protected live routes, headers, checksums, accessibility,
+          and primary flow pass.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          Unknown known-good SHA, unrelated diff, failed check, missing GitHub authentication, or
+          production remote in the write target.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Leave the last passing deployment active, correct the rollback branch, and rerun exact
+          verification. Never force-push main.
+        </dd>
+      </dl>
+    </section>
+
+    <section class="runbook" id="production-rollback">
+      <h2>Production rollback</h2>
+      <dl>
+        <dt>Prerequisites</dt>
+        <dd>
+          Production enablement completed after G5, explicit authorization for the exact release,
+          prior known-good production SHA, incident owner, and reviewed revert PR.
+        </dd>
+        <dt>Safe command</dt>
+        <dd>
+          <code
+            >gh pr create --repo PointCommunity/pointsite --base main --head
+            codex/production-rollback --title "Rollback approved PointSite release"</code
+          >
+        </dd>
+        <dt>Expected result</dt>
+        <dd class="expected">
+          Only the reviewed revert is merged; Pages deploys that exact SHA and cache-busted live
+          probes match the known-good candidate.
+        </dd>
+        <dt>Stop condition</dt>
+        <dd class="stop">
+          No explicit authorization, candidate/base mismatch, unrelated diff, failing required
+          check, or unverifiable known-good SHA.
+        </dd>
+        <dt>Recovery</dt>
+        <dd class="recovery">
+          Keep the incident open, do not bypass branch protection, prepare a corrected reviewed
+          revert, and retain all release/audit evidence.
+        </dd>
+      </dl>
+    </section>
+  </body>
+</html>

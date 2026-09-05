@@ -1,7 +1,7 @@
 # PointSite Builder Development Instructions
 
 - Preserve the public PointSite as a static, read-only website.
-- Never put credentials, Cloudflare Access tokens, GitHub tokens, draft data, or private media in source or logs.
+- Never put credentials, GitHub or session tokens, draft data, or private media in source or logs.
 - All schema changes require migrations, backward compatibility, and tests.
 - All publish operations must be idempotent, auditable, and tied to an exact source revision.
 - Staging must pass every required check before production preparation.

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Accessibility Evidence</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.55 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1100px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+        text-wrap: balance;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 2rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #151d16;
+      }
+      th,
+      td {
+        padding: 0.7rem;
+        border: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #b9d99d;
+      }
+      .pass {
+        color: #9ee6a0;
+      }
+      .partial {
+        color: #ffd28c;
+      }
+      .pending {
+        color: #ffb4a9;
+      }
+      code {
+        color: #d4efbd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WCAG 2.2 AA engineering evidence</h1>
+    <p>
+      <strong>Date:</strong> 2026-09-05 · <strong>Tool:</strong> axe-core 4.13.0 through Playwright
+      1.63.0
+    </p>
+    <p class="pass">
+      Automated result: 0 critical or serious axe findings in the draft list and all editor panels
+      tested.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Status</th>
+          <th>Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Structure, names, roles, status</td>
+          <td class="pass">Pass</td>
+          <td>
+            Native headings, landmarks, forms, buttons, links, tables, details, labels, and polite
+            status regions; role/name locators exercise the accessibility tree.
+          </td>
+        </tr>
+        <tr>
+          <td>Keyboard and bypass</td>
+          <td class="pass">Pass</td>
+          <td>
+            Skip link receives keyboard focus and activates; module movement/duplication works
+            without drag; focus indicators are visible.
+          </td>
+        </tr>
+        <tr>
+          <td>Contrast</td>
+          <td class="pass">Pass in tested states</td>
+          <td>
+            axe color-contrast checks pass after the primary-button specificity correction. Theme
+            schema rejects text combinations below 4.5:1.
+          </td>
+        </tr>
+        <tr>
+          <td>200% text resize and reflow</td>
+          <td class="pass">Pass in scripted proxy</td>
+          <td>
+            320-pixel viewport with 200% root text has no off-screen elements after header
+            remediation; mobile projects cover narrow reflow.
+          </td>
+        </tr>
+        <tr>
+          <td>Reduced motion</td>
+          <td class="pass">Pass</td>
+          <td>
+            Browser emulates reduced motion and verifies transition durations are effectively
+            disabled.
+          </td>
+        </tr>
+        <tr>
+          <td>Responsive and touch</td>
+          <td class="pass">Pass in automated matrix</td>
+          <td>
+            Desktop Chrome/Firefox/Safari engines plus Pixel 7 profile; editor and public staging
+            check horizontal overflow.
+          </td>
+        </tr>
+        <tr>
+          <td>Screen-reader speech quality</td>
+          <td class="partial">Unverified manually</td>
+          <td>
+            Accessible names/roles/status markup is inspected and browser-tested; no claim is made
+            about VoiceOver or NVDA speech cadence without a human AT session.
+          </td>
+        </tr>
+        <tr>
+          <td>Live GitHub authentication</td>
+          <td class="pending">Pending external deployment</td>
+          <td>
+            OAuth, signed-session, collaborator, and authorization behavior is unit/integration
+            tested. The real GitHub login experience awaits authenticated setup.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>State matrix exercised</h2>
+    <p>
+      Loading, empty, populated, denied, error, saved, saving, offline, conflict, preview, media,
+      history, publish, role administration, capacity warning, exact acceptance, and
+      production-locked states.
+    </p>
+    <h2>Evidence limits</h2>
+    <p>
+      This report records engineering evidence, not full WCAG conformance or legal certification.
+      Meaningfulness of authored alternative text, cognitive clarity, and actual
+      assistive-technology speech require human review on the deployed protected application.
+    </p>
+  </body>
+</html>

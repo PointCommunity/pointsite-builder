@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Security Risk Assessment</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 15px/1.5 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1200px;
+        margin: auto;
+        padding: 40px 20px;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 2rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #151d16;
+      }
+      th,
+      td {
+        padding: 0.55rem;
+        border: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #b9d99d;
+      }
+      .pass {
+        color: #9ee6a0;
+      }
+      .pending {
+        color: #ffb4a9;
+      }
+      .medium {
+        color: #ffd28c;
+      }
+      code {
+        color: #d4efbd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Security risk assessment</h1>
+    <p>
+      <strong>Date:</strong> 2026-09-05 · <strong>Tolerance:</strong> moderate ·
+      <strong>Context:</strong> private church-admin drafts/media; public output is static.
+    </p>
+    <p class="pass">
+      No known critical or high vulnerability is unresolved in local source, dependency, or CI
+      evidence.
+    </p>
+    <h2>Scan evidence</h2>
+    <table>
+      <tr>
+        <th>Control</th>
+        <th>Result</th>
+      </tr>
+      <tr>
+        <td>SCA</td>
+        <td><code>npm audit --audit-level=high</code>: 0 vulnerabilities.</td>
+      </tr>
+      <tr>
+        <td>Secret/history scan</td>
+        <td>
+          GitHub TruffleHog job passed on the prior branch candidate; secrets remain absent from
+          source and client config.
+        </td>
+      </tr>
+      <tr>
+        <td>SAST</td>
+        <td>
+          GitHub Semgrep TypeScript/JavaScript/OWASP job passed on the prior branch candidate.
+        </td>
+      </tr>
+      <tr>
+        <td>Supply chain</td>
+        <td>
+          Exact lockfile, pinned runtime versions, commit-pinned GitHub Actions, least-privilege
+          workflow permissions.
+        </td>
+      </tr>
+      <tr>
+        <td>DAST</td>
+        <td class="pending">
+          Pending a GitHub-authenticated staging URL; no public target was created to simulate
+          success.
+        </td>
+      </tr>
+    </table>
+    <h2>Threat controls TM-01–TM-12</h2>
+    <table>
+      <tr>
+        <th>IDs</th>
+        <th>Implemented evidence</th>
+        <th>External evidence</th>
+      </tr>
+      <tr>
+        <td>TM-01</td>
+        <td>
+          OAuth state/PKCE, signed session, expiry, collaborator, and per-request D1 role tests.
+        </td>
+        <td class="pending">Live GitHub authentication matrix pending.</td>
+      </tr>
+      <tr>
+        <td>TM-02, TM-12</td>
+        <td>
+          Staging-only repository/path allowlist; production absent and hard-disabled; exact tuple
+          and production-base drift invalidation.
+        </td>
+        <td>Production remains untouched.</td>
+      </tr>
+      <tr>
+        <td>TM-03</td>
+        <td>
+          Strict schemas, structured rich text, safe URL policy, React escaping, security headers,
+          no custom-code field.
+        </td>
+        <td>Protected live header probe pending.</td>
+      </tr>
+      <tr>
+        <td>TM-04</td>
+        <td>
+          Magic-byte/MIME/size/dimension validation, random private D1 keys, chunks, hard cap,
+          lifecycle tests.
+        </td>
+        <td>Remote D1 migration/readback pending.</td>
+      </tr>
+      <tr>
+        <td>TM-05, TM-06</td>
+        <td>
+          Immutable revisions, compare-and-swap checksums, idempotent resumable publish jobs, exact
+          SHA response validation.
+        </td>
+        <td>Real GitHub App transaction pending.</td>
+      </tr>
+      <tr>
+        <td>TM-07</td>
+        <td>Origin, Fetch Metadata, content type, body bound, and per-actor rate controls.</td>
+        <td>DAST pending.</td>
+      </tr>
+      <tr>
+        <td>TM-08, TM-09</td>
+        <td>Worker-secret design, redacted errors/audit, scans, lockfile, pinned Actions.</td>
+        <td>Secret installation pending.</td>
+      </tr>
+      <tr>
+        <td>TM-10, TM-11</td>
+        <td>
+          Autosave debounce, rate/concurrency limits, 70% warnings, transactional audit,
+          export-gated retention.
+        </td>
+        <td>Remote quota readback pending.</td>
+      </tr>
+    </table>
+    <h2>Open risk register</h2>
+    <table>
+      <tr>
+        <th>ID</th>
+        <th>Description</th>
+        <th>Likelihood</th>
+        <th>Impact</th>
+        <th>Score</th>
+        <th>Business axes: data / regulation / blast / controls</th>
+        <th>Disposition</th>
+      </tr>
+      <tr>
+        <td>SR-01</td>
+        <td>Misconfigured live auth routing or alternate hostname could expose private APIs.</td>
+        <td>2</td>
+        <td>5</td>
+        <td class="medium">10 Medium</td>
+        <td>4 / 1 / 4 / 4</td>
+        <td>
+          Do not deploy content until anonymous, wrong-user, expired-session, and alternate-host
+          probes fail closed.
+        </td>
+      </tr>
+      <tr>
+        <td>SR-02</td>
+        <td>Runtime injection issue not observable until a live DAST target exists.</td>
+        <td>2</td>
+        <td>4</td>
+        <td class="medium">8 Medium</td>
+        <td>3 / 1 / 3 / 4</td>
+        <td>Run authenticated DAST against staging before acceptance; block on high/critical.</td>
+      </tr>
+    </table>
+    <h2>5 × 5 likelihood/impact matrix</h2>
+    <table>
+      <tr>
+        <th>L \ I</th>
+        <th>1</th>
+        <th>2</th>
+        <th>3</th>
+        <th>4</th>
+        <th>5</th>
+      </tr>
+      <tr>
+        <th>5</th>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+      </tr>
+      <tr>
+        <th>4</th>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+      </tr>
+      <tr>
+        <th>3</th>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+      </tr>
+      <tr>
+        <th>2</th>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>SR-02</td>
+        <td>SR-01</td>
+      </tr>
+      <tr>
+        <th>1</th>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+        <td>No current risk</td>
+      </tr>
+    </table>
+    <h2>Roadmap and limits</h2>
+    <p>
+      Both medium risks are external-deployment gates, not accepted production risks. Complete them
+      before staging acceptance. No compliance framework or quantitative FAIR inputs were requested,
+      so no compliance or financial-loss claim is made.
+    </p>
+  </body>
+</html>

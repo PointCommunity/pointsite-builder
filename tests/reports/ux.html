@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Builder Adversarial UX Review</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.55 system-ui;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1050px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+        text-wrap: balance;
+      }
+      h2 {
+        color: #b9d99d;
+        margin-top: 2rem;
+      }
+      .card {
+        background: #151d16;
+        border: 1px solid #39463a;
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      .red {
+        color: #ffb4a9;
+      }
+      .yellow {
+        color: #ffd28c;
+      }
+      .green {
+        color: #9ee6a0;
+      }
+      code {
+        color: #d4efbd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Adversarial UX review</h1>
+    <div class="card">
+      <h2>Persona</h2>
+      <p>
+        <strong>“Pat,” 61, volunteer church administrator.</strong> Comfortable with email and
+        forms, avoids code, has limited patience for publishing jargon, and needs to update a
+        ministry page, preview it on a phone, and safely publish it without risking the live site.
+      </p>
+    </div>
+    <div class="card">
+      <h2>Persona verdict</h2>
+      <p>
+        “I can change the words and pictures without calling a developer, and it clearly tells me
+        the live website is safe. I would use this after someone shows me the first publish.”
+      </p>
+    </div>
+    <h2>Pragmatism filter</h2>
+    <table class="card">
+      <tr>
+        <th>Class</th>
+        <th>Observation</th>
+        <th>Disposition</th>
+      </tr>
+      <tr>
+        <td class="red">RED — fixed</td>
+        <td>Editor route initially had no obvious page heading/bypass destination.</td>
+        <td>Added draft-name heading and skip link.</td>
+      </tr>
+      <tr>
+        <td class="red">RED — fixed</td>
+        <td>At extreme text sizing, the signed-in identity could extend off screen.</td>
+        <td>Made the header and long identity reflow.</td>
+      </tr>
+      <tr>
+        <td class="red">RED — fixed</td>
+        <td>Primary preview buttons had unreadable text because of CSS specificity.</td>
+        <td>Corrected component color precedence and added axe regression coverage.</td>
+      </tr>
+      <tr>
+        <td class="yellow">YELLOW</td>
+        <td>First-time publishers may need coaching on “revision,” “checksum,” and “base SHA.”</td>
+        <td>
+          Retain the exact evidence for safety; add contextual help after observing real
+          administrators.
+        </td>
+      </tr>
+      <tr>
+        <td>WHITE</td>
+        <td>“I want publishing to skip review and go straight live.”</td>
+        <td>Rejected; staging and exact acceptance are intentional safety controls.</td>
+      </tr>
+    </table>
+    <h2>Core journey</h2>
+    <p class="green">
+      Automated browser evidence passes creating/duplicating/archiving a draft, adding and editing
+      modules, updating global design, uploading private media, previewing at 360/768/1280,
+      restoring a revision, recovering conflict/offline work, publishing to staging, verifying exact
+      evidence, and accepting the candidate while production remains locked.
+    </p>
+    <h2>Tickets</h2>
+    <p>
+      No unresolved RED finding remains. One post-deployment observation item remains: test
+      terminology and onboarding with at least one real Point administrator before production
+      enablement.
+    </p>
+    <h2>Limits</h2>
+    <p>
+      The review used the local application with deterministic API fixtures. Live GitHub login, real
+      network latency, and staging deployment are not yet available; screenshots are retained
+      automatically for browser-test failures rather than manufacturing pain-point images after
+      remediation.
+    </p>
+  </body>
+</html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PointSite Builder Master Plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 16px/1.55 system-ui;
+        background: #101510;
+        color: #edf3e9;
+      }
+      body {
+        max-width: 1100px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      h1 {
+        font-size: clamp(2.4rem, 7vw, 5rem);
+        line-height: 1;
+        margin: 0.2em 0;
+      }
+      h2 {
+        margin-top: 2em;
+        color: #b8d49e;
+      }
+      .eyebrow {
+        color: #94b978;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #192018;
+        border: 1px solid #3c4938;
+        border-radius: 10px;
+        padding: 18px;
+      }
+      .done {
+        border-left: 5px solid #78a75a;
+      }
+      .gate {
+        border-left: 5px solid #d7a34d;
+      }
+      code {
+        color: #c6dfae;
+      }
+      li + li {
+        margin-top: 0.5em;
+      }
+      a {
+        color: #b8d49e;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="eyebrow">Controlled staging-first delivery</p>
+    <h1>PointSite Builder</h1>
+    <p>
+      A private, role-based visual authoring system for Point Community Church. Drafts and media
+      stay private; preview and staging use the same validated renderer; production remains a
+      separately authorized exact-candidate action.
+    </p>
+    <h2>Architecture</h2>
+    <div class="grid">
+      <section class="card">
+        <h3>Private builder</h3>
+        <p>Cloudflare Worker, GitHub collaborator login, React/Puck UI, and D1 drafts/media.</p>
+      </section>
+      <section class="card">
+        <h3>Isolated staging</h3>
+        <p>
+          Independent private repository. Builder may atomically update only two allowlisted content
+          files through a staging-only GitHub App.
+        </p>
+      </section>
+      <section class="card">
+        <h3>Public site</h3>
+        <p>
+          Static export only. No session tokens, database bindings, media credentials, or GitHub
+          credentials enter the bundle.
+        </p>
+      </section>
+    </div>
+    <h2>Delivery gates</h2>
+    <div class="grid">
+      <section class="card done">
+        <h3>G0–G3: Designed and implemented</h3>
+        <ul>
+          <li>Research, spec, threat model, ADRs, design system</li>
+          <li>Strict document schema and 13 safe modules</li>
+          <li>D1 drafts, autosave, conflicts, history and restore</li>
+          <li>Signed GitHub sessions, live collaborator checks, and application roles</li>
+        </ul>
+      </section>
+      <section class="card done">
+        <h3>G4: Staging integration</h3>
+        <ul>
+          <li>11 current routes exported from canonical builder content</li>
+          <li>GitHub App candidate uses base-SHA compare-and-swap</li>
+          <li>Production endpoint hard-disabled</li>
+        </ul>
+      </section>
+      <section class="card gate">
+        <h3>G5: External configuration</h3>
+        <ul>
+          <li>Keep Worker and D1 on hard-limited Free plans</li>
+          <li>Create staging-only GitHub App OAuth and secrets</li>
+          <li>Deploy, browser-test and accept exact candidate</li>
+        </ul>
+      </section>
+      <section class="card gate">
+        <h3>G6–G7: Production</h3>
+        <p>
+          Out of scope until the accepted candidate is shown and Chris explicitly authorizes
+          production preparation, then publication. No earlier approval carries forward.
+        </p>
+      </section>
+    </div>
+    <h2>Acceptance</h2>
+    <ol>
+      <li>
+        Admins authenticate through GitHub; staging collaboration and application roles are
+        rechecked on every request.
+      </li>
+      <li>
+        Editors create, duplicate, autosave, preview, compare and restore drafts without overwriting
+        newer work.
+      </li>
+      <li>All modules have keyboard/button operations as equivalents to drag.</li>
+      <li>
+        Staging renders the same schema/renderer and passes route, asset, security, accessibility
+        and build checks.
+      </li>
+      <li>Publisher sees exact revision, checksum and base SHA before staging publication.</li>
+      <li>No production repository write occurs before exact-candidate authorization.</li>
+    </ol>
+    <h2>Cost posture</h2>
+    <p>
+      Free-only: static public delivery, hard-limited Workers and D1 allowances, and GitHub private
+      repositories. Zero Trust and R2 are excluded; no subscription, new payment method, or
+      usage-based overage path is permitted. Capacity warnings begin at 70%.
+    </p>
+  </body>
+</html>

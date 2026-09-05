@@ -1,0 +1,101 @@
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SiteDocumentSchema } from '../../src/site-kit/schema';
+
+const EXPECTED_ROUTES = [
+  '/',
+  '/building-rental',
+  '/connect-card',
+  '/contact',
+  '/give',
+  '/leadership',
+  '/neighborhood-groups',
+  '/next-generation',
+  '/prayer-request',
+  '/what-we-believe',
+  '/who-we-are',
+];
+
+const EXPECTED_ASSETS = [
+  '/assets/austin-skyline.jpeg',
+  '/assets/neighborhood-table.jpeg',
+  '/assets/next-generation-secondary.jpeg',
+  '/assets/next-generation.jpeg',
+  '/assets/pages/giving.png',
+  '/assets/pages/kids-ministry-1.jpeg',
+  '/assets/pages/kids-ministry-2.jpeg',
+  '/assets/pages/kids-ministry-3.jpeg',
+  '/assets/pages/neighborhood-map.png',
+  '/assets/pages/who-we-are.jpeg',
+  '/assets/people/gonzo-gonzales.jpeg',
+  '/assets/people/josh-currer.jpeg',
+  '/assets/people/landon-berryhill.jpeg',
+  '/assets/people/laura-munoz.jpeg',
+  '/assets/people/nick-shock.jpeg',
+  '/assets/people/sandra-louviere.jpeg',
+  '/assets/people/tim-gillen.jpeg',
+  '/assets/point-logo.png',
+  '/assets/point-wordmark.jpeg',
+];
+
+describe('default PointSite document', () => {
+  it('is valid and carries the current renderer identity', () => {
+    expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
+    expect(defaultSiteDocument.schemaVersion).toBe(1);
+    expect(defaultSiteDocument.rendererVersion).toBe('1.0.0');
+  });
+
+  it('represents every current generated route and navigation link', () => {
+    expect(defaultSiteDocument.pages.map(({ route }) => route).sort()).toEqual(EXPECTED_ROUTES);
+    expect(
+      defaultSiteDocument.navigation.flatMap(({ href, children }) => [
+        href,
+        ...children.map((child) => child.href),
+      ]),
+    ).toEqual([
+      '/who-we-are',
+      '/who-we-are',
+      '/what-we-believe',
+      '/leadership',
+      '/next-generation',
+      '/connect-card',
+      '/connect-card',
+      '/neighborhood-groups',
+      '/prayer-request',
+      '/give',
+      '/contact',
+    ]);
+  });
+
+  it('preserves all current public assets as managed records', () => {
+    expect(defaultSiteDocument.media.map(({ sourcePath }) => sourcePath).sort()).toEqual(
+      EXPECTED_ASSETS,
+    );
+  });
+
+  it('preserves current forms, collections, and identity data', () => {
+    expect(defaultSiteDocument.forms).toHaveLength(9);
+    expect(defaultSiteDocument.forms.flatMap(({ fields }) => fields)).toHaveLength(48);
+    expect(defaultSiteDocument.collections.people.map(({ name }) => name)).toEqual([
+      'Nick Shock',
+      'Josh Currer',
+      'Gonzo Gonzales',
+      'Laura Munoz',
+      'Sandra Louviere',
+    ]);
+    expect(defaultSiteDocument.collections.beliefs).toHaveLength(7);
+    expect(defaultSiteDocument.collections.groups).toHaveLength(6);
+    expect(defaultSiteDocument.site.email).toBe('connect@pointaustin.org');
+    expect(defaultSiteDocument.site.service.schedule).toBe('Sunday at 10:30 AM');
+    expect(defaultSiteDocument.site.givingUrl).toBe('https://subsplash.com/u/-W69J2R/give');
+  });
+
+  it('keeps distinctive current page content editable', () => {
+    const serialized = JSON.stringify(defaultSiteDocument);
+    expect(serialized).toContain('Family. Disciples. Mission.');
+    expect(serialized).toContain('Association of Hill Country Churches');
+    expect(serialized).toContain('First Point');
+    expect(serialized).toContain('How can I get connected?');
+    expect(serialized).toContain('Give In Person');
+    expect(serialized).toContain('Building Rental');
+  });
+});

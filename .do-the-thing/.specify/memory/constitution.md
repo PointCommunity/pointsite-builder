@@ -60,8 +60,8 @@ minor; wording corrections are patch updates.
 
 ## Version History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2026-09-05 | Initial PointSite Builder governance |
+| Version | Date       | Changes                              |
+| ------- | ---------- | ------------------------------------ |
+| 1.0.0   | 2026-09-05 | Initial PointSite Builder governance |
 
 **Version**: 1.0.0 | **Ratified**: 2026-09-05 | **Last Amended**: 2026-09-05
