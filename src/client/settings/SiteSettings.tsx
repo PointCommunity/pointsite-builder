@@ -1,6 +1,7 @@
 import type { SiteDocument } from '../../site-kit/types';
 import { useEditor } from '../editor/EditorProvider';
 import { ThemeEditor } from './ThemeEditor';
+import { NavigationEditor } from './NavigationEditor';
 
 export function SiteSettings() {
   const { document, updateDocument } = useEditor();
@@ -255,6 +256,10 @@ export function SiteSettings() {
           Add social link
         </button>
       </section>
+      <NavigationEditor
+        navigation={document.navigation}
+        onChange={(navigation) => updateDocument((next) => ({ ...next, navigation }))}
+      />
       <ThemeEditor
         theme={document.theme}
         onChange={(theme) => updateDocument((next) => ({ ...next, theme }))}
