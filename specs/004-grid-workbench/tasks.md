@@ -1,14 +1,14 @@
 # Grid Workbench Tasks
 
-- [ ] Schema v3 and v2 migration
-- [ ] Placement utility tests
-- [ ] Twelve-column renderer
-- [ ] Responsive inspector controls
-- [ ] Pointer and keyboard move/resize handles
-- [ ] Interaction-only snap grid
-- [ ] Friendly toolbox guidance and categories
-- [ ] Canvas-selectable footer settings
-- [ ] Inspector overflow regression test
-- [ ] PointSite staging renderer sync
-- [ ] Full local and browser verification
-- [ ] Dark-mode HTML acceptance report
+- [x] Schema v3 and v2 migration
+- [x] Placement utility tests
+- [x] Twelve-column renderer
+- [x] Responsive inspector controls
+- [x] Pointer and keyboard move/resize handles
+- [x] Interaction-only snap grid
+- [x] Friendly toolbox guidance and categories
+- [x] Canvas-selectable footer settings
+- [x] Inspector overflow regression test
+- [x] PointSite staging renderer sync
+- [x] Full local and browser verification
+- [x] Dark-mode HTML acceptance report

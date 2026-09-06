@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>PointSite Grid Workbench Acceptance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.55 system-ui,
+          sans-serif;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 1120px;
+        margin: auto;
+        padding: 40px 24px 72px;
+      }
+      h1 {
+        margin-bottom: 0.4rem;
+        font-size: clamp(2.2rem, 6vw, 4.5rem);
+        line-height: 1;
+        text-wrap: balance;
+      }
+      h2 {
+        margin-top: 2.2rem;
+        color: #b9d99d;
+      }
+      a {
+        color: #bde39f;
+      }
+      code {
+        color: #d4efbd;
+        overflow-wrap: anywhere;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.8rem;
+        border-bottom: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      .card {
+        margin: 1rem 0;
+        padding: 1rem 1.2rem;
+        border: 1px solid #39463a;
+        border-radius: 12px;
+        background: #151d16;
+      }
+      .pass {
+        color: #9ee6a0;
+        font-weight: 750;
+      }
+      .muted {
+        color: #b8c1b5;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="pass">Acceptance status: PASS</p>
+    <h1>Responsive grid workbench</h1>
+    <p class="muted">Verified and deployed September 6, 2026 · America/Chicago</p>
+
+    <div class="card">
+      <h2>Delivered</h2>
+      <p>
+        The dark-first Builder now provides a friendly, categorized toolbox; section-first
+        authoring; and a twelve-column workbench with square snap units. Editors can drag elements
+        into sections, select them directly on the canvas, and move or resize them with pointer or
+        keyboard controls. Desktop, tablet, and phone placements are independently configurable and
+        inherit safely until overridden. Snap dots appear only during placement interactions.
+      </p>
+      <p>
+        The right inspector no longer clips controls, all four authoring areas scroll independently,
+        two- and three-column presets preserve their intended spans, and the global footer is
+        selectable from the canvas. Archived drafts retain Open and Duplicate, gain Unarchive, and
+        can be deleted only after entering the exact case-sensitive confirmation
+        <code>DELETE</code>.
+      </p>
+    </div>
+
+    <h2>Verification evidence</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Gate</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Unit and integration</td>
+          <td class="pass">176 / 176 passed</td>
+        </tr>
+        <tr>
+          <td>Isolated Chromium hands-on authoring run</td>
+          <td class="pass">20 / 20 passed</td>
+        </tr>
+        <tr>
+          <td>Builder cross-browser suite</td>
+          <td class="pass">56 passed · 5 intentional engine-specific skips</td>
+        </tr>
+        <tr>
+          <td>Staging browser suite</td>
+          <td class="pass">43 passed · 1 duplicate-project skip</td>
+        </tr>
+        <tr>
+          <td>Production visual parity</td>
+          <td class="pass">All 11 routes pixel-matched at 360, 768, and 1280 pixels</td>
+        </tr>
+        <tr>
+          <td>Grid geometry</td>
+          <td class="pass">
+            12 columns · square tracks · responsive overrides · nested drag regression covered
+          </td>
+        </tr>
+        <tr>
+          <td>Accessibility</td>
+          <td class="pass">
+            Keyboard, reflow, focus, reduced-motion, semantic, and axe gates passed
+          </td>
+        </tr>
+        <tr>
+          <td>Security</td>
+          <td class="pass">Dependency, source, and secret scans passed · 0 npm vulnerabilities</td>
+        </tr>
+        <tr>
+          <td>Performance</td>
+          <td class="pass">
+            API p95 1.58 ms · total JS gzip 404,122 bytes · editor chunk 153,802 bytes
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Live edge evidence</h2>
+    <div class="card">
+      <p>
+        The deployed Builder serves the release assets over HTTPS. Anonymous staging requests return
+        <code>401</code>, while the public Production site remains available with <code>200</code>.
+        Cloudflare reports 100% of Builder traffic on the accepted Builder version and 100% of
+        staging traffic on the accepted staging version. No paid service or payment card was
+        introduced.
+      </p>
+    </div>
+
+    <h2>Exact release record</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Builder revision</th>
+          <td><code>e08af9944ce9fa8a695392b53ce714db69386610</code></td>
+        </tr>
+        <tr>
+          <th>Builder Worker</th>
+          <td><code>ddef56f1-4920-48eb-b031-ac0ca43e7ea5</code> · 100%</td>
+        </tr>
+        <tr>
+          <th>Staging revision</th>
+          <td><code>b3510e57e03a8a0c5252b17a8af6060a9ac04054</code></td>
+        </tr>
+        <tr>
+          <th>Staging Worker</th>
+          <td><code>51194e06-8d9d-4a05-813f-658b8f08ff00</code> · 100%</td>
+        </tr>
+        <tr>
+          <th>Renderer contract</th>
+          <td>SiteDocument v3 · renderer 3.0.0</td>
+        </tr>
+        <tr>
+          <th>Content checksum</th>
+          <td><code>8081773618b5e9fa88031e68f81cf920b543bccc0677eee9b713b389a2c35fa1</code></td>
+        </tr>
+        <tr>
+          <th>Production revision</th>
+          <td><code>0187c95c8a9d3441049616a801f66f6f6d11050e</code> · unchanged</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Implementation records</h2>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/pull/12"
+        >Builder pull request #12</a
+      >
+      and
+      <a href="https://github.com/PointCommunity/pointsite-staging/pull/8"
+        >staging pull request #8</a
+      >
+      are merged with all required checks green.
+    </p>
+
+    <h2>Safety boundary</h2>
+    <p class="pass">
+      Production publishing remains disabled. No PointSite Production file, commit, or deployment
+      changed. All implementation and deployment work remained inside PointSite Builder and
+      PointSite Staging.
+    </p>
+  </body>
+</html>
