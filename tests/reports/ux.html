@@ -83,8 +83,33 @@
       </tr>
       <tr>
         <td class="red">RED — fixed</td>
-        <td>Primary preview buttons had unreadable text because of CSS specificity.</td>
-        <td>Corrected component color precedence and added axe regression coverage.</td>
+        <td>
+          Builder colors and control rules entered the site frame, making preview text and buttons
+          unreadable or blacked out.
+        </td>
+        <td>
+          Isolated both preview surfaces from Builder CSS and added computed-color regression
+          coverage under an emulated dark operating-system theme.
+        </td>
+      </tr>
+      <tr>
+        <td class="red">RED — fixed</td>
+        <td>
+          The page manager, module catalog, canvas, and inspector could be clipped below the
+          viewport with no way to reach their final content.
+        </td>
+        <td>
+          Constrained authoring to one viewport and gave all four panes independent, keyboard
+          focusable scroll paths.
+        </td>
+      </tr>
+      <tr>
+        <td class="red">RED — fixed</td>
+        <td>Preview presets changed container width without changing responsive layout width.</td>
+        <td>
+          A same-origin isolated frame now renders at an actual 360, 768, or 1280 CSS-pixel viewport
+          using the canonical site renderer.
+        </td>
       </tr>
       <tr>
         <td class="yellow">YELLOW</td>
@@ -103,9 +128,10 @@
     <h2>Core journey</h2>
     <p class="green">
       Automated browser evidence passes creating/duplicating/archiving a draft, adding and editing
-      modules, updating global design, uploading private media, previewing at 360/768/1280,
-      restoring a revision, recovering conflict/offline work, publishing to staging, verifying exact
-      evidence, and accepting the candidate while production remains locked.
+      modules, updating global design, uploading private media, previewing at actual 360/768/1280
+      layout widths, independently scrolling every authoring pane, restoring a revision, recovering
+      conflict/offline work, publishing to staging, verifying exact evidence, and accepting the
+      candidate while production remains locked.
     </p>
     <h2>Tickets</h2>
     <p>
@@ -115,10 +141,9 @@
     </p>
     <h2>Limits</h2>
     <p>
-      The review used the local application with deterministic API fixtures. Live GitHub login, real
-      network latency, and staging deployment are not yet available; screenshots are retained
-      automatically for browser-test failures rather than manufacturing pain-point images after
-      remediation.
+      Automated interaction coverage uses deterministic API fixtures. Authenticated deployment
+      checks are a separate rollout gate, and screenshots are retained automatically for
+      browser-test failures rather than manufacturing pain-point images after remediation.
     </p>
   </body>
 </html>

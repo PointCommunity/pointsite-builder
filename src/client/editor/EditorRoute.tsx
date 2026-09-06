@@ -33,6 +33,14 @@ function Workspace({
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
+      <section className="workspace-too-small" role="alert" aria-labelledby="workspace-size-title">
+        <p className="eyebrow">More room needed</p>
+        <h1 id="workspace-size-title">Widen your browser to edit</h1>
+        <p>
+          PointSite Builder needs a window wider than 720 pixels. Your draft is safe—expand the
+          browser and the editor will return automatically.
+        </p>
+      </section>
       <header className="editor-header">
         <button className="button" type="button" onClick={onClose}>
           ← All drafts
@@ -107,7 +115,7 @@ function Workspace({
         </main>
       ) : null}
       {panel === 'preview' ? (
-        <main id="main-content" className="single-panel">
+        <main id="main-content" className="single-panel single-panel--preview">
           <Preview document={document} />
         </main>
       ) : null}

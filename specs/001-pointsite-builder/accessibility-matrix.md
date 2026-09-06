@@ -5,7 +5,8 @@
 | Route/state                                       | Viewports      | Inputs                   | Automated | Manual evidence                                     |
 | ------------------------------------------------- | -------------- | ------------------------ | --------- | --------------------------------------------------- |
 | Draft list: loading, empty, populated, error      | 320, 768, 1280 | Keyboard, pointer        | axe       | landmarks, headings, focus, long names              |
-| Editor: saved, saving, offline, conflict, invalid | 360, 768, 1280 | Keyboard, pointer, touch | axe       | non-drag reorder, status announcements, zoom/reflow |
+| Editor: saved, saving, offline, conflict, invalid | 721, 768, 1280 | Keyboard, pointer, touch | axe       | non-drag reorder, status announcements, zoom/reflow |
+| Editor: widen-window warning                      | 320, 360, 720  | Keyboard, pointer, touch | axe       | authoring controls hidden; draft remains safe       |
 | Preview: Point and overhaul presets               | 360, 768, 1280 | Keyboard, pointer        | axe       | reading order, contrast, image alternatives         |
 | Revision restore dialog                           | 320, 1280      | Keyboard, pointer        | axe       | focus entry, trap, Escape, focus return             |
 | Media: empty, upload, rejection, library          | 320, 768, 1280 | Keyboard, pointer        | axe       | labels, progress, errors, alt-text workflow         |

@@ -99,6 +99,30 @@
           <td>Revision-label input metadata and placeholder copy were incomplete.</td>
           <td>Added name, autocomplete policy, explicit button types, and ellipsis copy.</td>
         </tr>
+        <tr>
+          <td><code>src/client/editor/VisualEditor.tsx</code></td>
+          <td>Host Builder styles leaked into the Puck rendering frame.</td>
+          <td>
+            Disabled host-style synchronization and injects only the canonical site stylesheet in
+            the rendering document.
+          </td>
+        </tr>
+        <tr>
+          <td><code>src/client/preview/SitePreviewFrame.tsx</code></td>
+          <td>Preview widths did not establish a real responsive-layout viewport.</td>
+          <td>
+            Uses an isolated, same-origin frame at the exact selected width and the canonical
+            renderer, while preserving internal page navigation.
+          </td>
+        </tr>
+        <tr>
+          <td><code>src/client/app.css</code></td>
+          <td>Nested full-viewport heights clipped lower editor controls and site content.</td>
+          <td>
+            The workspace is a bounded grid with independent page-manager, catalog, canvas, and
+            inspector scrolling; phone-sized authoring is replaced by a warning.
+          </td>
+        </tr>
       </tbody>
     </table>
 
@@ -109,10 +133,10 @@
       <code>DraftList.tsx</code>, <code>BlockInspector.tsx</code>, <code>EditorProvider.tsx</code>,
       <code>EditorRoute.tsx</code>, <code>PageManager.tsx</code>, <code>StructurePanel.tsx</code>,
       <code>VisualEditor.tsx</code>, <code>main.tsx</code>, <code>MediaLibrary.tsx</code>,
-      <code>Preview.tsx</code>, <code>StagingPublish.tsx</code>, <code>RevisionHistory.tsx</code>,
-      <code>CollectionsEditor.tsx</code>, <code>FormsEditor.tsx</code>,
-      <code>NavigationEditor.tsx</code>, <code>SiteSettings.tsx</code>, and
-      <code>ThemeEditor.tsx</code>.
+      <code>Preview.tsx</code>, <code>SitePreviewFrame.tsx</code>, <code>StagingPublish.tsx</code>,
+      <code>RevisionHistory.tsx</code>, <code>CollectionsEditor.tsx</code>,
+      <code>FormsEditor.tsx</code>, <code>NavigationEditor.tsx</code>,
+      <code>SiteSettings.tsx</code>, and <code>ThemeEditor.tsx</code>.
     </p>
 
     <h2>Evidence</h2>
@@ -126,16 +150,16 @@
         changes use live regions.
       </li>
       <li>
-        All editor panels pass serious/critical axe checks and horizontal-overflow checks in the
-        browser suite.
+        All editor panels, the phone-width warning, and the isolated preview pass serious/critical
+        axe checks and horizontal-overflow checks in the browser suite.
       </li>
       <li>
         Keyboard alternatives exist for block and navigation movement; destructive revision restore
         requires confirmation.
       </li>
       <li>
-        Reduced-motion, safe-area, focus-visible, dark-theme, long-text, empty, loading, denied,
-        error, conflict, and offline states are represented.
+        Reduced-motion, safe-area, focus-visible, system-theme isolation, long-text, empty, loading,
+        denied, error, conflict, and offline states are represented.
       </li>
     </ul>
     <p class="limit">

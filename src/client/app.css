@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   font-family: Arial, sans-serif;
   color: #20241f;
   background: #f3f1eb;
@@ -14,13 +14,27 @@
   --danger: #9d2f2f;
 }
 
-* {
-  box-sizing: border-box;
+html,
+body,
+#root,
+.builder-app {
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  min-height: 100dvh;
+}
+
+html:has(.builder-app .editor-workspace),
+body:has(.builder-app .editor-workspace),
+#root:has(.editor-workspace),
+.builder-app:has(.editor-workspace) {
+  height: 100%;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 button,
@@ -204,8 +218,15 @@ textarea {
   letter-spacing: 0.06em;
 }
 .editor-workspace {
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
   background: var(--canvas);
+}
+.workspace-too-small {
+  display: none;
 }
 .editor-header {
   min-height: 4.5rem;
@@ -259,9 +280,13 @@ textarea {
 .content-workspace {
   display: grid;
   grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
-  min-height: calc(100dvh - 7.6rem);
+  min-height: 0;
+  overflow: hidden;
 }
 .content-workspace > aside {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1rem;
   border-right: 1px solid var(--line);
   background: var(--canvas);
@@ -299,14 +324,27 @@ textarea {
   cursor: pointer;
 }
 .canvas-shell {
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
   background: var(--surface);
 }
 .visual-editor {
-  height: calc(100dvh - 7.6rem);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.visual-editor > [class*='_Puck_'],
+.visual-editor [class*='_PuckLayout_'] {
+  height: 100% !important;
+  min-height: 0;
 }
 .single-panel {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   max-width: 76rem;
   margin: 0 auto;
   padding: 2rem 1rem;
@@ -328,6 +366,17 @@ textarea {
   border: 1px solid var(--line);
   background: var(--surface);
 }
+.single-panel--preview {
+  max-width: none;
+  overflow: hidden;
+  padding: 0;
+}
+.preview-panel {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
 .preview-toolbar h2 {
   margin: 0;
 }
@@ -345,13 +394,21 @@ textarea {
   min-height: auto;
 }
 .preview-stage {
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
   padding: 1rem;
   overflow: auto;
+  overscroll-behavior: contain;
   background: #d9dcd5;
 }
 .preview-frame {
+  display: block;
+  flex: 0 0 auto;
+  height: 100%;
+  min-height: 24rem;
   margin: 0 auto;
-  min-height: 70dvh;
+  border: 0;
   background: white;
   box-shadow: 0 5px 28px #20241f22;
 }
@@ -747,30 +804,29 @@ textarea {
   border: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f2f4ef;
-    background: #151914;
-    --canvas: #151914;
-    --surface: #1e241d;
-    --ink: #f2f4ef;
-    --muted: #b7bdb3;
-    --line: #3a4038;
-    --brand: #78985a;
-    --brand-strong: #67834d;
-  }
-  .app-header {
-    border-color: #3a4038;
-  }
-  .environment-label {
-    color: #b7bdb3;
-  }
-  .eyebrow {
-    color: #b8cd9f;
-  }
-}
-
 @media (max-width: 720px) {
+  .editor-workspace {
+    display: block;
+    min-height: 100dvh;
+    height: auto;
+    overflow: auto;
+    padding: 1.5rem;
+  }
+  .editor-workspace > :not(.workspace-too-small) {
+    display: none !important;
+  }
+  .workspace-too-small {
+    width: min(32rem, 100%);
+    min-height: calc(100dvh - 3rem);
+    margin: 0 auto;
+    display: grid;
+    align-content: center;
+  }
+  .workspace-too-small h1 {
+    margin-block: 0 0.75rem;
+    font-size: clamp(2rem, 9vw, 3.5rem);
+    line-height: 1;
+  }
   .app-header {
     align-items: stretch;
   }
@@ -795,15 +851,6 @@ textarea {
   .save-cluster {
     grid-column: 1 / -1;
     justify-content: space-between;
-  }
-  .content-workspace {
-    grid-template-columns: 1fr;
-  }
-  .content-workspace > aside {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    max-height: 45dvh;
-    overflow: auto;
   }
   .field-grid {
     grid-template-columns: 1fr;

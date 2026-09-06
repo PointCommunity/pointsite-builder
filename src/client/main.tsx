@@ -11,8 +11,10 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <BuilderErrorBoundary>
-      <App />
-    </BuilderErrorBoundary>
+    <div className="builder-app">
+      <BuilderErrorBoundary>
+        <App />
+      </BuilderErrorBoundary>
+    </div>
   </StrictMode>,
 );

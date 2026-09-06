@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { SiteRenderer } from '../../site-kit/SiteRenderer';
 import type { SiteDocument } from '../../site-kit/types';
-import '../../site-kit/site.css';
+import { SitePreviewFrame } from './SitePreviewFrame';
 
 const widths = { mobile: 360, tablet: 768, desktop: 1280 } as const;
 
@@ -10,6 +9,10 @@ export function Preview({ document }: { document: SiteDocument }) {
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const page = document.pages.find((candidate) => candidate.id === pageId) ?? document.pages[0];
   if (!page) return <p>No page selected.</p>;
+  const navigate = (route: string) => {
+    const target = document.pages.find((candidate) => candidate.route === route);
+    if (target) setPageId(target.id);
+  };
   return (
     <section className="preview-panel" aria-labelledby="preview-title">
       <div className="preview-toolbar">
@@ -39,10 +42,13 @@ export function Preview({ document }: { document: SiteDocument }) {
           ))}
         </fieldset>
       </div>
-      <div className="preview-stage">
-        <div className="preview-frame" style={{ maxWidth: widths[viewport] }}>
-          <SiteRenderer document={document} route={page.route} />
-        </div>
+      <div className="preview-stage" tabIndex={0} aria-label="Scrollable preview viewport">
+        <SitePreviewFrame
+          document={document}
+          route={page.route}
+          width={widths[viewport]}
+          onNavigate={navigate}
+        />
       </div>
     </section>
   );

@@ -197,3 +197,18 @@ requirements rather than speculative scale.
 6. Deploy Builder first, create a new immutable parity-baseline draft, publish it
    through Builder to staging, and run the full local, CI, live, security, and
    browser acceptance matrix. Production remains read-only throughout.
+
+## Preview and Workspace Repair Plan
+
+1. Add failing browser checks for Builder-to-site style leakage, true responsive
+   preview widths, final-control reachability, independent pane scrolling, and the
+   provisional 720-pixel authoring warning.
+2. Isolate Builder chrome styles from every rendered `.point-site` subtree and
+   keep Puck's iframe synchronized only with renderer-safe host styles.
+3. Render the standalone live preview in a same-origin isolated frame so its CSS
+   media queries use the selected 360, 768, or 1280 pixel viewport.
+4. Constrain the editor shell to one visible viewport and give the outer page
+   panel plus Puck's catalog, canvas, and inspector their own scroll containers.
+5. Run focused red-green browser checks, the complete local quality matrix, then
+   deploy only the Builder and repeat authenticated hands-on checks. Staging and
+   Production content remain unchanged.
