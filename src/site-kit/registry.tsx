@@ -19,6 +19,8 @@ export const blockDefinitions: Record<
   map: { label: 'Map', supportsMoveButtons: true },
   divider: { label: 'Divider', supportsMoveButtons: true },
   spacer: { label: 'Spacer', supportsMoveButtons: true },
+  text: { label: 'Text', supportsMoveButtons: true },
+  button: { label: 'Button', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -830,6 +832,20 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
       );
     case 'spacer':
       return <div className={`point-spacer point-spacer--${block.size}`} aria-hidden="true" />;
+    case 'text':
+      return (
+        <p className={`point-text point-text--${block.style} point-align--${block.align}`}>
+          {block.text}
+        </p>
+      );
+    case 'button':
+      return (
+        <div
+          className={`point-button-box point-button-box--${block.align} point-button-box--${block.width}`}
+        >
+          <ActionLink action={block} />
+        </div>
+      );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
@@ -853,14 +869,25 @@ export function renderSection(section: SectionBlock, document: SiteDocument): Re
     '--point-section-columns': section.layout === 'flow' ? 1 : 12,
     '--point-section-gap': sectionGap[section.gap],
     '--point-section-total-gap': sectionTotalGap[section.gap],
+    '--point-section-min-rows': section.minRows,
   } as CSSProperties;
   const sectionColumns = section.layout === 'flow' ? 1 : section.columns;
 
   return (
     <section
-      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding}`}
+      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}`}
       aria-label={section.name}
     >
+      {section.backgroundMediaId ? (
+        <img
+          className={`point-layout-section__background point-layout-section__background--${section.backgroundPosition}`}
+          src={mediaRecord(document, section.backgroundMediaId).sourcePath}
+          alt=""
+        />
+      ) : null}
+      {section.overlay !== 'none' ? (
+        <div className="point-layout-section__overlay" aria-hidden="true" />
+      ) : null}
       <div className="point-layout-section__grid" style={style}>
         {section.items.map((placement) => {
           const desktop = placement.grid.desktop;

@@ -203,7 +203,7 @@ textarea {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
 .draft-card,
@@ -221,6 +221,16 @@ textarea {
 }
 .draft-card > p {
   color: var(--muted);
+}
+@media (max-width: 56rem) {
+  .draft-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 38rem) {
+  .draft-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .status-badge {
   display: inline-flex;

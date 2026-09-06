@@ -1,27 +1,49 @@
-import { areaForBreakpoint, updateGridArea } from '../../site-kit/grid-layout';
+import { useState } from 'react';
+import { areaForBreakpoint, resolveGridArea, updateGridArea } from '../../site-kit/grid-layout';
 import type { ElementPlacement } from '../../site-kit/types';
 import { useGridBreakpoint } from './GridBreakpointContext';
 
 export function GridPlacementInspector({
   value,
+  occupied = [],
   onChange,
 }: {
   value: ElementPlacement['grid'];
+  occupied?: ElementPlacement['grid'][];
   onChange: (value: ElementPlacement['grid']) => void;
 }) {
   const breakpoint = useGridBreakpoint();
+  const [status, setStatus] = useState('');
   const area = areaForBreakpoint(value, breakpoint);
   const inherited = breakpoint !== 'desktop' && !value[breakpoint];
-  const set = (change: Partial<typeof area>) => onChange(updateGridArea(value, breakpoint, change));
+  const set = (change: Partial<typeof area>) => {
+    const next = updateGridArea(value, breakpoint, change);
+    const resolved = resolveGridArea(
+      areaForBreakpoint(next, breakpoint),
+      area,
+      occupied.map((grid) => areaForBreakpoint(grid, breakpoint)),
+    );
+    if (resolved.rejected) {
+      setStatus('That position overlaps another element. The previous position was kept.');
+      return;
+    }
+    setStatus('');
+    onChange(updateGridArea(value, breakpoint, resolved.area));
+  };
 
   return (
-    <fieldset className="grid-placement-inspector">
+    <fieldset className="grid-placement-inspector" data-occupied-elements={occupied.length}>
       <legend>{breakpoint[0].toUpperCase() + breakpoint.slice(1)} grid position</legend>
       <p className="inspector-help">
         {inherited
           ? `Inheriting the desktop position. Changing a value creates a ${breakpoint} override.`
           : 'Drag on the canvas or enter exact grid values.'}
       </p>
+      {status ? (
+        <p className="inspector-error" role="alert">
+          {status}
+        </p>
+      ) : null}
       <div className="grid-placement-inspector__fields">
         <label>
           <span>Column</span>

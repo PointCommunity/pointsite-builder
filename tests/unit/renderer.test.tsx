@@ -92,7 +92,7 @@ describe('controlled public renderer', () => {
   });
 
   it('publishes accessible non-drag structure metadata for every block', () => {
-    expect(Object.keys(blockDefinitions)).toHaveLength(13);
+    expect(Object.keys(blockDefinitions)).toHaveLength(15);
     for (const definition of Object.values(blockDefinitions)) {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);
@@ -111,6 +111,9 @@ describe('controlled public renderer', () => {
       width: 'narrow' as const,
       surface: 'primary' as const,
       padding: 'large' as const,
+      minRows: 8,
+      backgroundPosition: 'center' as const,
+      overlay: 'none' as const,
       items: [
         {
           id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
@@ -141,6 +144,40 @@ describe('controlled public renderer', () => {
     expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
       '--point-section-columns: 12',
     );
+    expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
+      '--point-section-min-rows: 8',
+    );
+  });
+
+  it('renders atomic text and hyperlink buttons independently', () => {
+    render(
+      <>
+        {renderBlock(
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa91',
+            type: 'text',
+            text: 'A simple independent text box',
+            style: 'lead',
+            align: 'center',
+          },
+          allBlocksDocument,
+        )}
+        {renderBlock(
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa92',
+            type: 'button',
+            label: 'Who we are',
+            href: '/who-we-are',
+            style: 'secondary',
+            width: 'fit',
+            align: 'right',
+          },
+          allBlocksDocument,
+        )}
+      </>,
+    );
+    expect(screen.getByText('A simple independent text box')).toHaveClass('point-text--lead');
+    expect(screen.getByRole('link', { name: 'Who we are' })).toHaveAttribute('href', '/who-we-are');
   });
 
   it('reflects standardized element controls in rendered output', () => {

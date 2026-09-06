@@ -196,6 +196,30 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
+test('keeps draft cards in a left-aligned responsive grid of at most three columns', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  const grid = page.locator('.draft-grid');
+  const card = page.locator('.draft-card');
+  const [gridBox, cardBox] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(gridBox).not.toBeNull();
+  expect(cardBox).not.toBeNull();
+  expect(cardBox!.x).toBeCloseTo(gridBox!.x, 0);
+  expect(cardBox!.width).toBeLessThan(gridBox!.width * 0.35);
+  expect(cardBox!.width).toBeGreaterThan(gridBox!.width * 0.3);
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  const [tabletGrid, tabletCard] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(tabletCard!.width).toBeGreaterThan(tabletGrid!.width * 0.45);
+  expect(tabletCard!.width).toBeLessThan(tabletGrid!.width * 0.55);
+
+  await page.setViewportSize({ width: 420, height: 800 });
+  const [phoneGrid, phoneCard] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(phoneCard!.width).toBeCloseTo(phoneGrid!.width, 0);
+});
+
 test('creates, duplicates, archives, unarchives, and safely deletes drafts without code', async ({
   page,
 }) => {
@@ -563,12 +587,19 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const resizeHandle = canvas.getByRole('button', {
     name: 'Resize heading from south east',
   });
+  const originalHeight = Number(
+    await page.getByLabel('desktop height in rows').last().inputValue(),
+  );
+  await resizeHandle.press('ArrowDown');
+  await expect(page.getByLabel('desktop height in rows').last()).toHaveValue(
+    String(originalHeight + 1),
+  );
   await resizeHandle.dispatchEvent('pointerdown', { pointerId: 2, clientX: 10, clientY: 10 });
   await expect(sectionSlot).toHaveClass(/point-layout-section__grid--active/);
   await canvas.locator('body').dispatchEvent('pointermove', {
     pointerId: 2,
     clientX: -90,
-    clientY: 10,
+    clientY: 110,
   });
   await expect
     .poll(async () => Number(await page.getByLabel('desktop width in columns').last().inputValue()))
@@ -576,6 +607,9 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const resizedDesktopWidth = Number(
     await page.getByLabel('desktop width in columns').last().inputValue(),
   );
+  await expect
+    .poll(async () => Number(await page.getByLabel('desktop height in rows').last().inputValue()))
+    .toBeGreaterThan(originalHeight + 1);
   await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 2 });
   await expect(sectionSlot).not.toHaveClass(/point-layout-section__grid--active/);
 
@@ -598,7 +632,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await canvas.locator('body').dispatchEvent('pointermove', {
     pointerId: 1,
     clientX: 110,
-    clientY: 10,
+    clientY: 110,
   });
   await expect
     .poll(async () => Number(await page.getByLabel('desktop column').last().inputValue()))
@@ -630,7 +664,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   expect(imageBox!.width).toBeLessThan(gridBox!.width * 0.6);
   expect(imageBox!.width).toBeGreaterThan(gridBox!.width * 0.35);
 
-  await canvas.getByAltText('Describe this image').click();
+  await canvas.getByRole('button', { name: 'Move image on desktop grid' }).focus();
   const inspector = page.locator('.block-inspector').last();
   await expect(page.getByLabel('desktop width in columns').last()).toHaveValue('6');
   const inspectorOverflow = await inspector.evaluate((element) => ({
@@ -638,6 +672,27 @@ test('builds a standardized section by dragging an element from the toybox', asy
     scrollWidth: element.scrollWidth,
   }));
   expect(inspectorOverflow.scrollWidth).toBeLessThanOrEqual(inspectorOverflow.clientWidth);
+
+  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot);
+  const atomicButton = twoColumn.getByRole('link', { name: 'Learn more', exact: true });
+  await expect(atomicButton).toBeVisible();
+  await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
+  await page.getByLabel('Button label').filter({ visible: true }).fill('Visit groups');
+  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
+  await expect(twoColumn.getByRole('link', { name: 'Visit groups' })).toHaveAttribute(
+    'href',
+    '/connect/groups',
+  );
+  const placementInspector = page.locator('.grid-placement-inspector').filter({ visible: true });
+  const buttonColumn = placementInspector.getByLabel('desktop column');
+  await expect(placementInspector).toHaveAttribute('data-occupied-elements', '1');
+  await placementInspector.getByLabel('desktop row').fill('1');
+  const previousButtonColumn = await buttonColumn.inputValue();
+  await buttonColumn.fill('1');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'overlaps another element' }),
+  ).toBeVisible();
+  await expect(buttonColumn).toHaveValue(previousButtonColumn);
 
   await page.getByRole('button', { name: 'Save now' }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
@@ -654,6 +709,92 @@ test('builds a standardized section by dragging an element from the toybox', asy
     'page',
   );
   await expect(page.locator('#footer-settings')).toBeFocused();
+});
+
+test('inserts an editable atomic recipe and resizes its section on the grid', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const source = page.getByRole('button', { name: 'Call to action recipe', exact: true });
+  const target = canvas.locator('.home-hero');
+  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+  expect(from).not.toBeNull();
+  expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+    steps: 4,
+  });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + 6, { steps: 16 });
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+
+  const recipe = canvas.locator('section[aria-label="Call to action section"]');
+  await expect(recipe).toBeVisible();
+  await expect(recipe.locator('.point-cta')).toHaveCount(0);
+  await expect(recipe.locator('.point-heading')).toHaveCount(1);
+  await expect(recipe.locator('.point-text')).toHaveCount(1);
+  await expect(recipe.locator('.point-button-box')).toHaveCount(1);
+
+  const resizeSection = canvas.getByRole('button', {
+    name: 'Resize Call to action section height',
+  });
+  await expect(resizeSection).toBeVisible();
+  const beforeRows = await recipe
+    .locator('[data-puck-dropzone]')
+    .evaluate((element) => getComputedStyle(element).getPropertyValue('--point-section-min-rows'));
+  await resizeSection.press('ArrowDown');
+  await expect
+    .poll(() =>
+      recipe
+        .locator('[data-puck-dropzone]')
+        .evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+        ),
+    )
+    .not.toBe(beforeRows);
+  const keyboardRows = Number(
+    await recipe
+      .locator('[data-puck-dropzone]')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+      ),
+  );
+  await resizeSection.dispatchEvent('pointerdown', { pointerId: 3, clientX: 10, clientY: 10 });
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 3,
+    clientX: 10,
+    clientY: 110,
+  });
+  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 3 });
+  await expect
+    .poll(async () =>
+      Number(
+        await recipe
+          .locator('[data-puck-dropzone]')
+          .evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+          ),
+      ),
+    )
+    .toBeGreaterThan(keyboardRows);
+
+  await recipe.locator('.point-layout-item').filter({ hasText: 'Learn more' }).click();
+  await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
+  await page.getByLabel('Button label').filter({ visible: true }).fill('Join a group');
+  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
+  await expect(recipe.getByRole('link', { name: 'Join a group' })).toHaveAttribute(
+    'href',
+    '/connect/groups',
+  );
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {

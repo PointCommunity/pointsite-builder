@@ -56,7 +56,7 @@ describe('document versioning', () => {
     legacy.schemaVersion = 0;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['0-to-1', '1-to-2', '2-to-3']);
+    expect(migrated.applied).toEqual(['0-to-1', '1-to-2', '2-to-3', '3-to-4']);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
 
@@ -68,7 +68,7 @@ describe('document versioning', () => {
   it('migrates version one into deterministic standardized sections', () => {
     const first = migrateDocument(versionOneDocument());
     const second = migrateDocument(versionOneDocument());
-    expect(first.applied).toEqual(['1-to-2', '2-to-3']);
+    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]).toMatchObject({
       type: 'section',
@@ -90,7 +90,7 @@ describe('document versioning', () => {
 
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
-    expect(first.applied).toEqual(['2-to-3']);
+    expect(first.applied).toEqual(['2-to-3', '3-to-4']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]?.items[0]?.grid.desktop).toEqual({
       column: 1,
@@ -107,6 +107,36 @@ describe('document versioning', () => {
     legacyGrid.pages[0].blocks[0].layout = 'grid';
     legacyGrid.pages[0].blocks[0].columns = 2;
     expect(migrateDocument(legacy).document.pages[0]?.blocks[0]?.columns).toBe(12);
+  });
+
+  it('migrates saved version three drafts without losing section content', () => {
+    const legacy = structuredClone(validSiteDocument) as Record<string, unknown>;
+    legacy.schemaVersion = 3;
+    legacy.rendererVersion = '3.0.0';
+    const pages = legacy.pages as typeof validSiteDocument.pages;
+    const originalElementIds = pages.flatMap((page) =>
+      page.blocks.flatMap((section) => section.items.map((item) => item.element.id)),
+    );
+    for (const page of pages) {
+      for (const section of page.blocks) {
+        const legacySection = section as unknown as Record<string, unknown>;
+        delete legacySection.minRows;
+        delete legacySection.backgroundPosition;
+        delete legacySection.overlay;
+      }
+    }
+
+    const migrated = migrateDocument(legacy);
+    expect(migrated.applied).toEqual(['3-to-4']);
+    expect(
+      migrated.document.pages.flatMap((page) =>
+        page.blocks.flatMap((section) => section.items.map((item) => item.element.id)),
+      ),
+    ).toEqual(originalElementIds);
+    expect(migrated.document.pages[0]?.blocks[0]).toMatchObject({
+      backgroundPosition: 'center',
+      overlay: 'none',
+    });
   });
 
   it('fails closed for an unknown future schema version', () => {

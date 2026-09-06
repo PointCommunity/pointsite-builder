@@ -49,6 +49,9 @@ export function createCompatibilitySection(element: SiteElement): SectionBlock {
     width: 'full',
     surface: 'transparent',
     padding: 'none',
+    minRows: 1,
+    backgroundPosition: 'center',
+    overlay: 'none',
     items: [
       {
         id: derivedUuid(element.id, 0x5a5a5a5a),
@@ -82,8 +85,8 @@ function migrateTwoToThree(input: object): unknown {
   const legacy = input as { pages?: Array<Record<string, unknown>> };
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 3,
+    rendererVersion: '3.0.0',
     pages: (legacy.pages ?? []).map((page) => ({
       ...page,
       blocks: ((page.blocks as Array<Record<string, unknown>>) ?? []).map((block) => {
@@ -106,6 +109,33 @@ function migrateTwoToThree(input: object): unknown {
   };
 }
 
+function migrateThreeToFour(input: object): unknown {
+  const legacy = input as { pages?: Array<Record<string, unknown>> };
+  return {
+    ...input,
+    schemaVersion: SCHEMA_VERSION,
+    rendererVersion: RENDERER_VERSION,
+    pages: (legacy.pages ?? []).map((page) => ({
+      ...page,
+      blocks: ((page.blocks as Array<Record<string, unknown>>) ?? []).map((section) => {
+        const items = (section.items as Array<Record<string, unknown>>) ?? [];
+        const occupiedRows = items.reduce((rows, item) => {
+          const desktop = (
+            item.grid as { desktop?: { row?: number; rowSpan?: number } } | undefined
+          )?.desktop;
+          return Math.max(rows, (desktop?.row ?? 1) + (desktop?.rowSpan ?? 1) - 1);
+        }, 1);
+        return {
+          ...section,
+          minRows: section.layout === 'grid' ? Math.min(100, occupiedRows) : 1,
+          backgroundPosition: 'center',
+          overlay: 'none',
+        };
+      }),
+    })),
+  };
+}
+
 export function migrateDocument(input: unknown): MigrationResult {
   const version = readVersion(input);
 
@@ -117,23 +147,33 @@ export function migrateDocument(input: unknown): MigrationResult {
     const versionOne = migrateZeroToOne(input as object);
     const versionTwo = migrateOneToTwo(versionOne as object);
     return {
-      document: SiteDocumentSchema.parse(migrateTwoToThree(versionTwo as object)),
-      applied: ['0-to-1', '1-to-2', '2-to-3'],
+      document: SiteDocumentSchema.parse(
+        migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object),
+      ),
+      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4'],
     };
   }
 
   if (version === 1)
     return {
       document: SiteDocumentSchema.parse(
-        migrateTwoToThree(migrateOneToTwo(input as object) as object),
+        migrateThreeToFour(migrateTwoToThree(migrateOneToTwo(input as object) as object) as object),
       ),
-      applied: ['1-to-2', '2-to-3'],
+      applied: ['1-to-2', '2-to-3', '3-to-4'],
     };
 
   if (version === 2)
     return {
-      document: SiteDocumentSchema.parse(migrateTwoToThree(input as object)),
-      applied: ['2-to-3'],
+      document: SiteDocumentSchema.parse(
+        migrateThreeToFour(migrateTwoToThree(input as object) as object),
+      ),
+      applied: ['2-to-3', '3-to-4'],
+    };
+
+  if (version === 3)
+    return {
+      document: SiteDocumentSchema.parse(migrateThreeToFour(input as object)),
+      applied: ['3-to-4'],
     };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };

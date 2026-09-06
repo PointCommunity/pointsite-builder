@@ -101,6 +101,22 @@ export const allBlocks: SiteElement[] = [
   },
   { id: '22222222-2222-4222-8222-222222222212', type: 'divider', style: 'line' },
   { id: '22222222-2222-4222-8222-222222222213', type: 'spacer', size: 'medium' },
+  {
+    id: '22222222-2222-4222-8222-222222222214',
+    type: 'text',
+    text: 'Independent text box',
+    style: 'body',
+    align: 'left',
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222215',
+    type: 'button',
+    label: 'Get connected',
+    href: '/contact',
+    style: 'primary',
+    width: 'fit',
+    align: 'left',
+  },
 ];
 
 export const allBlocksDocument: SiteDocument = {

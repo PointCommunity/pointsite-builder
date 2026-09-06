@@ -10,6 +10,9 @@ const settings: SectionSettings = {
   width: 'shell',
   surface: 'transparent',
   padding: 'medium',
+  minRows: 8,
+  backgroundPosition: 'center',
+  overlay: 'none',
 };
 
 describe('SectionInspector', () => {

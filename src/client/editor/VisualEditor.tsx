@@ -10,7 +10,14 @@ import {
 } from 'react';
 import { blockDefinitions, renderBlock } from '../../site-kit/registry';
 import { SiteElementSchema } from '../../site-kit/schema';
-import { defaultRowSpan, GRID_COLUMNS, nextGridArea } from '../../site-kit/grid-layout';
+import {
+  areaForBreakpoint,
+  defaultRowSpan,
+  gridAreaFromPoint,
+  GRID_COLUMNS,
+  nextGridArea,
+  resolveGridArea,
+} from '../../site-kit/grid-layout';
 import type { SectionBlock, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
 import siteCss from '../../site-kit/site.css?inline';
@@ -23,6 +30,12 @@ import { SectionInspector, type SectionSettings } from './SectionInspector';
 import { useEditor } from './EditorProvider';
 import { usePointPuck } from './puck-store';
 import { useGridInteraction } from './grid-interaction-store';
+import {
+  childComponents,
+  currentPuckData,
+  rememberPuckData,
+  siblingComponents,
+} from './puck-grid-data';
 
 type ElementProps = {
   block: SiteElement;
@@ -35,19 +48,34 @@ type SectionProps = {
   content: (props?: Record<string, unknown>) => ReactNode;
 };
 type ComposerProps = Record<SiteElement['type'], ElementProps> &
-  Record<'Section' | 'TwoColumnSection' | 'ThreeColumnSection' | 'FullWidthSection', SectionProps>;
+  Record<
+    | 'Section'
+    | 'TwoColumnSection'
+    | 'ThreeColumnSection'
+    | 'FullWidthSection'
+    | 'HeroRecipe'
+    | 'ImageTextRecipe'
+    | 'CallToActionRecipe',
+    SectionProps
+  >;
 
 const sectionTypes = [
   'Section',
   'TwoColumnSection',
   'ThreeColumnSection',
   'FullWidthSection',
+  'HeroRecipe',
+  'ImageTextRecipe',
+  'CallToActionRecipe',
 ] as const;
 const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
   Section: 'Blank grid section',
   TwoColumnSection: 'Two columns (50 / 50)',
   ThreeColumnSection: 'Three columns (equal)',
   FullWidthSection: 'Full-width section',
+  HeroRecipe: 'Hero recipe',
+  ImageTextRecipe: 'Image and text recipe',
+  CallToActionRecipe: 'Call to action recipe',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
 const gapValues = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' };
@@ -61,10 +89,21 @@ const editorDnd = { behavior: 'auto' as const };
 const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
 const editorOverrides = { componentOverlay: GridOverlay };
 
-function defaultElement(
-  type: SiteElement['type'],
+let lastGridPointer:
+  | {
+      sectionId: string;
+      x: number;
+      y: number;
+      width: number;
+      columnGap: number;
+      rowGap: number;
+      cellSize: number;
+    }
+  | undefined;
+function defaultElement<T extends SiteElement['type']>(
+  type: T,
   document: ReturnType<typeof useEditor>['document'],
-): SiteElement {
+): Extract<SiteElement, { type: T }> {
   const id = crypto.randomUUID();
   const mediaId = document.media[0]?.id ?? crypto.randomUUID();
   const formId = document.forms[0]?.id ?? crypto.randomUUID();
@@ -131,11 +170,38 @@ function defaultElement(
     map: { id, type: 'map', query: 'Austin, Texas', title: 'Find us' },
     divider: { id, type: 'divider', style: 'line' },
     spacer: { id, type: 'spacer', size: 'medium' },
+    text: { id, type: 'text', text: 'Add your text here.', style: 'body', align: 'left' },
+    button: {
+      id,
+      type: 'button',
+      label: 'Learn more',
+      href: '/',
+      style: 'primary',
+      width: 'fit',
+      align: 'left',
+    },
   };
-  return defaults[type];
+  return defaults[type] as Extract<SiteElement, { type: T }>;
 }
 
 function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
+  if (kind === 'HeroRecipe')
+    return {
+      ...sectionDefaults('FullWidthSection'),
+      name: 'Hero section',
+      surface: 'primary',
+      minRows: 10,
+      overlay: 'dark',
+    };
+  if (kind === 'ImageTextRecipe')
+    return { ...sectionDefaults('Section'), name: 'Image and text section', minRows: 9 };
+  if (kind === 'CallToActionRecipe')
+    return {
+      ...sectionDefaults('Section'),
+      name: 'Call to action section',
+      surface: 'surface',
+      minRows: 6,
+    };
   if (kind === 'TwoColumnSection')
     return {
       name: 'Two column section',
@@ -145,6 +211,9 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
       width: 'shell',
       surface: 'transparent',
       padding: 'medium',
+      minRows: 8,
+      backgroundPosition: 'center',
+      overlay: 'none',
     };
   if (kind === 'ThreeColumnSection')
     return {
@@ -155,6 +224,9 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
       width: 'shell',
       surface: 'transparent',
       padding: 'medium',
+      minRows: 8,
+      backgroundPosition: 'center',
+      overlay: 'none',
     };
   if (kind === 'FullWidthSection')
     return {
@@ -165,6 +237,9 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
       width: 'full',
       surface: 'canvas',
       padding: 'medium',
+      minRows: 8,
+      backgroundPosition: 'center',
+      overlay: 'none',
     };
   return {
     name: 'Blank section',
@@ -174,27 +249,140 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     width: 'shell',
     surface: 'transparent',
     padding: 'medium',
+    minRows: 8,
+    backgroundPosition: 'center',
+    overlay: 'none',
   };
 }
 
-function SectionComponent({ id, settings, content: Content }: SectionProps & { id?: string }) {
+function elementData(
+  element: SiteElement,
+  area: { column: number; row: number; columnSpan: number; rowSpan: number },
+  align: ElementProps['align'] = 'stretch',
+): ComponentData {
+  return {
+    type: element.type,
+    props: {
+      id: crypto.randomUUID(),
+      block: element,
+      span: area.columnSpan,
+      align,
+      grid: { desktop: area },
+    },
+  };
+}
+
+function recipeContent(
+  kind: (typeof sectionTypes)[number],
+  document: ReturnType<typeof useEditor>['document'],
+): ComponentData[] {
+  if (kind === 'HeroRecipe')
+    return [
+      elementData(
+        { ...defaultElement('heading', document), text: 'Welcome to Point', align: 'center' },
+        { column: 2, row: 2, columnSpan: 10, rowSpan: 3 },
+        'center',
+      ),
+      elementData(
+        {
+          ...defaultElement('text', document),
+          text: 'Add a short welcome and move each element wherever it belongs.',
+          style: 'lead',
+          align: 'center',
+        },
+        { column: 3, row: 5, columnSpan: 8, rowSpan: 2 },
+        'center',
+      ),
+      elementData(
+        { ...defaultElement('button', document), align: 'center' },
+        { column: 5, row: 7, columnSpan: 4, rowSpan: 2 },
+        'center',
+      ),
+    ];
+  if (kind === 'ImageTextRecipe')
+    return [
+      elementData(defaultElement('image', document), {
+        column: 1,
+        row: 1,
+        columnSpan: 6,
+        rowSpan: 9,
+      }),
+      elementData(defaultElement('heading', document), {
+        column: 7,
+        row: 2,
+        columnSpan: 6,
+        rowSpan: 2,
+      }),
+      elementData(defaultElement('text', document), {
+        column: 7,
+        row: 4,
+        columnSpan: 6,
+        rowSpan: 3,
+      }),
+      elementData(defaultElement('button', document), {
+        column: 7,
+        row: 7,
+        columnSpan: 3,
+        rowSpan: 2,
+      }),
+    ];
+  if (kind === 'CallToActionRecipe')
+    return [
+      elementData(defaultElement('heading', document), {
+        column: 1,
+        row: 1,
+        columnSpan: 8,
+        rowSpan: 2,
+      }),
+      elementData(defaultElement('text', document), {
+        column: 1,
+        row: 3,
+        columnSpan: 8,
+        rowSpan: 2,
+      }),
+      elementData(defaultElement('button', document), {
+        column: 9,
+        row: 2,
+        columnSpan: 4,
+        rowSpan: 2,
+      }),
+    ];
+  return [];
+}
+
+function SectionComponent({
+  id,
+  settings,
+  content: Content,
+  document,
+}: SectionProps & { id?: string; document: ReturnType<typeof useEditor>['document'] }) {
   const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
   const isGridInteracting = useGridInteraction(id);
   const gridRef = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const element = gridRef.current;
     if (!element || settings.layout !== 'grid') return;
+    let animationFrame = 0;
+    let lastCell = 0;
     const measure = () => {
       const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
       const cell = Math.max(24, (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+      if (Math.abs(cell - lastCell) < 0.01) return;
+      lastCell = cell;
       element.style.setProperty('--point-grid-cell', `${cell}px`);
     };
     measure();
     const ResizeObserverClass = element.ownerDocument.defaultView?.ResizeObserver;
     if (!ResizeObserverClass) return;
-    const observer = new ResizeObserverClass(measure);
+    const observer = new ResizeObserverClass(() => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(measure);
+    });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+    };
   }, [settings.gap, settings.layout]);
   if (settings.layout === 'compatibility')
     return <Content className="point-compatibility-slot" minEmptyHeight={48} />;
@@ -202,12 +390,41 @@ function SectionComponent({ id, settings, content: Content }: SectionProps & { i
     '--point-section-columns': settings.layout === 'flow' ? 1 : GRID_COLUMNS,
     '--point-section-gap': gapValues[settings.gap],
     '--point-section-total-gap': totalGapValues[settings.gap],
+    '--point-section-min-rows': settings.minRows,
   } as CSSProperties;
+  const background = settings.backgroundMediaId
+    ? document.media.find((item) => item.id === settings.backgroundMediaId)
+    : undefined;
   return (
     <section
-      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding}`}
+      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding} point-layout-section--overlay-${settings.overlay}`}
       aria-label={settings.name}
+      data-point-section-id={id}
+      onPointerMoveCapture={(event) => {
+        if (!id || !gridRef.current || settings.layout !== 'grid') return;
+        const rect = gridRef.current.getBoundingClientRect();
+        const computed = getComputedStyle(gridRef.current);
+        lastGridPointer = {
+          sectionId: id,
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+          width: rect.width,
+          columnGap: Number.parseFloat(computed.columnGap) || 0,
+          rowGap: Number.parseFloat(computed.rowGap) || 0,
+          cellSize: Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24,
+        };
+      }}
     >
+      {background ? (
+        <img
+          className={`point-layout-section__background point-layout-section__background--${settings.backgroundPosition}`}
+          src={background.sourcePath}
+          alt=""
+        />
+      ) : null}
+      {settings.overlay !== 'none' ? (
+        <div className="point-layout-section__overlay" aria-hidden="true" />
+      ) : null}
       <Content
         ref={gridRef}
         className={`point-layout-section__grid${isDragging || isGridInteracting ? ' point-layout-section__grid--active' : ''}`}
@@ -220,10 +437,62 @@ function SectionComponent({ id, settings, content: Content }: SectionProps & { i
 
 function CanvasBreakpointReporter() {
   const width = usePointPuck((state) => state.appState.ui.viewports.current.width);
+  const data = usePointPuck((state) => state.appState.data);
+  useEffect(() => rememberPuckData(data), [data]);
   useEffect(() => {
     if (typeof width === 'number') setGridBreakpoint(breakpointForWidth(width));
   }, [width]);
   return null;
+}
+
+function GridPlacementField({
+  value,
+  onChange,
+}: {
+  value: SectionBlock['items'][number]['grid'];
+  onChange: (value: SectionBlock['items'][number]['grid']) => void;
+}) {
+  const getParentById = usePointPuck((state) => state.getParentById);
+  const data = usePointPuck((state) => state.appState.data);
+  const selectedItem = usePointPuck((state) => state.selectedItem);
+  const selectedProps = selectedItem?.props as unknown as Record<string, unknown> | undefined;
+  const rawComponentId = selectedProps?.id;
+  const componentId =
+    typeof rawComponentId === 'string' || typeof rawComponentId === 'number'
+      ? String(rawComponentId)
+      : '';
+  const parent = componentId
+    ? (getParentById(componentId) as unknown as ComponentData | null)
+    : null;
+  const occupied = (
+    siblingComponents(data, componentId).length
+      ? siblingComponents(data, componentId)
+      : (((parent?.props as Record<string, unknown> | undefined)?.content ?? []) as ComponentData[])
+  )
+    .filter((item) => String(item.props.id) !== componentId)
+    .map((item) => item.props.grid as SectionBlock['items'][number]['grid'])
+    .filter(Boolean);
+  return <GridPlacementInspector value={value} occupied={occupied} onChange={onChange} />;
+}
+
+function freshenRecipeChild(child: ComponentData): ComponentData {
+  const props = child.props as unknown as Record<string, unknown>;
+  const block = props.block;
+  const rawId = props.id;
+  return {
+    ...child,
+    props: {
+      ...props,
+      id:
+        typeof rawId === 'string' || typeof rawId === 'number'
+          ? String(rawId)
+          : crypto.randomUUID(),
+      block:
+        block && typeof block === 'object'
+          ? { ...(block as Record<string, unknown>), id: crypto.randomUUID() }
+          : block,
+    },
+  };
 }
 
 function sectionToData(section: SectionBlock): ComponentData {
@@ -239,6 +508,10 @@ function sectionToData(section: SectionBlock): ComponentData {
         width: section.width,
         surface: section.surface,
         padding: section.padding,
+        minRows: section.minRows,
+        ...(section.backgroundMediaId ? { backgroundMediaId: section.backgroundMediaId } : {}),
+        backgroundPosition: section.backgroundPosition,
+        overlay: section.overlay,
       },
       content: section.items.map((placement) => ({
         type: placement.element.type,
@@ -322,12 +595,33 @@ export function VisualEditor({
           }: {
             value: SectionSettings;
             onChange: (value: SectionSettings) => void;
-          }) => <SectionInspector settings={value} onChange={onChange} />,
+          }) => <SectionInspector settings={value} document={document} onChange={onChange} />,
         },
         content: { type: 'slot', allow: elementTypes },
       },
-      defaultProps: { settings: sectionDefaults(kind), content: [] },
-      render: SectionComponent,
+      defaultProps: {
+        settings: {
+          ...sectionDefaults(kind),
+          ...(kind === 'HeroRecipe' && document.media[0]
+            ? { backgroundMediaId: document.media[0].id }
+            : {}),
+        },
+        content: recipeContent(kind, document),
+      },
+      resolveData: (data: { props: SectionProps }, { trigger }: { trigger: string }) =>
+        trigger === 'insert'
+          ? {
+              props: {
+                ...data.props,
+                content: Array.isArray(data.props.content)
+                  ? data.props.content.map((child: ComponentData) => freshenRecipeChild(child))
+                  : data.props.content,
+              },
+            }
+          : data,
+      render: (props: SectionProps & { id?: string }) => (
+        <SectionComponent {...props} document={document} />
+      ),
     };
   }
   for (const type of elementTypes) {
@@ -360,7 +654,7 @@ export function VisualEditor({
         }: {
           value: SectionBlock['items'][number]['grid'];
           onChange: (value: SectionBlock['items'][number]['grid']) => void;
-        }) => <GridPlacementInspector value={value} onChange={onChange} />,
+        }) => <GridPlacementField value={value} onChange={onChange} />,
       },
       align: {
         type: 'select',
@@ -404,16 +698,30 @@ export function VisualEditor({
       ) => {
         if (trigger !== 'insert') return data;
         const parentSettings = parent?.props.settings as Partial<SectionSettings> | undefined;
-        const parentItems = ((parent?.props.content ?? []) as ComponentData[])
+        const parentId = String(parent?.props.id ?? '');
+        const storedParentItems = childComponents(currentPuckData(), parentId);
+        const parentItems = (
+          storedParentItems.length
+            ? storedParentItems
+            : ((parent?.props.content ?? []) as ComponentData[])
+        )
           .filter((item) => item.props.id !== (data.props as ElementProps & { id?: string }).id)
           .map((item) => ({
             grid: item.props.grid as SectionBlock['items'][number]['grid'],
           }));
         const defaultSpan =
           parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
-        const grid = {
-          desktop: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type)),
-        };
+        const fallback = nextGridArea(parentItems, defaultSpan, defaultRowSpan(type));
+        const pointed =
+          lastGridPointer?.sectionId === parentId
+            ? gridAreaFromPoint(lastGridPointer, defaultSpan, defaultRowSpan(type))
+            : fallback;
+        const resolved = resolveGridArea(
+          pointed,
+          fallback,
+          parentItems.map((item) => areaForBreakpoint(item.grid, 'desktop')),
+        );
+        const grid = { desktop: resolved.area };
         return {
           props: {
             ...data.props,
@@ -465,9 +773,9 @@ export function VisualEditor({
       sections: { title: '1. Start with a section', components: [...sectionTypes] },
       content: {
         title: '2. Add text and buttons',
-        components: ['heading', 'richText', 'hero', 'cta'],
+        components: ['heading', 'text', 'richText', 'button'],
       },
-      media: { title: 'Add images and features', components: ['image', 'splitFeature'] },
+      media: { title: 'Add images', components: ['image'] },
       collections: { title: 'Show lists and people', components: ['cards', 'people'] },
       engagement: { title: 'Add interactive content', components: ['faq', 'form', 'map'] },
       spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },

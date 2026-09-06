@@ -227,6 +227,24 @@ const SpacerBlockSchema = z.strictObject({
   variant: z.enum(['standard']).optional(),
 });
 
+const TextBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('text'),
+  text: bodyText,
+  style: z.enum(['body', 'lead', 'eyebrow', 'small']),
+  align: z.enum(['left', 'center']),
+});
+
+const ButtonBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('button'),
+  label: z.string().trim().min(1).max(60),
+  href: SafeHrefSchema,
+  style: z.enum(['primary', 'secondary', 'quiet']),
+  width: z.enum(['fit', 'full']),
+  align: z.enum(['left', 'center', 'right']),
+});
+
 function isSafePlainText(value: string): boolean {
   return ![...value].some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -248,6 +266,8 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   MapBlockSchema,
   DividerBlockSchema,
   SpacerBlockSchema,
+  TextBlockSchema,
+  ButtonBlockSchema,
 ]);
 
 export const GridAreaSchema = z
@@ -299,6 +319,10 @@ export const SectionBlockSchema = z
     width: z.enum(['full', 'shell', 'narrow']),
     surface: z.enum(['transparent', 'canvas', 'surface', 'primary']),
     padding: z.enum(['none', 'small', 'medium', 'large']),
+    minRows: z.number().int().min(1).max(100),
+    backgroundMediaId: uuid.optional(),
+    backgroundPosition: z.enum(['top', 'center', 'bottom']),
+    overlay: z.enum(['none', 'light', 'dark']),
     items: z.array(ElementPlacementSchema).max(60),
   })
   .superRefine((section, context) => {
@@ -475,7 +499,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(3),
+    schemaVersion: z.literal(4),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

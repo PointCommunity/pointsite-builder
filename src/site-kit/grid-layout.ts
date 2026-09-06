@@ -5,6 +5,7 @@ export type GridArea = ElementPlacement['grid']['desktop'];
 export type ResponsiveGridArea = ElementPlacement['grid'];
 
 export const GRID_COLUMNS = 12;
+export const MAX_GRID_ROWS = 1_000;
 
 const defaultRows: Record<SiteElement['type'], number> = {
   hero: 10,
@@ -20,6 +21,8 @@ const defaultRows: Record<SiteElement['type'], number> = {
   map: 9,
   divider: 1,
   spacer: 2,
+  text: 3,
+  button: 2,
 };
 
 export function defaultRowSpan(type: SiteElement['type']): number {
@@ -35,10 +38,68 @@ export function clampGridArea(area: GridArea): GridArea {
   const column = Math.max(1, Math.min(GRID_COLUMNS - columnSpan + 1, Math.round(area.column)));
   return {
     column,
-    row: Math.max(1, Math.round(area.row)),
+    row: Math.max(1, Math.min(MAX_GRID_ROWS, Math.round(area.row))),
     columnSpan,
     rowSpan: Math.max(1, Math.min(100, Math.round(area.rowSpan))),
   };
+}
+
+export function areasOverlap(a: GridArea, b: GridArea): boolean {
+  return (
+    a.column < b.column + b.columnSpan &&
+    a.column + a.columnSpan > b.column &&
+    a.row < b.row + b.rowSpan &&
+    a.row + a.rowSpan > b.row
+  );
+}
+
+export function resolveGridArea(
+  candidate: GridArea,
+  previous: GridArea,
+  occupied: GridArea[],
+): { area: GridArea; rejected: boolean } {
+  const area = clampGridArea(candidate);
+  return occupied.some((sibling) => areasOverlap(area, sibling))
+    ? { area: clampGridArea(previous), rejected: true }
+    : { area, rejected: false };
+}
+
+export function gridAreaFromPoint(
+  metrics: {
+    x: number;
+    y: number;
+    width: number;
+    columnGap: number;
+    rowGap: number;
+    cellSize: number;
+  },
+  columnSpan: number,
+  rowSpan: number,
+): GridArea {
+  const columnStep =
+    (metrics.width - metrics.columnGap * (GRID_COLUMNS - 1)) / GRID_COLUMNS + metrics.columnGap;
+  const rowStep = metrics.cellSize + metrics.rowGap;
+  return clampGridArea({
+    column: Math.floor(Math.max(0, metrics.x) / Math.max(1, columnStep)) + 1,
+    row: Math.floor(Math.max(0, metrics.y) / Math.max(1, rowStep)) + 1,
+    columnSpan,
+    rowSpan,
+  });
+}
+
+export function requiredSectionRows(
+  minRows: number,
+  items: Array<Pick<ElementPlacement, 'grid'>>,
+  breakpoint: GridBreakpoint = 'desktop',
+): number {
+  return Math.max(
+    1,
+    Math.round(minRows),
+    ...items.map(({ grid }) => {
+      const area = areaForBreakpoint(grid, breakpoint);
+      return area.row + area.rowSpan - 1;
+    }),
+  );
 }
 
 export function updateGridArea(
@@ -88,13 +149,7 @@ export function nextGridArea(
   for (let row = 1; row <= 1_000; row += 1) {
     for (let column = 1; column <= GRID_COLUMNS - width + 1; column += 1) {
       const candidate = { column, row, columnSpan: width, rowSpan };
-      const overlaps = sorted.some(
-        (area) =>
-          candidate.column < area.column + area.columnSpan &&
-          candidate.column + candidate.columnSpan > area.column &&
-          candidate.row < area.row + area.rowSpan &&
-          candidate.row + candidate.rowSpan > area.row,
-      );
+      const overlaps = sorted.some((area) => areasOverlap(candidate, area));
       if (!overlaps) return candidate;
     }
   }

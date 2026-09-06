@@ -1,4 +1,8 @@
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import type { SiteElement } from '../../src/site-kit/types';
+
+const variantOf = (element?: SiteElement): string | undefined =>
+  element && 'variant' in element ? element.variant : undefined;
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 
 const EXPECTED_ROUTES = [
@@ -40,8 +44,8 @@ const EXPECTED_ASSETS = [
 describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
-    expect(defaultSiteDocument.schemaVersion).toBe(3);
-    expect(defaultSiteDocument.rendererVersion).toBe('3.0.0');
+    expect(defaultSiteDocument.schemaVersion).toBe(4);
+    expect(defaultSiteDocument.rendererVersion).toBe('4.0.0');
   });
 
   it('represents every current generated route and navigation link', () => {
@@ -105,7 +109,7 @@ describe('default PointSite document', () => {
     const beliefs = defaultSiteDocument.pages.find((page) => page.route === '/what-we-believe');
 
     expect(home).toMatchObject({ eyebrow: 'Point ATX', template: 'home' });
-    expect(home?.blocks.map((section) => section.items[0]?.element.variant)).toEqual([
+    expect(home?.blocks.map((section) => variantOf(section.items[0]?.element))).toEqual([
       'homeHero',
       'homeIntro',
       'photoBanner',
@@ -118,23 +122,23 @@ describe('default PointSite document', () => {
       template: 'standard',
     });
     expect(about?.heroMediaId).toBeTruthy();
-    expect(about?.blocks.map((section) => section.items[0]?.element.variant)).toEqual([
+    expect(about?.blocks.map((section) => variantOf(section.items[0]?.element))).toEqual([
       'splitEditorial',
       'identity',
       'prose',
     ]);
-    expect(beliefs?.blocks.some((section) => section.items[0]?.element.variant === 'beliefs')).toBe(
-      true,
-    );
+    expect(
+      beliefs?.blocks.some((section) => variantOf(section.items[0]?.element) === 'beliefs'),
+    ).toBe(true);
     expect(
       defaultSiteDocument.pages
         .find((page) => page.route === '/next-generation')
-        ?.blocks.some((section) => section.items[0]?.element.variant === 'imageSplit'),
+        ?.blocks.some((section) => variantOf(section.items[0]?.element) === 'imageSplit'),
     ).toBe(true);
     expect(
       defaultSiteDocument.pages
         .find((page) => page.route === '/contact')
-        ?.blocks.map((section) => section.items[0]?.element.variant),
+        ?.blocks.map((section) => variantOf(section.items[0]?.element)),
     ).toEqual(['contact', 'rental']);
   });
 
