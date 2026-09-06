@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { SiteBlock, SiteDocument } from '../../site-kit/types';
+import type { SiteDocument, SiteElement } from '../../site-kit/types';
 
 function Text({
   label,
@@ -84,8 +84,8 @@ function Media({
   );
 }
 
-type Action = Extract<SiteBlock, { type: 'hero' }>['actions'][number];
-type RichNode = Extract<SiteBlock, { type: 'richText' }>['content'][number];
+type Action = Extract<SiteElement, { type: 'hero' }>['actions'][number];
+type RichNode = Extract<SiteElement, { type: 'richText' }>['content'][number];
 function ActionEditor({
   action,
   onChange,
@@ -154,9 +154,9 @@ export function BlockInspector({
   document,
   onChange,
 }: {
-  block: SiteBlock;
+  block: SiteElement;
   document: SiteDocument;
-  onChange: (block: SiteBlock) => void;
+  onChange: (block: SiteElement) => void;
 }) {
   switch (block.type) {
     case 'hero':
@@ -620,25 +620,29 @@ export function BlockInspector({
             value={block.mediaAlt}
             onChange={(mediaAlt) => onChange({ ...block, mediaAlt })}
           />
-          <Select
-            label="Image side"
-            value={block.mediaSide}
-            options={[
-              { label: 'Left', value: 'left' },
-              { label: 'Right', value: 'right' },
-            ]}
-            onChange={(mediaSide) => onChange({ ...block, mediaSide })}
-          />
-          <Select
-            label="Proportion"
-            value={block.proportion}
-            options={[
-              { label: 'Half', value: 'half' },
-              { label: 'Image wide', value: 'mediaWide' },
-              { label: 'Content wide', value: 'contentWide' },
-            ]}
-            onChange={(proportion) => onChange({ ...block, proportion })}
-          />
+          {block.variant !== 'photoBanner' ? (
+            <>
+              <Select
+                label="Image side"
+                value={block.mediaSide}
+                options={[
+                  { label: 'Left', value: 'left' },
+                  { label: 'Right', value: 'right' },
+                ]}
+                onChange={(mediaSide) => onChange({ ...block, mediaSide })}
+              />
+              <Select
+                label="Proportion"
+                value={block.proportion}
+                options={[
+                  { label: 'Half', value: 'half' },
+                  { label: 'Image wide', value: 'mediaWide' },
+                  { label: 'Content wide', value: 'contentWide' },
+                ]}
+                onChange={(proportion) => onChange({ ...block, proportion })}
+              />
+            </>
+          ) : null}
           <Select
             label="Vertical alignment"
             value={block.align}
@@ -648,12 +652,14 @@ export function BlockInspector({
             ]}
             onChange={(align) => onChange({ ...block, align })}
           />
-          <Select
-            label="Background"
-            value={block.surface}
-            options={surfaceOptions}
-            onChange={(surface) => onChange({ ...block, surface })}
-          />
+          {block.variant !== 'photoBanner' ? (
+            <Select
+              label="Background"
+              value={block.surface}
+              options={surfaceOptions}
+              onChange={(surface) => onChange({ ...block, surface })}
+            />
+          ) : null}
           <Text
             label="Callout label"
             value={block.calloutLabel}
@@ -750,26 +756,32 @@ export function BlockInspector({
             ]}
             onChange={(variant) => onChange({ ...block, variant })}
           />
-          <Text
-            label="Eyebrow"
-            value={block.eyebrow}
-            onChange={(eyebrow) => onChange({ ...block, eyebrow })}
-          />
-          <Text
-            label="Section heading"
-            value={block.heading}
-            onChange={(heading) => onChange({ ...block, heading })}
-          />
-          <Select
-            label="Columns"
-            value={block.columns}
-            options={[
-              { label: '2', value: 2 },
-              { label: '3', value: 3 },
-              { label: '4', value: 4 },
-            ]}
-            onChange={(columns) => onChange({ ...block, columns })}
-          />
+          {block.variant !== 'splitEditorial' && block.variant !== 'splitEditorialTone' ? (
+            <>
+              <Text
+                label="Eyebrow"
+                value={block.eyebrow}
+                onChange={(eyebrow) => onChange({ ...block, eyebrow })}
+              />
+              <Text
+                label="Section heading"
+                value={block.heading}
+                onChange={(heading) => onChange({ ...block, heading })}
+              />
+            </>
+          ) : null}
+          {block.variant !== 'beliefs' ? (
+            <Select
+              label="Columns"
+              value={block.columns}
+              options={[
+                { label: '2', value: 2 },
+                { label: '3', value: 3 },
+                { label: '4', value: 4 },
+              ]}
+              onChange={(columns) => onChange({ ...block, columns })}
+            />
+          ) : null}
           <fieldset className="inspector-group">
             <legend>Cards</legend>
             {block.items.map((item, index) => (

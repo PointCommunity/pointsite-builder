@@ -1,8 +1,9 @@
 import { IDS, validSiteDocument } from './site-documents';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
-import type { SiteBlock, SiteDocument } from '../../src/site-kit/types';
+import { createCompatibilitySection } from '../../src/site-kit/migrations';
+import type { SiteDocument, SiteElement } from '../../src/site-kit/types';
 
-export const allBlocks: SiteBlock[] = [
+export const allBlocks: SiteElement[] = [
   {
     id: '22222222-2222-4222-8222-222222222201',
     type: 'hero',
@@ -111,5 +112,10 @@ export const allBlocksDocument: SiteDocument = {
       alt: 'Friends and families sharing a meal',
     },
   ],
-  pages: [{ ...SiteDocumentSchema.parse(validSiteDocument).pages[0], blocks: allBlocks }],
+  pages: [
+    {
+      ...SiteDocumentSchema.parse(validSiteDocument).pages[0],
+      blocks: allBlocks.map(createCompatibilitySection),
+    },
+  ],
 };

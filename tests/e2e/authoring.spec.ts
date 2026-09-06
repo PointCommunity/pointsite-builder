@@ -19,7 +19,7 @@ const original = (): DraftRecord => {
       checksum: 'a'.repeat(64),
       document,
       label: null,
-      schemaVersion: 1,
+      schemaVersion: document.schemaVersion,
       rendererVersion: document.rendererVersion,
       createdBy: 'admin@pointatx.org',
       createdAt: '2026-09-05T00:00:00Z',
@@ -179,13 +179,13 @@ test('creates, duplicates, and archives drafts without code', async ({ page }) =
 test('operates page modules by keyboard and announces the result', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  const duplicate = page.getByRole('button', { name: /Duplicate Hero/ }).first();
+  const duplicate = page.getByRole('button', { name: /Duplicate hero section/i }).first();
   await duplicate.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('status').filter({ hasText: 'Hero duplicated.' })).toHaveText(
-    'Hero duplicated.',
+  await expect(page.getByRole('status').filter({ hasText: 'hero section duplicated.' })).toHaveText(
+    /hero section duplicated/i,
   );
-  await expect(page.getByRole('button', { name: /Duplicate Hero/ })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /Duplicate hero section/i })).toHaveCount(2);
 });
 
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
@@ -265,7 +265,7 @@ test('isolates Point Classic colors from Builder and Puck styles', async ({ page
       const style = getComputedStyle(element);
       return { color: style.color, background: style.backgroundColor };
     }),
-  ).toEqual({ color: 'rgb(32, 36, 31)', background: 'rgb(255, 255, 255)' });
+  ).toEqual({ color: 'rgb(244, 245, 241)', background: 'rgb(27, 32, 26)' });
 
   await page.getByLabel('Choose page').selectOption({ label: 'Connect Card' });
   const submit = page.locator('.visual-editor iframe').contentFrame().getByRole('button', {
@@ -316,7 +316,7 @@ test('keeps every authoring pane independently scrollable without page scrolling
     ['page manager', await scrollContainer(page.locator('.content-workspace > aside'))],
     [
       'module catalog',
-      await scrollContainer(page.getByRole('button', { name: 'spacer', exact: true })),
+      await scrollContainer(page.getByRole('button', { name: 'Spacer', exact: true })),
     ],
     ['inspector', await scrollContainer(page.locator('.block-inspector').last())],
   ] as const) {
@@ -406,6 +406,75 @@ test('shows the complete production-style site chrome and content inside the edi
     await expect(canvas.locator('.site-header')).toBeVisible();
     await expect(canvas.locator('.site-footer')).toBeVisible();
   }
+});
+
+test('builds a standardized section by dragging an element from the toybox', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; schema and renderer coverage still run in WebKit.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+
+  const drag = async (
+    source: ReturnType<typeof page.locator>,
+    target: ReturnType<typeof page.locator>,
+    targetEdge = false,
+  ) => {
+    const from = await source.boundingBox();
+    const to = await target.boundingBox();
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, targetEdge ? to!.y + 6 : to!.y + to!.height / 2, {
+      steps: 16,
+    });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+
+  await drag(
+    page.getByRole('button', { name: 'Blank section', exact: true }),
+    canvas.locator('.home-hero'),
+    true,
+  );
+  const section = canvas.locator('.point-layout-section').last();
+  await expect(section).toBeVisible();
+  const sectionSlot = section.locator('[data-puck-dropzone]');
+  await expect(sectionSlot).toHaveCount(1);
+  await drag(page.getByRole('button', { name: 'Heading', exact: true }), sectionSlot);
+  await expect(canvas.getByRole('heading', { name: 'Section heading' })).toBeVisible();
+  await expect(sectionSlot.locator('.point-layout-item')).toContainText('Section heading');
+
+  await page
+    .locator('span')
+    .filter({ hasText: /^Outline$/ })
+    .click();
+  await page.getByRole('button', { name: 'Blank section', exact: true }).first().click();
+  await page.getByLabel('Section layout').last().selectOption('grid');
+  await page.getByLabel('Columns').last().selectOption('12');
+  await expect(section.locator('.point-layout-section__grid')).toHaveCSS(
+    'grid-template-columns',
+    /repeat|px/,
+  );
+
+  await page
+    .locator('button')
+    .filter({ hasText: /^Heading$/ })
+    .click();
+  await page.getByLabel('Desktop width').last().selectOption({ label: '6 of 12 columns' });
+  await page.getByLabel('Vertical alignment').last().selectOption({ label: 'End' });
+  const placement = canvas.locator('.point-layout-item').filter({ hasText: 'Section heading' });
+  await expect(placement).toHaveCSS('grid-column-start', 'span 6');
+  await expect(placement).toHaveCSS('align-self', 'end');
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {

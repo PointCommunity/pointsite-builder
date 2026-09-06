@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useState, type ReactNode } from 'react';
-import { renderBlock } from './registry';
+import { renderSection } from './registry';
 import { themeToTokens } from './tokens';
 import type { PageDocument, SiteDocument } from './types';
 import './site.css';
@@ -110,15 +110,20 @@ export function SiteFrame({
   document,
   page,
   children,
+  editing = false,
 }: {
   document: SiteDocument;
   page: PageDocument;
   children: ReactNode;
+  editing?: boolean;
 }) {
   const isHome = page.template === 'home' || page.route === '/';
   const hero = mediaSource(document, page.heroMediaId);
   return (
-    <div className="point-site" style={themeToTokens(document.theme)}>
+    <div
+      className={`point-site${editing ? ' point-site--editing' : ''}`}
+      style={themeToTokens(document.theme)}
+    >
       <a className="skip-link point-skip-link" href="#point-main">
         Skip to main content
       </a>
@@ -155,7 +160,7 @@ export function SiteRenderer({ document, route }: { document: SiteDocument; rout
   return (
     <SiteFrame document={document} page={page}>
       {page.blocks.map((siteBlock) => (
-        <Fragment key={siteBlock.id}>{renderBlock(siteBlock, document)}</Fragment>
+        <Fragment key={siteBlock.id}>{renderSection(siteBlock, document)}</Fragment>
       ))}
     </SiteFrame>
   );

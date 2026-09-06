@@ -8,11 +8,13 @@ export const IDS = {
   belief: '77777777-7777-4777-8777-777777777777',
   group: '88888888-8888-4888-8888-888888888888',
   event: '99999999-9999-4999-8999-999999999999',
+  section: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  placement: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 1,
-  rendererVersion: '1.0.0',
+  schemaVersion: 2,
+  rendererVersion: '2.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',
@@ -62,14 +64,32 @@ export const validSiteDocument = {
       },
       blocks: [
         {
-          id: IDS.block,
-          type: 'hero',
-          eyebrow: 'Welcome home',
-          heading: 'Find your people. Follow Jesus.',
-          body: 'Join us this Sunday in South Austin.',
-          align: 'left',
-          surface: 'image',
-          actions: [{ label: 'Plan a visit', href: '/visit', style: 'primary' }],
+          id: IDS.section,
+          type: 'section',
+          name: 'Hero section',
+          layout: 'compatibility',
+          columns: 1,
+          gap: 'none',
+          width: 'full',
+          surface: 'transparent',
+          padding: 'none',
+          items: [
+            {
+              id: IDS.placement,
+              span: 12,
+              align: 'stretch',
+              element: {
+                id: IDS.block,
+                type: 'hero',
+                eyebrow: 'Welcome home',
+                heading: 'Find your people. Follow Jesus.',
+                body: 'Join us this Sunday in South Austin.',
+                align: 'left',
+                surface: 'image',
+                actions: [{ label: 'Plan a visit', href: '/visit', style: 'primary' }],
+              },
+            },
+          ],
         },
       ],
     },

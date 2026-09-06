@@ -234,7 +234,7 @@ function isSafePlainText(value: string): boolean {
   });
 }
 
-export const SiteBlockSchema = z.discriminatedUnion('type', [
+export const SiteElementSchema = z.discriminatedUnion('type', [
   HeroBlockSchema,
   HeadingBlockSchema,
   RichTextBlockSchema,
@@ -249,6 +249,45 @@ export const SiteBlockSchema = z.discriminatedUnion('type', [
   DividerBlockSchema,
   SpacerBlockSchema,
 ]);
+
+const ElementPlacementSchema = z.strictObject({
+  id: uuid,
+  span: z.number().int().min(1).max(12),
+  align: z.enum(['start', 'center', 'end', 'stretch']),
+  element: SiteElementSchema,
+});
+
+export const SectionBlockSchema = z
+  .strictObject({
+    ...BlockBase,
+    type: z.literal('section'),
+    name: z.string().trim().min(1).max(80),
+    layout: z.enum(['compatibility', 'flow', 'grid']),
+    columns: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(6),
+      z.literal(12),
+    ]),
+    gap: z.enum(['none', 'small', 'medium', 'large']),
+    width: z.enum(['full', 'shell', 'narrow']),
+    surface: z.enum(['transparent', 'canvas', 'surface', 'primary']),
+    padding: z.enum(['none', 'small', 'medium', 'large']),
+    items: z.array(ElementPlacementSchema).max(60),
+  })
+  .superRefine((section, context) => {
+    if (section.layout === 'compatibility' && section.items.length !== 1) {
+      context.addIssue({
+        code: 'custom',
+        path: ['items'],
+        message: 'Compatibility sections contain exactly one element',
+      });
+    }
+  });
+
+export const SiteBlockSchema = SectionBlockSchema;
 
 const ThemeSchema = z
   .strictObject({
@@ -400,12 +439,12 @@ const PageSchema = z.strictObject({
     description: z.string().trim().min(1).max(180),
     ogImageMediaId: uuid.optional(),
   }),
-  blocks: z.array(SiteBlockSchema).max(100),
+  blocks: z.array(SectionBlockSchema).max(100),
 });
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

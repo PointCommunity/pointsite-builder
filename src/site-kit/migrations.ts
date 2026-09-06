@@ -1,5 +1,5 @@
-import { SiteDocumentSchema } from './schema';
-import type { SiteDocument } from './types';
+import { SiteDocumentSchema, SiteElementSchema } from './schema';
+import type { SectionBlock, SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -26,8 +26,51 @@ function readVersion(input: unknown): number {
 function migrateZeroToOne(input: object): unknown {
   return {
     ...input,
+    schemaVersion: 1,
+    rendererVersion: '1.1.0',
+  };
+}
+
+function derivedUuid(id: string, mask: number): string {
+  const [head = '00000000', ...rest] = id.split('-');
+  const changed = (Number.parseInt(head, 16) ^ mask) >>> 0;
+  return [changed.toString(16).padStart(8, '0'), ...rest].join('-');
+}
+
+export function createCompatibilitySection(element: SiteElement): SectionBlock {
+  return {
+    id: derivedUuid(element.id, 0xa5a5a5a5),
+    type: 'section',
+    name: `${element.type.replace(/([A-Z])/g, ' $1')} section`,
+    layout: 'compatibility',
+    columns: 1,
+    gap: 'none',
+    width: 'full',
+    surface: 'transparent',
+    padding: 'none',
+    items: [
+      {
+        id: derivedUuid(element.id, 0x5a5a5a5a),
+        span: 12,
+        align: 'stretch',
+        element,
+      },
+    ],
+  };
+}
+
+function migrateOneToTwo(input: object): unknown {
+  const legacy = input as { pages?: Array<Record<string, unknown>> };
+  return {
+    ...input,
     schemaVersion: SCHEMA_VERSION,
     rendererVersion: RENDERER_VERSION,
+    pages: (legacy.pages ?? []).map((page) => ({
+      ...page,
+      blocks: ((page.blocks as unknown[]) ?? []).map((block) =>
+        createCompatibilitySection(SiteElementSchema.parse(block)),
+      ),
+    })),
   };
 }
 
@@ -39,11 +82,18 @@ export function migrateDocument(input: unknown): MigrationResult {
   }
 
   if (version === 0) {
+    const versionOne = migrateZeroToOne(input as object);
     return {
-      document: SiteDocumentSchema.parse(migrateZeroToOne(input as object)),
-      applied: ['0-to-1'],
+      document: SiteDocumentSchema.parse(migrateOneToTwo(versionOne as object)),
+      applied: ['0-to-1', '1-to-2'],
     };
   }
+
+  if (version === 1)
+    return {
+      document: SiteDocumentSchema.parse(migrateOneToTwo(input as object)),
+      applied: ['1-to-2'],
+    };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };
 }

@@ -1,5 +1,8 @@
 import { IDS, validSiteDocument } from '../fixtures/site-documents';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
+import { createCompatibilitySection } from '../../src/site-kit/migrations';
+import type { SiteElement } from '../../src/site-kit/types';
+import { allBlocks } from '../fixtures/block-data';
 
 function cloneDocument(): Record<string, unknown> {
   return structuredClone(validSiteDocument);
@@ -48,7 +51,9 @@ describe('SiteDocumentSchema', () => {
     const input = cloneDocument();
     const pages = input.pages as Array<Record<string, unknown>>;
     const blocks = pages[0].blocks as Array<Record<string, unknown>>;
-    const actions = blocks[0].actions as Array<Record<string, unknown>>;
+    const items = blocks[0].items as Array<Record<string, unknown>>;
+    const element = items[0].element as Record<string, unknown>;
+    const actions = element.actions as Array<Record<string, unknown>>;
     actions[0].href = href;
     expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
   });
@@ -57,13 +62,17 @@ describe('SiteDocumentSchema', () => {
     const unknownType = cloneDocument();
     const pages = unknownType.pages as Array<Record<string, unknown>>;
     const blocks = pages[0].blocks as Array<Record<string, unknown>>;
-    blocks[0].type = 'custom-html';
+    const items = blocks[0].items as Array<Record<string, unknown>>;
+    const element = items[0].element as Record<string, unknown>;
+    element.type = 'custom-html';
     expect(SiteDocumentSchema.safeParse(unknownType).success).toBe(false);
 
     const unknownField = cloneDocument();
     const nextPages = unknownField.pages as Array<Record<string, unknown>>;
     const nextBlocks = nextPages[0].blocks as Array<Record<string, unknown>>;
-    nextBlocks[0].dangerouslySetInnerHTML = '<script>alert(1)</script>';
+    const nextItems = nextBlocks[0].items as Array<Record<string, unknown>>;
+    const nextElement = nextItems[0].element as Record<string, unknown>;
+    nextElement.dangerouslySetInnerHTML = '<script>alert(1)</script>';
     expect(SiteDocumentSchema.safeParse(unknownField).success).toBe(false);
   });
 
@@ -136,8 +145,38 @@ describe('SiteDocumentSchema', () => {
     for (const block of blocks) {
       const input = cloneDocument();
       const pages = input.pages as Array<Record<string, unknown>>;
-      pages[0].blocks = [block];
+      pages[0].blocks = [createCompatibilitySection(block as SiteElement)];
       expect(SiteDocumentSchema.safeParse(input).success, block.type).toBe(true);
     }
+  });
+
+  it('round-trips all thirteen element types inside one standardized grid section', () => {
+    const input = cloneDocument();
+    const pages = input.pages as Array<Record<string, unknown>>;
+    pages[0].blocks = [
+      {
+        id: '30000000-0000-4000-8000-000000000001',
+        type: 'section',
+        name: 'Complete element library',
+        layout: 'grid',
+        columns: 12,
+        gap: 'medium',
+        width: 'shell',
+        surface: 'transparent',
+        padding: 'medium',
+        items: allBlocks.map((element, index) => ({
+          id: `30000000-0000-4000-8000-${String(index + 2).padStart(12, '0')}`,
+          span: 12,
+          align: 'stretch',
+          element,
+        })),
+      },
+    ];
+
+    const saved = JSON.stringify(SiteDocumentSchema.parse(input));
+    const reloaded = SiteDocumentSchema.parse(JSON.parse(saved));
+    const types = reloaded.pages[0].blocks[0].items.map((item) => item.element.type);
+    expect(new Set(types)).toEqual(new Set(allBlocks.map((block) => block.type)));
+    expect(types).toHaveLength(13);
   });
 });

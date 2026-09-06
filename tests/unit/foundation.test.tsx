@@ -1,7 +1,34 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { App, BuilderErrorBoundary } from '../../src/client/App';
 
 describe('PointSite Builder foundation', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('defaults to dark mode and persists a user light-mode preference', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          Response.json(
+            (typeof input === 'string'
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url
+            ).endsWith('/me')
+              ? { email: 'viewer@pointatx.org', role: 'viewer' }
+              : { items: [] },
+          ),
+        ),
+      ),
+    );
+    render(<App />);
+    const toggle = await screen.findByRole('button', { name: 'Light mode' });
+    expect(document.documentElement).toHaveAttribute('data-builder-theme', 'dark');
+    fireEvent.click(toggle);
+    expect(document.documentElement).toHaveAttribute('data-builder-theme', 'light');
+    expect(localStorage.getItem('pointsite-builder:theme:v1')).toBe('light');
+  });
   it('identifies the private authoring surface and production lock', async () => {
     vi.stubGlobal(
       'fetch',

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { blockDefinitions } from '../../site-kit/registry';
 import type { SiteBlock } from '../../site-kit/types';
 import { useEditor } from './EditorProvider';
 
@@ -21,7 +20,7 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       target.blocks = blocks;
       return next;
     });
-    if (moved) setStatus(`${blockDefinitions[moved.type].label} moved.`);
+    if (moved) setStatus(`${moved.name} moved.`);
   };
   const remove = (id: string) => {
     updateDocument((next) => {
@@ -29,7 +28,7 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       if (target) target.blocks = target.blocks.filter((block) => block.id !== id);
       return next;
     });
-    setStatus('Module removed.');
+    setStatus('Section removed.');
   };
   const duplicate = (id: string) => {
     const source = page.blocks.find((block) => block.id === id);
@@ -39,10 +38,16 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       if (!target || index < 0) return next;
       const copy = structuredClone(target.blocks[index]);
       copy.id = crypto.randomUUID();
+      copy.name = `${copy.name} copy`;
+      copy.items = copy.items.map((placement) => ({
+        ...placement,
+        id: crypto.randomUUID(),
+        element: { ...placement.element, id: crypto.randomUUID() },
+      }));
       target.blocks.splice(index + 1, 0, copy);
       return next;
     });
-    if (source) setStatus(`${blockDefinitions[source.type].label} duplicated.`);
+    if (source) setStatus(`${source.name} duplicated.`);
   };
   return (
     <section className="structure-panel" aria-labelledby="structure-title">
@@ -54,32 +59,26 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       <ol>
         {page.blocks.map((block: SiteBlock, index) => (
           <li key={block.id}>
-            <span>{blockDefinitions[block.type].label}</span>
+            <span>{block.name}</span>
             <div className="icon-buttons">
               <button
                 disabled={index === 0}
                 onClick={() => move(index, -1)}
-                aria-label={`Move ${blockDefinitions[block.type].label} up`}
+                aria-label={`Move ${block.name} up`}
               >
                 ↑
               </button>
               <button
                 disabled={index === page.blocks.length - 1}
                 onClick={() => move(index, 1)}
-                aria-label={`Move ${blockDefinitions[block.type].label} down`}
+                aria-label={`Move ${block.name} down`}
               >
                 ↓
               </button>
-              <button
-                onClick={() => duplicate(block.id)}
-                aria-label={`Duplicate ${blockDefinitions[block.type].label}`}
-              >
+              <button onClick={() => duplicate(block.id)} aria-label={`Duplicate ${block.name}`}>
                 ⧉
               </button>
-              <button
-                onClick={() => remove(block.id)}
-                aria-label={`Remove ${blockDefinitions[block.type].label}`}
-              >
+              <button onClick={() => remove(block.id)} aria-label={`Remove ${block.name}`}>
                 ×
               </button>
             </div>
