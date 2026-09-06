@@ -8,7 +8,7 @@
 - [x] T006 [US2] Add atomic element renderers and inspectors in `src/site-kit/registry.tsx` and `src/client/editor/BlockInspector.tsx`
 - [x] T007 [US1] Add section minimum-row inspector and canvas resize control in `src/client/editor/SectionInspector.tsx` and `src/client/editor/GridOverlay.tsx`
 - [x] T008 [US1] Replace conflicting element dragging and add drop-point placement in `src/client/editor/VisualEditor.tsx`
-- [x] T009 [US2] Add atomic section recipes and reorganize toolbox categories in `src/client/editor/VisualEditor.tsx`
+- [x] T009 [US2] Organize empty structural sections and atomic elements in `src/client/editor/VisualEditor.tsx`
 - [x] T010 [US3] Add containment, occupied-row sizing, and interaction feedback in `src/site-kit/site.css`
 - [x] T011 [US4] Implement fixed responsive draft columns in `src/client/app.css`
 - [x] T012 [US3] Sync the shared site-kit into `/Users/chris/Documents/Github/pointsite-staging/site-kit/`

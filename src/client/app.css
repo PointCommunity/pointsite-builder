@@ -721,6 +721,15 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
 }
+.site-assets-section {
+  margin-bottom: 1rem;
+}
+.media-grid--site-assets {
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+.media-grid--site-assets > li > div > span:first-of-type {
+  overflow-wrap: anywhere;
+}
 .library-columns .media-upload {
   grid-template-columns: 1fr;
 }

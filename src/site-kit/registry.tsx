@@ -128,8 +128,8 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
             <option value="" disabled>
               Select one
             </option>
-            {field.options?.map((option) => (
-              <option key={option}>{option}</option>
+            {field.options?.map((option, index) => (
+              <option key={index}>{option}</option>
             ))}
           </select>
         </div>
@@ -141,8 +141,8 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
           <legend>{label}</legend>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <div className="choice-list">
-            {field.options?.map((option) => (
-              <label className="choice" key={option}>
+            {field.options?.map((option, index) => (
+              <label className="choice" key={index}>
                 <input
                   type={field.type}
                   name={field.name}
@@ -241,7 +241,7 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
       return (
         <p key={key}>
           {node.children.map((child, childIndex) => (
-            <Fragment key={`${child.text}-${childIndex}`}>
+            <Fragment key={childIndex}>
               {child.bold ? (
                 <strong>{child.italic ? <em>{child.text}</em> : child.text}</strong>
               ) : child.italic ? (
@@ -256,16 +256,16 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
     if (node.type === 'bulletedList')
       return (
         <ul key={key}>
-          {node.items.map((item) => (
-            <li key={item}>{item}</li>
+          {node.items.map((item, itemIndex) => (
+            <li key={itemIndex}>{item}</li>
           ))}
         </ul>
       );
     if (node.type === 'numberedList')
       return (
         <ol key={key}>
-          {node.items.map((item) => (
-            <li key={item}>{item}</li>
+          {node.items.map((item, itemIndex) => (
+            <li key={itemIndex}>{item}</li>
           ))}
         </ol>
       );
@@ -303,8 +303,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
               {block.body ? <p className="home-hero-body">{block.body}</p> : null}
               {block.actions.length ? (
                 <div className="point-actions">
-                  {block.actions.map((action) => (
-                    <ActionLink action={action} key={`${action.href}-${action.label}`} />
+                  {block.actions.map((action, index) => (
+                    <ActionLink action={action} key={index} />
                   ))}
                 </div>
               ) : null}
@@ -324,8 +324,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             <h1>{block.heading}</h1>
             {block.body ? <p>{block.body}</p> : null}
             <div className="point-actions">
-              {block.actions.map((action) => (
-                <ActionLink action={action} key={`${action.href}-${action.label}`} />
+              {block.actions.map((action, index) => (
+                <ActionLink action={action} key={index} />
               ))}
             </div>
           </div>
@@ -342,7 +342,7 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <Heading>
               {block.text.split('\n').map((line, index) => (
-                <Fragment key={line}>
+                <Fragment key={index}>
                   {index ? ' ' : null}
                   <span>{line}</span>
                 </Fragment>
@@ -350,8 +350,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             </Heading>
             {block.supportingText ? <p>{block.supportingText}</p> : null}
             <div className="button-row">
-              {block.actions?.map((action) => (
-                <ActionLink action={action} key={`${action.href}-${action.label}`} />
+              {block.actions?.map((action, index) => (
+                <ActionLink action={action} key={index} />
               ))}
             </div>
           </section>
@@ -365,8 +365,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
           {block.supportingText ? <p>{block.supportingText}</p> : null}
           {block.actions?.length ? (
             <div className="point-actions">
-              {block.actions.map((action) => (
-                <ActionLink action={action} key={`${action.href}-${action.label}`} />
+              {block.actions.map((action, index) => (
+                <ActionLink action={action} key={index} />
               ))}
             </div>
           ) : null}
@@ -584,8 +584,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
           <section
             className={`content-section split-section point-cards--${block.columns}${block.variant === 'splitEditorialTone' ? ' tone-section' : ''}`}
           >
-            {block.items.map((item) => (
-              <div key={item.title}>
+            {block.items.map((item, index) => (
+              <div key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} />
                 <h2>{item.title}</h2>
@@ -602,8 +602,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <h2>{block.heading}</h2>
             <div className={`three-column point-cards--${block.columns}`}>
-              {block.items.map((item) => (
-                <p key={item.title}>
+              {block.items.map((item, index) => (
+                <p key={index}>
                   {item.eyebrow ? <span className="eyebrow">{item.eyebrow}</span> : null}
                   <CardMedia item={item} document={document} />
                   <strong>{item.title}</strong>
@@ -633,7 +633,7 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             {block.heading ? <h2>{block.heading}</h2> : null}
             <div className="belief-list">
               {block.items.map((item, index) => (
-                <article key={item.title}>
+                <article key={index}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <div>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
@@ -656,10 +656,10 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
           >
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
-            {block.items.map((item) => {
+            {block.items.map((item, index) => {
               const [schedule = '', location = '', leaders = ''] = item.body.split('\n');
               return (
-                <article key={item.title}>
+                <article key={index}>
                   {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                   <CardMedia item={item} document={document} />
                   <h2>{item.title}</h2>
@@ -684,7 +684,7 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
             {block.items.map((item, index) => (
-              <article key={item.title}>
+              <article key={index}>
                 <span>{String(index + 1).padStart(2, '0')}</span>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} />
@@ -709,8 +709,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
           <div className={`point-cards point-cards--${block.columns}`}>
-            {block.items.map((item) => (
-              <article className="point-card" key={item.title}>
+            {block.items.map((item, index) => (
+              <article className="point-card" key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 {item.mediaId ? (
                   <img
@@ -780,8 +780,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
-          {block.items.map((item) => (
-            <details key={item.question} open={item.initiallyOpen}>
+          {block.items.map((item, index) => (
+            <details key={index} open={item.initiallyOpen}>
               <summary>{item.question}</summary>
               <p>{item.answer}</p>
             </details>
@@ -798,7 +798,7 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
               <h2>
                 {block.heading?.split('\n').map((line, index) => (
-                  <Fragment key={line}>
+                  <Fragment key={index}>
                     {index ? <br /> : null}
                     {line}
                   </Fragment>

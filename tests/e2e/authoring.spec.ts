@@ -660,7 +660,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await page.getByText('Blocks', { exact: true }).last().click();
   await page.getByRole('button', { name: 'Toggle left sidebar' }).click();
-  await expect(page.getByRole('button', { name: '1. Start with a section' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
   await drag(
     page.getByRole('button', { name: 'Two columns (50 / 50)', exact: true }),
     canvas.locator('.home-hero'),
@@ -729,90 +729,89 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(page.locator('#footer-settings')).toBeFocused();
 });
 
-test('inserts an editable atomic recipe and resizes its section on the grid', async ({
+test('keeps the Sections toolbox structural and exposes recipe parts as atomic items', async ({
   page,
-  browserName,
 }) => {
-  test.setTimeout(60_000);
-  test.skip(
-    browserName === 'webkit',
-    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
-  );
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
+
+  for (const name of [
+    'Blank grid section',
+    'Two columns (50 / 50)',
+    'Three columns (equal)',
+    'Full-width section',
+  ]) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  for (const name of ['Hero recipe', 'Image and text recipe', 'Call to action recipe']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  for (const name of ['Heading', 'Text', 'Button', 'Image']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+});
+
+test('retains focus while typing a complete FAQ question in the visual inspector', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Neighborhood Groups' });
   const canvas = page.locator('.visual-editor iframe').contentFrame();
-  const source = page.getByRole('button', { name: 'Call to action recipe', exact: true });
-  const target = canvas.locator('.home-hero');
-  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
-  expect(from).not.toBeNull();
-  expect(to).not.toBeNull();
-  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
-    steps: 4,
-  });
-  await page.mouse.move(to!.x + to!.width / 2, to!.y + 6, { steps: 16 });
-  await page.waitForTimeout(250);
-  await page.mouse.up();
+  await canvas.getByText('Finding your group', { exact: true }).click();
 
-  const recipe = canvas.locator('section[aria-label="Call to action section"]');
-  await expect(recipe).toBeVisible();
-  await expect(recipe.locator('.point-cta')).toHaveCount(0);
-  await expect(recipe.locator('.point-heading')).toHaveCount(1);
-  await expect(recipe.locator('.point-text')).toHaveCount(1);
-  await expect(recipe.locator('.point-button-box')).toHaveCount(1);
+  const question = page.getByLabel('Question', { exact: true }).filter({ visible: true }).first();
+  await question.click({ clickCount: 3 });
+  await question.pressSequentially('What should I expect?', { delay: 10 });
 
-  const resizeSection = canvas.getByRole('button', {
-    name: 'Resize Call to action section height',
-  });
-  await expect(resizeSection).toBeVisible();
-  const beforeRows = await recipe
-    .locator('[data-puck-dropzone]')
-    .evaluate((element) => getComputedStyle(element).getPropertyValue('--point-section-min-rows'));
-  await resizeSection.press('ArrowDown');
-  await expect
-    .poll(() =>
-      recipe
-        .locator('[data-puck-dropzone]')
-        .evaluate((element) =>
-          getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
-        ),
-    )
-    .not.toBe(beforeRows);
-  const keyboardRows = Number(
-    await recipe
-      .locator('[data-puck-dropzone]')
-      .evaluate((element) =>
-        getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
-      ),
+  await expect(question).toBeFocused();
+  await expect(question).toHaveValue('What should I expect?');
+});
+
+test('retains focus while typing across every editable workspace', async ({ page }) => {
+  const replaceSequentially = async (field: ReturnType<typeof page.locator>, value: string) => {
+    await field.click({ clickCount: 3 });
+    await field.pressSequentially(value, { delay: 5 });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue(value);
+  };
+
+  await page.goto('/');
+  await replaceSequentially(page.getByLabel('New draft name'), 'Focus-safe draft');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+
+  await page.getByRole('button', { name: 'Forms' }).click();
+  await replaceSequentially(
+    page.getByLabel('Question or label').filter({ visible: true }).first(),
+    'How can we help?',
   );
-  await resizeSection.dispatchEvent('pointerdown', { pointerId: 3, clientX: 10, clientY: 10 });
-  await canvas.locator('body').dispatchEvent('pointermove', {
-    pointerId: 3,
-    clientX: 10,
-    clientY: 110,
-  });
-  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 3 });
-  await expect
-    .poll(async () =>
-      Number(
-        await recipe
-          .locator('[data-puck-dropzone]')
-          .evaluate((element) =>
-            getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
-          ),
-      ),
-    )
-    .toBeGreaterThan(keyboardRows);
 
-  await recipe.locator('.point-layout-item').filter({ hasText: 'Learn more' }).click();
-  await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
-  await page.getByLabel('Button label').filter({ visible: true }).fill('Join a group');
-  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
-  await expect(recipe.getByRole('link', { name: 'Join a group' })).toHaveAttribute(
-    'href',
-    '/connect/groups',
+  await page.getByRole('button', { name: 'Library' }).click();
+  await expect(page.getByText('19 site images')).toBeVisible();
+  await expect(page.locator('.media-grid--site-assets img')).toHaveCount(19);
+  await page
+    .locator('.media-grid--site-assets li')
+    .filter({ hasText: 'Austin skyline over the Colorado River' })
+    .getByText('Edit details')
+    .click();
+  await replaceSequentially(
+    page.getByLabel('Display name for Austin skyline over the Colorado River'),
+    'Austin skyline hero',
   );
+  await replaceSequentially(
+    page.getByLabel('Display name', { exact: true }).filter({ visible: true }).first(),
+    'Welcome media',
+  );
+
+  await page.getByRole('button', { name: 'History' }).click();
+  await replaceSequentially(page.getByLabel('Find a revision'), 'homepage');
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await replaceSequentially(page.getByLabel('Church name'), 'Point Community Church');
+
+  await page.getByRole('button', { name: 'Admin' }).click();
+  await replaceSequentially(page.getByLabel('GitHub username'), 'point-editor');
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {
@@ -868,7 +867,7 @@ test('builds a form and places linked YouTube media without code', async ({
 
   await page.getByRole('button', { name: 'Library' }).click();
   await page.getByLabel('Media type').selectOption('youtube');
-  await page.getByLabel('Display name').fill('Point welcome video');
+  await page.getByLabel('Display name', { exact: true }).fill('Point welcome video');
   await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
   await page.getByRole('button', { name: 'Add linked media' }).click();
   await expect(page.getByText('Linked media added to this draft.')).toBeVisible();
