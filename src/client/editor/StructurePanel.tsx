@@ -2,7 +2,13 @@ import { useState } from 'react';
 import type { SiteBlock } from '../../site-kit/types';
 import { useEditor } from './EditorProvider';
 
-export function StructurePanel({ pageId }: { pageId: string }) {
+export function StructurePanel({
+  pageId,
+  onStructureChange,
+}: {
+  pageId: string;
+  onStructureChange: () => void;
+}) {
   const { document, updateDocument } = useEditor();
   const [status, setStatus] = useState('');
   const page = document.pages.find((candidate) => candidate.id === pageId);
@@ -20,6 +26,7 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       target.blocks = blocks;
       return next;
     });
+    onStructureChange();
     if (moved) setStatus(`${moved.name} moved.`);
   };
   const remove = (id: string) => {
@@ -28,6 +35,7 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       if (target) target.blocks = target.blocks.filter((block) => block.id !== id);
       return next;
     });
+    onStructureChange();
     setStatus('Section removed.');
   };
   const duplicate = (id: string) => {
@@ -47,6 +55,7 @@ export function StructurePanel({ pageId }: { pageId: string }) {
       target.blocks.splice(index + 1, 0, copy);
       return next;
     });
+    onStructureChange();
     if (source) setStatus(`${source.name} duplicated.`);
   };
   return (
