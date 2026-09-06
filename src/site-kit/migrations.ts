@@ -1,4 +1,5 @@
 import { SiteDocumentSchema, SiteElementSchema } from './schema';
+import { legacyGridAreas } from './grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 
@@ -53,6 +54,9 @@ export function createCompatibilitySection(element: SiteElement): SectionBlock {
         id: derivedUuid(element.id, 0x5a5a5a5a),
         span: 12,
         align: 'stretch',
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 },
+        },
         element,
       },
     ],
@@ -63,13 +67,41 @@ function migrateOneToTwo(input: object): unknown {
   const legacy = input as { pages?: Array<Record<string, unknown>> };
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 2,
+    rendererVersion: '2.0.0',
     pages: (legacy.pages ?? []).map((page) => ({
       ...page,
       blocks: ((page.blocks as unknown[]) ?? []).map((block) =>
         createCompatibilitySection(SiteElementSchema.parse(block)),
       ),
+    })),
+  };
+}
+
+function migrateTwoToThree(input: object): unknown {
+  const legacy = input as { pages?: Array<Record<string, unknown>> };
+  return {
+    ...input,
+    schemaVersion: SCHEMA_VERSION,
+    rendererVersion: RENDERER_VERSION,
+    pages: (legacy.pages ?? []).map((page) => ({
+      ...page,
+      blocks: ((page.blocks as Array<Record<string, unknown>>) ?? []).map((block) => {
+        const items = (block.items as Array<Record<string, unknown>>) ?? [];
+        const gridAreas = legacyGridAreas({
+          layout: block.layout as SectionBlock['layout'],
+          columns: block.columns as SectionBlock['columns'],
+          items: items.map((item) => ({
+            span: Number(item.span),
+            element: SiteElementSchema.parse(item.element),
+          })),
+        });
+        return {
+          ...block,
+          ...(block.layout === 'grid' ? { columns: 12 } : {}),
+          items: items.map((item, index) => ({ ...item, grid: gridAreas[index] })),
+        };
+      }),
     })),
   };
 }
@@ -83,16 +115,25 @@ export function migrateDocument(input: unknown): MigrationResult {
 
   if (version === 0) {
     const versionOne = migrateZeroToOne(input as object);
+    const versionTwo = migrateOneToTwo(versionOne as object);
     return {
-      document: SiteDocumentSchema.parse(migrateOneToTwo(versionOne as object)),
-      applied: ['0-to-1', '1-to-2'],
+      document: SiteDocumentSchema.parse(migrateTwoToThree(versionTwo as object)),
+      applied: ['0-to-1', '1-to-2', '2-to-3'],
     };
   }
 
   if (version === 1)
     return {
-      document: SiteDocumentSchema.parse(migrateOneToTwo(input as object)),
-      applied: ['1-to-2'],
+      document: SiteDocumentSchema.parse(
+        migrateTwoToThree(migrateOneToTwo(input as object) as object),
+      ),
+      applied: ['1-to-2', '2-to-3'],
+    };
+
+  if (version === 2)
+    return {
+      document: SiteDocumentSchema.parse(migrateTwoToThree(input as object)),
+      applied: ['2-to-3'],
     };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };

@@ -142,7 +142,7 @@ be bypassed with client state or a forged header.
 - **FR-001**: Every builder, API, preview, and staging request MUST be authenticated through the PointSite GitHub App; the server MUST verify the signed session, current staging-repository collaboration and exact repository permission, and active application role, and fail closed when any evidence is missing, invalid, expired, or revoked.
 - **FR-002**: Server-side authorization MUST enforce Viewer, Editor, Publisher, and Administrator capabilities independently from client controls.
 - **FR-003**: Administrators MUST be able to grant, change, disable, and audit application roles for exact authenticated identities.
-- **FR-004**: Editors MUST be able to create, duplicate, rename, archive, restore, reorder, and delete draft pages with validated unique routes.
+- **FR-004**: Editors MUST be able to create, duplicate, rename, archive, unarchive, reorder, and soft-delete draft workspaces. Archived cards MUST retain Open editor and Duplicate, replace Archive with Unarchive, add a destructive Delete action, and require the exact case-sensitive confirmation `DELETE` in both the interface and API. Only archived drafts may be deleted.
 - **FR-005**: Editors MUST be able to visually add, configure, reorder, duplicate, and remove approved modules using pointer and keyboard interactions.
 - **FR-006**: The module catalog MUST include hero, heading, rich text, image, split feature, call-to-action, cards, people, FAQ, form, map, divider, and spacer capabilities.
 - **FR-007**: Editors MUST be able to manage global identity, contact, service, giving, social, navigation, footer, and search/social metadata.

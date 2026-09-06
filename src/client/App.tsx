@@ -184,7 +184,19 @@ export function App() {
             setSelected(draft);
           }}
           onArchive={async (draft) => {
-            await api.setDraftStatus(draft.id, 'archive');
+            const updated = await api.setDraftStatus(draft.id, 'archive');
+            setDrafts((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }}
+          onUnarchive={async (draft) => {
+            const updated = await api.setDraftStatus(draft.id, 'recover');
+            setDrafts((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }}
+          onDelete={async (draft) => {
+            await api.setDraftStatus(draft.id, 'delete');
             setDrafts((current) => current.filter((item) => item.id !== draft.id));
           }}
         />

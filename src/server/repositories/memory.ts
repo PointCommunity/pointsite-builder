@@ -43,7 +43,7 @@ export class InMemoryRepository implements DraftRepository {
 
   async listDrafts(status?: DraftStatus): Promise<DraftRecord[]> {
     return [...this.#drafts.values()]
-      .filter((draft) => !status || draft.status === status)
+      .filter((draft) => (status ? draft.status === status : draft.status !== 'deleted'))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .map(clone);
   }
@@ -225,7 +225,7 @@ export class InMemoryRepository implements DraftRepository {
     if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
     if (current.status === status) return clone(current);
     const allowed =
-      (current.status === 'active' && (status === 'archived' || status === 'deleted')) ||
+      (current.status === 'active' && status === 'archived') ||
       (current.status === 'archived' && (status === 'active' || status === 'deleted'));
     if (!allowed) throw new ConflictError(`Cannot change ${current.status} draft to ${status}`);
 

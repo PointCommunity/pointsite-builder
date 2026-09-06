@@ -168,6 +168,9 @@ describe('SiteDocumentSchema', () => {
           id: `30000000-0000-4000-8000-${String(index + 2).padStart(12, '0')}`,
           span: 12,
           align: 'stretch',
+          grid: {
+            desktop: { column: 1, row: index * 10 + 1, columnSpan: 12, rowSpan: 10 },
+          },
           element,
         })),
       },
@@ -178,5 +181,24 @@ describe('SiteDocumentSchema', () => {
     const types = reloaded.pages[0].blocks[0].items.map((item) => item.element.type);
     expect(new Set(types)).toEqual(new Set(allBlocks.map((block) => block.type)));
     expect(types).toHaveLength(13);
+  });
+
+  it('rejects a grid section that is not standardized to twelve columns', () => {
+    const input = cloneDocument();
+    const pages = input.pages as Array<Record<string, unknown>>;
+    const sections = pages[0].blocks as Array<Record<string, unknown>>;
+    sections[0].layout = 'grid';
+    sections[0].columns = 2;
+
+    const result = SiteDocumentSchema.safeParse(input);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ['pages', 0, 'blocks', 0, 'columns'],
+          message: 'Grid sections use exactly 12 columns',
+        }),
+      );
+    }
   });
 });

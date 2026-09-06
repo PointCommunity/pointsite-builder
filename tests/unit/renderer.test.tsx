@@ -116,6 +116,9 @@ describe('controlled public renderer', () => {
           id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
           span: 6,
           align: 'end' as const,
+          grid: {
+            desktop: { column: 4, row: 2, columnSpan: 6, rowSpan: 3 },
+          },
           element: heading,
         },
       ],
@@ -129,6 +132,12 @@ describe('controlled public renderer', () => {
     expect(
       container.querySelector('.point-layout-item--end.point-layout-item--span-6'),
     ).not.toBeNull();
+    expect(container.querySelector('.point-layout-item--grid')).toHaveStyle({
+      '--point-grid-desktop-column': '4',
+      '--point-grid-desktop-row': '2',
+      '--point-grid-desktop-column-span': '6',
+      '--point-grid-desktop-row-span': '3',
+    });
     expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
       '--point-section-columns: 12',
     );

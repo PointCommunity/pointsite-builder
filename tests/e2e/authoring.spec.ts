@@ -96,10 +96,49 @@ async function installApi(
         body = { code: 'REVISION_CONFLICT', message: 'Newer revision', requestId: 'request' };
       } else {
         const input = request.postDataJSON() as { document: DraftRecord['document'] };
-        body = { ...draft, document: input.document, revision: { ...draft.revision, sequence: 3 } };
+        draft.document = input.document;
+        draft.revision = {
+          ...draft.revision,
+          sequence: draft.revision.sequence + 1,
+          checksum: 'c'.repeat(64),
+          document: input.document,
+        };
+        draft.latestRevisionId = draft.revision.id;
+        body = draft;
       }
-    } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'GET') body = draft;
-    else if (/\/api\/drafts\/[^/]+$/.test(path)) body = draft;
+    } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'PATCH') {
+      const id = path.split('/').at(-1);
+      const index = drafts.findIndex((candidate) => candidate.id === id);
+      const input = request.postDataJSON() as { status?: 'active' | 'archived'; name?: string };
+      const updated = {
+        ...drafts[index],
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.name ? { name: input.name } : {}),
+        updatedAt: new Date().toISOString(),
+      } as DraftRecord;
+      drafts[index] = updated;
+      body = updated;
+    } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'DELETE') {
+      const id = path.split('/').at(-1);
+      const index = drafts.findIndex((candidate) => candidate.id === id);
+      const input = request.postDataJSON() as { confirmation?: string };
+      if (index < 0) {
+        status = 404;
+        body = { code: 'NOT_FOUND', message: 'Draft not found' };
+      } else if (drafts[index].status !== 'archived') {
+        status = 409;
+        body = { code: 'CONFLICT', message: 'Only archived drafts can be deleted' };
+      } else if (input.confirmation !== 'DELETE') {
+        status = 422;
+        body = { code: 'VALIDATION_FAILED', message: 'Review the highlighted fields' };
+      } else {
+        const [deleted] = drafts.splice(index, 1);
+        body = { ...deleted, status: 'deleted', deletedAt: new Date().toISOString() };
+      }
+    } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'GET') {
+      const id = path.split('/').at(-1);
+      body = drafts.find((candidate) => candidate.id === id) ?? draft;
+    } else if (/\/api\/drafts\/[^/]+$/.test(path)) body = draft;
     else if (path === '/api/media' && method === 'GET') body = { items: [], nextCursor: null };
     else if (path === '/api/media' && method === 'POST') {
       body = {
@@ -157,7 +196,10 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
-test('creates, duplicates, and archives drafts without code', async ({ page }) => {
+test('creates, duplicates, archives, unarchives, and safely deletes drafts without code', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
   await page.goto('/');
   await page.getByLabel('New draft name').fill('Fall launch');
   await page.getByRole('button', { name: 'Create draft' }).click();
@@ -167,12 +209,33 @@ test('creates, duplicates, and archives drafts without code', async ({ page }) =
   await originalCard.getByRole('button', { name: 'Duplicate' }).click();
   await expect(page.getByText('Sunday update copy')).toBeVisible();
   await page.getByRole('button', { name: '← All drafts' }).click();
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: 'Sunday update' })
-    .last()
-    .getByRole('button', { name: 'Archive' })
-    .click();
+  const sourceCard = page.getByRole('listitem').filter({ hasText: 'Sunday update' }).last();
+  await sourceCard.getByRole('button', { name: 'Archive' }).click();
+  await expect(sourceCard.getByText('archived', { exact: true })).toBeVisible();
+  await expect(sourceCard.getByRole('button', { name: 'Open editor' })).toBeVisible();
+  await expect(sourceCard.getByRole('button', { name: 'Duplicate' })).toBeVisible();
+  await expect(sourceCard.getByRole('button', { name: 'Unarchive' })).toBeVisible();
+  await expect(sourceCard.getByRole('button', { name: 'Delete' })).toBeVisible();
+
+  const deleteTrigger = sourceCard.getByRole('button', { name: 'Delete' });
+  await deleteTrigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Delete Sunday update?' });
+  const confirmation = dialog.getByLabel('Type DELETE to confirm');
+  const confirmDelete = dialog.getByRole('button', { name: 'Delete draft' });
+  await expect(confirmation).toBeFocused();
+  await confirmation.fill('delete');
+  await expect(confirmDelete).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(deleteTrigger).toBeFocused();
+
+  await sourceCard.getByRole('button', { name: 'Unarchive' }).click();
+  await expect(sourceCard.getByText('active', { exact: true })).toBeVisible();
+  await expect(sourceCard.getByRole('button', { name: 'Archive' })).toBeVisible();
+  await sourceCard.getByRole('button', { name: 'Archive' }).click();
+  await sourceCard.getByRole('button', { name: 'Delete' }).click();
+  await dialog.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await dialog.getByRole('button', { name: 'Delete draft' }).click();
   await expect(page.getByRole('heading', { name: 'Sunday update', exact: true })).toHaveCount(0);
 });
 
@@ -290,7 +353,6 @@ test('keeps every authoring pane independently scrollable without page scrolling
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByText('Page details', { exact: true }).click();
-  await page.getByRole('button', { name: 'Switch to Full-width viewport' }).click();
   await page.locator('.visual-editor iframe').contentFrame().locator('.home-hero').click();
 
   const scrollContainer = async (element: ReturnType<typeof page.locator>) =>
@@ -415,6 +477,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   page,
   browserName,
 }) => {
+  test.setTimeout(60_000);
   test.skip(
     browserName === 'webkit',
     'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; schema and renderer coverage still run in WebKit.',
@@ -428,6 +491,8 @@ test('builds a standardized section by dragging an element from the toybox', asy
     target: ReturnType<typeof page.locator>,
     targetEdge = false,
   ) => {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
     const from = await source.boundingBox();
     const to = await target.boundingBox();
     expect(from).not.toBeNull();
@@ -440,12 +505,19 @@ test('builds a standardized section by dragging an element from the toybox', asy
     await page.mouse.move(to!.x + to!.width / 2, targetEdge ? to!.y + 6 : to!.y + to!.height / 2, {
       steps: 16,
     });
+    const settledTarget = await target.boundingBox();
+    expect(settledTarget).not.toBeNull();
+    await page.mouse.move(
+      settledTarget!.x + settledTarget!.width / 2,
+      targetEdge ? settledTarget!.y + 6 : settledTarget!.y + settledTarget!.height / 2,
+      { steps: 4 },
+    );
     await page.waitForTimeout(250);
     await page.mouse.up();
   };
 
   await drag(
-    page.getByRole('button', { name: 'Blank section', exact: true }),
+    page.getByRole('button', { name: 'Blank grid section', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
@@ -453,31 +525,135 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(section).toBeVisible();
   const sectionSlot = section.locator('[data-puck-dropzone]');
   await expect(sectionSlot).toHaveCount(1);
+  await expect(section).toHaveClass(/point-layout-section--grid/);
+  await expect(sectionSlot).toHaveCSS('grid-template-columns', /repeat|px/);
+  const gridTracks = await sectionSlot.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const parentStyle = getComputedStyle(element.parentElement!);
+    return {
+      column: Number.parseFloat(style.gridTemplateColumns),
+      row: Number.parseFloat(style.gridAutoRows),
+      width: element.getBoundingClientRect().width,
+      paddingInline: `${style.paddingLeft} ${style.paddingRight}`,
+      parentWidth: element.parentElement!.getBoundingClientRect().width,
+      parentPaddingInline: `${parentStyle.paddingLeft} ${parentStyle.paddingRight}`,
+    };
+  });
+  if (Math.abs(gridTracks.column - gridTracks.row) >= 1) {
+    throw new Error(`Grid tracks are not square: ${JSON.stringify(gridTracks)}`);
+  }
   await drag(page.getByRole('button', { name: 'Heading', exact: true }), sectionSlot);
   await expect(canvas.getByRole('heading', { name: 'Section heading' })).toBeVisible();
   await expect(sectionSlot.locator('.point-layout-item')).toContainText('Section heading');
 
-  await page
-    .locator('span')
-    .filter({ hasText: /^Outline$/ })
-    .click();
-  await page.getByRole('button', { name: 'Blank section', exact: true }).first().click();
-  await page.getByLabel('Section layout').last().selectOption('grid');
-  await page.getByLabel('Columns').last().selectOption('12');
-  await expect(section.locator('.point-layout-section__grid')).toHaveCSS(
-    'grid-template-columns',
-    /repeat|px/,
-  );
-
-  await page
-    .locator('button')
-    .filter({ hasText: /^Heading$/ })
-    .click();
-  await page.getByLabel('Desktop width').last().selectOption({ label: '6 of 12 columns' });
+  await page.getByLabel('desktop width in columns').last().fill('6');
+  await page.getByLabel('desktop column').last().fill('4');
   await page.getByLabel('Vertical alignment').last().selectOption({ label: 'End' });
   const placement = canvas.locator('.point-layout-item').filter({ hasText: 'Section heading' });
-  await expect(placement).toHaveCSS('grid-column-start', 'span 6');
+  await expect(placement).toHaveCSS('grid-column-start', '4');
+  await expect(placement).toHaveCSS('grid-column-end', 'span 6');
   await expect(placement).toHaveCSS('align-self', 'end');
+
+  const moveHandle = canvas.getByRole('button', { name: 'Move heading on desktop grid' });
+  await moveHandle.press('ArrowRight');
+  await moveHandle.press('ArrowDown');
+  await expect(placement).toHaveCSS('grid-column-start', '5');
+  await expect(placement).toHaveCSS('grid-row-start', '2');
+
+  const resizeHandle = canvas.getByRole('button', {
+    name: 'Resize heading from south east',
+  });
+  await resizeHandle.dispatchEvent('pointerdown', { pointerId: 2, clientX: 10, clientY: 10 });
+  await expect(sectionSlot).toHaveClass(/point-layout-section__grid--active/);
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 2,
+    clientX: -90,
+    clientY: 10,
+  });
+  await expect
+    .poll(async () => Number(await page.getByLabel('desktop width in columns').last().inputValue()))
+    .toBeLessThan(6);
+  const resizedDesktopWidth = Number(
+    await page.getByLabel('desktop width in columns').last().inputValue(),
+  );
+  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 2 });
+  await expect(sectionSlot).not.toHaveClass(/point-layout-section__grid--active/);
+
+  await page.getByRole('button', { name: 'Switch to Tablet viewport' }).click();
+  await canvas.getByRole('heading', { name: 'Section heading' }).click();
+  await expect(page.getByText(/Inheriting the desktop position/).last()).toBeVisible();
+  await page.getByLabel('tablet width in columns').last().fill('8');
+  await page.getByLabel('tablet column').last().fill('3');
+  await expect(placement).toHaveCSS('grid-column-start', '3');
+  await expect(placement).toHaveCSS('grid-column-end', 'span 8');
+  await page.getByRole('button', { name: 'Switch to Desktop viewport' }).click();
+  await canvas.getByRole('heading', { name: 'Section heading' }).click();
+  await expect(placement).toHaveCSS('grid-column-start', '5');
+  await expect(placement).toHaveCSS('grid-column-end', `span ${resizedDesktopWidth}`);
+
+  await expect(sectionSlot).toHaveCSS('background-image', 'none');
+  await moveHandle.dispatchEvent('pointerdown', { pointerId: 1, clientX: 10, clientY: 10 });
+  await expect(sectionSlot).toHaveClass(/point-layout-section__grid--active/);
+  await expect(sectionSlot).not.toHaveCSS('background-image', 'none');
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: 110,
+    clientY: 10,
+  });
+  await expect
+    .poll(async () => Number(await page.getByLabel('desktop column').last().inputValue()))
+    .toBeGreaterThan(5);
+  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 1 });
+  await expect(sectionSlot).toHaveCSS('background-image', 'none');
+
+  await page.getByText('Blocks', { exact: true }).last().click();
+  await page.getByRole('button', { name: 'Toggle left sidebar' }).click();
+  await expect(page.getByRole('button', { name: '1. Start with a section' })).toBeVisible();
+  await drag(
+    page.getByRole('button', { name: 'Two columns (50 / 50)', exact: true }),
+    canvas.locator('.home-hero'),
+    true,
+  );
+  const twoColumn = canvas.locator('section[aria-label="Two column section"]');
+  const twoColumnSlot = twoColumn.locator('[data-puck-dropzone]');
+  await expect(twoColumnSlot).toBeVisible();
+  await drag(page.getByRole('button', { name: 'Image', exact: true }), twoColumnSlot);
+  const imagePlacement = twoColumn.locator('.point-layout-item');
+  await expect(imagePlacement).toHaveCSS('grid-column-start', '1');
+  await expect(imagePlacement).toHaveCSS('grid-column-end', 'span 6');
+  const [gridBox, imageBox] = await Promise.all([
+    twoColumnSlot.boundingBox(),
+    imagePlacement.boundingBox(),
+  ]);
+  expect(gridBox).not.toBeNull();
+  expect(imageBox).not.toBeNull();
+  expect(imageBox!.width).toBeLessThan(gridBox!.width * 0.6);
+  expect(imageBox!.width).toBeGreaterThan(gridBox!.width * 0.35);
+
+  await canvas.getByAltText('Describe this image').click();
+  const inspector = page.locator('.block-inspector').last();
+  await expect(page.getByLabel('desktop width in columns').last()).toHaveValue('6');
+  const inspectorOverflow = await inspector.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(inspectorOverflow.scrollWidth).toBeLessThanOrEqual(inspectorOverflow.clientWidth);
+
+  await page.getByRole('button', { name: 'Save now' }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const reloadedCanvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(reloadedCanvas.getByRole('heading', { name: 'Section heading' })).toBeVisible();
+  await expect(reloadedCanvas.locator('section[aria-label="Two column section"]')).toBeVisible();
+
+  await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).scrollIntoViewIfNeeded();
+  await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).click();
+  await expect(page.getByRole('button', { name: 'settings' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.locator('#footer-settings')).toBeFocused();
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {

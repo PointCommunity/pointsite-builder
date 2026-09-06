@@ -114,10 +114,29 @@ describe('revision and lifecycle API', () => {
       status: 'active',
       name: 'Recovered draft',
     });
-    const deleted = await app.request(`${origin}/api/drafts/${created.id}`, {
+    const activeDelete = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'DELETE',
       headers: mutationHeaders('delete-draft-00001'),
-      body: '{}',
+      body: JSON.stringify({ confirmation: 'DELETE' }),
+    });
+    expect(activeDelete.status).toBe(409);
+
+    await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'PATCH',
+      headers: mutationHeaders('rearchive-draft-001'),
+      body: JSON.stringify({ status: 'archived' }),
+    });
+    const wrongCase = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'DELETE',
+      headers: mutationHeaders('delete-draft-wrong1'),
+      body: JSON.stringify({ confirmation: 'delete' }),
+    });
+    expect(wrongCase.status).toBe(422);
+
+    const deleted = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'DELETE',
+      headers: mutationHeaders('delete-draft-00002'),
+      body: JSON.stringify({ confirmation: 'DELETE' }),
     });
     expect(await json<{ status: string }>(deleted)).toMatchObject({ status: 'deleted' });
     const denied = await app.request(`${origin}/api/drafts/${created.id}`, {

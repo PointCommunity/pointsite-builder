@@ -29,6 +29,15 @@ Validation rules:
 - Page and block identifiers are UUIDs; titles and copy have explicit size bounds.
 - Component types must exist in the renderer version's registry.
 
+### Responsive element placement (schema v3)
+
+- Every section element stores a required desktop grid area: column, row, column span, and row span.
+- Tablet and mobile areas are optional overrides and inherit desktop when absent.
+- Grid areas are bounded to twelve columns and one thousand rows; no placement may extend past
+  column twelve.
+- Compatibility sections retain grid metadata for schema consistency, but the renderer deliberately
+  ignores it to preserve the current PointSite output exactly.
+
 ## UserRole
 
 | Field        | Type              | Rule                                     |
@@ -53,7 +62,7 @@ Validation rules:
 | created_by              | string    | Authenticated identity    |
 | created_at / updated_at | timestamp | Server assigned           |
 
-State transitions: `active → archived → active`; `active|archived → deleted`.
+State transitions: `active → archived → active`; only `archived → deleted`.
 Deleted drafts remain recoverable for 30 days before purge.
 
 ## Revision

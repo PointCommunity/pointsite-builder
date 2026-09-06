@@ -31,6 +31,14 @@ function Workspace({
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const [structureRevision, setStructureRevision] = useState(0);
   const editable = role !== 'viewer' && draft.status === 'active';
+  const openFooterSettings = () => {
+    setPanel('settings');
+    globalThis.setTimeout(() => {
+      const target = globalThis.document.getElementById('footer-settings');
+      target?.scrollIntoView({ block: 'start' });
+      target?.focus();
+    });
+  };
   return (
     <div className="editor-workspace">
       <a className="skip-link" href="#main-content">
@@ -108,7 +116,11 @@ function Workspace({
           <section className="canvas-shell">
             {editable ? (
               <Suspense fallback={<p>Loading visual editor…</p>}>
-                <VisualEditor pageId={pageId} structureRevision={structureRevision} />
+                <VisualEditor
+                  pageId={pageId}
+                  structureRevision={structureRevision}
+                  onEditFooter={openFooterSettings}
+                />
               </Suspense>
             ) : (
               <Preview document={document} />

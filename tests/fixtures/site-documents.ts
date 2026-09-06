@@ -13,8 +13,8 @@ export const IDS = {
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 2,
-  rendererVersion: '2.0.0',
+  schemaVersion: 3,
+  rendererVersion: '3.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',
@@ -78,6 +78,9 @@ export const validSiteDocument = {
               id: IDS.placement,
               span: 12,
               align: 'stretch',
+              grid: {
+                desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 },
+              },
               element: {
                 id: IDS.block,
                 type: 'hero',

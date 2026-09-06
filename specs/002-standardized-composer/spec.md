@@ -1,5 +1,8 @@
 # Feature Specification: Standardized Section Composer
 
+> This foundational specification remains valid for compatibility rendering. Its span-only layout
+> is superseded by the schema v3 responsive grid workbench in `specs/004-grid-workbench/spec.md`.
+
 **Feature**: 002-standardized-composer  
 **Created**: 2026-09-05  
 **Status**: Approved by implementation request
