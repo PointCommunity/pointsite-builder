@@ -8,6 +8,7 @@ const reports = [
   'tests/reports/ux.html',
   'tests/reports/performance.html',
   'tests/reports/security.html',
+  'tests/reports/grid-workbench.html',
 ];
 const riskRegister = JSON.parse(
   await readFile(new URL('tests/reports/security-risk-register.json', root), 'utf8'),
