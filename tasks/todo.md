@@ -301,7 +301,7 @@ T053-T054 remain a separate, explicitly approved production promotion gate.
   - Acceptance: no document-level authoring scroll; page panel, module catalog, canvas, and inspector independently reach their final content; widths at or below 720 show only the warning.
   - Verify: focused Playwright geometry, scrolling, keyboard, 720/721 boundary, and axe checks.
   - Files: `src/client/editor/EditorRoute.tsx`, `src/client/editor/VisualEditor.tsx`, `src/client/app.css`, `tests/e2e/authoring.spec.ts`.
-- [ ] T063 Complete the repair validation and Builder-only rollout. (SC-006, SC-011)
+- [x] T063 Complete the repair validation and Builder-only rollout. (SC-006, SC-011)
   - Acceptance: full unit, integration, contract, lint, type, build, browser, accessibility, security, and authenticated live checks pass; staging and Production repository heads/content are unchanged.
   - Verify: local quality matrix, exact-head CI/deploy, authenticated internal-browser screenshots and measurements, and repository SHA comparison.
   - Files: Builder implementation/evidence only; no staging or Production files.
