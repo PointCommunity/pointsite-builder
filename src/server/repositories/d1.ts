@@ -112,7 +112,7 @@ export class D1DraftRepository implements DraftRepository {
   async listDrafts(status?: DraftStatus): Promise<DraftRecord[]> {
     const query = status
       ? `${DRAFT_SELECT} WHERE d.status = ? ORDER BY d.updated_at DESC LIMIT 100`
-      : `${DRAFT_SELECT} ORDER BY d.updated_at DESC LIMIT 100`;
+      : `${DRAFT_SELECT} WHERE d.status != 'deleted' ORDER BY d.updated_at DESC LIMIT 100`;
     const statement = status
       ? this.database.prepare(query).bind(status)
       : this.database.prepare(query);
@@ -375,7 +375,7 @@ export class D1DraftRepository implements DraftRepository {
     const current = await this.getDraft(draftId);
     if (current.status === status) return current;
     const allowed =
-      (current.status === 'active' && (status === 'archived' || status === 'deleted')) ||
+      (current.status === 'active' && status === 'archived') ||
       (current.status === 'archived' && (status === 'active' || status === 'deleted'));
     if (!allowed) throw new ConflictError(`Cannot change ${current.status} draft to ${status}`);
     const now = new Date().toISOString();

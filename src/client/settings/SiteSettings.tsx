@@ -138,8 +138,13 @@ export function SiteSettings() {
           </label>
         </div>
       </section>
-      <section className="settings-section" aria-labelledby="services-title">
-        <h3 id="services-title">Services and giving</h3>
+      <section
+        className="settings-section"
+        id="footer-settings"
+        tabIndex={-1}
+        aria-labelledby="services-title"
+      >
+        <h3 id="services-title">Footer content and giving</h3>
         <div className="field-grid">
           <label>
             <span>Service label</span>

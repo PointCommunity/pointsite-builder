@@ -121,5 +121,17 @@ describe('D1 draft repository', () => {
         )
       ).status,
     ).toBe('archived');
+    expect(
+      (
+        await repository.setDraftStatus(
+          created.id,
+          'deleted',
+          'editor@pointatx.org',
+          'd1-request-8',
+        )
+      ).status,
+    ).toBe('deleted');
+    expect(await repository.listDrafts()).toEqual([]);
+    expect(await repository.listDrafts('deleted')).toHaveLength(1);
   });
 });

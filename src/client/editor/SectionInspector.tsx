@@ -56,7 +56,9 @@ export function SectionInspector({
             { label: 'Flow', value: 'flow' },
             { label: 'Grid', value: 'grid' },
           ]}
-          onChange={(layout) => onChange({ ...settings, layout })}
+          onChange={(layout) =>
+            onChange({ ...settings, layout, ...(layout === 'grid' ? { columns: 12 } : {}) })
+          }
         />
       </div>
     );
@@ -82,20 +84,12 @@ export function SectionInspector({
           { label: 'Flow', value: 'flow' },
           { label: 'Grid', value: 'grid' },
         ]}
-        onChange={(layout) => onChange({ ...settings, layout })}
+        onChange={(layout) =>
+          onChange({ ...settings, layout, ...(layout === 'grid' ? { columns: 12 } : {}) })
+        }
       />
       {settings.layout === 'grid' ? (
-        <Select
-          label="Columns"
-          value={settings.columns}
-          options={
-            [1, 2, 3, 4, 6, 12].map((value) => ({ label: String(value), value })) as Array<{
-              label: string;
-              value: SectionSettings['columns'];
-            }>
-          }
-          onChange={(columns) => onChange({ ...settings, columns })}
-        />
+        <p className="inspector-help">Standard responsive grid: 12 columns</p>
       ) : null}
       <Select
         label="Content width"

@@ -128,12 +128,28 @@ paths:
       operationId: softDeleteDraft
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation: { type: string, const: DELETE }
       responses:
         '200':
-          description: Soft-deleted draft retained for recovery
+          description: Archived draft soft-deleted and retained for recovery
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
+        '409':
+          description: Draft is not archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /drafts/{draftId}/revisions:
     parameters:
       - $ref: '#/components/parameters/DraftId'

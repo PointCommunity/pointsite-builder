@@ -1,19 +1,34 @@
-import { Puck, type ComponentData, type Config, type Data } from '@puckeditor/core';
+import { Puck, type ComponentData, type Config, type Data, type Viewports } from '@puckeditor/core';
 import '@puckeditor/core/puck.css';
-import type { CSSProperties, ReactNode, Ref } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { blockDefinitions, renderBlock } from '../../site-kit/registry';
 import { SiteElementSchema } from '../../site-kit/schema';
+import { defaultRowSpan, GRID_COLUMNS, nextGridArea } from '../../site-kit/grid-layout';
 import type { SectionBlock, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
 import siteCss from '../../site-kit/site.css?inline';
 import { BlockInspector } from './BlockInspector';
+import { GridOverlay } from './GridOverlay';
+import { setGridBreakpoint } from './GridBreakpointContext';
+import { breakpointForWidth } from './grid-breakpoint';
+import { GridPlacementInspector } from './GridPlacementInspector';
 import { SectionInspector, type SectionSettings } from './SectionInspector';
 import { useEditor } from './EditorProvider';
+import { usePointPuck } from './puck-store';
+import { useGridInteraction } from './grid-interaction-store';
 
 type ElementProps = {
   block: SiteElement;
   span: number;
   align: SectionBlock['items'][number]['align'];
+  grid: SectionBlock['items'][number]['grid'];
 };
 type SectionProps = {
   settings: SectionSettings;
@@ -28,8 +43,23 @@ const sectionTypes = [
   'ThreeColumnSection',
   'FullWidthSection',
 ] as const;
+const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
+  Section: 'Blank grid section',
+  TwoColumnSection: 'Two columns (50 / 50)',
+  ThreeColumnSection: 'Three columns (equal)',
+  FullWidthSection: 'Full-width section',
+};
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
 const gapValues = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' };
+const totalGapValues = { none: '0px', small: '8.25rem', medium: '16.5rem', large: '33rem' };
+const editorViewports: Viewports = [
+  { width: 360, height: 'auto', label: 'Phone', icon: 'Smartphone' },
+  { width: 768, height: 'auto', label: 'Tablet', icon: 'Tablet' },
+  { width: 1280, height: 'auto', label: 'Desktop', icon: 'Monitor' },
+];
+const editorDnd = { behavior: 'auto' as const };
+const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
+const editorOverrides = { componentOverlay: GridOverlay };
 
 function defaultElement(
   type: SiteElement['type'],
@@ -110,7 +140,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     return {
       name: 'Two column section',
       layout: 'grid',
-      columns: 2,
+      columns: 12,
       gap: 'medium',
       width: 'shell',
       surface: 'transparent',
@@ -120,7 +150,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     return {
       name: 'Three column section',
       layout: 'grid',
-      columns: 3,
+      columns: 12,
       gap: 'medium',
       width: 'shell',
       surface: 'transparent',
@@ -129,8 +159,8 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   if (kind === 'FullWidthSection')
     return {
       name: 'Full width section',
-      layout: 'flow',
-      columns: 1,
+      layout: 'grid',
+      columns: 12,
       gap: 'medium',
       width: 'full',
       surface: 'canvas',
@@ -138,8 +168,8 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     };
   return {
     name: 'Blank section',
-    layout: 'flow',
-    columns: 1,
+    layout: 'grid',
+    columns: 12,
     gap: 'medium',
     width: 'shell',
     surface: 'transparent',
@@ -147,21 +177,53 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   };
 }
 
-function renderSectionComponent({ settings, content: Content }: SectionProps) {
+function SectionComponent({ id, settings, content: Content }: SectionProps & { id?: string }) {
+  const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
+  const isGridInteracting = useGridInteraction(id);
+  const gridRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const element = gridRef.current;
+    if (!element || settings.layout !== 'grid') return;
+    const measure = () => {
+      const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
+      const cell = Math.max(24, (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+      element.style.setProperty('--point-grid-cell', `${cell}px`);
+    };
+    measure();
+    const ResizeObserverClass = element.ownerDocument.defaultView?.ResizeObserver;
+    if (!ResizeObserverClass) return;
+    const observer = new ResizeObserverClass(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [settings.gap, settings.layout]);
   if (settings.layout === 'compatibility')
     return <Content className="point-compatibility-slot" minEmptyHeight={48} />;
   const style = {
-    '--point-section-columns': settings.layout === 'flow' ? 1 : settings.columns,
+    '--point-section-columns': settings.layout === 'flow' ? 1 : GRID_COLUMNS,
     '--point-section-gap': gapValues[settings.gap],
+    '--point-section-total-gap': totalGapValues[settings.gap],
   } as CSSProperties;
   return (
     <section
-      className={`point-layout-section point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding}`}
+      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding}`}
       aria-label={settings.name}
     >
-      <Content className="point-layout-section__grid" style={style} minEmptyHeight={96} />
+      <Content
+        ref={gridRef}
+        className={`point-layout-section__grid${isDragging || isGridInteracting ? ' point-layout-section__grid--active' : ''}`}
+        style={style}
+        minEmptyHeight={96}
+      />
     </section>
   );
+}
+
+function CanvasBreakpointReporter() {
+  const width = usePointPuck((state) => state.appState.ui.viewports.current.width);
+  useEffect(() => {
+    if (typeof width === 'number') setGridBreakpoint(breakpointForWidth(width));
+  }, [width]);
+  return null;
 }
 
 function sectionToData(section: SectionBlock): ComponentData {
@@ -183,8 +245,10 @@ function sectionToData(section: SectionBlock): ComponentData {
         props: {
           id: placement.id,
           block: placement.element,
-          span: placement.span,
+          span:
+            section.layout === 'grid' ? Math.min(placement.span, section.columns) : placement.span,
           align: placement.align,
+          grid: placement.grid,
         },
       })),
     },
@@ -200,8 +264,13 @@ function dataToSection(item: ComponentData): SectionBlock {
     ...settings,
     items: content.map((child) => ({
       id: String(child.props.id),
-      span: Number(child.props.span ?? 12),
+      span: Number(
+        (child.props.grid as SectionBlock['items'][number]['grid'])?.desktop.columnSpan ??
+          child.props.span ??
+          12,
+      ),
       align: (child.props.align ?? 'stretch') as SectionBlock['items'][number]['align'],
+      grid: child.props.grid as SectionBlock['items'][number]['grid'],
       element: SiteElementSchema.parse(child.props.block),
     })),
   };
@@ -217,6 +286,9 @@ function rootElementToSection(item: ComponentData): SectionBlock {
         id: String(item.props.id || crypto.randomUUID()),
         span: Number(item.props.span ?? 12),
         align: (item.props.align ?? 'stretch') as SectionBlock['items'][number]['align'],
+        grid: (item.props.grid as SectionBlock['items'][number]['grid']) ?? {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
+        },
         element: SiteElementSchema.parse(item.props.block),
       },
     ],
@@ -226,9 +298,11 @@ function rootElementToSection(item: ComponentData): SectionBlock {
 export function VisualEditor({
   pageId,
   structureRevision,
+  onEditFooter,
 }: {
   pageId: string;
   structureRevision: number;
+  onEditFooter: () => void;
 }) {
   const { document, updateDocument } = useEditor();
   const page = document.pages.find((candidate) => candidate.id === pageId);
@@ -237,13 +311,7 @@ export function VisualEditor({
   const components: Record<string, unknown> = {};
   for (const kind of sectionTypes) {
     components[kind] = {
-      label:
-        kind === 'Section'
-          ? 'Blank section'
-          : kind
-              .replace(/([A-Z])/g, ' $1')
-              .replace(' Section', '')
-              .trim(),
+      label: sectionLabels[kind],
       fields: {
         settings: {
           type: 'custom',
@@ -259,7 +327,7 @@ export function VisualEditor({
         content: { type: 'slot', allow: elementTypes },
       },
       defaultProps: { settings: sectionDefaults(kind), content: [] },
-      render: renderSectionComponent,
+      render: SectionComponent,
     };
   }
   for (const type of elementTypes) {
@@ -283,6 +351,17 @@ export function VisualEditor({
           value,
         })),
       },
+      grid: {
+        type: 'custom',
+        label: 'Grid position',
+        render: ({
+          value,
+          onChange,
+        }: {
+          value: SectionBlock['items'][number]['grid'];
+          onChange: (value: SectionBlock['items'][number]['grid']) => void;
+        }) => <GridPlacementInspector value={value} onChange={onChange} />,
+      },
       align: {
         type: 'select',
         label: 'Vertical alignment',
@@ -305,24 +384,74 @@ export function VisualEditor({
         if (parentSettings?.layout === 'flow') {
           return { block: fields.block, align: fields.align };
         }
-        return fields;
+        return {
+          block: fields.block,
+          grid: fields.grid,
+          align: fields.align,
+        };
       },
-      defaultProps: { block: defaultElement(type, document), span: 12, align: 'stretch' },
-      resolveData: (data: { props: ElementProps }, { trigger }: { trigger: string }) =>
-        trigger === 'insert'
-          ? { props: { ...data.props, block: { ...data.props.block, id: crypto.randomUUID() } } }
-          : data,
+      defaultProps: {
+        block: defaultElement(type, document),
+        span: 12,
+        align: 'stretch',
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: defaultRowSpan(type) },
+        },
+      },
+      resolveData: (
+        data: { props: ElementProps },
+        { trigger, parent }: { trigger: string; parent: ComponentData | null },
+      ) => {
+        if (trigger !== 'insert') return data;
+        const parentSettings = parent?.props.settings as Partial<SectionSettings> | undefined;
+        const parentItems = ((parent?.props.content ?? []) as ComponentData[])
+          .filter((item) => item.props.id !== (data.props as ElementProps & { id?: string }).id)
+          .map((item) => ({
+            grid: item.props.grid as SectionBlock['items'][number]['grid'],
+          }));
+        const defaultSpan =
+          parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
+        const grid = {
+          desktop: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type)),
+        };
+        return {
+          props: {
+            ...data.props,
+            block: { ...data.props.block, id: crypto.randomUUID() },
+            span: parentSettings?.layout === 'grid' ? defaultSpan : 12,
+            grid,
+          },
+        };
+      },
       render: ({
         block,
-        span,
         align,
+        grid,
         puck,
       }: ElementProps & { puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
+        const desktop = grid.desktop;
+        const tablet = grid.tablet ?? desktop;
+        const mobile = grid.mobile ?? desktop;
+        const style = {
+          '--point-grid-desktop-column': desktop.column,
+          '--point-grid-desktop-row': desktop.row,
+          '--point-grid-desktop-column-span': desktop.columnSpan,
+          '--point-grid-desktop-row-span': desktop.rowSpan,
+          '--point-grid-tablet-column': tablet.column,
+          '--point-grid-tablet-row': tablet.row,
+          '--point-grid-tablet-column-span': tablet.columnSpan,
+          '--point-grid-tablet-row-span': tablet.rowSpan,
+          '--point-grid-mobile-column': mobile.column,
+          '--point-grid-mobile-row': mobile.row,
+          '--point-grid-mobile-column-span': mobile.columnSpan,
+          '--point-grid-mobile-row-span': mobile.rowSpan,
+        } as CSSProperties;
         return (
           <div
             ref={puck.dragRef}
-            className={`point-layout-item point-layout-item--${align} point-layout-item--span-${Number(span)}`}
+            className={`point-layout-item point-layout-item--grid point-layout-item--${align}`}
+            style={style}
           >
             {parsed.success ? renderBlock(parsed.data, document) : <p>Configure this element.</p>}
           </div>
@@ -333,12 +462,15 @@ export function VisualEditor({
 
   const config = {
     categories: {
-      sections: { title: 'Sections', components: [...sectionTypes] },
-      content: { title: 'Text & actions', components: ['heading', 'richText', 'hero', 'cta'] },
-      media: { title: 'Media', components: ['image', 'splitFeature'] },
-      collections: { title: 'Collections', components: ['cards', 'people'] },
-      engagement: { title: 'Engagement', components: ['faq', 'form', 'map'] },
-      spacing: { title: 'Spacing', components: ['divider', 'spacer'] },
+      sections: { title: '1. Start with a section', components: [...sectionTypes] },
+      content: {
+        title: '2. Add text and buttons',
+        components: ['heading', 'richText', 'hero', 'cta'],
+      },
+      media: { title: 'Add images and features', components: ['image', 'splitFeature'] },
+      collections: { title: 'Show lists and people', components: ['cards', 'people'] },
+      engagement: { title: 'Add interactive content', components: ['faq', 'form', 'map'] },
+      spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },
       other: { visible: false },
     },
     components,
@@ -346,7 +478,8 @@ export function VisualEditor({
       render: ({ children }: { children: ReactNode }) => (
         <>
           <style>{siteCss}</style>
-          <SiteFrame document={document} page={page} editing>
+          <CanvasBreakpointReporter />
+          <SiteFrame document={document} page={page} editing onEditFooter={onEditFooter}>
             {children}
           </SiteFrame>
         </>
@@ -361,7 +494,8 @@ export function VisualEditor({
         key={`${page.id}:${structureRevision}`}
         config={config}
         data={data}
-        dnd={{ behavior: 'auto' }}
+        dnd={editorDnd}
+        overrides={editorOverrides}
         onChange={(next) => {
           const sections = next.content.map((item) =>
             sectionTypes.includes(item.type as (typeof sectionTypes)[number])
@@ -376,7 +510,8 @@ export function VisualEditor({
         }}
         onPublish={() => undefined}
         headerTitle={page.title}
-        iframe={{ enabled: true, waitForStyles: false, syncHostStyles: false }}
+        viewports={editorViewports}
+        iframe={editorIframe}
       />
     </div>
   );

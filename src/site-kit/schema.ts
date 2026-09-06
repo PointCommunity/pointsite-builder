@@ -250,10 +250,34 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   SpacerBlockSchema,
 ]);
 
+export const GridAreaSchema = z
+  .strictObject({
+    column: z.number().int().min(1).max(12),
+    row: z.number().int().min(1).max(1_000),
+    columnSpan: z.number().int().min(1).max(12),
+    rowSpan: z.number().int().min(1).max(100),
+  })
+  .superRefine((area, context) => {
+    if (area.column + area.columnSpan > 13) {
+      context.addIssue({
+        code: 'custom',
+        path: ['columnSpan'],
+        message: 'Grid area must end at or before column 12',
+      });
+    }
+  });
+
+const ResponsiveGridAreaSchema = z.strictObject({
+  desktop: GridAreaSchema,
+  tablet: GridAreaSchema.optional(),
+  mobile: GridAreaSchema.optional(),
+});
+
 const ElementPlacementSchema = z.strictObject({
   id: uuid,
   span: z.number().int().min(1).max(12),
   align: z.enum(['start', 'center', 'end', 'stretch']),
+  grid: ResponsiveGridAreaSchema,
   element: SiteElementSchema,
 });
 
@@ -283,6 +307,13 @@ export const SectionBlockSchema = z
         code: 'custom',
         path: ['items'],
         message: 'Compatibility sections contain exactly one element',
+      });
+    }
+    if (section.layout === 'grid' && section.columns !== 12) {
+      context.addIssue({
+        code: 'custom',
+        path: ['columns'],
+        message: 'Grid sections use exactly 12 columns',
       });
     }
   });
@@ -444,7 +475,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(3),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

@@ -836,6 +836,12 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
 }
 
 const sectionGap = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' } as const;
+const sectionTotalGap = {
+  none: '0px',
+  small: '8.25rem',
+  medium: '16.5rem',
+  large: '33rem',
+} as const;
 
 export function renderSection(section: SectionBlock, document: SiteDocument): ReactNode {
   if (section.layout === 'compatibility') {
@@ -844,25 +850,49 @@ export function renderSection(section: SectionBlock, document: SiteDocument): Re
   }
 
   const style = {
-    '--point-section-columns': section.layout === 'flow' ? 1 : section.columns,
+    '--point-section-columns': section.layout === 'flow' ? 1 : 12,
     '--point-section-gap': sectionGap[section.gap],
+    '--point-section-total-gap': sectionTotalGap[section.gap],
   } as CSSProperties;
   const sectionColumns = section.layout === 'flow' ? 1 : section.columns;
 
   return (
     <section
-      className={`point-layout-section point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding}`}
+      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding}`}
       aria-label={section.name}
     >
       <div className="point-layout-section__grid" style={style}>
-        {section.items.map((placement) => (
-          <div
-            className={`point-layout-item point-layout-item--${placement.align} point-layout-item--span-${Math.min(placement.span, sectionColumns)}`}
-            key={placement.id}
-          >
-            {renderBlock(placement.element, document)}
-          </div>
-        ))}
+        {section.items.map((placement) => {
+          const desktop = placement.grid.desktop;
+          const tablet = placement.grid.tablet ?? desktop;
+          const mobile = placement.grid.mobile ?? desktop;
+          const placementStyle =
+            section.layout === 'grid'
+              ? ({
+                  '--point-grid-desktop-column': desktop.column,
+                  '--point-grid-desktop-row': desktop.row,
+                  '--point-grid-desktop-column-span': desktop.columnSpan,
+                  '--point-grid-desktop-row-span': desktop.rowSpan,
+                  '--point-grid-tablet-column': tablet.column,
+                  '--point-grid-tablet-row': tablet.row,
+                  '--point-grid-tablet-column-span': tablet.columnSpan,
+                  '--point-grid-tablet-row-span': tablet.rowSpan,
+                  '--point-grid-mobile-column': mobile.column,
+                  '--point-grid-mobile-row': mobile.row,
+                  '--point-grid-mobile-column-span': mobile.columnSpan,
+                  '--point-grid-mobile-row-span': mobile.rowSpan,
+                } as CSSProperties)
+              : undefined;
+          return (
+            <div
+              className={`point-layout-item point-layout-item--${section.layout} point-layout-item--${placement.align} point-layout-item--span-${Math.min(placement.span, sectionColumns)}`}
+              key={placement.id}
+              style={placementStyle}
+            >
+              {renderBlock(placement.element, document)}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

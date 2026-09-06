@@ -1,5 +1,8 @@
 # Data Model: Standardized Section Composer
 
+> Historical schema v2 model. Responsive grid placement is superseded by
+> `specs/004-grid-workbench/spec.md` and schema v3.
+
 ## SiteDocument v2
 
 Each page keeps `blocks` for additive compatibility, but every v2 top-level entry is a `section`.

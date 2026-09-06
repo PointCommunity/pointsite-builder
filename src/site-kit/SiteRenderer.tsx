@@ -65,12 +65,25 @@ function SiteHeader({ document, overlay = false }: { document: SiteDocument; ove
   );
 }
 
-function SiteFooter({ document }: { document: SiteDocument }) {
+function SiteFooter({
+  document,
+  editing = false,
+  onEdit,
+}: {
+  document: SiteDocument;
+  editing?: boolean;
+  onEdit?: () => void;
+}) {
   const social = new Map(document.site.socialLinks.map((item) => [item.platform, item]));
   const facebook = social.get('facebook');
   const instagram = social.get('instagram');
   return (
     <footer className="site-footer">
+      {editing && onEdit ? (
+        <button className="point-footer-edit" type="button" onClick={onEdit}>
+          Edit global footer
+        </button>
+      ) : null}
       <div className="footer-grid shell">
         <section>
           <h2>Service Times</h2>
@@ -111,11 +124,13 @@ export function SiteFrame({
   page,
   children,
   editing = false,
+  onEditFooter,
 }: {
   document: SiteDocument;
   page: PageDocument;
   children: ReactNode;
   editing?: boolean;
+  onEditFooter?: () => void;
 }) {
   const isHome = page.template === 'home' || page.route === '/';
   const hero = mediaSource(document, page.heroMediaId);
@@ -142,7 +157,7 @@ export function SiteFrame({
         ) : null}
         {isHome ? children : <div className="page-body shell">{children}</div>}
       </main>
-      <SiteFooter document={document} />
+      <SiteFooter document={document} editing={editing} onEdit={onEditFooter} />
     </div>
   );
 }

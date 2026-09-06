@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { DELETE_DRAFT_CONFIRMATION } from '../../shared/draft-lifecycle';
 import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { DraftRepository } from '../repositories/contracts';
+import { ConflictError } from '../repositories/memory';
 import type { ApiVariables } from './drafts';
 
 const LabelSchema = z.strictObject({ label: z.string().trim().min(1).max(100) });
@@ -17,6 +19,9 @@ const LifecycleSchema = z
     status: z.enum(['active', 'archived']).optional(),
   })
   .refine((value) => value.name || value.status, 'A name or status change is required');
+const DeleteDraftSchema = z.strictObject({
+  confirmation: z.literal(DELETE_DRAFT_CONFIRMATION),
+});
 
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
@@ -110,14 +115,16 @@ export function createRevisionRoutes(
   routes.delete('/:draftId', async (context) => {
     const actor = requireRole(context.get('actor'), 'editor');
     if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
-    await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    parse(
+      DeleteDraftSchema,
+      await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
+    );
+    const draft = await repository.getDraft(context.req.param('draftId'));
+    if (draft.status !== 'archived') {
+      throw new ConflictError('Only archived drafts can be deleted');
+    }
     return context.json(
-      await repository.setDraftStatus(
-        context.req.param('draftId'),
-        'deleted',
-        actor.email,
-        context.get('requestId'),
-      ),
+      await repository.setDraftStatus(draft.id, 'deleted', actor.email, context.get('requestId')),
     );
   });
 

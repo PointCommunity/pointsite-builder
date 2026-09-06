@@ -1,5 +1,6 @@
 import type { SiteDocument } from '../site-kit/types';
 import type { DraftRecord, RevisionRecord, Role } from '../server/repositories/contracts';
+import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 
 export interface ActorResponse {
   email: string;
@@ -141,7 +142,7 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body:
         action === 'delete'
-          ? '{}'
+          ? JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION })
           : JSON.stringify({ status: action === 'archive' ? 'archived' : 'active' }),
     }),
   listRevisions: async (id: string) =>

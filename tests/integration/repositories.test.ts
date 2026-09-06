@@ -165,9 +165,15 @@ describe('repository contract', () => {
     expect(
       (await repository.setDraftStatus(created.id, 'active', actor, 'request-11')).status,
     ).toBe('active');
+    await expect(
+      repository.setDraftStatus(created.id, 'deleted', actor, 'request-active-delete'),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await repository.setDraftStatus(created.id, 'archived', actor, 'request-rearchive');
     expect(
       (await repository.setDraftStatus(created.id, 'deleted', actor, 'request-12')).status,
     ).toBe('deleted');
+    expect(await repository.listDrafts()).toEqual([]);
+    expect(await repository.listDrafts('deleted')).toHaveLength(1);
     await expect(
       repository.setDraftStatus(created.id, 'active', actor, 'request-13'),
     ).rejects.toBeInstanceOf(ConflictError);

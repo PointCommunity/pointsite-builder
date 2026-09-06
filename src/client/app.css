@@ -414,6 +414,41 @@ textarea {
 .point-compatibility-slot > .point-layout-item {
   display: contents;
 }
+.grid-placement-inspector {
+  min-inline-size: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.8rem;
+}
+.grid-placement-inspector legend {
+  padding-inline: 0.3rem;
+  font-weight: 800;
+}
+.grid-placement-inspector__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+.grid-placement-inspector__fields label {
+  min-width: 0;
+}
+.grid-placement-inspector__fields span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.grid-placement-inspector__fields input {
+  width: 100%;
+  min-width: 0;
+}
+.button--compact {
+  min-height: 2.25rem;
+  margin-top: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+}
 .inspector-help {
   color: var(--muted);
   line-height: 1.5;
@@ -425,6 +460,26 @@ textarea {
 .visual-editor [class*='_PuckLayout_'] {
   height: 100% !important;
   min-height: 0;
+}
+.visual-editor [class*='_Sidebar--left_'],
+.visual-editor [class*='_Sidebar--right_'] {
+  min-width: 0;
+  overscroll-behavior: contain;
+}
+.visual-editor [class*='_Sidebar--right_'] {
+  overflow-x: hidden;
+}
+.visual-editor [class*='_Sidebar--right_'] > *,
+.visual-editor [class*='_Sidebar--right_'] form,
+.visual-editor [class*='_Sidebar--right_'] fieldset,
+.visual-editor [class*='_Sidebar--right_'] label,
+.visual-editor [class*='_Sidebar--right_'] input,
+.visual-editor [class*='_Sidebar--right_'] select,
+.visual-editor [class*='_Sidebar--right_'] textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 .single-panel {
   height: 100%;
@@ -627,6 +682,8 @@ textarea {
 .inspector-row {
   display: grid;
   gap: 0.8rem;
+  width: 100%;
+  min-width: 0;
 }
 .block-inspector {
   gap: 1rem;
@@ -634,6 +691,15 @@ textarea {
 .inspector-field {
   display: grid;
   gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+.inspector-field input,
+.inspector-field select,
+.inspector-field textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 .inspector-field > span,
 .inspector-group > legend {
@@ -646,6 +712,7 @@ textarea {
   resize: vertical;
 }
 .inspector-group {
+  min-inline-size: 0;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   padding: 0.8rem;
@@ -663,9 +730,59 @@ textarea {
   width: auto;
 }
 .button--danger {
-  color: #9c1c2a;
-  border-color: #b5545f;
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
   justify-self: start;
+}
+.button--danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.button--danger-filled {
+  background: #a32632;
+  border-color: #c64a56;
+  color: #ffffff;
+}
+.button--danger-filled:hover:not(:disabled) {
+  background: #bb3340;
+  border-color: #e46772;
+}
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 72%);
+}
+.confirmation-dialog {
+  width: min(32rem, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 45%);
+}
+.confirmation-dialog h2 {
+  margin: 0.35rem 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+.confirmation-dialog form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+.confirmation-dialog__actions {
+  justify-content: flex-end;
+}
+.dialog-error {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 700;
 }
 .page-manager {
   display: grid;
