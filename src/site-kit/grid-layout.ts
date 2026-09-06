@@ -12,6 +12,7 @@ const defaultRows: Record<SiteElement['type'], number> = {
   heading: 4,
   richText: 5,
   image: 7,
+  mediaEmbed: 7,
   splitFeature: 8,
   cta: 5,
   cards: 8,

@@ -9,21 +9,65 @@ export function RevisionHistory() {
   const [error, setError] = useState('');
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [status, setStatus] = useState('');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'named' | 'current'>('all');
   useEffect(() => {
     void api
       .listRevisions(draft.id)
       .then(setItems)
       .catch(() => setError('Revision history could not be loaded.'));
   }, [draft.id, draft.revision.id]);
+  const visible = items.filter((revision) => {
+    if (filter === 'named' && !revision.label) return false;
+    if (filter === 'current' && revision.id !== draft.revision.id) return false;
+    const term = query.trim().toLowerCase();
+    return (
+      !term ||
+      `${revision.label ?? ''} ${revision.sequence} ${revision.createdBy}`
+        .toLowerCase()
+        .includes(term)
+    );
+  });
   return (
     <section className="revision-panel" aria-labelledby="revision-title">
-      <h2 id="revision-title">Revision history</h2>
+      <header className="section-heading">
+        <div>
+          <p className="eyebrow">Saved changes</p>
+          <h2 id="revision-title">Revision history</h2>
+        </div>
+        <p>Find, name, or restore an earlier version.</p>
+      </header>
+      <div className="history-filters" role="search">
+        <label>
+          <span>Find a revision</span>
+          <input
+            type="search"
+            placeholder="Search by name, number, or person"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Show</span>
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as typeof filter)}
+          >
+            <option value="all">All revisions</option>
+            <option value="named">Named revisions</option>
+            <option value="current">Current revision</option>
+          </select>
+        </label>
+        <span>
+          {visible.length} {visible.length === 1 ? 'revision' : 'revisions'}
+        </span>
+      </div>
       {error ? <p role="alert">{error}</p> : null}
       <p role="status" aria-live="polite">
         {status}
       </p>
       <ol>
-        {items.map((revision) => (
+        {visible.map((revision) => (
           <li key={revision.id}>
             <div>
               <strong>{revision.label || `Revision ${revision.sequence}`}</strong>

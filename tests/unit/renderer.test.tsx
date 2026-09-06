@@ -71,6 +71,10 @@ describe('controlled public renderer', () => {
       'src',
       expect.stringMatching(/^https:\/\/www\.google\.com\/maps\?/),
     );
+    expect(screen.getByTitle('Point story')).toHaveAttribute(
+      'src',
+      'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE',
+    );
   });
 
   it('hardens external links and preserves internal navigation', () => {
@@ -92,7 +96,7 @@ describe('controlled public renderer', () => {
   });
 
   it('publishes accessible non-drag structure metadata for every block', () => {
-    expect(Object.keys(blockDefinitions)).toHaveLength(15);
+    expect(Object.keys(blockDefinitions)).toHaveLength(16);
     for (const definition of Object.values(blockDefinitions)) {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);

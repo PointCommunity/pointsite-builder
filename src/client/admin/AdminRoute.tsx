@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Role } from '../../server/repositories/contracts';
 import { api, type AdminRoleItem, type AuditItem, type CapacityReport } from '../api';
+import {
+  auditActionLabel,
+  auditDetails,
+  auditOutcomeLabel,
+  auditTargetLabel,
+} from './audit-language';
 
 const roles: Role[] = ['viewer', 'editor', 'publisher', 'administrator'];
 const bytes = (value: number) => `${(value / 1024 / 1024).toFixed(1)} MB`;
@@ -199,12 +205,19 @@ export function AdminRoute() {
               {audit.map((item) => (
                 <tr key={item.id}>
                   <td>{new Date(item.occurredAt).toLocaleString()}</td>
-                  <td>{item.actor}</td>
-                  <td>{item.action}</td>
+                  <td>{item.actor.startsWith('@') ? item.actor : 'System'}</td>
                   <td>
-                    {item.targetType}: {item.targetId}
+                    <strong>{auditActionLabel(item.action)}</strong>
+                    {auditDetails(item.metadata) ? (
+                      <small className="table-detail">{auditDetails(item.metadata)}</small>
+                    ) : null}
                   </td>
-                  <td>{item.outcome}</td>
+                  <td>{auditTargetLabel(item.targetType, item.targetId)}</td>
+                  <td>
+                    <span className={`status-badge status-badge--${item.outcome}`}>
+                      {auditOutcomeLabel(item.outcome)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

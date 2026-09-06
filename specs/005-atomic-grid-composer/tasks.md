@@ -16,4 +16,4 @@
 - [x] T014 Run focused tests and remediate all failures
 - [x] T015 Run full Builder and staging verification
 - [x] T016 Run hands-on cross-browser authoring and parity acceptance
-- [ ] T017 Record dark-mode HTML acceptance evidence in `tests/reports/atomic-grid-composer.html`
+- [x] T017 Record dark-mode HTML acceptance evidence in `tests/reports/atomic-grid-composer.html`

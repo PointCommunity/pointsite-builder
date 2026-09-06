@@ -50,9 +50,9 @@ test('viewer receives a read-only preview with no authoring or publish controls'
   await page.goto('/');
   await expect(page.getByLabel('New draft name')).toHaveCount(0);
   await page.getByRole('button', { name: 'Open preview' }).click();
-  await expect(page.getByRole('button', { name: 'publish' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'settings' })).toBeVisible();
-  await page.getByRole('button', { name: 'settings' }).click();
+  await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Viewer access is read only.')).toBeVisible();
   expect(mutations).toEqual([]);
 });
@@ -116,7 +116,7 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
   await page.getByLabel('New draft name').fill('Another draft');
   await page.getByRole('button', { name: 'Create draft' }).click();
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'publish' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('button', { name: 'Save now' }).click();
   expect(mutations).toContain('POST /api/drafts');

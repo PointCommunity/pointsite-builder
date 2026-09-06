@@ -139,6 +139,13 @@ function defaultElement<T extends SiteElement['type']>(
       aspect: 'natural',
       fit: 'cover',
     },
+    mediaEmbed: {
+      id,
+      type: 'mediaEmbed',
+      linkedMediaId: document.linkedMedia[0]?.id ?? crypto.randomUUID(),
+      aspect: '16:9',
+      fit: 'cover',
+    },
     splitFeature: {
       id,
       type: 'splitFeature',
@@ -775,7 +782,7 @@ export function VisualEditor({
         title: '2. Add text and buttons',
         components: ['heading', 'text', 'richText', 'button'],
       },
-      media: { title: 'Add images', components: ['image'] },
+      media: { title: 'Add images and media', components: ['image', 'mediaEmbed'] },
       collections: { title: 'Show lists and people', components: ['cards', 'people'] },
       engagement: { title: 'Add interactive content', components: ['faq', 'form', 'map'] },
       spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },
@@ -816,7 +823,7 @@ export function VisualEditor({
             return draft;
           });
         }}
-        onPublish={() => undefined}
+        onPublish={undefined}
         headerTitle={page.title}
         viewports={editorViewports}
         iframe={editorIframe}

@@ -144,6 +144,8 @@ async function installApi(
       body = {
         id: '30000000-0000-4000-8000-000000000001',
         filename: 'gathering.png',
+        displayName: 'Gathering',
+        tags: [],
         contentType: 'image/png',
         byteSize: 68,
         width: 1,
@@ -179,7 +181,23 @@ async function installApi(
       };
       roles = [item, ...roles.filter((candidate) => candidate.githubUserId !== item.githubUserId)];
       body = item;
-    } else if (path.endsWith('/admin/audit')) body = { items: [], nextCursor: null };
+    } else if (path.endsWith('/admin/audit'))
+      body = {
+        items: [
+          {
+            id: 'audit-1',
+            occurredAt: '2026-09-05T00:00:00Z',
+            actor: '@brimdor',
+            action: 'draft.save',
+            targetType: 'draft',
+            targetId: draft.id,
+            outcome: 'succeeded',
+            requestId: 'request-1',
+            metadata: { sequence: 2 },
+          },
+        ],
+        nextCursor: null,
+      };
     else if (path.endsWith('/admin/capacity'))
       body = {
         privateMedia: { used: 1, limit: 10, percent: 10, warning: false, unit: 'bytes' },
@@ -281,7 +299,7 @@ test('operates page modules by keyboard and announces the result', async ({ page
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'preview' }).click();
+  await page.getByRole('button', { name: 'Preview' }).click();
   const frame = page.locator('iframe.preview-frame');
   for (const [label, width] of [
     ['mobile', 360],
@@ -704,7 +722,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).scrollIntoViewIfNeeded();
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).click();
-  await expect(page.getByRole('button', { name: 'settings' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Settings' })).toHaveAttribute(
     'aria-current',
     'page',
   );
@@ -800,7 +818,11 @@ test('inserts an editable atomic recipe and resizes its section on the grid', as
 test('labels history and restores only after confirmation', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'history' }).click();
+  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByLabel('Find a revision').fill('Before refresh');
+  await expect(page.getByText('1 revision')).toBeVisible();
+  await expect(page.locator('.revision-panel ol > li')).toHaveCount(1);
+  await page.getByLabel('Find a revision').fill('');
   await page.getByLabel('Label for revision 1').fill('Approved homepage');
   await page.getByRole('button', { name: 'Save label' }).last().click();
   await expect(page.getByText('Revision label saved.')).toBeVisible();
@@ -814,7 +836,7 @@ test('uploads private media with alternative text and attaches it to the draft l
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'media' }).click();
+  await page.getByRole('button', { name: 'Library' }).click();
   await page.getByLabel('Image file').setInputFiles({
     name: 'gathering.png',
     mimeType: 'image/png',
@@ -823,20 +845,89 @@ test('uploads private media with alternative text and attaches it to the draft l
   await page.getByLabel('Alternative text').fill('People gathering');
   await page.getByRole('button', { name: 'Upload image' }).click();
   await expect(page.getByText('Image uploaded privately.')).toBeVisible();
-  await page.getByRole('button', { name: 'Add to site library' }).click();
+  await page.getByRole('button', { name: 'Use in Layout' }).click();
   await expect(page.getByRole('heading', { name: 'Page structure' })).toBeVisible();
+});
+
+test('builds a form and places linked YouTube media without code', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Forms' }).click();
+  await page.getByRole('button', { name: 'New form' }).click();
+  await page.getByLabel('Heading').fill('Plan a visit');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await expect(page.getByText('2. New field')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByLabel('Media type').selectOption('youtube');
+  await page.getByLabel('Display name').fill('Point welcome video');
+  await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  await page.getByRole('button', { name: 'Add linked media' }).click();
+  await expect(page.getByText('Linked media added to this draft.')).toBeVisible();
+  await page.getByRole('button', { name: 'Layout' }).click();
+
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const drag = async (
+    source: ReturnType<typeof page.locator>,
+    target: ReturnType<typeof page.locator>,
+    edge = false,
+  ) => {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    const from = await source.boundingBox();
+    const to = await target.boundingBox();
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, edge ? to!.y + 6 : to!.y + to!.height / 2, {
+      steps: 16,
+    });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+  await drag(
+    page.getByRole('button', { name: 'Blank grid section', exact: true }),
+    canvas.locator('.home-hero'),
+    true,
+  );
+  const section = canvas.locator('.point-layout-section').last();
+  await page.getByRole('button', { name: 'Save now' }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();
+  await drag(
+    page.getByRole('button', { name: 'Linked media', exact: true }),
+    section.locator('[data-puck-dropzone]'),
+  );
+  await expect(canvas.getByTitle('Point welcome video')).toHaveAttribute(
+    'src',
+    'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE',
+  );
 });
 
 test('manages roles and exposes capacity warnings to administrators', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'admin' }).click();
+  await page.getByRole('button', { name: 'Admin' }).click();
   await expect(page.getByText('80% — action recommended')).toBeVisible();
   await page.getByLabel('GitHub username').fill('point-publisher');
   await page.locator('.inline-editor select').selectOption('publisher');
   await page.getByRole('button', { name: 'Add person' }).click();
   await expect(page.getByText('@point-publisher updated')).toBeVisible();
   await expect(page.getByRole('cell', { name: '@point-publisher' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '@brimdor' }).last()).toBeVisible();
+  await expect(page.getByText('Saved draft changes')).toBeVisible();
 });
 
 test('recovers from a server-side revision conflict without overwriting', async ({

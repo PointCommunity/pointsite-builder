@@ -27,21 +27,38 @@ export function StagingPublish() {
   return (
     <section className="publish-panel" aria-labelledby="publish-title">
       <p className="eyebrow">Staging only</p>
-      <h2 id="publish-title">Publish preview</h2>
+      <h2 id="publish-title">Review and publish to staging</h2>
+      <p>
+        This sends the latest saved version of <strong>{draft.name}</strong> to the protected
+        staging website. It does not change the public website.
+      </p>
       <dl>
         <div>
-          <dt>Revision</dt>
-          <dd>{draft.revision.id}</dd>
+          <dt>Version</dt>
+          <dd>Revision {draft.revision.sequence}</dd>
         </div>
         <div>
-          <dt>Content checksum</dt>
-          <dd>{draft.revision.checksum}</dd>
-        </div>
-        <div>
-          <dt>Staging base</dt>
-          <dd>{baseSha || 'Unavailable'}</dd>
+          <dt>Draft status</dt>
+          <dd>{saveState === 'saved' ? 'Ready' : 'Save changes first'}</dd>
         </div>
       </dl>
+      <details className="technical-details">
+        <summary>Technical verification details</summary>
+        <dl>
+          <div>
+            <dt>Revision ID</dt>
+            <dd>{draft.revision.id}</dd>
+          </div>
+          <div>
+            <dt>Content checksum</dt>
+            <dd>{draft.revision.checksum}</dd>
+          </div>
+          <div>
+            <dt>Staging base</dt>
+            <dd>{baseSha || 'Unavailable'}</dd>
+          </div>
+        </dl>
+      </details>
       <p role="status" aria-live="polite">
         {status}
       </p>
@@ -165,7 +182,10 @@ export function StagingPublish() {
       ) : null}
       <aside className="production-lock">
         <strong>Production is locked</strong>
-        <p>This screen cannot publish or open a production pull request.</p>
+        <p>
+          Publishing here can only update staging. A separate reviewed process is required before
+          anything can reach the public website.
+        </p>
       </aside>
     </section>
   );

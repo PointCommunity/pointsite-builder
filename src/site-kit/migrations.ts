@@ -136,6 +136,24 @@ function migrateThreeToFour(input: object): unknown {
   };
 }
 
+function migrateFourToFive(input: object): unknown {
+  const legacy = input as {
+    forms?: Array<Record<string, unknown> & { fields?: Array<Record<string, unknown>> }>;
+  };
+  return {
+    ...input,
+    schemaVersion: SCHEMA_VERSION,
+    rendererVersion: RENDERER_VERSION,
+    linkedMedia: [],
+    forms: (legacy.forms ?? []).map((form) => ({
+      ...form,
+      layout: 'two-column',
+      density: 'comfortable',
+      fields: (form.fields ?? []).map((field) => ({ ...field, width: 'half' })),
+    })),
+  };
+}
+
 export function migrateDocument(input: unknown): MigrationResult {
   const version = readVersion(input);
 
@@ -148,32 +166,48 @@ export function migrateDocument(input: unknown): MigrationResult {
     const versionTwo = migrateOneToTwo(versionOne as object);
     return {
       document: SiteDocumentSchema.parse(
-        migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object),
+        migrateFourToFive(
+          migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object) as object,
+        ),
       ),
-      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4'],
+      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5'],
     };
   }
 
   if (version === 1)
     return {
       document: SiteDocumentSchema.parse(
-        migrateThreeToFour(migrateTwoToThree(migrateOneToTwo(input as object) as object) as object),
+        migrateFourToFive(
+          migrateThreeToFour(
+            migrateTwoToThree(migrateOneToTwo(input as object) as object) as object,
+          ) as object,
+        ),
       ),
-      applied: ['1-to-2', '2-to-3', '3-to-4'],
+      applied: ['1-to-2', '2-to-3', '3-to-4', '4-to-5'],
     };
 
   if (version === 2)
     return {
       document: SiteDocumentSchema.parse(
-        migrateThreeToFour(migrateTwoToThree(input as object) as object),
+        migrateFourToFive(
+          migrateThreeToFour(migrateTwoToThree(input as object) as object) as object,
+        ),
       ),
-      applied: ['2-to-3', '3-to-4'],
+      applied: ['2-to-3', '3-to-4', '4-to-5'],
     };
 
   if (version === 3)
     return {
-      document: SiteDocumentSchema.parse(migrateThreeToFour(input as object)),
-      applied: ['3-to-4'],
+      document: SiteDocumentSchema.parse(
+        migrateFourToFive(migrateThreeToFour(input as object) as object),
+      ),
+      applied: ['3-to-4', '4-to-5'],
+    };
+
+  if (version === 4)
+    return {
+      document: SiteDocumentSchema.parse(migrateFourToFive(input as object)),
+      applied: ['4-to-5'],
     };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };

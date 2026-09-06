@@ -653,6 +653,12 @@
     gap: 22px;
     margin-top: 38px;
   }
+  .managed-form--single {
+    grid-template-columns: 1fr;
+  }
+  .managed-form--compact {
+    gap: 12px;
+  }
   .field {
     display: flex;
     flex-direction: column;
@@ -663,6 +669,26 @@
     font-weight: 900;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+  .field > legend {
+    padding: 0;
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .field > small {
+    color: var(--muted);
+  }
+  fieldset.field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .field--full {
+    grid-column: 1 / -1;
   }
   .field--textarea,
   .field--radio,
@@ -1133,13 +1159,35 @@
   align-self: center;
 }
 .point-site .point-image,
-.point-site .wide-photo {
+.point-site .wide-photo,
+.point-site .point-linked-media {
   overflow: hidden;
 }
 .point-site .point-image:not(.point-aspect--natural) > img,
-.point-site .wide-photo:not(.point-aspect--natural) > img {
+.point-site .wide-photo:not(.point-aspect--natural) > img,
+.point-site .point-linked-media:not(.point-aspect--natural) > :is(img, video, iframe) {
   width: 100%;
   height: 100%;
+}
+.point-site .point-linked-media {
+  margin: 0;
+}
+.point-site .point-linked-media > :is(img, video, iframe) {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  border: 0;
+}
+.point-site .point-linked-media.point-fit--cover > :is(img, video) {
+  object-fit: cover;
+}
+.point-site .point-linked-media.point-fit--contain > :is(img, video) {
+  object-fit: contain;
+}
+.point-site .point-linked-media figcaption {
+  padding-top: 0.5rem;
+  color: var(--point-muted-text);
+  font-size: 0.85rem;
 }
 .point-site .point-aspect--1-1 {
   aspect-ratio: 1;
@@ -1347,8 +1395,10 @@
 }
 .point-site .point-layout-item--grid > .point-image,
 .point-site .point-layout-item--grid > .wide-photo,
+.point-site .point-layout-item--grid > .point-linked-media,
 .point-site .point-layout-item--grid > .point-image > img,
-.point-site .point-layout-item--grid > .wide-photo > img {
+.point-site .point-layout-item--grid > .wide-photo > img,
+.point-site .point-layout-item--grid > .point-linked-media > :is(img, video, iframe) {
   width: 100%;
   height: 100%;
 }

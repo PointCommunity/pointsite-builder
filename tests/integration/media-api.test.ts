@@ -26,6 +26,15 @@ class MemoryMedia implements MediaRepository {
   async create(record: MediaRecord) {
     this.items.push(record);
   }
+  async updateMetadata(
+    id: string,
+    metadata: Pick<MediaRecord, 'filename' | 'displayName' | 'altText' | 'tags'>,
+  ) {
+    const item = this.items.find((candidate) => candidate.id === id);
+    if (!item) throw new Error('MEDIA_NOT_FOUND');
+    Object.assign(item, metadata);
+    return item;
+  }
   async markOrphaned() {
     return 0;
   }
@@ -85,6 +94,27 @@ it('allows an editor to upload and an authenticated viewer to read private media
   );
   expect(read.status).toBe(200);
   expect(read.headers.get('content-type')).toBe('image/png');
+
+  const updated = await app.request(
+    `https://builder.pointatx.org/api/media/${repository.items[0]?.id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        origin: 'https://builder.pointatx.org',
+        'sec-fetch-site': 'same-origin',
+        'content-type': 'application/json',
+        'idempotency-key': 'media-update-0001',
+      },
+      body: JSON.stringify({
+        filename: 'sunday.png',
+        displayName: 'Sunday gathering',
+        altText: 'People gathering Sunday',
+        tags: ['Sunday'],
+      }),
+    },
+  );
+  expect(updated.status).toBe(200);
+  await expect(updated.json()).resolves.toMatchObject({ displayName: 'Sunday gathering' });
 });
 
 it('denies media upload to a viewer', async () => {

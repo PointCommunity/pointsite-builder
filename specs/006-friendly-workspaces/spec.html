@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PointSite Builder Friendly Workspaces Specification</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.55 system-ui,
+          sans-serif;
+        background: #0d120e;
+        color: #eef3ec;
+      }
+      body {
+        max-width: 76rem;
+        margin: auto;
+        padding: 2rem;
+      }
+      h1,
+      h2 {
+        color: #b9df94;
+      }
+      code {
+        background: #1b251c;
+        padding: 0.15rem 0.35rem;
+      }
+      section {
+        border-top: 1px solid #344236;
+        padding-block: 1rem;
+      }
+      li {
+        margin-block: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Friendly Workspaces — specification and delivery plan</h1>
+    <p>
+      <strong>Boundary:</strong> Builder and staging only. PointSite production is unchanged and
+      production publication remains locked.
+    </p>
+    <section>
+      <h2>Navigation and publishing</h2>
+      <ul>
+        <li>
+          Tabs are ordered Layout, Forms, Library, Preview, History, Settings, and
+          administrator-only Admin.
+        </li>
+        <li>
+          There is no Publish tab. An authorized publisher uses Publish in Layout and receives an
+          accessible modal that explains revision, staging base, verification, acceptance, and the
+          production lock.
+        </li>
+        <li>Viewers remain read-only and users without repository write access cannot publish.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Forms workspace</h2>
+      <ul>
+        <li>Create, duplicate, rename, delete, and select forms without technical terminology.</li>
+        <li>
+          Configure recipient, subject, heading, introduction, submit label, privacy note, success
+          guidance, density, and one- or two-column layout.
+        </li>
+        <li>
+          Add, duplicate, remove, and reorder fields; configure label, type, placeholder, help text,
+          required state, width, and choice options.
+        </li>
+        <li>
+          Rendered forms retain native labels, grouped choices, instructions, browser validation,
+          and status announcements.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Library and linked media</h2>
+      <ul>
+        <li>
+          Show private uploads and media already attached to the draft; edit filename, display name,
+          alternative text, and organizing tags.
+        </li>
+        <li>
+          Add validated HTTPS linked images, direct videos, and YouTube URLs to a draft-owned
+          linked-media catalog.
+        </li>
+        <li>
+          An atomic Media element selects a linked-media item and renders an image, native
+          controlled video, or allowlisted YouTube embed.
+        </li>
+        <li>
+          Unsafe schemes and unsupported YouTube URLs fail validation. Direct video never autoplays.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>History and audit</h2>
+      <ul>
+        <li>Revision history is a compact list filterable by search and named/current status.</li>
+        <li>
+          Audit actors resolve to GitHub usernames when known; actions, targets, and outcomes use
+          plain-language labels with technical detail available secondarily.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Acceptance gates</h2>
+      <ol>
+        <li>
+          Schema v4 drafts migrate losslessly to v5 and existing routes retain production pixel
+          parity.
+        </li>
+        <li>
+          Unit and integration tests cover form configuration, linked-media URL handling, metadata
+          persistence, history filters, modal behavior, and actor resolution.
+        </li>
+        <li>
+          Cross-browser hands-on tests cover create/edit/reorder form, add linked media, place it in
+          Layout, filter history, inspect audit, and stage-only publishing.
+        </li>
+        <li>
+          Formatting, lint, typecheck, build, coverage, accessibility, security, performance,
+          staging contract, and route parity all pass before completion.
+        </li>
+      </ol>
+    </section>
+  </body>
+</html>

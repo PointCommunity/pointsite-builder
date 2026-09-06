@@ -847,6 +847,7 @@ const rawDocument = {
     fields,
   })),
   media: mediaRecords,
+  linkedMedia: [],
   collections: {
     people: people.map(([name, role, sourcePath], index) => ({
       id: uid(6_000 + index),

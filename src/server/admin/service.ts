@@ -163,7 +163,15 @@ export class D1AdminService {
     const safeLimit = Math.min(100, Math.max(1, limit));
     const rows = await this.database
       .prepare(
-        'SELECT id, occurred_at, actor, action, target_type, target_id, outcome, request_id, metadata_json FROM audit_events ORDER BY occurred_at DESC, id DESC LIMIT ?',
+        `SELECT audit_events.id, audit_events.occurred_at,
+          COALESCE('@' || actor_role.github_login, audit_events.actor) AS actor,
+          audit_events.action, audit_events.target_type,
+          COALESCE('@' || target_role.github_login, audit_events.target_id) AS target_id,
+          audit_events.outcome, audit_events.request_id, audit_events.metadata_json
+        FROM audit_events
+        LEFT JOIN user_roles AS actor_role ON actor_role.email = audit_events.actor COLLATE NOCASE
+        LEFT JOIN user_roles AS target_role ON target_role.email = audit_events.target_id COLLATE NOCASE
+        ORDER BY audit_events.occurred_at DESC, audit_events.id DESC LIMIT ?`,
       )
       .bind(safeLimit)
       .all<{

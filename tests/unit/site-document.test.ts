@@ -150,6 +150,13 @@ describe('SiteDocumentSchema', () => {
         width: 'fit',
         align: 'left',
       },
+      {
+        id: IDS.block,
+        type: 'mediaEmbed',
+        linkedMediaId: IDS.linkedMedia,
+        aspect: '16:9',
+        fit: 'cover',
+      },
     ];
 
     for (const block of blocks) {
@@ -193,7 +200,7 @@ describe('SiteDocumentSchema', () => {
     const reloaded = SiteDocumentSchema.parse(JSON.parse(saved));
     const types = reloaded.pages[0].blocks[0].items.map((item) => item.element.type);
     expect(new Set(types)).toEqual(new Set(allBlocks.map((block) => block.type)));
-    expect(types).toHaveLength(15);
+    expect(types).toHaveLength(16);
   });
 
   it('rejects unsafe atomic button hyperlinks', () => {

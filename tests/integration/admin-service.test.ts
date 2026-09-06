@@ -56,7 +56,12 @@ describe('administrator service', () => {
       { githubLogin: 'brimdor', githubUserId: 1202831, role: 'administrator' },
       { githubLogin: 'point-editor', githubUserId: 9999, role: 'editor' },
     ]);
-    expect((await service.listAudit()).map((event) => event.action)).toContain('role.upsert');
+    const audit = await service.listAudit();
+    expect(audit.map((event) => event.action)).toContain('role.upsert');
+    expect(audit.find((event) => event.requestId === 'two')).toMatchObject({
+      actor: '@brimdor',
+      targetId: '@point-editor',
+    });
     await expect(
       service.upsertRole({
         githubLogin: 'brimdor',

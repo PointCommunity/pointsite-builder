@@ -117,6 +117,13 @@ export const allBlocks: SiteElement[] = [
     width: 'fit',
     align: 'left',
   },
+  {
+    id: '22222222-2222-4222-8222-222222222216',
+    type: 'mediaEmbed',
+    linkedMediaId: IDS.linkedMedia,
+    aspect: '16:9',
+    fit: 'cover',
+  },
 ];
 
 export const allBlocksDocument: SiteDocument = {
@@ -126,6 +133,15 @@ export const allBlocksDocument: SiteDocument = {
       id: IDS.person,
       sourcePath: '/assets/neighborhood-table.jpeg',
       alt: 'Friends and families sharing a meal',
+    },
+  ],
+  linkedMedia: [
+    {
+      id: IDS.linkedMedia,
+      type: 'youtube',
+      url: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      displayName: 'Point story',
+      tags: ['story'],
     },
   ],
   pages: [

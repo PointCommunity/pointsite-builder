@@ -3,6 +3,7 @@ import type { DraftRecord, Role } from '../../server/repositories/contracts';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
+import { FormsEditor } from '../settings/FormsEditor';
 import { StagingPublish } from '../publish/StagingPublish';
 import { MediaLibrary } from '../media/MediaLibrary';
 import { AdminRoute } from '../admin/AdminRoute';
@@ -13,7 +14,16 @@ import { StructurePanel } from './StructurePanel';
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
 );
-type Panel = 'content' | 'settings' | 'media' | 'preview' | 'history' | 'publish' | 'admin';
+type Panel = 'layout' | 'forms' | 'library' | 'preview' | 'history' | 'settings' | 'admin';
+const panelLabels: Record<Panel, string> = {
+  layout: 'Layout',
+  forms: 'Forms',
+  library: 'Library',
+  preview: 'Preview',
+  history: 'History',
+  settings: 'Settings',
+  admin: 'Admin',
+};
 
 function Workspace({
   role,
@@ -27,7 +37,8 @@ function Workspace({
   themeToggle: ReactNode;
 }) {
   const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
-  const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
+  const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'layout');
+  const [publishOpen, setPublishOpen] = useState(false);
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const [structureRevision, setStructureRevision] = useState(0);
   const editable = role !== 'viewer' && draft.status === 'active';
@@ -80,17 +91,26 @@ function Workspace({
               Save now
             </button>
           ) : null}
+          {canPublish && panel === 'layout' ? (
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => setPublishOpen(true)}
+            >
+              Publish
+            </button>
+          ) : null}
         </div>
       </header>
       <nav className="editor-tabs" aria-label="Editor sections">
         {(
           [
-            'content',
-            'settings',
-            'media',
+            'layout',
+            'forms',
+            'library',
             'preview',
             'history',
-            ...(canPublish ? ['publish' as const] : []),
+            'settings',
             ...(role === 'administrator' ? ['admin' as const] : []),
           ] as Panel[]
         ).map((item) => (
@@ -100,11 +120,11 @@ function Workspace({
             aria-current={panel === item ? 'page' : undefined}
             onClick={() => setPanel(item)}
           >
-            {item}
+            {panelLabels[item]}
           </button>
         ))}
       </nav>
-      {panel === 'content' ? (
+      {panel === 'layout' ? (
         <main id="main-content" className="content-workspace">
           <aside>
             <PageManager pageId={pageId} onPageIdChange={setPageId} />
@@ -128,6 +148,29 @@ function Workspace({
           </section>
         </main>
       ) : null}
+      {panel === 'forms' ? (
+        <main id="main-content" className="single-panel">
+          {editable ? (
+            <FormsEditor
+              forms={document.forms}
+              usedFormIds={
+                new Set(
+                  document.pages.flatMap((page) =>
+                    page.blocks.flatMap((section) =>
+                      section.items.flatMap((placement) =>
+                        placement.element.type === 'form' ? [placement.element.formId] : [],
+                      ),
+                    ),
+                  ),
+                )
+              }
+              onChange={(forms) => updateDocument((next) => ({ ...next, forms }))}
+            />
+          ) : (
+            <p>Viewer access is read only.</p>
+          )}
+        </main>
+      ) : null}
       {panel === 'settings' ? (
         <main id="main-content" className="single-panel">
           {editable ? <SiteSettings /> : <p>Viewer access is read only.</p>}
@@ -138,9 +181,11 @@ function Workspace({
           <Preview document={document} />
         </main>
       ) : null}
-      {panel === 'media' ? (
+      {panel === 'library' ? (
         <main id="main-content" className="single-panel">
           <MediaLibrary
+            document={document}
+            onDocumentChange={(next) => updateDocument(() => next)}
             onSelect={(item) => {
               const extension =
                 item.contentType === 'image/jpeg' ? 'jpg' : item.contentType.replace('image/', '');
@@ -150,11 +195,13 @@ function Workspace({
                     id: item.id,
                     sourcePath: `/assets/builder/${item.id}.${extension}`,
                     alt: item.altText,
+                    displayName: item.displayName,
+                    tags: item.tags,
                   });
                 }
                 return next;
               });
-              setPanel('content');
+              setPanel('layout');
             }}
           />
         </main>
@@ -164,15 +211,40 @@ function Workspace({
           <RevisionHistory />
         </main>
       ) : null}
-      {panel === 'publish' ? (
-        <main id="main-content" className="single-panel">
-          <StagingPublish />
-        </main>
-      ) : null}
       {panel === 'admin' ? (
         <main id="main-content" className="single-panel">
           <AdminRoute />
         </main>
+      ) : null}
+      {publishOpen && canPublish ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setPublishOpen(false);
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPublishOpen(false);
+          }}
+        >
+          <section
+            className="modal-card publish-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="publish-title"
+          >
+            <button
+              autoFocus
+              className="button modal-close"
+              type="button"
+              onClick={() => setPublishOpen(false)}
+              aria-label="Close publishing window"
+            >
+              Close
+            </button>
+            <StagingPublish />
+          </section>
+        </div>
       ) : null}
     </div>
   );

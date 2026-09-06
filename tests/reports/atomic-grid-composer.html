@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>Atomic Grid Composer Acceptance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.55 system-ui,
+          sans-serif;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 70rem;
+        margin: auto;
+        padding: 2.5rem 1.5rem 4rem;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4.5rem);
+        line-height: 1;
+      }
+      h2 {
+        margin-top: 2rem;
+        color: #b9d99d;
+      }
+      .pass {
+        color: #9ee6a0;
+        font-weight: 800;
+      }
+      .card {
+        padding: 1rem 1.25rem;
+        border: 1px solid #39463a;
+        border-radius: 12px;
+        background: #151d16;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      code {
+        color: #d4efbd;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="pass">Acceptance status: PASS</p>
+    <h1>Atomic grid composer</h1>
+    <div class="card">
+      <p>
+        PointSite pages use contained sections with a twelve-column responsive grid. Atomic text,
+        button, image, linked-media, form, map, divider, and spacer elements can be placed, moved,
+        and resized without code. Sections grow vertically, never overlap, and keep their children
+        contained. Keyboard equivalents cover every drag action, and the global footer is editable.
+      </p>
+    </div>
+    <h2>Evidence</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Builder browser matrix</th>
+          <td class="pass">
+            63 passed across Chromium, Firefox, WebKit, and mobile Chromium; 7 intentional skips
+          </td>
+        </tr>
+        <tr>
+          <th>Builder logic</th>
+          <td class="pass">196 unit and integration tests passed</td>
+        </tr>
+        <tr>
+          <th>Staging browser suite</th>
+          <td class="pass">43 passed; 1 duplicate-project skip</td>
+        </tr>
+        <tr>
+          <th>Production parity</th>
+          <td class="pass">All 11 routes matched at 360, 768, and 1280 pixels</td>
+        </tr>
+        <tr>
+          <th>Accessibility</th>
+          <td class="pass">
+            Keyboard, focus, reflow, reduced motion, semantic, and axe checks passed
+          </td>
+        </tr>
+        <tr>
+          <th>Renderer contract</th>
+          <td><code>SiteDocument v5</code> · <code>renderer 5.0.0</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>Safety boundary</h2>
+    <p class="pass">
+      The accepted staging candidate checksum is
+      <code>267ee4bcbad4b0b5ebec812ba760bec1db060aaec1309056a8de1165bcc609bb</code>. PointSite
+      Production remains locked and unchanged at
+      <code>0187c95c8a9d3441049616a801f66f6f6d11050e</code>.
+    </p>
+  </body>
+</html>

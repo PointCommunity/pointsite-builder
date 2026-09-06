@@ -35,6 +35,15 @@ class MemoryMedia implements MediaRepository {
   async create(record: MediaRecord) {
     this.items.push(structuredClone(record));
   }
+  async updateMetadata(
+    id: string,
+    metadata: Pick<MediaRecord, 'filename' | 'displayName' | 'altText' | 'tags'>,
+  ) {
+    const item = this.items.find((candidate) => candidate.id === id);
+    if (!item) throw new Error('MEDIA_NOT_FOUND');
+    Object.assign(item, metadata);
+    return structuredClone(item);
+  }
   async markOrphaned() {
     return 0;
   }
