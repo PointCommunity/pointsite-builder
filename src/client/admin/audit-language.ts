@@ -52,11 +52,7 @@ export function auditDetails(metadata: Record<string, string | number | boolean 
   return Object.entries(metadata)
     .filter(
       ([key, value]) =>
-        value !== null &&
-        !['revisionId', 'requestId', 'idempotencyKey', 'checksum', 'objectKey', 'baseSha'].includes(
-          key,
-        ) &&
-        !key.endsWith('Id'),
+        value !== null && !/(?:id$|sha|checksum|objectkey|idempotencykey)/i.test(key),
     )
     .map(([key, value]) => {
       if (key === 'sequence') return `Revision ${String(value)}`;
