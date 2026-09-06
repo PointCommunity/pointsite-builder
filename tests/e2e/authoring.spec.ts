@@ -179,6 +179,8 @@ test('creates, duplicates, and archives drafts without code', async ({ page }) =
 test('operates page modules by keyboard and announces the result', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(canvas.locator('.home-hero')).toHaveCount(1);
   const duplicate = page.getByRole('button', { name: /Duplicate hero section/i }).first();
   await duplicate.focus();
   await page.keyboard.press('Enter');
@@ -186,6 +188,7 @@ test('operates page modules by keyboard and announces the result', async ({ page
     /hero section duplicated/i,
   );
   await expect(page.getByRole('button', { name: /Duplicate hero section/i })).toHaveCount(2);
+  await expect(canvas.locator('.home-hero')).toHaveCount(2);
 });
 
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {

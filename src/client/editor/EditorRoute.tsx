@@ -29,6 +29,7 @@ function Workspace({
   const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
+  const [structureRevision, setStructureRevision] = useState(0);
   const editable = role !== 'viewer' && draft.status === 'active';
   return (
     <div className="editor-workspace">
@@ -99,12 +100,15 @@ function Workspace({
         <main id="main-content" className="content-workspace">
           <aside>
             <PageManager pageId={pageId} onPageIdChange={setPageId} />
-            <StructurePanel pageId={pageId} />
+            <StructurePanel
+              pageId={pageId}
+              onStructureChange={() => setStructureRevision((current) => current + 1)}
+            />
           </aside>
           <section className="canvas-shell">
             {editable ? (
               <Suspense fallback={<p>Loading visual editor…</p>}>
-                <VisualEditor pageId={pageId} />
+                <VisualEditor pageId={pageId} structureRevision={structureRevision} />
               </Suspense>
             ) : (
               <Preview document={document} />

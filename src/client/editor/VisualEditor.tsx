@@ -223,7 +223,13 @@ function rootElementToSection(item: ComponentData): SectionBlock {
   };
 }
 
-export function VisualEditor({ pageId }: { pageId: string }) {
+export function VisualEditor({
+  pageId,
+  structureRevision,
+}: {
+  pageId: string;
+  structureRevision: number;
+}) {
   const { document, updateDocument } = useEditor();
   const page = document.pages.find((candidate) => candidate.id === pageId);
   if (!page) return <p>Choose a page to edit.</p>;
@@ -352,7 +358,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
   return (
     <div className="visual-editor" aria-label={`Visual canvas for ${page.title}`}>
       <Puck
-        key={page.id}
+        key={`${page.id}:${structureRevision}`}
         config={config}
         data={data}
         dnd={{ behavior: 'auto' }}
