@@ -33,6 +33,10 @@ export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { f
 }
 
 export function App() {
+  const [builderTheme, setBuilderTheme] = useState<'dark' | 'light'>(() => {
+    const saved = globalThis.localStorage?.getItem('pointsite-builder:theme:v1');
+    return saved === 'light' ? 'light' : 'dark';
+  });
   const [actor, setActor] = useState<ActorResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [selected, setSelected] = useState<DraftRecord | null>(null);
@@ -71,6 +75,22 @@ export function App() {
       active = false;
     };
   }, []);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-builder-theme', builderTheme);
+    document.querySelector('.builder-app')?.setAttribute('data-builder-theme', builderTheme);
+    localStorage.setItem('pointsite-builder:theme:v1', builderTheme);
+  }, [builderTheme]);
+
+  const themeToggle = (
+    <button
+      className="button theme-toggle"
+      type="button"
+      aria-pressed={builderTheme === 'light'}
+      onClick={() => setBuilderTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+    >
+      {builderTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+    </button>
+  );
 
   if (state === 'loading')
     return (
@@ -122,6 +142,7 @@ export function App() {
           setSelected(null);
           void load();
         }}
+        themeToggle={themeToggle}
       />
     );
   return (
@@ -139,6 +160,7 @@ export function App() {
         <div className="identity">
           <span>{actor.displayName ?? actor.email}</span>
           <span className="environment-label">{actor.role}</span>
+          {themeToggle}
           <form action="/auth/logout" method="post">
             <button className="button" type="submit">
               Sign out

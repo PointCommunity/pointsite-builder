@@ -85,7 +85,15 @@ export function PageManager({
       );
       copy.status = 'draft';
       copy.metadata.title = title.slice(0, 70);
-      copy.blocks = copy.blocks.map((block) => ({ ...block, id: crypto.randomUUID() }));
+      copy.blocks = copy.blocks.map((section) => ({
+        ...section,
+        id: crypto.randomUUID(),
+        items: section.items.map((placement) => ({
+          ...placement,
+          id: crypto.randomUUID(),
+          element: { ...placement.element, id: crypto.randomUUID() },
+        })),
+      }));
       next.pages.splice(next.pages.indexOf(source) + 1, 0, copy);
       return next;
     });

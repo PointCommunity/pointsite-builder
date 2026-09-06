@@ -11,7 +11,7 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <div className="builder-app">
+    <div className="builder-app" data-builder-theme="dark">
       <BuilderErrorBoundary>
         <App />
       </BuilderErrorBoundary>

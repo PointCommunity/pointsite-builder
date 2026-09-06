@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { allBlocksDocument } from '../fixtures/block-data';
-import { blockDefinitions, renderBlock } from '../../src/site-kit/registry';
+import { blockDefinitions, renderBlock, renderSection } from '../../src/site-kit/registry';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import type { SectionBlock } from '../../src/site-kit/types';
 
 describe('controlled public renderer', () => {
   it('renders the Point Classic production chrome and homepage structure', () => {
@@ -96,6 +97,101 @@ describe('controlled public renderer', () => {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);
     }
+  });
+
+  it('renders standardized grid settings and element placements', () => {
+    const heading = allBlocksDocument.pages[0].blocks[1].items[0].element;
+    const section: SectionBlock = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      type: 'section',
+      name: 'Test grid',
+      layout: 'grid' as const,
+      columns: 12 as const,
+      gap: 'large' as const,
+      width: 'narrow' as const,
+      surface: 'primary' as const,
+      padding: 'large' as const,
+      items: [
+        {
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
+          span: 6,
+          align: 'end' as const,
+          element: heading,
+        },
+      ],
+    };
+    const { container } = render(<>{renderSection(section, allBlocksDocument)}</>);
+    expect(
+      container.querySelector(
+        '.point-layout-section--narrow.point-layout-section--primary.point-layout-section--pad-large',
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('.point-layout-item--end.point-layout-item--span-6'),
+    ).not.toBeNull();
+    expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
+      '--point-section-columns: 12',
+    );
+  });
+
+  it('reflects standardized element controls in rendered output', () => {
+    const headingSource = allBlocksDocument.pages[0].blocks[1].items[0].element;
+    const splitSource = allBlocksDocument.pages[0].blocks[4].items[0].element;
+    const peopleSource = allBlocksDocument.pages[0].blocks[7].items[0].element;
+    const formSource = allBlocksDocument.pages[0].blocks[9].items[0].element;
+    if (headingSource.type !== 'heading') throw new Error('Expected heading fixture');
+    if (splitSource.type !== 'splitFeature') throw new Error('Expected split feature fixture');
+    if (peopleSource.type !== 'people') throw new Error('Expected people fixture');
+    if (formSource.type !== 'form') throw new Error('Expected form fixture');
+    const heading = {
+      ...headingSource,
+      width: 'narrow' as const,
+    };
+    const split = {
+      ...splitSource,
+      note: 'A visible note',
+      calloutLabel: 'When',
+      calloutValue: 'Sunday',
+      action: { label: 'Details', href: '/details', style: 'primary' as const },
+    };
+    const people = {
+      ...peopleSource,
+      variant: 'leadership' as const,
+      layout: 'featured' as const,
+    };
+    const form = {
+      ...formSource,
+      variant: 'standard' as const,
+    };
+    const { container } = render(
+      <>
+        {renderBlock(heading, allBlocksDocument)}
+        {renderBlock(split, allBlocksDocument)}
+        {renderBlock(people, allBlocksDocument)}
+        {renderBlock(form, allBlocksDocument)}
+      </>,
+    );
+
+    expect(container.querySelector('.point-heading--narrow')).not.toBeNull();
+    expect(screen.getByText('A visible note')).toBeVisible();
+    expect(screen.getByText('When')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '/details');
+    expect(container.querySelector('.people-grid--featured')).not.toBeNull();
+    expect(container.querySelector('.point-form-wrapper--standard')).not.toBeNull();
+  });
+
+  it('uses the selected hero surface instead of leaving a hidden image control active', () => {
+    const heroSource = allBlocksDocument.pages[0].blocks[0].items[0].element;
+    if (heroSource.type !== 'hero') throw new Error('Expected hero fixture');
+    const hero = {
+      ...heroSource,
+      surface: 'canvas' as const,
+    };
+    const { container } = render(<>{renderBlock(hero, allBlocksDocument)}</>);
+
+    expect(container.querySelector('.point-hero__image')).toBeNull();
+    expect(container.querySelector('.point-overlay')).toBeNull();
+    expect(container.querySelector('.point-surface--canvas')).not.toBeNull();
   });
 
   it('fails closed on an unknown block type', () => {

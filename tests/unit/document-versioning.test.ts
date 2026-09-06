@@ -4,6 +4,18 @@ import { migrateDocument, UnsupportedSchemaVersionError } from '../../src/site-k
 import { RENDERER_VERSION, SCHEMA_VERSION } from '../../src/site-kit/version';
 
 describe('document versioning', () => {
+  const versionOneDocument = () => {
+    const current = structuredClone(validSiteDocument);
+    return {
+      ...current,
+      schemaVersion: 1,
+      rendererVersion: '1.1.0',
+      pages: current.pages.map((page) => ({
+        ...page,
+        blocks: page.blocks.map((section) => section.items[0].element),
+      })),
+    };
+  };
   it('serializes equivalent objects to exactly one canonical representation', () => {
     const left = { z: [3, { b: true, a: 'same' }], a: 1 };
     const right = { a: 1, z: [3, { a: 'same', b: true }] };
@@ -39,18 +51,30 @@ describe('document versioning', () => {
   });
 
   it('migrates a version-zero document exactly once', () => {
-    const legacy: Record<string, unknown> = structuredClone(validSiteDocument);
+    const legacy: Record<string, unknown> = versionOneDocument();
     delete legacy.rendererVersion;
     legacy.schemaVersion = 0;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['0-to-1']);
+    expect(migrated.applied).toEqual(['0-to-1', '1-to-2']);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
 
     const repeated = migrateDocument(migrated.document);
     expect(repeated.applied).toEqual([]);
     expect(repeated.document).toEqual(migrated.document);
+  });
+
+  it('migrates version one into deterministic standardized sections', () => {
+    const first = migrateDocument(versionOneDocument());
+    const second = migrateDocument(versionOneDocument());
+    expect(first.applied).toEqual(['1-to-2']);
+    expect(first.document).toEqual(second.document);
+    expect(first.document.pages[0]?.blocks[0]).toMatchObject({
+      type: 'section',
+      layout: 'compatibility',
+      items: [{ element: { type: 'hero' } }],
+    });
   });
 
   it('fails closed for an unknown future schema version', () => {

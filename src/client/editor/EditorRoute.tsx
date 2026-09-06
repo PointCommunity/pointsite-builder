@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import type { DraftRecord, Role } from '../../server/repositories/contracts';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
@@ -19,10 +19,12 @@ function Workspace({
   role,
   canPublish,
   onClose,
+  themeToggle,
 }: {
   role: Role;
   canPublish: boolean;
   onClose: () => void;
+  themeToggle: ReactNode;
 }) {
   const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'content');
@@ -50,6 +52,7 @@ function Workspace({
           <span>Revision {draft.revision.sequence}</span>
         </div>
         <div className="save-cluster">
+          {themeToggle}
           <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">
             {saveState === 'saved' ? 'All changes saved' : saveState}
           </span>
@@ -164,15 +167,17 @@ export function EditorRoute({
   role,
   canPublish,
   onClose,
+  themeToggle,
 }: {
   draft: DraftRecord;
   role: Role;
   canPublish: boolean;
   onClose: () => void;
+  themeToggle: ReactNode;
 }) {
   return (
     <EditorProvider initialDraft={draft}>
-      <Workspace role={role} canPublish={canPublish} onClose={onClose} />
+      <Workspace role={role} canPublish={canPublish} onClose={onClose} themeToggle={themeToggle} />
     </EditorProvider>
   );
 }

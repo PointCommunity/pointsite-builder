@@ -1,5 +1,5 @@
 import { checksumDocument } from '../../site-kit/canonicalize';
-import { SiteDocumentSchema } from '../../site-kit/schema';
+import { migrateDocument } from '../../site-kit/migrations';
 import type {
   AuditEventRecord,
   CreateDraftInput,
@@ -61,16 +61,17 @@ const DRAFT_SELECT = `
 `;
 
 function parseRevision(row: RevisionRow): RevisionRecord {
+  const document = migrateDocument(JSON.parse(row.document_json)).document;
   return {
     id: row.id,
     draftId: row.draft_id,
     sequence: row.sequence,
     parentRevisionId: row.parent_revision_id,
     checksum: row.checksum,
-    document: SiteDocumentSchema.parse(JSON.parse(row.document_json)),
+    document,
     label: row.label,
-    schemaVersion: row.schema_version,
-    rendererVersion: row.renderer_version,
+    schemaVersion: document.schemaVersion,
+    rendererVersion: document.rendererVersion,
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
@@ -145,7 +146,7 @@ export class D1DraftRepository implements DraftRepository {
     const prior = await this.readIdempotent('draft.create', input.actor, input.idempotencyKey);
     if (prior) return prior;
 
-    const document = SiteDocumentSchema.parse(input.document);
+    const document = migrateDocument(input.document).document;
     const checksum = await checksumDocument(document);
     const now = new Date().toISOString();
     const draftId = crypto.randomUUID();
@@ -226,7 +227,7 @@ export class D1DraftRepository implements DraftRepository {
     if (current.revision.checksum !== input.expectedChecksum)
       throw new ConflictError('The draft has a newer revision');
 
-    const document = SiteDocumentSchema.parse(input.document);
+    const document = migrateDocument(input.document).document;
     const checksum = await checksumDocument(document);
     if (checksum === current.revision.checksum) return current;
     const now = new Date().toISOString();

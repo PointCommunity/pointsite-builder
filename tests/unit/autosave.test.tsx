@@ -22,7 +22,7 @@ const initialDraft = (): DraftRecord => {
       checksum: 'initial-checksum',
       document,
       label: null,
-      schemaVersion: 1,
+      schemaVersion: document.schemaVersion,
       rendererVersion: document.rendererVersion,
       createdBy: 'editor@pointatx.org',
       createdAt: '2026-09-05T00:00:00.000Z',

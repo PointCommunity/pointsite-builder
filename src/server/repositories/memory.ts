@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/require-await -- async parity with the D1 repository is intentional */
 
 import { checksumDocument } from '../../site-kit/canonicalize';
-import { SiteDocumentSchema } from '../../site-kit/schema';
+import { migrateDocument } from '../../site-kit/migrations';
 import type {
   AuditEventRecord,
   CreateDraftInput,
@@ -69,7 +69,7 @@ export class InMemoryRepository implements DraftRepository {
 
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
-    const document = SiteDocumentSchema.parse(clone(input.document));
+    const document = migrateDocument(clone(input.document)).document;
     const revision: RevisionRecord = {
       id: crypto.randomUUID(),
       draftId: id,
@@ -118,7 +118,7 @@ export class InMemoryRepository implements DraftRepository {
       throw new ConflictError('The draft has a newer revision');
     }
 
-    const document = SiteDocumentSchema.parse(clone(input.document));
+    const document = migrateDocument(clone(input.document)).document;
     const checksum = await checksumDocument(document);
     if (checksum === current.revision.checksum) {
       this.#idempotency.set(operationKey, clone(current));

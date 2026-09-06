@@ -1,8 +1,9 @@
 import { Fragment, useState, type ElementType, type FormEvent, type ReactNode } from 'react';
-import type { SiteBlock, SiteDocument } from './types';
+import type { CSSProperties } from 'react';
+import type { SectionBlock, SiteDocument, SiteElement } from './types';
 
 export const blockDefinitions: Record<
-  SiteBlock['type'],
+  SiteElement['type'],
   { label: string; supportsMoveButtons: true }
 > = {
   hero: { label: 'Hero', supportsMoveButtons: true },
@@ -61,6 +62,26 @@ function TextLines({ text }: { text: string }) {
       ))}
     </p>
   ));
+}
+
+type CardItem = Extract<SiteElement, { type: 'cards' }>['items'][number];
+
+function CardMedia({ item, document }: { item: CardItem; document: SiteDocument }) {
+  return item.mediaId ? (
+    <img
+      src={mediaRecord(document, item.mediaId).sourcePath}
+      alt={item.mediaAlt ?? ''}
+      loading="lazy"
+    />
+  ) : null;
+}
+
+function CardLink({ item }: { item: CardItem }) {
+  return item.href ? (
+    <a href={item.href} {...linkAttributes(item.href)}>
+      Learn more<span className="sr-only"> about {item.title}</span>
+    </a>
+  ) : null;
 }
 
 function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
@@ -189,7 +210,7 @@ function FormPanel({
   );
 }
 
-function renderRichContent(block: Extract<SiteBlock, { type: 'richText' }>) {
+function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
   return block.content.map((node, index) => {
     const key = `${node.type}-${index}`;
     if (node.type === 'paragraph')
@@ -241,17 +262,28 @@ function renderRichContent(block: Extract<SiteBlock, { type: 'richText' }>) {
   });
 }
 
-export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode {
+export function renderBlock(block: SiteElement, document: SiteDocument): ReactNode {
   switch (block.type) {
     case 'hero': {
       const media = block.mediaId ? mediaRecord(document, block.mediaId) : undefined;
       if (block.variant === 'homeHero')
         return (
-          <section className="home-hero">
-            {media ? <img src={media.sourcePath} alt={media.alt} /> : null}
-            <div className="hero-shade" />
+          <section className={`home-hero home-hero--${block.align} home-hero--${block.surface}`}>
+            {media && block.surface === 'image' ? (
+              <img src={media.sourcePath} alt={media.alt} />
+            ) : null}
+            {block.surface === 'image' ? <div className="hero-shade" /> : null}
             <div className="home-hero-copy shell">
+              {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
               <h1>{block.heading}</h1>
+              {block.body ? <p className="home-hero-body">{block.body}</p> : null}
+              {block.actions.length ? (
+                <div className="point-actions">
+                  {block.actions.map((action) => (
+                    <ActionLink action={action} key={`${action.href}-${action.label}`} />
+                  ))}
+                </div>
+              ) : null}
             </div>
           </section>
         );
@@ -259,10 +291,10 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         <section
           className={`point-hero point-surface--${block.surface} point-align--${block.align}`}
         >
-          {media ? (
+          {media && block.surface === 'image' ? (
             <img src={media.sourcePath} alt={media.alt} className="point-hero__image" />
           ) : null}
-          <div className="point-overlay" aria-hidden="true" />
+          {block.surface === 'image' ? <div className="point-overlay" aria-hidden="true" /> : null}
           <div className="shell point-hero__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <h1>{block.heading}</h1>
@@ -280,7 +312,9 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
       const Heading: ElementType = `h${block.level}`;
       if (block.variant === 'homeIntro')
         return (
-          <section className="home-intro shell">
+          <section
+            className={`home-intro home-intro--${block.width} point-align--${block.align} shell`}
+          >
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <Heading>
               {block.text.split('\n').map((line, index) => (
@@ -305,6 +339,13 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           <Heading>{block.text}</Heading>
           {block.supportingText ? <p>{block.supportingText}</p> : null}
+          {block.actions?.length ? (
+            <div className="point-actions">
+              {block.actions.map((action) => (
+                <ActionLink action={action} key={`${action.href}-${action.label}`} />
+              ))}
+            </div>
+          ) : null}
         </section>
       );
     }
@@ -321,8 +362,17 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
     case 'image': {
       const media = mediaRecord(document, block.mediaId);
       return block.variant === 'wide' ? (
-        <section className="content-section wide-photo">
-          <img src={media.sourcePath} alt={block.alt} width="1000" height="668" loading="lazy" />
+        <section
+          className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}`}
+        >
+          <img
+            src={media.sourcePath}
+            alt={block.alt}
+            width="1000"
+            height="668"
+            loading="lazy"
+            className={`point-fit--${block.fit}`}
+          />
           {block.caption ? <p>{block.caption}</p> : null}
         </section>
       ) : (
@@ -341,20 +391,35 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
       const media = mediaRecord(document, block.mediaId);
       if (block.variant === 'photoBanner')
         return (
-          <section className="home-feature home-feature--photo">
+          <section
+            className={`home-feature home-feature--photo point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
+          >
             <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
             <div className="feature-shade" />
             <div className="feature-copy shell">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
               <h2>{block.heading}</h2>
               <p>{block.body}</p>
+              {block.note ? (
+                <p>
+                  <small>{block.note}</small>
+                </p>
+              ) : null}
+              {block.calloutLabel || block.calloutValue ? (
+                <div className="service-callout">
+                  {block.calloutLabel ? <strong>{block.calloutLabel}</strong> : null}
+                  {block.calloutValue ? <span>{block.calloutValue}</span> : null}
+                </div>
+              ) : null}
               {block.action ? <ActionLink action={block.action} className="button--light" /> : null}
             </div>
           </section>
         );
       if (block.variant === 'splitFeature')
         return (
-          <section className="home-feature home-feature--split shell">
+          <section
+            className={`home-feature home-feature--split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface} shell`}
+          >
             <div className="feature-image">
               <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
             </div>
@@ -362,13 +427,26 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
               <h2>{block.heading}</h2>
               <TextLines text={block.body} />
+              {block.note ? (
+                <p>
+                  <small>{block.note}</small>
+                </p>
+              ) : null}
+              {block.calloutLabel || block.calloutValue ? (
+                <div className="service-callout">
+                  {block.calloutLabel ? <strong>{block.calloutLabel}</strong> : null}
+                  {block.calloutValue ? <span>{block.calloutValue}</span> : null}
+                </div>
+              ) : null}
               {block.action ? <ActionLink action={block.action} /> : null}
             </div>
           </section>
         );
       if (block.variant === 'imageSplit')
         return (
-          <section className="content-section split-section image-split">
+          <section
+            className={`content-section split-section image-split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
+          >
             <div>
               <img
                 src={media.sourcePath}
@@ -400,12 +478,13 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
                   {block.calloutValue ? <span>{block.calloutValue}</span> : null}
                 </div>
               ) : null}
+              {block.action ? <ActionLink action={block.action} /> : null}
             </div>
           </section>
         );
       return (
         <section
-          className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-surface--${block.surface}`}
+          className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
         >
           <div className="point-feature__media">
             <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
@@ -414,6 +493,17 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <h2>{block.heading}</h2>
             <TextLines text={block.body} />
+            {block.note ? (
+              <p>
+                <small>{block.note}</small>
+              </p>
+            ) : null}
+            {block.calloutLabel || block.calloutValue ? (
+              <div className="service-callout">
+                {block.calloutLabel ? <strong>{block.calloutLabel}</strong> : null}
+                {block.calloutValue ? <span>{block.calloutValue}</span> : null}
+              </div>
+            ) : null}
             {block.action ? <ActionLink action={block.action} /> : null}
           </div>
         </section>
@@ -424,7 +514,7 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         <section
           className={
             block.variant === 'rental'
-              ? 'content-section rental-link'
+              ? `content-section rental-link point-surface--${block.surface}`
               : `point-cta point-surface--${block.surface}`
           }
         >
@@ -440,25 +530,30 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
       if (block.variant === 'splitEditorial' || block.variant === 'splitEditorialTone')
         return (
           <section
-            className={`content-section split-section${block.variant === 'splitEditorialTone' ? ' tone-section' : ''}`}
+            className={`content-section split-section point-cards--${block.columns}${block.variant === 'splitEditorialTone' ? ' tone-section' : ''}`}
           >
             {block.items.map((item) => (
               <div key={item.title}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                <CardMedia item={item} document={document} />
                 <h2>{item.title}</h2>
                 <TextLines text={item.body} />
+                {item.supportingText ? <small>{item.supportingText}</small> : null}
+                <CardLink item={item} />
               </div>
             ))}
           </section>
         );
       if (block.variant === 'identity')
         return (
-          <section className="content-section tone-section">
+          <section className={`content-section tone-section point-cards--${block.columns}`}>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <h2>{block.heading}</h2>
-            <div className="three-column">
+            <div className={`three-column point-cards--${block.columns}`}>
               {block.items.map((item) => (
                 <p key={item.title}>
+                  {item.eyebrow ? <span className="eyebrow">{item.eyebrow}</span> : null}
+                  <CardMedia item={item} document={document} />
                   <strong>{item.title}</strong>
                   <br />
                   {item.body}
@@ -468,6 +563,12 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
                       <em>{item.supportingText}</em>
                     </>
                   ) : null}
+                  {item.href ? (
+                    <>
+                      {' '}
+                      <CardLink item={item} />
+                    </>
+                  ) : null}
                 </p>
               ))}
             </div>
@@ -475,16 +576,20 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         );
       if (block.variant === 'beliefs')
         return (
-          <section className="content-section">
+          <section className={`content-section point-cards--${block.columns}`}>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+            {block.heading ? <h2>{block.heading}</h2> : null}
             <div className="belief-list">
               {block.items.map((item, index) => (
                 <article key={item.title}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <div>
+                    {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                    <CardMedia item={item} document={document} />
                     <h2>{item.title}</h2>
                     <p>{item.body}</p>
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
+                    <CardLink item={item} />
                   </div>
                 </article>
               ))}
@@ -493,17 +598,26 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         );
       if (block.variant === 'groups')
         return (
-          <section className="content-section group-grid">
+          <section
+            className="content-section group-grid"
+            style={{ '--point-card-columns': block.columns } as CSSProperties}
+          >
+            {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+            {block.heading ? <h2>{block.heading}</h2> : null}
             {block.items.map((item) => {
               const [schedule = '', location = '', leaders = ''] = item.body.split('\n');
               return (
                 <article key={item.title}>
+                  {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                  <CardMedia item={item} document={document} />
                   <h2>{item.title}</h2>
                   <p className="group-time">{schedule}</p>
                   <p>{location}</p>
                   <p>
                     <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
                   </p>
+                  {item.supportingText ? <small>{item.supportingText}</small> : null}
+                  <CardLink item={item} />
                 </article>
               );
             })}
@@ -511,12 +625,20 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         );
       if (block.variant === 'giving')
         return (
-          <section className="content-section giving-options">
+          <section
+            className="content-section giving-options"
+            style={{ '--point-card-columns': block.columns } as CSSProperties}
+          >
+            {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+            {block.heading ? <h2>{block.heading}</h2> : null}
             {block.items.map((item, index) => (
               <article key={item.title}>
                 <span>{String(index + 1).padStart(2, '0')}</span>
+                {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                <CardMedia item={item} document={document} />
                 <h2>{item.title}</h2>
                 <p>{item.body}</p>
+                {item.supportingText ? <small>{item.supportingText}</small> : null}
                 {item.href ? (
                   <a
                     className="button button--dark"
@@ -532,10 +654,12 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         );
       return (
         <section className="content-section point-card-section">
+          {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
           <div className={`point-cards point-cards--${block.columns}`}>
             {block.items.map((item) => (
               <article className="point-card" key={item.title}>
+                {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 {item.mediaId ? (
                   <img
                     src={mediaRecord(document, item.mediaId).sourcePath}
@@ -545,6 +669,7 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
                 ) : null}
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
+                {item.supportingText ? <small>{item.supportingText}</small> : null}
                 {item.href ? (
                   <a href={item.href} {...linkAttributes(item.href)}>
                     Learn more<span className="sr-only"> about {item.title}</span>
@@ -565,7 +690,7 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
           <div
             className={
               block.variant === 'leadership'
-                ? 'people-grid'
+                ? `people-grid people-grid--${block.layout}`
                 : `point-people__grid point-people__grid--${block.layout}`
             }
           >
@@ -652,10 +777,19 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
       const panel = (
         <FormPanel form={form} heading={block.heading} supportingText={block.supportingText} />
       );
-      return block.variant === 'standalone' ? (
-        <section className="content-section standalone-form">{panel}</section>
-      ) : (
-        panel
+      return (
+        <section
+          className={`point-form-wrapper point-form-wrapper--${block.variant ?? 'standard'} ${block.variant === 'standalone' ? 'content-section standalone-form' : ''}`}
+        >
+          {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+          {block.body ? <TextLines text={block.body} /> : null}
+          {block.linkHref && block.linkLabel ? (
+            <a className="text-link" href={block.linkHref} {...linkAttributes(block.linkHref)}>
+              {block.linkLabel}
+            </a>
+          ) : null}
+          {panel}
+        </section>
       );
     }
     case 'map':
@@ -675,6 +809,9 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
         </section>
       ) : (
         <section className="point-map">
+          {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+          {block.heading ? <h2>{block.heading}</h2> : null}
+          {block.body ? <TextLines text={block.body} /> : null}
           <iframe
             title={block.title}
             src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
@@ -696,4 +833,37 @@ export function renderBlock(block: SiteBlock, document: SiteDocument): ReactNode
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
+}
+
+const sectionGap = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' } as const;
+
+export function renderSection(section: SectionBlock, document: SiteDocument): ReactNode {
+  if (section.layout === 'compatibility') {
+    const placement = section.items[0];
+    return placement ? renderBlock(placement.element, document) : null;
+  }
+
+  const style = {
+    '--point-section-columns': section.layout === 'flow' ? 1 : section.columns,
+    '--point-section-gap': sectionGap[section.gap],
+  } as CSSProperties;
+  const sectionColumns = section.layout === 'flow' ? 1 : section.columns;
+
+  return (
+    <section
+      className={`point-layout-section point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding}`}
+      aria-label={section.name}
+    >
+      <div className="point-layout-section__grid" style={style}>
+        {section.items.map((placement) => (
+          <div
+            className={`point-layout-item point-layout-item--${placement.align} point-layout-item--span-${Math.min(placement.span, sectionColumns)}`}
+            key={placement.id}
+          >
+            {renderBlock(placement.element, document)}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }

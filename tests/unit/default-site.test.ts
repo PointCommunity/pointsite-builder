@@ -40,8 +40,8 @@ const EXPECTED_ASSETS = [
 describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
-    expect(defaultSiteDocument.schemaVersion).toBe(1);
-    expect(defaultSiteDocument.rendererVersion).toBe('1.1.0');
+    expect(defaultSiteDocument.schemaVersion).toBe(2);
+    expect(defaultSiteDocument.rendererVersion).toBe('2.0.0');
   });
 
   it('represents every current generated route and navigation link', () => {
@@ -105,7 +105,7 @@ describe('default PointSite document', () => {
     const beliefs = defaultSiteDocument.pages.find((page) => page.route === '/what-we-believe');
 
     expect(home).toMatchObject({ eyebrow: 'Point ATX', template: 'home' });
-    expect(home?.blocks.map((block) => block.variant)).toEqual([
+    expect(home?.blocks.map((section) => section.items[0]?.element.variant)).toEqual([
       'homeHero',
       'homeIntro',
       'photoBanner',
@@ -118,21 +118,33 @@ describe('default PointSite document', () => {
       template: 'standard',
     });
     expect(about?.heroMediaId).toBeTruthy();
-    expect(about?.blocks.map((block) => block.variant)).toEqual([
+    expect(about?.blocks.map((section) => section.items[0]?.element.variant)).toEqual([
       'splitEditorial',
       'identity',
       'prose',
     ]);
-    expect(beliefs?.blocks.some((block) => block.variant === 'beliefs')).toBe(true);
+    expect(beliefs?.blocks.some((section) => section.items[0]?.element.variant === 'beliefs')).toBe(
+      true,
+    );
     expect(
       defaultSiteDocument.pages
         .find((page) => page.route === '/next-generation')
-        ?.blocks.some((block) => block.variant === 'imageSplit'),
+        ?.blocks.some((section) => section.items[0]?.element.variant === 'imageSplit'),
     ).toBe(true);
     expect(
       defaultSiteDocument.pages
         .find((page) => page.route === '/contact')
-        ?.blocks.map((block) => block.variant),
+        ?.blocks.map((section) => section.items[0]?.element.variant),
     ).toEqual(['contact', 'rental']);
+  });
+
+  it('standardizes every production-derived module inside a compatibility section', () => {
+    for (const page of defaultSiteDocument.pages) {
+      expect(page.blocks.length).toBeGreaterThan(0);
+      for (const section of page.blocks) {
+        expect(section).toMatchObject({ type: 'section', layout: 'compatibility' });
+        expect(section.items).toHaveLength(1);
+      }
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { SiteDocumentSchema } from './schema';
-import type { SiteBlock, SiteDocument } from './types';
+import { createCompatibilitySection } from './migrations';
+import type { SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 
 function uid(sequence: number): string {
@@ -7,7 +8,7 @@ function uid(sequence: number): string {
 }
 
 let blockSequence = 1_000;
-function block<T extends Omit<SiteBlock, 'id'>>(value: T): T & { id: string } {
+function block<T extends Omit<SiteElement, 'id'>>(value: T): T & { id: string } {
   blockSequence += 1;
   return { id: uid(blockSequence), ...value };
 }
@@ -297,7 +298,7 @@ const page = (
   title: string,
   route: string,
   description: string,
-  blocks: SiteBlock[],
+  elements: SiteElement[],
   chrome: {
     eyebrow?: string;
     intro?: string;
@@ -314,7 +315,7 @@ const page = (
   intro: chrome.intro ?? description,
   ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
   metadata: { title: `${title} | Point Community Church`, description },
-  blocks,
+  blocks: elements.map(createCompatibilitySection),
 });
 
 const pages: SiteDocument['pages'] = [
@@ -330,7 +331,7 @@ const pages: SiteDocument['pages'] = [
         heading:
           'We are a family of Jesus-followers empowered by the Holy Spirit to make disciples of Jesus in all of life for the glory of God',
         mediaId: mediaId('/assets/austin-skyline.jpeg'),
-        align: 'left',
+        align: 'center',
         surface: 'image',
         actions: [],
       }),
