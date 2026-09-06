@@ -140,6 +140,23 @@ describe('SiteDocumentSchema', () => {
       },
       { id: IDS.block, type: 'divider', style: 'line' },
       { id: IDS.block, type: 'spacer', size: 'medium' },
+      { id: IDS.block, type: 'text', text: 'Independent body copy', style: 'body', align: 'left' },
+      {
+        id: IDS.block,
+        type: 'button',
+        label: 'Plan a visit',
+        href: '/contact',
+        style: 'primary',
+        width: 'fit',
+        align: 'left',
+      },
+      {
+        id: IDS.block,
+        type: 'mediaEmbed',
+        linkedMediaId: IDS.linkedMedia,
+        aspect: '16:9',
+        fit: 'cover',
+      },
     ];
 
     for (const block of blocks) {
@@ -150,7 +167,7 @@ describe('SiteDocumentSchema', () => {
     }
   });
 
-  it('round-trips all thirteen element types inside one standardized grid section', () => {
+  it('round-trips the complete element library inside one standardized grid section', () => {
     const input = cloneDocument();
     const pages = input.pages as Array<Record<string, unknown>>;
     pages[0].blocks = [
@@ -164,6 +181,9 @@ describe('SiteDocumentSchema', () => {
         width: 'shell',
         surface: 'transparent',
         padding: 'medium',
+        minRows: 1,
+        backgroundPosition: 'center',
+        overlay: 'none',
         items: allBlocks.map((element, index) => ({
           id: `30000000-0000-4000-8000-${String(index + 2).padStart(12, '0')}`,
           span: 12,
@@ -180,7 +200,31 @@ describe('SiteDocumentSchema', () => {
     const reloaded = SiteDocumentSchema.parse(JSON.parse(saved));
     const types = reloaded.pages[0].blocks[0].items.map((item) => item.element.type);
     expect(new Set(types)).toEqual(new Set(allBlocks.map((block) => block.type)));
-    expect(types).toHaveLength(13);
+    expect(types).toHaveLength(16);
+  });
+
+  it('rejects unsafe atomic button hyperlinks', () => {
+    const input = cloneDocument();
+    const pages = input.pages as Array<Record<string, unknown>>;
+    const sections = pages[0].blocks as Array<Record<string, unknown>>;
+    sections[0].items = [
+      {
+        id: '30000000-0000-4000-8000-000000000099',
+        span: 4,
+        align: 'start',
+        grid: { desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 2 } },
+        element: {
+          id: '30000000-0000-4000-8000-000000000098',
+          type: 'button',
+          label: 'Unsafe',
+          href: 'javascript:alert(1)',
+          style: 'primary',
+          width: 'fit',
+          align: 'left',
+        },
+      },
+    ];
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
   });
 
   it('rejects a grid section that is not standardized to twelve columns', () => {

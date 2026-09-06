@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b100c" />
+    <title>Friendly Builder Workspaces Acceptance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.55 system-ui,
+          sans-serif;
+        background: #0b100c;
+        color: #edf4ea;
+      }
+      body {
+        max-width: 70rem;
+        margin: auto;
+        padding: 2.5rem 1.5rem 4rem;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4.5rem);
+        line-height: 1;
+      }
+      h2 {
+        margin-top: 2rem;
+        color: #b9d99d;
+      }
+      .pass {
+        color: #9ee6a0;
+        font-weight: 800;
+      }
+      .card {
+        padding: 1rem 1.25rem;
+        border: 1px solid #39463a;
+        border-radius: 12px;
+        background: #151d16;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #39463a;
+        text-align: left;
+        vertical-align: top;
+      }
+      code {
+        color: #d4efbd;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="pass">Acceptance status: PASS</p>
+    <h1>Friendly Builder workspaces</h1>
+    <div class="card">
+      <p>
+        The dark-first Builder now separates Layout, Forms, Library, Preview, History, Settings, and
+        Admin into purpose-built workspaces. Publishing starts from Layout in a clear staging-only
+        overlay. Forms are built field by field, linked images and videos are organized in the
+        Library, revision history is searchable, and audit activity uses GitHub usernames and plain
+        language instead of raw identifiers.
+      </p>
+    </div>
+    <h2>Hands-on scenarios</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Forms</th>
+          <td class="pass">
+            Created and edited a form, added fields, and verified accessible controls
+          </td>
+        </tr>
+        <tr>
+          <th>Library</th>
+          <td class="pass">
+            Added validated YouTube media with display name and tags, ready for Layout placement
+          </td>
+        </tr>
+        <tr>
+          <th>History</th>
+          <td class="pass">Filtered three saved revisions to the matching named revision</td>
+        </tr>
+        <tr>
+          <th>Admin</th>
+          <td class="pass">
+            Verified <code>@brimdor</code>, friendly actions, “Revision 3,” and hidden UUID clutter
+          </td>
+        </tr>
+        <tr>
+          <th>Publishing</th>
+          <td class="pass">
+            Verified the informative staging-only modal and visible Production lock
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>Automated gates</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Formatting, lint, types, build, contract</th>
+          <td class="pass">Passed</td>
+        </tr>
+        <tr>
+          <th>Coverage</th>
+          <td class="pass">83.04% statements · 85.90% lines</td>
+        </tr>
+        <tr>
+          <th>Performance</th>
+          <td class="pass">
+            1,000-request API p95 45.82 ms; JavaScript stayed within both budgets
+          </td>
+        </tr>
+        <tr>
+          <th>Security</th>
+          <td class="pass">
+            0 production dependency vulnerabilities; repository secret and source gates required in
+            CI
+          </td>
+        </tr>
+        <tr>
+          <th>Staging</th>
+          <td class="pass">Static-only output, 11 routes, 19 assets, schema v5, renderer 5.0.0</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>Safety boundary</h2>
+    <p class="pass">
+      This release changes only PointSite Builder and PointSite Staging. No paid service or payment
+      card is introduced. Production publication remains disabled.
+    </p>
+  </body>
+</html>

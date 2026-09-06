@@ -12,6 +12,8 @@ export interface ActorResponse {
 export interface MediaItem {
   id: string;
   filename: string;
+  displayName: string;
+  tags: string[];
   contentType: string;
   byteSize: number;
   width: number;
@@ -39,6 +41,7 @@ export interface AuditItem {
   targetId: string;
   outcome: string;
   requestId: string;
+  metadata: Record<string, string | number | boolean | null>;
 }
 
 export interface CapacityReport {
@@ -195,6 +198,15 @@ export const api = {
       body,
     });
   },
+  updateMedia: (
+    id: string,
+    input: Pick<MediaItem, 'filename' | 'displayName' | 'altText' | 'tags'>,
+  ) =>
+    request<MediaItem>(`/media/${id}`, {
+      method: 'PATCH',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify(input),
+    }),
   listRoles: async () => (await request<{ items: AdminRoleItem[] }>('/admin/roles')).items,
   upsertRole: (input: { githubLogin: string; role: Role; active: boolean }) =>
     request<AdminRoleItem>('/admin/roles', {

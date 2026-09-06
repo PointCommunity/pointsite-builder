@@ -573,6 +573,52 @@ export function BlockInspector({
           />
         </div>
       );
+    case 'mediaEmbed':
+      return (
+        <div className="block-inspector inspector-grid">
+          <label className="inspector-field">
+            <span>Linked media</span>
+            <select
+              value={block.linkedMediaId}
+              onChange={(event) => onChange({ ...block, linkedMediaId: event.target.value })}
+            >
+              {document.linkedMedia.length === 0 ? (
+                <option value={block.linkedMediaId}>Add linked media in Library first</option>
+              ) : null}
+              {document.linkedMedia.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.displayName} ({item.type === 'youtube' ? 'YouTube' : item.type})
+                </option>
+              ))}
+            </select>
+          </label>
+          <Select
+            label="Aspect ratio"
+            value={block.aspect}
+            options={[
+              { label: 'Natural', value: 'natural' },
+              { label: 'Square', value: '1:1' },
+              { label: '4:3', value: '4:3' },
+              { label: '16:9', value: '16:9' },
+            ]}
+            onChange={(aspect) => onChange({ ...block, aspect })}
+          />
+          <Select
+            label="Media fit"
+            value={block.fit}
+            options={[
+              { label: 'Cover', value: 'cover' },
+              { label: 'Contain', value: 'contain' },
+            ]}
+            onChange={(fit) => onChange({ ...block, fit })}
+          />
+          <Text
+            label="Caption override"
+            value={block.caption}
+            onChange={(caption) => onChange({ ...block, caption })}
+          />
+        </div>
+      );
     case 'splitFeature':
       return (
         <div className="block-inspector inspector-grid">
@@ -1174,6 +1220,81 @@ export function BlockInspector({
               { label: 'Large', value: 'large' },
             ]}
             onChange={(size) => onChange({ ...block, size })}
+          />
+        </div>
+      );
+    case 'text':
+      return (
+        <div className="block-inspector inspector-grid">
+          <Text
+            label="Text"
+            value={block.text}
+            area
+            onChange={(text) => text && onChange({ ...block, text })}
+          />
+          <Select
+            label="Text style"
+            value={block.style}
+            options={[
+              { label: 'Body', value: 'body' },
+              { label: 'Lead', value: 'lead' },
+              { label: 'Eyebrow', value: 'eyebrow' },
+              { label: 'Small', value: 'small' },
+            ]}
+            onChange={(style) => onChange({ ...block, style })}
+          />
+          <Select
+            label="Text alignment"
+            value={block.align}
+            options={[
+              { label: 'Left', value: 'left' },
+              { label: 'Center', value: 'center' },
+            ]}
+            onChange={(align) => onChange({ ...block, align })}
+          />
+        </div>
+      );
+    case 'button':
+      return (
+        <div className="block-inspector inspector-grid">
+          <Text
+            label="Button label"
+            value={block.label}
+            onChange={(label) => label && onChange({ ...block, label })}
+          />
+          <Text
+            label="Button link"
+            value={block.href}
+            onChange={(href) => href && onChange({ ...block, href })}
+          />
+          <Select
+            label="Button style"
+            value={block.style}
+            options={[
+              { label: 'Primary', value: 'primary' },
+              { label: 'Secondary', value: 'secondary' },
+              { label: 'Quiet', value: 'quiet' },
+            ]}
+            onChange={(style) => onChange({ ...block, style })}
+          />
+          <Select
+            label="Button width"
+            value={block.width}
+            options={[
+              { label: 'Fit label', value: 'fit' },
+              { label: 'Fill element', value: 'full' },
+            ]}
+            onChange={(width) => onChange({ ...block, width })}
+          />
+          <Select
+            label="Button alignment"
+            value={block.align}
+            options={[
+              { label: 'Left', value: 'left' },
+              { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
+            ]}
+            onChange={(align) => onChange({ ...block, align })}
           />
         </div>
       );

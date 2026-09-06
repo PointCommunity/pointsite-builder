@@ -6,6 +6,8 @@ it('loads an accessible empty library and uploads with required alt text', async
     Promise.resolve({
       id: '1',
       filename: 'point.png',
+      displayName: 'Point',
+      tags: [],
       contentType: 'image/png',
       byteSize: 24,
       width: 100,
@@ -18,9 +20,10 @@ it('loads an accessible empty library and uploads with required alt text', async
   const client: MediaClient = {
     list: () => Promise.resolve([]),
     upload,
+    update: vi.fn(),
   };
   render(<MediaLibrary client={client} />);
-  expect(await screen.findByText('No uploaded media yet')).toBeVisible();
+  expect(await screen.findByText('No uploaded images yet')).toBeVisible();
   const file = new File([new Uint8Array([1])], 'point.png', { type: 'image/png' });
   fireEvent.change(screen.getByLabelText('Image file'), { target: { files: [file] } });
   fireEvent.change(screen.getByLabelText('Alternative text'), {
@@ -30,5 +33,5 @@ it('loads an accessible empty library and uploads with required alt text', async
   if (!form) throw new Error('Upload form is missing');
   fireEvent.submit(form);
   await waitFor(() => expect(upload).toHaveBeenCalledWith(file, 'Point gathering'));
-  expect(await screen.findByText('point.png')).toBeVisible();
+  expect(await screen.findByText(/point\.png/)).toBeVisible();
 });

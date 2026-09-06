@@ -6,6 +6,8 @@ export interface MediaRecord {
   id: string;
   objectKey: string;
   filename: string;
+  displayName: string;
+  tags: string[];
   contentType: string;
   byteSize: number;
   width: number;
@@ -24,6 +26,12 @@ export interface MediaRepository {
   get(id: string): Promise<MediaRecord | null>;
   totalBytes(): Promise<number>;
   create(record: MediaRecord, requestId: string): Promise<void>;
+  updateMetadata(
+    id: string,
+    metadata: Pick<MediaRecord, 'filename' | 'displayName' | 'altText' | 'tags'>,
+    actor: string,
+    requestId: string,
+  ): Promise<MediaRecord>;
   markOrphaned(
     referencedIds: Set<string>,
     before: string,
@@ -75,6 +83,8 @@ export class MediaService {
       id,
       objectKey,
       filename: input.filename,
+      displayName: input.filename.replace(/\.[^.]+$/, ''),
+      tags: [],
       contentType: policy.contentType,
       byteSize: input.bytes.byteLength,
       width: policy.width,
@@ -104,12 +114,23 @@ export class MediaService {
     if (!bytes) throw new Error('MEDIA_NOT_FOUND');
     return { bytes, contentType: record.contentType, filename: record.filename };
   }
+
+  updateMetadata(
+    id: string,
+    metadata: Pick<MediaRecord, 'filename' | 'displayName' | 'altText' | 'tags'>,
+    actor: string,
+    requestId: string,
+  ): Promise<MediaRecord> {
+    return this.repository.updateMetadata(id, metadata, actor, requestId);
+  }
 }
 
 interface MediaRow {
   id: string;
   object_key: string;
   filename: string;
+  display_name: string | null;
+  tags_json: string;
   content_type: string;
   byte_size: number;
   width: number;
@@ -121,12 +142,14 @@ interface MediaRow {
   created_at: string;
   last_referenced_at: string | null;
 }
-const select = `SELECT id,object_key,filename,content_type,byte_size,width,height,checksum,alt_text,status,created_by,created_at,last_referenced_at FROM media_assets`;
+const select = `SELECT id,object_key,filename,display_name,tags_json,content_type,byte_size,width,height,checksum,alt_text,status,created_by,created_at,last_referenced_at FROM media_assets`;
 function fromRow(row: MediaRow): MediaRecord {
   return {
     id: row.id,
     objectKey: row.object_key,
     filename: row.filename,
+    displayName: row.display_name || row.filename.replace(/\.[^.]+$/, ''),
+    tags: JSON.parse(row.tags_json) as string[],
     contentType: row.content_type,
     byteSize: row.byte_size,
     width: row.width,
@@ -208,6 +231,44 @@ export class D1MediaRepository implements MediaRepository {
           }),
         ),
     ]);
+  }
+  async updateMetadata(
+    id: string,
+    metadata: Pick<MediaRecord, 'filename' | 'displayName' | 'altText' | 'tags'>,
+    actor: string,
+    requestId: string,
+  ) {
+    const existing = await this.get(id);
+    if (!existing || !['ready', 'published'].includes(existing.status))
+      throw new Error('MEDIA_NOT_FOUND');
+    await this.database.batch([
+      this.database
+        .prepare(
+          'UPDATE media_assets SET filename=?, display_name=?, alt_text=?, tags_json=? WHERE id=?',
+        )
+        .bind(
+          metadata.filename,
+          metadata.displayName,
+          metadata.altText,
+          JSON.stringify(metadata.tags),
+          id,
+        ),
+      this.database
+        .prepare(
+          `INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,'succeeded',?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          new Date().toISOString(),
+          actor,
+          'media.metadata.update',
+          'media',
+          id,
+          requestId,
+          JSON.stringify({ filename: metadata.filename, displayName: metadata.displayName }),
+        ),
+    ]);
+    return { ...existing, ...metadata };
   }
   async markOrphaned(referencedIds: Set<string>, before: string, actor: string, requestId: string) {
     const candidates = await this.list();

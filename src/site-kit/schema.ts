@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CanonicalRouteSchema, SafeHrefSchema, SafeHttpsUrlSchema } from './url-policy';
+import { isDirectVideoUrl, youtubeVideoId } from './linked-media';
 
 const uuid = z.uuid();
 const shortText = z.string().trim().min(1).max(120);
@@ -92,6 +93,15 @@ const ImageBlockSchema = z.strictObject({
   fit: z.enum(['cover', 'contain']),
   caption: z.string().trim().max(500).optional(),
   variant: z.enum(['standard', 'wide']).optional(),
+});
+
+const MediaEmbedBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('mediaEmbed'),
+  linkedMediaId: uuid,
+  aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
+  fit: z.enum(['cover', 'contain']),
+  caption: z.string().trim().max(500).optional(),
 });
 
 const SplitFeatureBlockSchema = z.strictObject({
@@ -227,6 +237,24 @@ const SpacerBlockSchema = z.strictObject({
   variant: z.enum(['standard']).optional(),
 });
 
+const TextBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('text'),
+  text: bodyText,
+  style: z.enum(['body', 'lead', 'eyebrow', 'small']),
+  align: z.enum(['left', 'center']),
+});
+
+const ButtonBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('button'),
+  label: z.string().trim().min(1).max(60),
+  href: SafeHrefSchema,
+  style: z.enum(['primary', 'secondary', 'quiet']),
+  width: z.enum(['fit', 'full']),
+  align: z.enum(['left', 'center', 'right']),
+});
+
 function isSafePlainText(value: string): boolean {
   return ![...value].some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -239,6 +267,7 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   HeadingBlockSchema,
   RichTextBlockSchema,
   ImageBlockSchema,
+  MediaEmbedBlockSchema,
   SplitFeatureBlockSchema,
   CtaBlockSchema,
   CardsBlockSchema,
@@ -248,6 +277,8 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   MapBlockSchema,
   DividerBlockSchema,
   SpacerBlockSchema,
+  TextBlockSchema,
+  ButtonBlockSchema,
 ]);
 
 export const GridAreaSchema = z
@@ -299,6 +330,10 @@ export const SectionBlockSchema = z
     width: z.enum(['full', 'shell', 'narrow']),
     surface: z.enum(['transparent', 'canvas', 'surface', 'primary']),
     padding: z.enum(['none', 'small', 'medium', 'large']),
+    minRows: z.number().int().min(1).max(100),
+    backgroundMediaId: uuid.optional(),
+    backgroundPosition: z.enum(['top', 'center', 'bottom']),
+    overlay: z.enum(['none', 'light', 'dark']),
     items: z.array(ElementPlacementSchema).max(60),
   })
   .superRefine((section, context) => {
@@ -378,6 +413,12 @@ const FormSchema = z.strictObject({
   recipientEmail: z.email(),
   subject: z.string().trim().min(1).max(180),
   submitLabel: z.string().trim().min(1).max(60),
+  heading: z.string().trim().max(180).optional(),
+  introduction: z.string().trim().max(1_000).optional(),
+  privacyNote: z.string().trim().max(500).optional(),
+  successMessage: z.string().trim().max(500).optional(),
+  layout: z.enum(['single', 'two-column']).default('two-column'),
+  density: z.enum(['comfortable', 'compact']).default('comfortable'),
   fields: z
     .array(
       z
@@ -385,10 +426,24 @@ const FormSchema = z.strictObject({
           id: uuid,
           name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
           label: shortText,
-          type: z.enum(['text', 'email', 'tel', 'textarea', 'select', 'radio', 'checkbox']),
+          type: z.enum([
+            'text',
+            'email',
+            'tel',
+            'url',
+            'number',
+            'date',
+            'time',
+            'textarea',
+            'select',
+            'radio',
+            'checkbox',
+          ]),
           required: z.boolean(),
           options: z.array(shortText).min(1).max(30).optional(),
           placeholder: z.string().trim().max(180).optional(),
+          helpText: z.string().trim().max(300).optional(),
+          width: z.enum(['half', 'full']).default('half'),
         })
         .superRefine((field, context) => {
           const needsOptions = ['select', 'radio', 'checkbox'].includes(field.type);
@@ -475,7 +530,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(3),
+    schemaVersion: z.literal(5),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,
@@ -511,7 +566,46 @@ export const SiteDocumentSchema = z
           id: uuid,
           sourcePath: z.string().regex(/^\/assets\/[a-z0-9][a-z0-9/_-]*\.(?:avif|jpe?g|png|webp)$/),
           alt: z.string().trim().max(300),
+          displayName: z.string().trim().min(1).max(120).optional(),
+          tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
         }),
+      )
+      .max(500),
+    linkedMedia: z
+      .array(
+        z
+          .strictObject({
+            id: uuid,
+            type: z.enum(['image', 'video', 'youtube']),
+            url: SafeHttpsUrlSchema,
+            displayName: shortText,
+            alternativeText: z.string().trim().max(300).optional(),
+            caption: z.string().trim().max(500).optional(),
+            tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
+          })
+          .superRefine((item, context) => {
+            if (item.type === 'image' && !item.alternativeText) {
+              context.addIssue({
+                code: 'custom',
+                path: ['alternativeText'],
+                message: 'Linked images require alternative text',
+              });
+            }
+            if (item.type === 'youtube' && !youtubeVideoId(item.url)) {
+              context.addIssue({
+                code: 'custom',
+                path: ['url'],
+                message: 'Use a supported YouTube video URL',
+              });
+            }
+            if (item.type === 'video' && !isDirectVideoUrl(item.url)) {
+              context.addIssue({
+                code: 'custom',
+                path: ['url'],
+                message: 'Direct video URLs must end in .mp4, .webm, or .ogv',
+              });
+            }
+          }),
       )
       .max(500),
     collections: CollectionsSchema,

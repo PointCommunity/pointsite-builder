@@ -152,7 +152,7 @@ test('keeps every editor panel semantic and free of serious axe findings', async
     '#main-content',
   );
 
-  for (const panel of ['settings', 'media', 'preview', 'history', 'publish', 'admin']) {
+  for (const panel of ['Forms', 'Library', 'Preview', 'History', 'Settings', 'Admin']) {
     await page.getByRole('button', { name: panel, exact: true }).click();
     const serious = (await new AxeBuilder({ page }).analyze()).violations.filter((item) =>
       ['critical', 'serious'].includes(item.impact ?? ''),
@@ -217,13 +217,13 @@ test('supports keyboard bypass, text resizing, reflow, and reduced motion', asyn
 test('changes the design and creates a page without code', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'settings' }).click();
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: /Evening Bold/ }).click();
   await expect(page.getByRole('button', { name: /Evening Bold/ })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
-  await page.getByRole('button', { name: 'content' }).click();
+  await page.getByRole('button', { name: 'Layout' }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await expect(page.getByLabel('Choose page')).toContainText('New page');
   await expect(page.getByText(/Production is locked/)).toHaveCount(0);
@@ -240,7 +240,7 @@ test('publishes and accepts only exact verified staging while production stays l
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'publish' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await page.getByRole('button', { name: 'Publish to staging' }).click();
   await expect(page.getByText(/CI verification is now running/)).toBeVisible();
   await page.getByRole('button', { name: 'Check staging verification' }).click();

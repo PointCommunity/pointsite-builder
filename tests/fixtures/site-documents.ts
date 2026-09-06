@@ -10,11 +10,12 @@ export const IDS = {
   event: '99999999-9999-4999-8999-999999999999',
   section: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   placement: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  linkedMedia: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 3,
-  rendererVersion: '3.0.0',
+  schemaVersion: 5,
+  rendererVersion: '5.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',
@@ -73,6 +74,9 @@ export const validSiteDocument = {
           width: 'full',
           surface: 'transparent',
           padding: 'none',
+          minRows: 1,
+          backgroundPosition: 'center',
+          overlay: 'none',
           items: [
             {
               id: IDS.placement,
@@ -104,6 +108,8 @@ export const validSiteDocument = {
       recipientEmail: 'hello@pointatx.org',
       subject: 'Website contact',
       submitLabel: 'Send message',
+      layout: 'single',
+      density: 'comfortable',
       fields: [
         {
           id: IDS.field,
@@ -111,11 +117,13 @@ export const validSiteDocument = {
           label: 'Message',
           type: 'textarea',
           required: true,
+          width: 'full',
         },
       ],
     },
   ],
   media: [],
+  linkedMedia: [],
   collections: {
     people: [{ id: IDS.person, name: 'Point Team', role: 'Leadership', bio: 'Serving Point.' }],
     beliefs: [{ id: IDS.belief, title: 'Jesus', body: 'We center our life on Jesus.' }],

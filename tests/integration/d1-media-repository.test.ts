@@ -26,6 +26,7 @@ async function fixture() {
     'migrations/0002_integrity_triggers.sql',
     'migrations/0003_revision_labels.sql',
     'migrations/0006_free_only_auth_media.sql',
+    'migrations/0007_media_metadata.sql',
   ])
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   return { database, repository: new D1MediaRepository(database) };
@@ -47,6 +48,19 @@ it('persists, reads, audits, orphans, and removes private media bytes in chunked
   expect(await repository.list()).toHaveLength(1);
   expect((await repository.get(record.id))?.altText).toBe('Point gathering');
   expect((await repository.findDuplicate(record.checksum, record.byteSize))?.id).toBe(record.id);
+  await expect(
+    service.updateMetadata(
+      record.id,
+      {
+        filename: 'sunday-gathering.png',
+        displayName: 'Sunday gathering',
+        altText: 'People gathering on Sunday',
+        tags: ['Sunday', 'people'],
+      },
+      'editor@pointatx.org',
+      'media-d1-metadata',
+    ),
+  ).resolves.toMatchObject({ displayName: 'Sunday gathering', tags: ['Sunday', 'people'] });
   expect((await service.read(record.id)).bytes).toEqual(png());
   expect(
     await database
@@ -69,6 +83,7 @@ it('persists, reads, audits, orphans, and removes private media bytes in chunked
     .all<{ action: string }>();
   expect(audit.results.map((item) => item.action)).toEqual([
     'media.upload',
+    'media.metadata.update',
     'media.orphan',
     'media.delete',
   ]);

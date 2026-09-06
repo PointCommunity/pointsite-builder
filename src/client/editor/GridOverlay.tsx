@@ -1,8 +1,10 @@
 import type { ComponentData } from '@puckeditor/core';
-import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import { useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import {
   areaForBreakpoint,
   moveGridArea,
+  requiredSectionRows,
+  resolveGridArea,
   resizeGridArea,
   updateGridArea,
   type GridArea,
@@ -12,6 +14,7 @@ import type { SectionSettings } from './SectionInspector';
 import { useGridBreakpoint } from './GridBreakpointContext';
 import { usePointPuck } from './puck-store';
 import { setActiveGridSection } from './grid-interaction-store';
+import { childComponents, siblingComponents } from './puck-grid-data';
 
 type Edge = 'north-west' | 'north-east' | 'south-west' | 'south-east';
 
@@ -40,6 +43,7 @@ export function GridOverlay({
   const getParentById = usePointPuck((state) => state.getParentById);
   const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
   const dispatch = usePointPuck((state) => state.dispatch);
+  const data = usePointPuck((state) => state.appState.data);
   const item = getItemById(componentId) as unknown as ComponentData | null;
   const parent = getParentById(componentId) as unknown as ComponentData | null;
   const itemProps = item?.props as unknown as Record<string, unknown> | undefined;
@@ -47,6 +51,109 @@ export function GridOverlay({
   const settings = parentProps?.settings as SectionSettings | undefined;
   const grid = itemProps?.grid;
   const breakpoint = useGridBreakpoint();
+  const [status, setStatus] = useState('');
+
+  const commitSectionRows = (minRows: number, recordHistory = true) => {
+    const selector = getSelectorForId(componentId);
+    const current = getItemById(componentId) as unknown as ComponentData | null;
+    const currentProps = current?.props as unknown as Record<string, unknown> | undefined;
+    const currentSettings = currentProps?.settings as SectionSettings | undefined;
+    const storedContent = childComponents(data, componentId);
+    const content = storedContent.length
+      ? storedContent
+      : ((currentProps?.content ?? []) as ComponentData[]);
+    if (!selector || !selector.zone || !current || !currentProps || !currentSettings) return;
+    const required = requiredSectionRows(
+      1,
+      content
+        .map((child) => ({ grid: child.props.grid as ElementPlacement['grid'] }))
+        .filter((placement) => isGrid(placement.grid)),
+      breakpoint,
+    );
+    const nextRows = Math.max(required, Math.min(100, Math.round(minRows)));
+    dispatch({
+      type: 'replace',
+      destinationIndex: selector.index,
+      destinationZone: selector.zone,
+      data: {
+        ...current,
+        props: {
+          ...currentProps,
+          id:
+            typeof currentProps.id === 'string' || typeof currentProps.id === 'number'
+              ? String(currentProps.id)
+              : componentId,
+          settings: { ...currentSettings, minRows: nextRows },
+        },
+      },
+      recordHistory,
+    });
+    setStatus(`Section height set to ${nextRows} grid rows.`);
+  };
+
+  if (isSelected && !isGrid(grid) && itemProps?.settings) {
+    const ownSettings = itemProps?.settings as SectionSettings | undefined;
+    if (!ownSettings || ownSettings.layout !== 'grid') return <>{children}</>;
+    const resizeSection = (event: PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const ownerDocument = event.currentTarget.ownerDocument;
+      const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
+      const surface = source?.querySelector<HTMLElement>('.point-layout-section__grid');
+      if (!surface) return;
+      const computed = getComputedStyle(surface);
+      const rowStep =
+        (Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24) +
+        (Number.parseFloat(computed.rowGap) || 0);
+      const startY = event.clientY;
+      const startRows = ownSettings.minRows;
+      let latest = startRows;
+      setActiveGridSection(
+        typeof itemProps?.id === 'string' || typeof itemProps?.id === 'number'
+          ? String(itemProps.id)
+          : componentId,
+      );
+      surface.dataset.gridActive = 'true';
+      const move = (nextEvent: globalThis.PointerEvent) => {
+        latest = startRows + Math.round((nextEvent.clientY - startY) / rowStep);
+        commitSectionRows(latest, false);
+      };
+      const finish = () => {
+        ownerDocument.removeEventListener('pointermove', move);
+        delete surface.dataset.gridActive;
+        setActiveGridSection(null);
+        commitSectionRows(latest, true);
+      };
+      ownerDocument.addEventListener('pointermove', move);
+      ownerDocument.addEventListener('pointerup', finish, { once: true });
+      ownerDocument.addEventListener('pointercancel', finish, { once: true });
+    };
+    return (
+      <>
+        {children}
+        <div className="point-section-grid-controls">
+          <button
+            type="button"
+            className="point-section-grid-resize"
+            aria-label={`Resize ${ownSettings.name} height`}
+            title="Drag vertically or use arrow keys to change section height."
+            onPointerDown={resizeSection}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              event.stopPropagation();
+              commitSectionRows(ownSettings.minRows + (event.key === 'ArrowDown' ? 1 : -1));
+            }}
+          >
+            <span aria-hidden="true">↕</span>
+          </button>
+          <p className="sr-only" role="status" aria-live="polite">
+            {status}
+          </p>
+        </div>
+      </>
+    );
+  }
 
   if (!isSelected || !isGrid(grid) || settings?.layout !== 'grid') return <>{children}</>;
 
@@ -63,6 +170,19 @@ export function GridOverlay({
       !isGrid(currentProps.grid)
     )
       return;
+    const storedSiblings = siblingComponents(data, componentId);
+    const siblings = (
+      storedSiblings.length ? storedSiblings : ((parentProps?.content ?? []) as ComponentData[])
+    )
+      .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
+      .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
+    const previous = areaForBreakpoint(currentProps.grid, breakpoint);
+    const resolved = resolveGridArea(nextArea, previous, siblings);
+    if (resolved.rejected) {
+      setStatus('Move blocked because elements cannot overlap.');
+      return;
+    }
+    setStatus('');
     dispatch({
       type: 'replace',
       destinationIndex: selector.index,
@@ -72,7 +192,7 @@ export function GridOverlay({
         props: {
           ...currentProps,
           id: currentProps.id,
-          grid: updateGridArea(currentProps.grid, breakpoint, nextArea),
+          grid: updateGridArea(currentProps.grid, breakpoint, resolved.area),
         },
       },
       recordHistory,
@@ -151,13 +271,13 @@ export function GridOverlay({
       <div className="point-grid-controls" data-grid-controls={componentType}>
         <button
           type="button"
-          className="point-grid-move"
+          className="point-grid-move-surface"
           aria-label={`Move ${componentType} on ${breakpoint} grid`}
-          title="Drag to move. Arrow keys move one grid square."
+          title="Drag anywhere inside the selected box. Arrow keys move one grid square."
           onPointerDown={(event) => begin(event, 'move')}
           onKeyDown={(event) => keyMove(event, 'move')}
         >
-          Move
+          <span>Move</span>
         </button>
         {(['north-west', 'north-east', 'south-west', 'south-east'] as const).map((edge) => (
           <button
@@ -170,6 +290,9 @@ export function GridOverlay({
             onKeyDown={(event) => keyMove(event, edge)}
           />
         ))}
+        <p className="sr-only" role="status" aria-live="polite">
+          {status}
+        </p>
       </div>
     </>
   );

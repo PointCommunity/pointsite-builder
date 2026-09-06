@@ -1,4 +1,4 @@
-import type { SectionBlock } from '../../site-kit/types';
+import type { SectionBlock, SiteDocument } from '../../site-kit/types';
 
 export type SectionSettings = Omit<SectionBlock, 'id' | 'type' | 'items'>;
 
@@ -37,9 +37,11 @@ function Select<T extends string | number>({
 
 export function SectionInspector({
   settings,
+  document,
   onChange,
 }: {
   settings: SectionSettings;
+  document?: SiteDocument;
   onChange: (settings: SectionSettings) => void;
 }) {
   if (settings.layout === 'compatibility')
@@ -124,6 +126,63 @@ export function SectionInspector({
         options={spacingOptions}
         onChange={(gap) => onChange({ ...settings, gap })}
       />
+      {settings.layout === 'grid' ? (
+        <label className="inspector-field">
+          <span>Minimum section height (grid rows)</span>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={settings.minRows}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                minRows: Math.max(1, Math.min(100, Number(event.target.value) || 1)),
+              })
+            }
+          />
+        </label>
+      ) : null}
+      <label className="inspector-field">
+        <span>Background image</span>
+        <select
+          value={settings.backgroundMediaId ?? ''}
+          onChange={(event) =>
+            onChange({ ...settings, backgroundMediaId: event.target.value || undefined })
+          }
+        >
+          <option value="">No image</option>
+          {(document?.media ?? []).map((item) => (
+            <option value={item.id} key={item.id}>
+              {item.alt || item.sourcePath.split('/').at(-1)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {settings.backgroundMediaId ? (
+        <>
+          <Select
+            label="Background position"
+            value={settings.backgroundPosition}
+            options={[
+              { label: 'Top', value: 'top' },
+              { label: 'Center', value: 'center' },
+              { label: 'Bottom', value: 'bottom' },
+            ]}
+            onChange={(backgroundPosition) => onChange({ ...settings, backgroundPosition })}
+          />
+          <Select
+            label="Image overlay"
+            value={settings.overlay}
+            options={[
+              { label: 'None', value: 'none' },
+              { label: 'Light', value: 'light' },
+              { label: 'Dark', value: 'dark' },
+            ]}
+            onChange={(overlay) => onChange({ ...settings, overlay })}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

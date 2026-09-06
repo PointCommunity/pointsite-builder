@@ -653,6 +653,12 @@
     gap: 22px;
     margin-top: 38px;
   }
+  .managed-form--single {
+    grid-template-columns: 1fr;
+  }
+  .managed-form--compact {
+    gap: 12px;
+  }
   .field {
     display: flex;
     flex-direction: column;
@@ -663,6 +669,26 @@
     font-weight: 900;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+  .field > legend {
+    padding: 0;
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .field > small {
+    color: var(--muted);
+  }
+  fieldset.field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .field--full {
+    grid-column: 1 / -1;
   }
   .field--textarea,
   .field--radio,
@@ -1133,13 +1159,35 @@
   align-self: center;
 }
 .point-site .point-image,
-.point-site .wide-photo {
+.point-site .wide-photo,
+.point-site .point-linked-media {
   overflow: hidden;
 }
 .point-site .point-image:not(.point-aspect--natural) > img,
-.point-site .wide-photo:not(.point-aspect--natural) > img {
+.point-site .wide-photo:not(.point-aspect--natural) > img,
+.point-site .point-linked-media:not(.point-aspect--natural) > :is(img, video, iframe) {
   width: 100%;
   height: 100%;
+}
+.point-site .point-linked-media {
+  margin: 0;
+}
+.point-site .point-linked-media > :is(img, video, iframe) {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  border: 0;
+}
+.point-site .point-linked-media.point-fit--cover > :is(img, video) {
+  object-fit: cover;
+}
+.point-site .point-linked-media.point-fit--contain > :is(img, video) {
+  object-fit: contain;
+}
+.point-site .point-linked-media figcaption {
+  padding-top: 0.5rem;
+  color: var(--point-muted-text);
+  font-size: 0.85rem;
 }
 .point-site .point-aspect--1-1 {
   aspect-ratio: 1;
@@ -1224,8 +1272,40 @@
   min-height: var(--point-space-large);
 }
 .point-site .point-layout-section {
+  position: relative;
   width: 100%;
+  overflow: hidden;
   color: var(--point-text);
+}
+.point-site .point-layout-section__background,
+.point-site .point-layout-section__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.point-site .point-layout-section__background {
+  object-fit: cover;
+}
+.point-site .point-layout-section__background--top {
+  object-position: center top;
+}
+.point-site .point-layout-section__background--center {
+  object-position: center;
+}
+.point-site .point-layout-section__background--bottom {
+  object-position: center bottom;
+}
+.point-site .point-layout-section--overlay-light .point-layout-section__overlay {
+  background: rgb(255 255 255 / 0.48);
+}
+.point-site .point-layout-section--overlay-dark .point-layout-section__overlay {
+  background: rgb(9 14 9 / 0.58);
+}
+.point-site .point-layout-section__background ~ .point-layout-section__grid,
+.point-site .point-layout-section__overlay ~ .point-layout-section__grid {
+  position: relative;
+  z-index: 1;
 }
 .point-site .point-layout-section--shell > .point-layout-section__grid {
   width: min(72rem, calc(100% - 3rem));
@@ -1281,6 +1361,12 @@
   position: relative;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   grid-auto-rows: var(--point-grid-cell);
+  min-height: calc(
+    var(--point-section-min-rows, 1) *
+      (var(--point-grid-cell) + var(--point-section-gap, var(--point-space-medium))) -
+      var(--point-section-gap, var(--point-space-medium))
+  );
+  overflow: hidden;
 }
 .point-site
   .point-layout-section--grid
@@ -1296,8 +1382,59 @@
   min-width: 0;
 }
 .point-site .point-layout-item--grid {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+  justify-content: flex-start;
   grid-column: var(--point-grid-desktop-column) / span var(--point-grid-desktop-column-span);
   grid-row: var(--point-grid-desktop-row) / span var(--point-grid-desktop-row-span);
+}
+.point-site .point-layout-item--grid > * {
+  max-width: 100%;
+}
+.point-site .point-layout-item--grid > .point-image,
+.point-site .point-layout-item--grid > .wide-photo,
+.point-site .point-layout-item--grid > .point-linked-media,
+.point-site .point-layout-item--grid > .point-image > img,
+.point-site .point-layout-item--grid > .wide-photo > img,
+.point-site .point-layout-item--grid > .point-linked-media > :is(img, video, iframe) {
+  width: 100%;
+  height: 100%;
+}
+.point-site .point-text {
+  margin: 0;
+  white-space: pre-line;
+}
+.point-site .point-text--lead {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.55;
+}
+.point-site .point-text--eyebrow {
+  color: var(--point-primary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.point-site .point-text--small {
+  font-size: 0.82rem;
+}
+.point-site .point-button-box {
+  display: flex;
+  width: 100%;
+}
+.point-site .point-button-box--left {
+  justify-content: flex-start;
+}
+.point-site .point-button-box--center {
+  justify-content: center;
+}
+.point-site .point-button-box--right {
+  justify-content: flex-end;
+}
+.point-site .point-button-box--full .point-button {
+  width: 100%;
 }
 .point-site .point-layout-item--span-1 {
   grid-column: span 1;
@@ -1375,21 +1512,60 @@
   outline: 3px solid white;
   outline-offset: 2px;
 }
-.point-grid-move {
+.point-grid-move-surface {
+  inset: 0;
+  border: 0 !important;
+  background: transparent !important;
+  color: transparent !important;
+  cursor: move;
+}
+.point-grid-move-surface > span {
+  position: absolute;
   top: 0.35rem;
   left: 50%;
-  min-height: 2rem;
+  min-height: 1.75rem;
+  border: 2px solid #162012;
   border-radius: 999px;
+  background: #b8de95;
+  color: #162012;
   padding: 0.2rem 0.65rem;
   font: 700 0.72rem/1 sans-serif;
-  cursor: move;
   transform: translateX(-50%);
 }
 .point-grid-resize {
+  z-index: 103 !important;
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
   padding: 0;
+}
+.point-section-grid-controls {
+  position: absolute;
+  z-index: 110;
+  inset: 0;
+  border: 2px solid #9bc574;
+  pointer-events: none;
+}
+.point-section-grid-resize {
+  position: absolute;
+  right: 50%;
+  bottom: -0.75rem;
+  z-index: 111;
+  width: 2.5rem;
+  min-height: 1.5rem;
+  border: 2px solid #162012;
+  border-radius: 999px;
+  background: #b8de95;
+  color: #162012;
+  font: 800 0.85rem/1 sans-serif;
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+  transform: translateX(50%);
+}
+.point-section-grid-resize:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 2px;
 }
 .point-grid-resize--north-west {
   top: -0.5rem;

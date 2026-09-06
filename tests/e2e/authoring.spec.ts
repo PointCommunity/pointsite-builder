@@ -144,6 +144,8 @@ async function installApi(
       body = {
         id: '30000000-0000-4000-8000-000000000001',
         filename: 'gathering.png',
+        displayName: 'Gathering',
+        tags: [],
         contentType: 'image/png',
         byteSize: 68,
         width: 1,
@@ -179,7 +181,23 @@ async function installApi(
       };
       roles = [item, ...roles.filter((candidate) => candidate.githubUserId !== item.githubUserId)];
       body = item;
-    } else if (path.endsWith('/admin/audit')) body = { items: [], nextCursor: null };
+    } else if (path.endsWith('/admin/audit'))
+      body = {
+        items: [
+          {
+            id: 'audit-1',
+            occurredAt: '2026-09-05T00:00:00Z',
+            actor: '@brimdor',
+            action: 'draft.save',
+            targetType: 'draft',
+            targetId: draft.id,
+            outcome: 'succeeded',
+            requestId: 'request-1',
+            metadata: { sequence: 2 },
+          },
+        ],
+        nextCursor: null,
+      };
     else if (path.endsWith('/admin/capacity'))
       body = {
         privateMedia: { used: 1, limit: 10, percent: 10, warning: false, unit: 'bytes' },
@@ -195,6 +213,30 @@ async function installApi(
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
+
+test('keeps draft cards in a left-aligned responsive grid of at most three columns', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  const grid = page.locator('.draft-grid');
+  const card = page.locator('.draft-card');
+  const [gridBox, cardBox] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(gridBox).not.toBeNull();
+  expect(cardBox).not.toBeNull();
+  expect(cardBox!.x).toBeCloseTo(gridBox!.x, 0);
+  expect(cardBox!.width).toBeLessThan(gridBox!.width * 0.35);
+  expect(cardBox!.width).toBeGreaterThan(gridBox!.width * 0.3);
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  const [tabletGrid, tabletCard] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(tabletCard!.width).toBeGreaterThan(tabletGrid!.width * 0.45);
+  expect(tabletCard!.width).toBeLessThan(tabletGrid!.width * 0.55);
+
+  await page.setViewportSize({ width: 420, height: 800 });
+  const [phoneGrid, phoneCard] = await Promise.all([grid.boundingBox(), card.boundingBox()]);
+  expect(phoneCard!.width).toBeCloseTo(phoneGrid!.width, 0);
+});
 
 test('creates, duplicates, archives, unarchives, and safely deletes drafts without code', async ({
   page,
@@ -257,7 +299,7 @@ test('operates page modules by keyboard and announces the result', async ({ page
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'preview' }).click();
+  await page.getByRole('button', { name: 'Preview' }).click();
   const frame = page.locator('iframe.preview-frame');
   for (const [label, width] of [
     ['mobile', 360],
@@ -563,12 +605,19 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const resizeHandle = canvas.getByRole('button', {
     name: 'Resize heading from south east',
   });
+  const originalHeight = Number(
+    await page.getByLabel('desktop height in rows').last().inputValue(),
+  );
+  await resizeHandle.press('ArrowDown');
+  await expect(page.getByLabel('desktop height in rows').last()).toHaveValue(
+    String(originalHeight + 1),
+  );
   await resizeHandle.dispatchEvent('pointerdown', { pointerId: 2, clientX: 10, clientY: 10 });
   await expect(sectionSlot).toHaveClass(/point-layout-section__grid--active/);
   await canvas.locator('body').dispatchEvent('pointermove', {
     pointerId: 2,
     clientX: -90,
-    clientY: 10,
+    clientY: 110,
   });
   await expect
     .poll(async () => Number(await page.getByLabel('desktop width in columns').last().inputValue()))
@@ -576,6 +625,9 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const resizedDesktopWidth = Number(
     await page.getByLabel('desktop width in columns').last().inputValue(),
   );
+  await expect
+    .poll(async () => Number(await page.getByLabel('desktop height in rows').last().inputValue()))
+    .toBeGreaterThan(originalHeight + 1);
   await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 2 });
   await expect(sectionSlot).not.toHaveClass(/point-layout-section__grid--active/);
 
@@ -598,7 +650,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await canvas.locator('body').dispatchEvent('pointermove', {
     pointerId: 1,
     clientX: 110,
-    clientY: 10,
+    clientY: 110,
   });
   await expect
     .poll(async () => Number(await page.getByLabel('desktop column').last().inputValue()))
@@ -630,7 +682,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   expect(imageBox!.width).toBeLessThan(gridBox!.width * 0.6);
   expect(imageBox!.width).toBeGreaterThan(gridBox!.width * 0.35);
 
-  await canvas.getByAltText('Describe this image').click();
+  await canvas.getByRole('button', { name: 'Move image on desktop grid' }).focus();
   const inspector = page.locator('.block-inspector').last();
   await expect(page.getByLabel('desktop width in columns').last()).toHaveValue('6');
   const inspectorOverflow = await inspector.evaluate((element) => ({
@@ -638,6 +690,27 @@ test('builds a standardized section by dragging an element from the toybox', asy
     scrollWidth: element.scrollWidth,
   }));
   expect(inspectorOverflow.scrollWidth).toBeLessThanOrEqual(inspectorOverflow.clientWidth);
+
+  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot);
+  const atomicButton = twoColumn.getByRole('link', { name: 'Learn more', exact: true });
+  await expect(atomicButton).toBeVisible();
+  await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
+  await page.getByLabel('Button label').filter({ visible: true }).fill('Visit groups');
+  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
+  await expect(twoColumn.getByRole('link', { name: 'Visit groups' })).toHaveAttribute(
+    'href',
+    '/connect/groups',
+  );
+  const placementInspector = page.locator('.grid-placement-inspector').filter({ visible: true });
+  const buttonColumn = placementInspector.getByLabel('desktop column');
+  await expect(placementInspector).toHaveAttribute('data-occupied-elements', '1');
+  await placementInspector.getByLabel('desktop row').fill('1');
+  const previousButtonColumn = await buttonColumn.inputValue();
+  await buttonColumn.fill('1');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'overlaps another element' }),
+  ).toBeVisible();
+  await expect(buttonColumn).toHaveValue(previousButtonColumn);
 
   await page.getByRole('button', { name: 'Save now' }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
@@ -649,17 +722,107 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).scrollIntoViewIfNeeded();
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).click();
-  await expect(page.getByRole('button', { name: 'settings' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Settings' })).toHaveAttribute(
     'aria-current',
     'page',
   );
   await expect(page.locator('#footer-settings')).toBeFocused();
 });
 
+test('inserts an editable atomic recipe and resizes its section on the grid', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const source = page.getByRole('button', { name: 'Call to action recipe', exact: true });
+  const target = canvas.locator('.home-hero');
+  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+  expect(from).not.toBeNull();
+  expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+    steps: 4,
+  });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + 6, { steps: 16 });
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+
+  const recipe = canvas.locator('section[aria-label="Call to action section"]');
+  await expect(recipe).toBeVisible();
+  await expect(recipe.locator('.point-cta')).toHaveCount(0);
+  await expect(recipe.locator('.point-heading')).toHaveCount(1);
+  await expect(recipe.locator('.point-text')).toHaveCount(1);
+  await expect(recipe.locator('.point-button-box')).toHaveCount(1);
+
+  const resizeSection = canvas.getByRole('button', {
+    name: 'Resize Call to action section height',
+  });
+  await expect(resizeSection).toBeVisible();
+  const beforeRows = await recipe
+    .locator('[data-puck-dropzone]')
+    .evaluate((element) => getComputedStyle(element).getPropertyValue('--point-section-min-rows'));
+  await resizeSection.press('ArrowDown');
+  await expect
+    .poll(() =>
+      recipe
+        .locator('[data-puck-dropzone]')
+        .evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+        ),
+    )
+    .not.toBe(beforeRows);
+  const keyboardRows = Number(
+    await recipe
+      .locator('[data-puck-dropzone]')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+      ),
+  );
+  await resizeSection.dispatchEvent('pointerdown', { pointerId: 3, clientX: 10, clientY: 10 });
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 3,
+    clientX: 10,
+    clientY: 110,
+  });
+  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 3 });
+  await expect
+    .poll(async () =>
+      Number(
+        await recipe
+          .locator('[data-puck-dropzone]')
+          .evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--point-section-min-rows'),
+          ),
+      ),
+    )
+    .toBeGreaterThan(keyboardRows);
+
+  await recipe.locator('.point-layout-item').filter({ hasText: 'Learn more' }).click();
+  await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
+  await page.getByLabel('Button label').filter({ visible: true }).fill('Join a group');
+  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
+  await expect(recipe.getByRole('link', { name: 'Join a group' })).toHaveAttribute(
+    'href',
+    '/connect/groups',
+  );
+});
+
 test('labels history and restores only after confirmation', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'history' }).click();
+  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByLabel('Find a revision').fill('Before refresh');
+  await expect(page.getByText('1 revision')).toBeVisible();
+  await expect(page.locator('.revision-panel ol > li')).toHaveCount(1);
+  await page.getByLabel('Find a revision').fill('');
   await page.getByLabel('Label for revision 1').fill('Approved homepage');
   await page.getByRole('button', { name: 'Save label' }).last().click();
   await expect(page.getByText('Revision label saved.')).toBeVisible();
@@ -673,7 +836,7 @@ test('uploads private media with alternative text and attaches it to the draft l
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'media' }).click();
+  await page.getByRole('button', { name: 'Library' }).click();
   await page.getByLabel('Image file').setInputFiles({
     name: 'gathering.png',
     mimeType: 'image/png',
@@ -682,20 +845,89 @@ test('uploads private media with alternative text and attaches it to the draft l
   await page.getByLabel('Alternative text').fill('People gathering');
   await page.getByRole('button', { name: 'Upload image' }).click();
   await expect(page.getByText('Image uploaded privately.')).toBeVisible();
-  await page.getByRole('button', { name: 'Add to site library' }).click();
+  await page.getByRole('button', { name: 'Use in Layout' }).click();
   await expect(page.getByRole('heading', { name: 'Page structure' })).toBeVisible();
+});
+
+test('builds a form and places linked YouTube media without code', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Forms' }).click();
+  await page.getByRole('button', { name: 'New form' }).click();
+  await page.getByLabel('Heading').fill('Plan a visit');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await expect(page.getByText('2. New field')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByLabel('Media type').selectOption('youtube');
+  await page.getByLabel('Display name').fill('Point welcome video');
+  await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  await page.getByRole('button', { name: 'Add linked media' }).click();
+  await expect(page.getByText('Linked media added to this draft.')).toBeVisible();
+  await page.getByRole('button', { name: 'Layout' }).click();
+
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const drag = async (
+    source: ReturnType<typeof page.locator>,
+    target: ReturnType<typeof page.locator>,
+    edge = false,
+  ) => {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    const from = await source.boundingBox();
+    const to = await target.boundingBox();
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, edge ? to!.y + 6 : to!.y + to!.height / 2, {
+      steps: 16,
+    });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+  await drag(
+    page.getByRole('button', { name: 'Blank grid section', exact: true }),
+    canvas.locator('.home-hero'),
+    true,
+  );
+  const section = canvas.locator('.point-layout-section').last();
+  await page.getByRole('button', { name: 'Save now' }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();
+  await drag(
+    page.getByRole('button', { name: 'Linked media', exact: true }),
+    section.locator('[data-puck-dropzone]'),
+  );
+  await expect(canvas.getByTitle('Point welcome video')).toHaveAttribute(
+    'src',
+    'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE',
+  );
 });
 
 test('manages roles and exposes capacity warnings to administrators', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'admin' }).click();
+  await page.getByRole('button', { name: 'Admin' }).click();
   await expect(page.getByText('80% — action recommended')).toBeVisible();
   await page.getByLabel('GitHub username').fill('point-publisher');
   await page.locator('.inline-editor select').selectOption('publisher');
   await page.getByRole('button', { name: 'Add person' }).click();
   await expect(page.getByText('@point-publisher updated')).toBeVisible();
   await expect(page.getByRole('cell', { name: '@point-publisher' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '@brimdor' }).last()).toBeVisible();
+  await expect(page.getByText('Saved draft changes')).toBeVisible();
 });
 
 test('recovers from a server-side revision conflict without overwriting', async ({

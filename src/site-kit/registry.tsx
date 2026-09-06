@@ -1,6 +1,7 @@
 import { Fragment, useState, type ElementType, type FormEvent, type ReactNode } from 'react';
 import type { CSSProperties } from 'react';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
+import { youtubeEmbedUrl } from './linked-media';
 
 export const blockDefinitions: Record<
   SiteElement['type'],
@@ -10,6 +11,7 @@ export const blockDefinitions: Record<
   heading: { label: 'Heading', supportsMoveButtons: true },
   richText: { label: 'Rich text', supportsMoveButtons: true },
   image: { label: 'Image', supportsMoveButtons: true },
+  mediaEmbed: { label: 'Linked media', supportsMoveButtons: true },
   splitFeature: { label: 'Split feature', supportsMoveButtons: true },
   cta: { label: 'Call to action', supportsMoveButtons: true },
   cards: { label: 'Cards', supportsMoveButtons: true },
@@ -19,6 +21,8 @@ export const blockDefinitions: Record<
   map: { label: 'Map', supportsMoveButtons: true },
   divider: { label: 'Divider', supportsMoveButtons: true },
   spacer: { label: 'Spacer', supportsMoveButtons: true },
+  text: { label: 'Text', supportsMoveButtons: true },
+  button: { label: 'Button', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -86,6 +90,7 @@ function CardLink({ item }: { item: CardItem }) {
 
 function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
   return form.fields.map((field) => {
+    const describedBy = field.helpText ? `${field.id}-help` : undefined;
     const label = (
       <>
         {field.label}
@@ -94,17 +99,32 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     );
     if (field.type === 'textarea') {
       return (
-        <div className="field field--textarea" key={field.id}>
+        <div className={`field field--textarea field--${field.width}`} key={field.id}>
           <label htmlFor={field.id}>{label}</label>
-          <textarea id={field.id} name={field.name} required={field.required} rows={5} />
+          {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
+          <textarea
+            id={field.id}
+            name={field.name}
+            required={field.required}
+            placeholder={field.placeholder}
+            aria-describedby={describedBy}
+            rows={5}
+          />
         </div>
       );
     }
     if (field.type === 'select') {
       return (
-        <div className="field" key={field.id}>
+        <div className={`field field--${field.width}`} key={field.id}>
           <label htmlFor={field.id}>{label}</label>
-          <select id={field.id} name={field.name} required={field.required} defaultValue="">
+          {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
+          <select
+            id={field.id}
+            name={field.name}
+            required={field.required}
+            aria-describedby={describedBy}
+            defaultValue=""
+          >
             <option value="" disabled>
               Select one
             </option>
@@ -117,8 +137,9 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     }
     if (field.type === 'radio' || field.type === 'checkbox') {
       return (
-        <div className={`field field--${field.type}`} key={field.id}>
-          <label>{label}</label>
+        <fieldset className={`field field--${field.type} field--${field.width}`} key={field.id}>
+          <legend>{label}</legend>
+          {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <div className="choice-list">
             {field.options?.map((option) => (
               <label className="choice" key={option}>
@@ -127,23 +148,26 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
                   name={field.name}
                   value={option}
                   required={field.required && field.type === 'radio'}
+                  aria-describedby={describedBy}
                 />
                 <span>{option}</span>
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       );
     }
     return (
-      <div className="field" key={field.id}>
+      <div className={`field field--${field.width}`} key={field.id}>
         <label htmlFor={field.id}>{label}</label>
+        {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
         <input
           id={field.id}
           type={field.type}
           name={field.name}
           required={field.required}
           placeholder={field.placeholder}
+          aria-describedby={describedBy}
         />
       </div>
     );
@@ -172,7 +196,7 @@ function FormPanel({
         .join(', ');
       return values ? [`${field.label}: ${values}`] : [];
     });
-    setStatus('Your email app is opening with this request ready to send.');
+    setStatus(form.successMessage ?? 'Your email app is opening with this request ready to send.');
     const emailLink = globalThis.document.createElement('a');
     emailLink.href = `${action}&body=${encodeURIComponent(lines.join('\n'))}`;
     emailLink.hidden = true;
@@ -184,11 +208,11 @@ function FormPanel({
     <section className="form-panel">
       <div className="form-heading">
         <p className="eyebrow">Get connected</p>
-        <h2>{heading ?? form.name}</h2>
-        {supportingText ? <p>{supportingText}</p> : null}
+        <h2>{heading ?? form.heading ?? form.name}</h2>
+        {supportingText || form.introduction ? <p>{supportingText ?? form.introduction}</p> : null}
       </div>
       <form
-        className="managed-form"
+        className={`managed-form managed-form--${form.layout} managed-form--${form.density}`}
         action={action}
         method="post"
         encType="text/plain"
@@ -199,8 +223,8 @@ function FormPanel({
           {form.submitLabel}
         </button>
         <p className="form-note">
-          Submitting opens your email app so you can review the message before sending it directly
-          to Point ATX.
+          {form.privacyNote ??
+            'Submitting opens your email app so you can review the message before sending it directly to Point ATX.'}
         </p>
         <p className="form-status" role="status" aria-live="polite">
           {status}
@@ -384,6 +408,34 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
             className={`point-fit--${block.fit}`}
           />
           {block.caption ? <figcaption>{block.caption}</figcaption> : null}
+        </figure>
+      );
+    }
+    case 'mediaEmbed': {
+      const media = document.linkedMedia.find((candidate) => candidate.id === block.linkedMediaId);
+      if (!media) throw new Error(`Missing linked media ${block.linkedMediaId}`);
+      const className = `point-linked-media point-aspect--${block.aspect.replace(':', '-')} point-fit--${block.fit}`;
+      const content =
+        media.type === 'image' ? (
+          <img src={media.url} alt={media.alternativeText ?? ''} loading="lazy" />
+        ) : media.type === 'video' ? (
+          <video src={media.url} controls preload="metadata" aria-label={media.displayName} />
+        ) : (
+          <iframe
+            src={youtubeEmbedUrl(media.url) ?? undefined}
+            title={media.displayName}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        );
+      return (
+        <figure className={className}>
+          {content}
+          {block.caption || media.caption ? (
+            <figcaption>{block.caption ?? media.caption}</figcaption>
+          ) : null}
         </figure>
       );
     }
@@ -830,6 +882,20 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
       );
     case 'spacer':
       return <div className={`point-spacer point-spacer--${block.size}`} aria-hidden="true" />;
+    case 'text':
+      return (
+        <p className={`point-text point-text--${block.style} point-align--${block.align}`}>
+          {block.text}
+        </p>
+      );
+    case 'button':
+      return (
+        <div
+          className={`point-button-box point-button-box--${block.align} point-button-box--${block.width}`}
+        >
+          <ActionLink action={block} />
+        </div>
+      );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
@@ -853,14 +919,25 @@ export function renderSection(section: SectionBlock, document: SiteDocument): Re
     '--point-section-columns': section.layout === 'flow' ? 1 : 12,
     '--point-section-gap': sectionGap[section.gap],
     '--point-section-total-gap': sectionTotalGap[section.gap],
+    '--point-section-min-rows': section.minRows,
   } as CSSProperties;
   const sectionColumns = section.layout === 'flow' ? 1 : section.columns;
 
   return (
     <section
-      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding}`}
+      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}`}
       aria-label={section.name}
     >
+      {section.backgroundMediaId ? (
+        <img
+          className={`point-layout-section__background point-layout-section__background--${section.backgroundPosition}`}
+          src={mediaRecord(document, section.backgroundMediaId).sourcePath}
+          alt=""
+        />
+      ) : null}
+      {section.overlay !== 'none' ? (
+        <div className="point-layout-section__overlay" aria-hidden="true" />
+      ) : null}
       <div className="point-layout-section__grid" style={style}>
         {section.items.map((placement) => {
           const desktop = placement.grid.desktop;
