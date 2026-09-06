@@ -76,6 +76,32 @@ describe('default PointSite document', () => {
     );
   });
 
+  it('resolves every baseline page and collection image reference to a managed asset', () => {
+    const managedIds = new Set(defaultSiteDocument.media.map(({ id }) => id));
+    const referencedIds = defaultSiteDocument.pages.flatMap((page) => [
+      ...(page.heroMediaId ? [page.heroMediaId] : []),
+      ...(page.metadata.ogImageMediaId ? [page.metadata.ogImageMediaId] : []),
+      ...page.blocks.flatMap((section) => [
+        ...(section.backgroundMediaId ? [section.backgroundMediaId] : []),
+        ...section.items.flatMap(({ element }) => {
+          if ('mediaId' in element && typeof element.mediaId === 'string') return [element.mediaId];
+          if (element.type === 'cards') {
+            return element.items.flatMap((item) => (item.mediaId ? [item.mediaId] : []));
+          }
+          return [];
+        }),
+      ]),
+    ]);
+    referencedIds.push(
+      ...defaultSiteDocument.collections.people.flatMap((person) =>
+        person.mediaId ? [person.mediaId] : [],
+      ),
+    );
+
+    expect(referencedIds.length).toBeGreaterThan(0);
+    expect(referencedIds.filter((id) => !managedIds.has(id))).toEqual([]);
+  });
+
   it('preserves current forms, collections, and identity data', () => {
     expect(defaultSiteDocument.forms).toHaveLength(9);
     expect(defaultSiteDocument.forms.flatMap(({ fields }) => fields)).toHaveLength(48);

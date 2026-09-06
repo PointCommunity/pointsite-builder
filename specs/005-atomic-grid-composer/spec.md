@@ -44,8 +44,8 @@ heading, text, image, and hyperlink-button elements.
 **Acceptance scenarios**
 
 1. The toolbox offers Heading, Text, Image, and Button as independently insertable elements.
-2. Call to action, split feature, and hero are available as optional section recipes, not locked
-   elements; every child remains selectable, movable, resizable, editable, and removable.
+2. The Sections category contains only empty structural containers; authors create call-to-action,
+   split-feature, and hero arrangements from independent atomic elements.
 3. A Button exposes label, validated hyperlink, visual style, and width settings.
 4. Existing compatibility content continues to render after schema migration.
 
@@ -90,7 +90,8 @@ opens `https://builder.pointatx.org` without granting any additional access.
 - **FR-008** Button hyperlinks MUST use the existing safe-link policy.
 - **FR-009** New visual composition MUST use atomic elements; legacy composite elements MUST be
   hidden from the new-element toolbox while remaining readable.
-- **FR-010** Section recipes MUST expand into ordinary sections and ordinary atomic children.
+- **FR-010** Point-authored preset recipes MUST NOT appear in the Sections category. Reusable
+  user-created recipes are a separate future feature.
 - **FR-011** Drop placement MUST use the pointer's snapped grid position when available and fall
   back to the first collision-free area.
 - **FR-012** Draft cards MUST use fixed one-, two-, or three-column responsive tracks.

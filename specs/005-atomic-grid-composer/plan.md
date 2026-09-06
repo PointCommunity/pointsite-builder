@@ -16,7 +16,7 @@
 2. Add schema v4 section sizing plus atomic Text and Button elements and deterministic v3 migration.
 3. Replace conflicting placed-element dragging with one canvas move/resize controller and section
    resize controls.
-4. Add section recipe expansion using normal sections and normal atomic children.
+4. Offer only empty structural sections and normal atomic children in the toolbox.
 5. Update toolbox categories and inspectors; hide legacy visual-composition blocks from insertion.
 6. Render atomic elements and contained sections identically in Builder and staging.
 7. Correct the draft-card grid to fixed responsive one/two/three tracks.
@@ -30,7 +30,7 @@
 - Puck owns selection, fields, slots, history, and section ordering.
 - The Point grid controller exclusively owns coordinates for already-placed grid elements.
 - Placement is committed only through a shared resolver that clamps bounds and rejects collisions.
-- Section recipes are insertion-time data factories and create no special persisted recipe type.
+- Reusable recipes are deferred; no recipe type or recipe identity is persisted.
 - Legacy composite blocks remain in the discriminated union solely for backward compatibility.
 
 ## Compatibility and rollout

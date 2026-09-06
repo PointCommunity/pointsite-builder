@@ -26,5 +26,5 @@ area. Section rendered rows are `max(minRows, max(item.row + item.rowSpan - 1))`
 
 - v3 to v4 adds `minRows` equal to the occupied rows for grid sections and `1` otherwise.
 - All legacy element payloads remain unchanged and valid.
-- Recipe identity is never persisted; recipe insertion returns an ordinary section with ordinary
-  child placements.
+- Recipe identity is not persisted. The toolbox exposes empty sections and ordinary child
+  placements; reusable user-created recipes are deferred.

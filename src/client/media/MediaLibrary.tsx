@@ -19,6 +19,7 @@ const defaultClient: MediaClient = {
   update: api.updateMedia,
 };
 type LinkedMedia = SiteDocument['linkedMedia'][number];
+type SiteMedia = SiteDocument['media'][number];
 
 function tagsFrom(value: string): string[] {
   return [
@@ -29,6 +30,108 @@ function tagsFrom(value: string): string[] {
         .filter(Boolean),
     ),
   ].slice(0, 20);
+}
+
+function fileNameFromPath(sourcePath: string): string {
+  return sourcePath.split('/').at(-1) ?? sourcePath;
+}
+
+function displayNameFor(item: SiteMedia): string {
+  return item.displayName ?? item.alt ?? fileNameFromPath(item.sourcePath);
+}
+
+function mediaUsage(document: SiteDocument, id: string): number {
+  let count = 0;
+  for (const page of document.pages) {
+    if (page.heroMediaId === id) count += 1;
+    if (page.metadata.ogImageMediaId === id) count += 1;
+    for (const section of page.blocks) {
+      if (section.backgroundMediaId === id) count += 1;
+      for (const { element } of section.items) {
+        if ('mediaId' in element && element.mediaId === id) count += 1;
+        if (element.type === 'cards') {
+          count += element.items.filter((card) => card.mediaId === id).length;
+        }
+      }
+    }
+  }
+  count += document.collections.people.filter((person) => person.mediaId === id).length;
+  if (document.media.find((item) => item.id === id)?.sourcePath.endsWith('/point-logo.png')) {
+    count += 1;
+  }
+  return count;
+}
+
+function SiteAssetMetadataEditor({
+  item,
+  onSave,
+}: {
+  item: SiteMedia;
+  onSave: (change: Pick<SiteMedia, 'displayName' | 'alt' | 'tags'>) => void;
+}) {
+  const label = displayNameFor(item);
+  const [displayName, setDisplayName] = useState(label);
+  const [alt, setAlt] = useState(item.alt);
+  const [tags, setTags] = useState((item.tags ?? []).join(', '));
+  const [saved, setSaved] = useState('');
+
+  return (
+    <form
+      className="media-metadata"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave({
+          displayName: displayName.trim(),
+          alt: alt.trim(),
+          tags: tagsFrom(tags),
+        });
+        setSaved('Saved');
+      }}
+    >
+      <label>
+        <span>Display name</span>
+        <input
+          aria-label={`Display name for ${label}`}
+          required
+          maxLength={120}
+          value={displayName}
+          onChange={(event) => {
+            setDisplayName(event.target.value);
+            setSaved('');
+          }}
+        />
+      </label>
+      <label>
+        <span>Image description</span>
+        <textarea
+          aria-label={`Image description for ${label}`}
+          maxLength={300}
+          value={alt}
+          onChange={(event) => {
+            setAlt(event.target.value);
+            setSaved('');
+          }}
+        />
+      </label>
+      <label>
+        <span>Tags (comma separated)</span>
+        <input
+          aria-label={`Tags for ${label}`}
+          value={tags}
+          onChange={(event) => {
+            setTags(event.target.value);
+            setSaved('');
+          }}
+        />
+      </label>
+      <div className="button-row">
+        <button className="button" type="submit">
+          Save details
+        </button>
+        <span role="status">{saved}</span>
+      </div>
+    </form>
+  );
 }
 
 function MetadataEditor({
@@ -225,8 +328,60 @@ export function MediaLibrary({
           <p className="eyebrow">Organized assets</p>
           <h2 id="media-title">Library</h2>
         </div>
-        <p>Upload private images or link approved external images and videos.</p>
+        <p>Manage site images, private uploads, and approved external media in one place.</p>
       </header>
+      {document && onDocumentChange ? (
+        <section
+          className="settings-section site-assets-section"
+          aria-labelledby="site-assets-title"
+        >
+          <div className="settings-heading">
+            <div>
+              <h3 id="site-assets-title">Images used by this site</h3>
+              <p>Every image inherited from the current PointSite is managed here.</p>
+            </div>
+            <span className="status-badge">{document.media.length} site images</span>
+          </div>
+          {document.media.length === 0 ? (
+            <div className="empty-state">
+              <strong>No site images yet</strong>
+              <p>Upload an image below, then choose Use in Layout.</p>
+            </div>
+          ) : (
+            <ul className="media-grid media-grid--site-assets">
+              {document.media.map((item) => {
+                const usage = mediaUsage(document, item.id);
+                return (
+                  <li key={item.id}>
+                    <img src={item.sourcePath} alt={item.alt} loading="lazy" />
+                    <div>
+                      <strong>{displayNameFor(item)}</strong>
+                      <span>{item.sourcePath}</span>
+                      <span>{usage === 1 ? 'Used in 1 place' : `Used in ${usage} places`}</span>
+                      {item.tags?.length ? <span>{item.tags.join(' · ')}</span> : null}
+                      <details>
+                        <summary>Edit details</summary>
+                        <SiteAssetMetadataEditor
+                          item={item}
+                          onSave={(change) => {
+                            const next = structuredClone(document);
+                            const target = next.media.find((candidate) => candidate.id === item.id);
+                            if (!target) return;
+                            target.displayName = change.displayName;
+                            target.alt = change.alt;
+                            target.tags = change.tags;
+                            onDocumentChange(next);
+                          }}
+                        />
+                      </details>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
       <div className="library-columns">
         <section className="settings-section" aria-labelledby="uploads-title">
           <h3 id="uploads-title">Private image uploads</h3>
@@ -262,7 +417,7 @@ export function MediaLibrary({
           </form>
           {!status && items.length === 0 ? (
             <div className="empty-state">
-              <strong>No uploaded images yet</strong>
+              <strong>No private uploads yet</strong>
               <p>Upload a JPG, PNG, WebP, or AVIF up to 5 MiB.</p>
             </div>
           ) : null}

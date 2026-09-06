@@ -1,8 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { BlockInspector } from '../../src/client/editor/BlockInspector';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import type { SiteElement } from '../../src/site-kit/types';
 import { allBlocks } from '../fixtures/block-data';
+
+function ControlledInspector({ initial }: { initial: SiteElement }) {
+  const [block, setBlock] = useState(initial);
+  return <BlockInspector block={block} document={defaultSiteDocument} onChange={setBlock} />;
+}
 
 describe('BlockInspector', () => {
   it('edits a hero through human-readable fields', () => {
@@ -34,6 +41,28 @@ describe('BlockInspector', () => {
         items: [...block.items, { question: 'New question', answer: 'Add an answer.' }],
       }),
     );
+  });
+
+  it.each([
+    ['FAQ question', allBlocks.find((item) => item.type === 'faq')!, 'Question'],
+    ['card title', allBlocks.find((item) => item.type === 'cards')!, 'Title'],
+    ['hero button link', allBlocks.find((item) => item.type === 'hero')!, 'Button link'],
+    [
+      'heading button link',
+      {
+        ...allBlocks.find((item) => item.type === 'heading')!,
+        type: 'heading' as const,
+        actions: [{ label: 'Learn more', href: '/', style: 'primary' as const }],
+      },
+      'Button link',
+    ],
+  ])('retains focus while typing in the repeated %s editor', (_name, block, label) => {
+    const { unmount } = render(<ControlledInspector initial={block} />);
+    const control = screen.getAllByLabelText(label)[0] as HTMLInputElement;
+    control.focus();
+    fireEvent.change(control, { target: { value: `${control.value}x` } });
+    expect(document.activeElement).toBe(control);
+    unmount();
   });
 
   it.each([

@@ -48,34 +48,19 @@ type SectionProps = {
   content: (props?: Record<string, unknown>) => ReactNode;
 };
 type ComposerProps = Record<SiteElement['type'], ElementProps> &
-  Record<
-    | 'Section'
-    | 'TwoColumnSection'
-    | 'ThreeColumnSection'
-    | 'FullWidthSection'
-    | 'HeroRecipe'
-    | 'ImageTextRecipe'
-    | 'CallToActionRecipe',
-    SectionProps
-  >;
+  Record<'Section' | 'TwoColumnSection' | 'ThreeColumnSection' | 'FullWidthSection', SectionProps>;
 
 const sectionTypes = [
   'Section',
   'TwoColumnSection',
   'ThreeColumnSection',
   'FullWidthSection',
-  'HeroRecipe',
-  'ImageTextRecipe',
-  'CallToActionRecipe',
 ] as const;
 const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
   Section: 'Blank grid section',
   TwoColumnSection: 'Two columns (50 / 50)',
   ThreeColumnSection: 'Three columns (equal)',
   FullWidthSection: 'Full-width section',
-  HeroRecipe: 'Hero recipe',
-  ImageTextRecipe: 'Image and text recipe',
-  CallToActionRecipe: 'Call to action recipe',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
 const gapValues = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' };
@@ -192,23 +177,6 @@ function defaultElement<T extends SiteElement['type']>(
 }
 
 function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
-  if (kind === 'HeroRecipe')
-    return {
-      ...sectionDefaults('FullWidthSection'),
-      name: 'Hero section',
-      surface: 'primary',
-      minRows: 10,
-      overlay: 'dark',
-    };
-  if (kind === 'ImageTextRecipe')
-    return { ...sectionDefaults('Section'), name: 'Image and text section', minRows: 9 };
-  if (kind === 'CallToActionRecipe')
-    return {
-      ...sectionDefaults('Section'),
-      name: 'Call to action section',
-      surface: 'surface',
-      minRows: 6,
-    };
   if (kind === 'TwoColumnSection')
     return {
       name: 'Two column section',
@@ -260,101 +228,6 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     backgroundPosition: 'center',
     overlay: 'none',
   };
-}
-
-function elementData(
-  element: SiteElement,
-  area: { column: number; row: number; columnSpan: number; rowSpan: number },
-  align: ElementProps['align'] = 'stretch',
-): ComponentData {
-  return {
-    type: element.type,
-    props: {
-      id: crypto.randomUUID(),
-      block: element,
-      span: area.columnSpan,
-      align,
-      grid: { desktop: area },
-    },
-  };
-}
-
-function recipeContent(
-  kind: (typeof sectionTypes)[number],
-  document: ReturnType<typeof useEditor>['document'],
-): ComponentData[] {
-  if (kind === 'HeroRecipe')
-    return [
-      elementData(
-        { ...defaultElement('heading', document), text: 'Welcome to Point', align: 'center' },
-        { column: 2, row: 2, columnSpan: 10, rowSpan: 3 },
-        'center',
-      ),
-      elementData(
-        {
-          ...defaultElement('text', document),
-          text: 'Add a short welcome and move each element wherever it belongs.',
-          style: 'lead',
-          align: 'center',
-        },
-        { column: 3, row: 5, columnSpan: 8, rowSpan: 2 },
-        'center',
-      ),
-      elementData(
-        { ...defaultElement('button', document), align: 'center' },
-        { column: 5, row: 7, columnSpan: 4, rowSpan: 2 },
-        'center',
-      ),
-    ];
-  if (kind === 'ImageTextRecipe')
-    return [
-      elementData(defaultElement('image', document), {
-        column: 1,
-        row: 1,
-        columnSpan: 6,
-        rowSpan: 9,
-      }),
-      elementData(defaultElement('heading', document), {
-        column: 7,
-        row: 2,
-        columnSpan: 6,
-        rowSpan: 2,
-      }),
-      elementData(defaultElement('text', document), {
-        column: 7,
-        row: 4,
-        columnSpan: 6,
-        rowSpan: 3,
-      }),
-      elementData(defaultElement('button', document), {
-        column: 7,
-        row: 7,
-        columnSpan: 3,
-        rowSpan: 2,
-      }),
-    ];
-  if (kind === 'CallToActionRecipe')
-    return [
-      elementData(defaultElement('heading', document), {
-        column: 1,
-        row: 1,
-        columnSpan: 8,
-        rowSpan: 2,
-      }),
-      elementData(defaultElement('text', document), {
-        column: 1,
-        row: 3,
-        columnSpan: 8,
-        rowSpan: 2,
-      }),
-      elementData(defaultElement('button', document), {
-        column: 9,
-        row: 2,
-        columnSpan: 4,
-        rowSpan: 2,
-      }),
-    ];
-  return [];
 }
 
 function SectionComponent({
@@ -482,26 +355,6 @@ function GridPlacementField({
   return <GridPlacementInspector value={value} occupied={occupied} onChange={onChange} />;
 }
 
-function freshenRecipeChild(child: ComponentData): ComponentData {
-  const props = child.props as unknown as Record<string, unknown>;
-  const block = props.block;
-  const rawId = props.id;
-  return {
-    ...child,
-    props: {
-      ...props,
-      id:
-        typeof rawId === 'string' || typeof rawId === 'number'
-          ? String(rawId)
-          : crypto.randomUUID(),
-      block:
-        block && typeof block === 'object'
-          ? { ...(block as Record<string, unknown>), id: crypto.randomUUID() }
-          : block,
-    },
-  };
-}
-
 function sectionToData(section: SectionBlock): ComponentData {
   return {
     type: 'Section',
@@ -607,25 +460,9 @@ export function VisualEditor({
         content: { type: 'slot', allow: elementTypes },
       },
       defaultProps: {
-        settings: {
-          ...sectionDefaults(kind),
-          ...(kind === 'HeroRecipe' && document.media[0]
-            ? { backgroundMediaId: document.media[0].id }
-            : {}),
-        },
-        content: recipeContent(kind, document),
+        settings: sectionDefaults(kind),
+        content: [],
       },
-      resolveData: (data: { props: SectionProps }, { trigger }: { trigger: string }) =>
-        trigger === 'insert'
-          ? {
-              props: {
-                ...data.props,
-                content: Array.isArray(data.props.content)
-                  ? data.props.content.map((child: ComponentData) => freshenRecipeChild(child))
-                  : data.props.content,
-              },
-            }
-          : data,
       render: (props: SectionProps & { id?: string }) => (
         <SectionComponent {...props} document={document} />
       ),
@@ -777,14 +614,14 @@ export function VisualEditor({
 
   const config = {
     categories: {
-      sections: { title: '1. Start with a section', components: [...sectionTypes] },
+      sections: { title: 'Sections', components: [...sectionTypes] },
       content: {
-        title: '2. Add text and buttons',
+        title: 'Text and buttons',
         components: ['heading', 'text', 'richText', 'button'],
       },
-      media: { title: 'Add images and media', components: ['image', 'mediaEmbed'] },
-      collections: { title: 'Show lists and people', components: ['cards', 'people'] },
-      engagement: { title: 'Add interactive content', components: ['faq', 'form', 'map'] },
+      media: { title: 'Images and media', components: ['image', 'mediaEmbed'] },
+      collections: { title: 'Lists and people', components: ['cards', 'people'] },
+      engagement: { title: 'Interactive', components: ['faq', 'form', 'map'] },
       spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },
       other: { visible: false },
     },

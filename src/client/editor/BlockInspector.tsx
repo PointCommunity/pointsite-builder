@@ -217,7 +217,7 @@ export function BlockInspector({
             <legend>Buttons</legend>
             {block.actions.map((action, index) => (
               <Row
-                key={`${action.href}-${index}`}
+                key={index}
                 onRemove={() =>
                   onChange({ ...block, actions: block.actions.filter((_, item) => item !== index) })
                 }
@@ -311,7 +311,7 @@ export function BlockInspector({
             <legend>Buttons</legend>
             {(block.actions ?? []).map((action, index) => (
               <Row
-                key={`${action.href}-${index}`}
+                key={index}
                 onRemove={() =>
                   onChange({
                     ...block,
@@ -376,7 +376,7 @@ export function BlockInspector({
           <p className="field-help">Use one content item per paragraph, list, quote, or link.</p>
           {block.content.map((node, index) => (
             <Row
-              key={`${node.type}-${index}`}
+              key={index}
               removeDisabled={block.content.length === 1}
               onRemove={() =>
                 onChange({ ...block, content: block.content.filter((_, item) => item !== index) })
@@ -832,7 +832,7 @@ export function BlockInspector({
             <legend>Cards</legend>
             {block.items.map((item, index) => (
               <Row
-                key={`${item.title}-${index}`}
+                key={index}
                 removeDisabled={block.items.length === 1}
                 onRemove={() =>
                   onChange({
@@ -1022,7 +1022,7 @@ export function BlockInspector({
             <legend>Questions</legend>
             {block.items.map((item, index) => (
               <Row
-                key={`${item.question}-${index}`}
+                key={index}
                 removeDisabled={block.items.length === 1}
                 onRemove={() =>
                   onChange({

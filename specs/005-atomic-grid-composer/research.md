@@ -33,11 +33,11 @@ fields and section-height controls.
 **Rationale:** Pointer-only drag is insufficient. WAI guidance calls for an equivalent keyboard or
 form-control operation; ordinary buttons and labeled number fields preserve a familiar focus model.
 
-## Atomic elements and recipes
+## Atomic elements and structural sections
 
-**Decision:** Add standalone Text and Button elements and represent visual patterns as section
-recipes that expand to normal children. Keep data-driven widgets (FAQ, forms, people, cards, maps)
-as purpose-built elements.
+**Decision:** Add standalone Text and Button elements and let authors build visual patterns inside
+empty structural sections. Keep data-driven widgets (FAQ, forms, people, cards, maps) as
+purpose-built elements. Reusable user-created recipes may be designed later as a separate feature.
 
 **Rationale:** This removes locked visual arrangements without forcing authors to rebuild the
 behavior of a form or accordion one HTML control at a time.

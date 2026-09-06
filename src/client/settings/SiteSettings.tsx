@@ -188,7 +188,7 @@ export function SiteSettings() {
         <h3 id="social-title">Social links</h3>
         <div className="settings-list">
           {document.site.socialLinks.map((link, index) => (
-            <div className="settings-list__item" key={`${link.platform}-${index}`}>
+            <div className="settings-list__item" key={index}>
               <label>
                 <span>Network</span>
                 <select
