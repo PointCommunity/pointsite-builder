@@ -4,6 +4,7 @@ import { blockDefinitions, renderBlock } from '../../site-kit/registry';
 import { SiteBlockSchema } from '../../site-kit/schema';
 import type { SiteBlock } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
+import siteCss from '../../site-kit/site.css?inline';
 import { BlockInspector } from './BlockInspector';
 import { useEditor } from './EditorProvider';
 
@@ -123,9 +124,12 @@ export function VisualEditor({ pageId }: { pageId: string }) {
     components,
     root: {
       render: ({ children }) => (
-        <SiteFrame document={document} page={page}>
-          {children}
-        </SiteFrame>
+        <>
+          <style>{siteCss}</style>
+          <SiteFrame document={document} page={page}>
+            {children}
+          </SiteFrame>
+        </>
       ),
     },
   };
@@ -155,7 +159,7 @@ export function VisualEditor({ pageId }: { pageId: string }) {
         }}
         onPublish={() => undefined}
         headerTitle={page.title}
-        iframe={{ enabled: true, waitForStyles: true, syncHostStyles: true }}
+        iframe={{ enabled: true, waitForStyles: false, syncHostStyles: false }}
       />
     </div>
   );

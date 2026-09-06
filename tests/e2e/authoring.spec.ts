@@ -192,16 +192,179 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'preview' }).click();
-  const frame = page.locator('.preview-frame');
+  const frame = page.locator('iframe.preview-frame');
   for (const [label, width] of [
-    ['mobile', '360px'],
-    ['tablet', '768px'],
-    ['desktop', '1280px'],
+    ['mobile', 360],
+    ['tablet', 768],
+    ['desktop', 1280],
   ] as const) {
     await page.getByRole('radio', { name: label }).check();
-    await expect(frame).toHaveCSS('max-width', width);
+    await expect(frame).toHaveCSS('width', `${width}px`);
+    await expect(frame).toHaveAttribute('title', new RegExp(`${width} pixel`));
+    expect(
+      await frame
+        .contentFrame()
+        .locator('body')
+        .evaluate(() => window.innerWidth),
+    ).toBe(width);
   }
-  await expect(frame.getByRole('heading', { level: 1 })).toBeVisible();
+  const preview = frame.contentFrame();
+  await page.getByRole('radio', { name: 'mobile' }).check();
+  await expect(preview.locator('.menu-toggle')).toBeVisible();
+  await preview.locator('.site-footer').scrollIntoViewIfNeeded();
+  await expect(preview.locator('.site-footer')).toBeVisible();
+  await preview.locator('.menu-toggle').click();
+  await preview.getByRole('link', { name: 'Who We Are', exact: true }).click();
+  await expect(page.getByLabel('Page').first()).toHaveValue(defaultSiteDocument.pages[1].id);
+  await expect(preview.getByRole('heading', { level: 1, name: 'Who We Are' })).toBeVisible();
+
+  const pageSelector = page.getByLabel('Page').first();
+  for (const [title, landmark] of [
+    ['Our Beliefs', '.belief-list'],
+    ['Leadership', '.people-grid'],
+    ['Next Generation', '.image-split'],
+    ['Connect Card', '.standalone-form'],
+    ['Neighborhood Groups', '.group-grid'],
+    ['Prayer Requests', '.standalone-form'],
+    ['Giving', '.giving-options'],
+    ['Contact Us', '.contact-grid'],
+    ['Building Rental', '.standalone-form'],
+  ] as const) {
+    await pageSelector.selectOption({ label: title });
+    await expect(preview.getByRole('heading', { level: 1, name: title })).toBeVisible();
+    await expect(preview.locator(landmark).first()).toBeVisible();
+    await expect(preview.locator('.site-footer')).toBeAttached();
+  }
+});
+
+test('isolates Point Classic colors from Builder and Puck styles', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const action = canvas.locator('.home-intro').getByRole('link', { name: 'Who we are' });
+  await expect(action).toBeVisible();
+  expect(
+    await action.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        parentColor: getComputedStyle(element.parentElement!).color,
+        background: style.backgroundColor,
+      };
+    }),
+  ).toEqual({
+    parentColor: 'rgb(23, 26, 23)',
+    background: 'rgba(0, 0, 0, 0)',
+  });
+
+  await canvas.locator('.home-hero').click();
+  const layoutStyle = page.getByLabel('Layout style').last();
+  expect(
+    await layoutStyle.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, background: style.backgroundColor };
+    }),
+  ).toEqual({ color: 'rgb(32, 36, 31)', background: 'rgb(255, 255, 255)' });
+
+  await page.getByLabel('Choose page').selectOption({ label: 'Connect Card' });
+  const submit = page.locator('.visual-editor iframe').contentFrame().getByRole('button', {
+    name: 'Send',
+    exact: true,
+  });
+  expect(
+    await submit.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, background: style.backgroundColor };
+    }),
+  ).toEqual({ color: 'rgb(255, 255, 255)', background: 'rgb(23, 26, 23)' });
+});
+
+test('keeps every authoring pane independently scrollable without page scrolling', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByText('Page details', { exact: true }).click();
+  await page.getByRole('button', { name: 'Switch to Full-width viewport' }).click();
+  await page.locator('.visual-editor iframe').contentFrame().locator('.home-hero').click();
+
+  const scrollContainer = async (element: ReturnType<typeof page.locator>) =>
+    element.evaluate((target) => {
+      let candidate: HTMLElement | null = target as HTMLElement;
+      while (candidate) {
+        const style = getComputedStyle(candidate);
+        if (
+          /(auto|scroll)/.test(style.overflowY) &&
+          candidate.scrollHeight > candidate.clientHeight + 1
+        ) {
+          candidate.scrollTop = candidate.scrollHeight;
+          return {
+            className: candidate.className,
+            clientHeight: candidate.clientHeight,
+            scrollHeight: candidate.scrollHeight,
+            scrollTop: candidate.scrollTop,
+          };
+        }
+        candidate = candidate.parentElement;
+      }
+      return null;
+    });
+
+  for (const [name, metrics] of [
+    ['page manager', await scrollContainer(page.locator('.content-workspace > aside'))],
+    [
+      'module catalog',
+      await scrollContainer(page.getByRole('button', { name: 'spacer', exact: true })),
+    ],
+    ['inspector', await scrollContainer(page.locator('.block-inspector').last())],
+  ] as const) {
+    expect(metrics, `${name} scroll container`).not.toBeNull();
+    expect(metrics?.scrollHeight).toBeGreaterThan(
+      metrics?.clientHeight ?? Number.POSITIVE_INFINITY,
+    );
+    expect(metrics?.scrollTop).toBeGreaterThan(0);
+  }
+  const canvasMetrics = await page
+    .locator('.visual-editor iframe')
+    .contentFrame()
+    .locator('html')
+    .evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return {
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+      };
+    });
+  expect(canvasMetrics.scrollHeight).toBeGreaterThan(canvasMetrics.clientHeight);
+  expect(canvasMetrics.scrollTop).toBeGreaterThan(0);
+  expect(
+    await page.evaluate(() => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      return {
+        scrollY: window.scrollY,
+        documentOverflow: getComputedStyle(document.documentElement).overflowY,
+        bodyOverflow: getComputedStyle(document.body).overflowY,
+      };
+    }),
+  ).toEqual({ scrollY: 0, documentOverflow: 'hidden', bodyOverflow: 'hidden' });
+});
+
+test('replaces phone-sized authoring with a widen-window warning at the 720 boundary', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.getByRole('heading', { name: 'Widen your browser to edit' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Editor sections' })).toBeHidden();
+
+  await page.setViewportSize({ width: 721, height: 800 });
+  await expect(page.getByRole('heading', { name: 'Widen your browser to edit' })).toBeHidden();
+  await expect(page.getByRole('navigation', { name: 'Editor sections' })).toBeVisible();
 });
 
 test('shows the complete production-style site chrome and content inside the editing canvas', async ({

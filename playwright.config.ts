@@ -16,7 +16,11 @@ export default defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'desktop-firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'desktop-webkit', use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'mobile-chromium',
+      use: { ...devices['Pixel 7'] },
+      grep: /phone-sized authoring/,
+    },
   ],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4173',

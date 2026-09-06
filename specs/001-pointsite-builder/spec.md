@@ -42,6 +42,8 @@ an earlier revision, and preview the exact saved data without any Git write.
 3. **Given** two Editors on one draft, **When** the second saves a stale revision, **Then** the system refuses to overwrite newer work and offers reload or copy recovery.
 4. **Given** a draft, **When** the Editor selects mobile, tablet, or desktop preview, **Then** the same validated page data renders at that viewport.
 5. **Given** the seeded PointSite, **When** an Editor opens any page in the visual canvas, **Then** the canvas includes the same header, page chrome, modules, footer, typography, spacing, imagery, and responsive layout that staging will publish.
+6. **Given** a page whose content is taller than the available workspace, **When** the Editor scrolls the page manager, module catalog, canvas, or inspector, **Then** each pane scrolls independently to its final control without moving or clipping the other panes.
+7. **Given** a Builder viewport 720 CSS pixels wide or narrower, **When** an Editor opens a draft, **Then** the authoring interface is replaced by a concise message asking them to widen the browser while draft data remains unchanged.
 
 ### User Story 2 - Manage the whole site without code (Priority: P1)
 
@@ -171,13 +173,17 @@ be bypassed with client state or a forged header.
 - **FR-032**: Draft creation and editing MUST be available to active Builder Editors who currently hold at least GitHub read access to the staging repository; staging publication and acceptance MUST additionally require current GitHub write, maintain, or admin permission on every request, independent of the Builder role.
 - **FR-033**: The Point Classic baseline MUST use one canonical data-driven renderer in the editing canvas, preview, and staging, and MUST reproduce the current production header, footer, page chrome, route content, typography, responsive behavior, and public asset placement without relying on production source at runtime.
 - **FR-034**: Every visible baseline content surface MUST be represented by an editable page, global setting, collection, form, media record, or approved module field; no baseline-only hard-coded copy may become uneditable in the builder.
+- **FR-035**: Builder interface styles MUST be isolated from rendered site styles so Builder color-scheme, form, button, typography, and layout rules cannot alter the editing canvas or live preview.
+- **FR-036**: The standalone live preview MUST render inside an isolated viewport whose actual layout width is exactly 360, 768, or 1280 CSS pixels so responsive media queries match staging behavior.
+- **FR-037**: The page manager, Puck module catalog, editing canvas, and Puck inspector MUST each provide an independent vertical scrolling area within the visible desktop workspace, with the final control and site footer reachable by pointer and keyboard.
+- **FR-038**: At viewport widths of 720 CSS pixels or less, the draft authoring workspace MUST hide all editing controls and display an accessible widen-window warning; draft storage and the public sites MUST remain unaffected.
 
 ### Quality Requirements
 
 - **QR-001**: Core domain, validation, authorization, persistence, and publishing logic MUST maintain at least 80 percent statement coverage.
 - **QR-002**: Required interfaces MUST meet WCAG 2.2 AA with no automated critical or serious violations in primary flows.
 - **QR-003**: At 10 simultaneous administrative sessions, save and read APIs MUST remain below 500 ms p95 excluding third-party publish operations.
-- **QR-004**: The editor MUST remain usable at 360, 768, and 1280 CSS-pixel widths and all controls MUST be keyboard reachable.
+- **QR-004**: The editor MUST remain fully usable above 720 CSS pixels; at 720 pixels and below it MUST replace editing controls with an accessible widen-window warning. The isolated site preview MUST remain testable at 360, 768, and 1280 CSS-pixel widths.
 - **QR-005**: A validated draft MUST render identically from the same schema and renderer version in editor preview and staging, excluding environment chrome.
 - **QR-006**: Free-plan controls MUST warn at 70 percent of hard allowances and fail visibly rather than generating cost; no configured service may automatically bill overages.
 - **QR-007**: Automated parity checks MUST compare production and staging route screenshots in a deterministic browser at 360, 768, and 1280 CSS pixels, with reviewed masks limited to documented environment-only differences and no unreviewed baseline updates.
@@ -205,6 +211,7 @@ be bypassed with client state or a forged header.
 - **SC-008**: A documented rollback drill restores the last known-good candidate without losing draft history.
 - **SC-009**: All current production routes pass structural, content-inventory, and reviewed visual-parity comparisons against the builder-authored staging candidate at all required viewports.
 - **SC-010**: Hands-on browser testing proves page selection, field editing, module add/reorder/duplicate/delete, global settings, preview, save/reload, staging publication, navigation, forms, responsive menus, links, and GitHub permission denial paths.
+- **SC-011**: Automated and hands-on checks show correct Point Classic text, background, and button colors in both Builder preview surfaces, zero document-level scrolling while authoring, independent pane scrolling to every final control, and the 720-pixel warning boundary.
 
 ## Clarifications
 
@@ -217,3 +224,4 @@ be bypassed with client state or a forged header.
 - The accepted zero-cost failure mode is temporary Builder unavailability when a hard free-tier limit is reached; the public PointSite remains unaffected.
 - Visual equivalence means the same public layout and appearance from the same content at the required viewports; builder controls and staging authentication chrome are excluded.
 - Builder roles never elevate GitHub repository authority: read/triage collaborators can author drafts, while write/maintain/admin is mandatory for staging publication and acceptance.
+- “Phone size” is provisionally defined as a Builder viewport width of 720 CSS pixels or less; this threshold can be revised after additional usability evidence without changing draft or renderer data.

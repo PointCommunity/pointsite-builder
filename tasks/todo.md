@@ -287,6 +287,25 @@
 The builder is ready for protected staging testing when T001-T052 are checked.
 T053-T054 remain a separate, explicitly approved production promotion gate.
 
-The feature is complete only when all 54 tasks are checked, all specification
-requirements have current evidence, both repositories are clean, and production
-live verification identifies the exact approved commit.
+## Phase 11: Builder preview and workspace repair
+
+- [x] T060 Reproduce and guard Builder-to-site style leakage. (FR-035, SC-011)
+  - Acceptance: regression checks prove Point Classic text, background, and button colors are not overridden by Builder light/dark or form-control rules.
+  - Verify: focused Playwright test fails before implementation and passes afterward.
+  - Files: `tests/e2e/authoring.spec.ts`, `src/client/app.css`, `src/client/main.tsx`.
+- [x] T061 Build a true isolated responsive live preview. (FR-014, FR-036, QR-005)
+  - Acceptance: the selected 360, 768, or 1280 width is the rendered document viewport, uses the canonical SiteRenderer, and reaches the complete footer.
+  - Verify: focused component and Playwright tests at all three widths.
+  - Files: `src/client/preview/Preview.tsx`, `src/client/preview/SitePreviewFrame.tsx`, preview tests.
+- [x] T062 Constrain the editor and make all four authoring panes independently scrollable. (FR-037, FR-038, QR-004)
+  - Acceptance: no document-level authoring scroll; page panel, module catalog, canvas, and inspector independently reach their final content; widths at or below 720 show only the warning.
+  - Verify: focused Playwright geometry, scrolling, keyboard, 720/721 boundary, and axe checks.
+  - Files: `src/client/editor/EditorRoute.tsx`, `src/client/editor/VisualEditor.tsx`, `src/client/app.css`, `tests/e2e/authoring.spec.ts`.
+- [ ] T063 Complete the repair validation and Builder-only rollout. (SC-006, SC-011)
+  - Acceptance: full unit, integration, contract, lint, type, build, browser, accessibility, security, and authenticated live checks pass; staging and Production repository heads/content are unchanged.
+  - Verify: local quality matrix, exact-head CI/deploy, authenticated internal-browser screenshots and measurements, and repository SHA comparison.
+  - Files: Builder implementation/evidence only; no staging or Production files.
+
+The Builder and staging feature is complete when every applicable staging task,
+including T059-T063, has current evidence. T053-T054 remain an intentionally
+separate production-promotion gate and are never implied by Builder completion.

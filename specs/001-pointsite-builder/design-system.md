@@ -80,18 +80,21 @@ not boolean-prop matrices. Unknown types or fields are rejected.
 
 ## Responsive behavior
 
-- Builder supports 320, 360, 768, 1024, and 1280 CSS-pixel widths.
-- Below 768, structure and inspector become modal sheets and the preview fills the
-  viewport. Every drag/reorder operation also has Move Up, Move Down, Move Into,
-  and Move Out controls.
+- Builder authoring remains fully available above 720 CSS pixels.
+- At 720 pixels or below, authoring controls are replaced by an accessible
+  widen-window warning; draft data is not changed. The isolated site preview still
+  exercises exact 360, 768, and 1280 pixel layout viewports.
+- Every drag/reorder operation also has Move Up, Move Down, Move Into, and Move Out
+  controls.
 - Touch targets are at least 44 by 44 CSS pixels.
 - Safe-area insets are applied to fixed controls; no horizontal page scroll.
 - Public high-variance layouts collapse to an intentional single-column order.
 
 ## Theme behavior
 
-- Builder follows system light/dark preference and offers a persisted non-sensitive
-  local preference under a versioned key. No identity or draft data enters local storage.
+- Builder chrome uses a stable light control theme so third-party editor controls remain
+  legible. Site rendering is isolated and continues to use the selected site theme
+  independently. No identity or draft data enters local storage.
 - Public site theme is an explicit site setting. Presets define both light and dark
   token mappings if an automatic theme is offered.
 - Native controls declare `color-scheme`; focus, form, and CTA contrast is checked in

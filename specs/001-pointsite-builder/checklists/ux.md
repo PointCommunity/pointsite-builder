@@ -11,3 +11,7 @@
 - [x] UX006 - Are validation errors required to identify the exact field? [Clarity]
 - [x] UX007 - Are restoration and concurrent-edit recovery specified? [Coverage]
 - [x] UX008 - Are accessibility level and automated severity thresholds defined? [Measurability]
+- [x] UX009 - Is the provisional phone-width warning threshold quantified? [Clarity]
+- [x] UX010 - Are all four independently scrollable authoring panes named? [Completeness]
+- [x] UX011 - Is Builder-to-preview style isolation explicitly required? [Consistency]
+- [x] UX012 - Are selected preview widths required to control actual responsive layout? [Measurability]
