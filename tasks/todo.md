@@ -1,5 +1,21 @@
 # Tasks: PointSite Builder
 
+## Active: Spec 013 editable page elements
+
+- [ ] T013-0 Verify and commit pending Spec 012 changes as a separate increment.
+- [ ] T013-1 Write failing schema-v8, migration, renderer-ownership, and default-document tests.
+- [ ] T013-2 Implement deterministic v7-to-v8 page Hero migration and strict schema.
+- [ ] T013-3 Render each non-home Hero only from a registered element while preserving the centralized Footer.
+- [ ] T013-4 Integrate Page Manager, the existing Hero catalog/inspector, and media use.
+- [ ] T013-5 Prove Hero edit/move/duplicate/remove/replace/save/reload behavior and Footer continuity in the browser.
+- [ ] T013-6 Run the complete local verification and requirement checklist.
+- [ ] T013-7 Commit, push, pass CI, deploy exact Builder head, and verify production.
+
+**Review gate:** do not start T013-0 until
+`specs/013-editable-page-elements/spec.html` is approved.
+
+## Foundation tasks (historical)
+
 **Spec**: `specs/001-pointsite-builder/spec.md`  
 **Plan**: `specs/001-pointsite-builder/plan.md`  
 **Execution**: dependency order; each task includes acceptance, verification, and a maximum five-file change surface.

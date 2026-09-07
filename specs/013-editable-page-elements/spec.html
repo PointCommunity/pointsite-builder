@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spec 013: Editable Page Heroes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1c2d20, #0b100c 36rem);
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 56px 0 88px;
+      }
+      h1,
+      h2,
+      h3 {
+        letter-spacing: -0.025em;
+      }
+      h1 {
+        font-size: clamp(2.1rem, 5vw, 3.8rem);
+        margin: 0.2rem 0 0.7rem;
+      }
+      h2 {
+        margin-top: 2.4rem;
+        color: #d9ebd0;
+      }
+      p,
+      li {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+      }
+      .lede {
+        max-width: 790px;
+        color: #c0cbbd;
+        font-size: 1.1rem;
+      }
+      .status {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 7px 11px;
+        border: 1px solid #856c32;
+        border-radius: 999px;
+        color: #f1d99a;
+        background: #2a2415;
+      }
+      .card {
+        margin: 18px 0;
+        padding: 20px;
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+      a {
+        color: #a9da95;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">PointSite Builder · Spec 013</p>
+      <h1>Editable Page Heroes</h1>
+      <p class="lede">
+        Convert the remaining hard-coded non-home page hero into the existing Builder Hero element
+        so authors can select, edit, move, duplicate, remove, overlap, and replace it like every
+        other page-specific element.
+      </p>
+      <p class="status">Draft · awaiting human approval</p>
+
+      <h2>Assumptions for review</h2>
+      <div class="card">
+        <ol>
+          <li>
+            “All elements” applies to page-specific content. The persistent global footer keeps its
+            established centralized settings process and remains outside each page's element tree.
+          </li>
+          <li>
+            Structural accessibility/runtime nodes—the skip link, main landmark, and editor
+            selection wrappers—are not author content and remain code-owned.
+          </li>
+          <li>
+            The existing Hero option must be reused; only a page-hero style is added. No duplicate
+            Hero or Footer option is created.
+          </li>
+          <li>
+            Existing visual content is preserved by deterministic migration. Historical revisions
+            remain immutable and readable.
+          </li>
+          <li>
+            The pending Spec 012 changes are verified and committed separately, then both commits
+            ship in one exact Builder production release.
+          </li>
+        </ol>
+      </div>
+
+      <h2>Objective</h2>
+      <p>
+        Give PointSite maintainers one consistent page-authoring model: anything that specifically
+        belongs to a page is represented by a registered element inside that page's structure.
+        Success means no non-home hero is injected around the editable tree, while the global footer
+        remains centralized.
+      </p>
+
+      <h2>Functional requirements</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <strong>FR-001:</strong> Every legacy non-home hero becomes an existing Hero element
+            without losing eyebrow, heading, introduction, image, or presentation.
+          </li>
+          <li>
+            <strong>FR-002:</strong> Hero exposes a Point page-hero layout style inside the existing
+            Hero inspector; no second hero catalog entry is created.
+          </li>
+          <li>
+            <strong>FR-003:</strong> The migrated Hero participates in Page structure and standard
+            select, move, duplicate, remove, drag, replace, and section-position behavior.
+          </li>
+          <li>
+            <strong>FR-004:</strong> Page details retains page identity, route, status/layout,
+            browser metadata, and sharing metadata, but removes visual hero fields.
+          </li>
+          <li>
+            <strong>FR-005:</strong> A new standard page starts with a registered Hero rather than
+            hidden frame chrome.
+          </li>
+          <li>
+            <strong>FR-006:</strong> Schema version 7 drafts migrate once and deterministically to
+            version 8; versions 0–7 still load through the migration chain.
+          </li>
+          <li>
+            <strong>FR-007:</strong> Removing or reordering the Hero persists through save and
+            reload.
+          </li>
+          <li>
+            <strong>FR-008:</strong> The global footer keeps its centralized settings and persistent
+            cross-page rendering.
+          </li>
+          <li>
+            <strong>FR-009:</strong> Public PointSite production publishing remains disabled and
+            untouched.
+          </li>
+        </ul>
+      </div>
+
+      <h2>Tech stack</h2>
+      <p>
+        React 19, TypeScript 5.9, Puck 0.23, Zod 4, Vite 8, Hono, Cloudflare Workers/D1,
+        Vitest/Testing Library, and Playwright across Chromium, Firefox, WebKit, and mobile
+        projects.
+      </p>
+
+      <h2>Commands</h2>
+      <div class="card">
+        <p><code>npm run format:check</code></p>
+        <p><code>npm run typecheck</code></p>
+        <p><code>npm run lint -- --max-warnings=0</code></p>
+        <p><code>npm run contract:lint</code></p>
+        <p><code>npm run verify:runbooks</code></p>
+        <p><code>npm run test:coverage</code></p>
+        <p><code>npm run build</code></p>
+        <p><code>npm run test:performance</code></p>
+        <p><code>npm run test:e2e</code></p>
+        <p><code>npm audit --audit-level=high</code></p>
+        <p><code>npm run deploy</code></p>
+      </div>
+
+      <h2>Project structure</h2>
+      <ul>
+        <li>
+          <code>src/site-kit/</code> — document contract, deterministic migration, rendering,
+          elements, and Point styles.
+        </li>
+        <li>
+          <code>src/client/editor/</code> — page management, Puck adaptation, and element
+          inspectors.
+        </li>
+        <li>
+          <code>tests/unit/</code> — migration, schema, renderer, default-document, and inspector
+          proof.
+        </li>
+        <li><code>tests/e2e/</code> — author-visible edit/reorder/remove/save/reload proof.</li>
+        <li>
+          <code>specs/013-editable-page-elements/</code> — analysis, specification, plan, and tasks.
+        </li>
+      </ul>
+
+      <h2>Code style</h2>
+      <div class="card">
+        <pre><code>export function createEditablePageHeroSection(page: LegacyPageChrome): SectionBlock {
+  return createCompatibilitySection({
+    id: derivedUuid(page.id, PAGE_HERO_MASK),
+    type: 'hero',
+    variant: 'pageHero',
+    heading: page.title,
+    actions: [],
+    // legacy author content is copied without semantic reinterpretation
+  });
+}</code></pre>
+        <p>
+          Use explicit discriminated unions, deterministic IDs, pure migration helpers, strict
+          schemas, and state-based tests. Do not create a second data path for the same visual
+          surface.
+        </p>
+      </div>
+
+      <h2>Testing strategy</h2>
+      <ul>
+        <li>
+          RED first: version-7 migration, renderer ownership, new-page defaults, and browser
+          authoring tests must fail against the current implementation.
+        </li>
+        <li>
+          Unit: exact migrated values, IDs, idempotence, schema rejection, catalog uniqueness,
+          renderer semantics, footer continuity, and media usage.
+        </li>
+        <li>
+          Browser: the non-home Hero appears in Page structure and can be selected, edited, moved,
+          duplicated, removed, replaced, saved, and observed after reload; the centralized footer
+          remains present.
+        </li>
+        <li>
+          Regression: all 11 routes retain expected copy/media; accessibility and responsive checks
+          remain green.
+        </li>
+        <li>
+          Release: exact pushed head passes GitHub Quality, deploys once to Builder production, and
+          passes authenticated browser plus <code>/api/health</code> verification.
+        </li>
+      </ul>
+
+      <h2>Boundaries</h2>
+      <div class="card">
+        <p>
+          <strong>Always:</strong> preserve pending Spec 012 work; keep migration deterministic;
+          preserve the centralized footer process; verify every supported browser; deploy only exact
+          committed/pushed Builder head.
+        </p>
+        <p>
+          <strong>Ask first:</strong> changing the centralized footer content model; adding a
+          duplicate Hero option; changing public PointSite publishing; deleting historical
+          revisions.
+        </p>
+        <p>
+          <strong>Never:</strong> expose credentials; write to public PointSite; mutate historical
+          revisions in place; silently drop page hero content; move the footer into page-specific
+          content; claim live success from local tests.
+        </p>
+      </div>
+
+      <h2>Success criteria</h2>
+      <ul>
+        <li>
+          Every page-specific visual surface across all 11 default pages is represented in Page
+          structure, while the global footer remains centralized.
+        </li>
+        <li>The reported non-home hero is no longer rendered outside the editable tree.</li>
+        <li>
+          Hero is reused, no Footer is registered, and the catalog contains no duplicate element
+          purpose.
+        </li>
+        <li>
+          The one active version-7 draft upgrades losslessly to version 8 on read and saves as
+          version 8.
+        </li>
+        <li>
+          Full local and CI gates pass; exact head is deployed and verified at
+          <code>builder.pointatx.org</code>.
+        </li>
+        <li>The public PointSite repository and deployment are unchanged.</li>
+      </ul>
+
+      <h2>Open questions</h2>
+      <p>None if the assumptions above are approved.</p>
+    </main>
+  </body>
+</html>

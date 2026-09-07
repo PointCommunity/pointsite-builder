@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Research: Editable Page Heroes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #0c100d;
+        color: #eef3ec;
+      }
+      body {
+        margin: 0;
+        background: #0c100d;
+      }
+      main {
+        width: min(1100px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 56px 0 80px;
+      }
+      h1,
+      h2 {
+        letter-spacing: -0.025em;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.6rem);
+        margin-bottom: 0.4rem;
+      }
+      h2 {
+        margin-top: 2.25rem;
+        color: #d6e8cc;
+      }
+      p,
+      li,
+      td,
+      th {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9fc58e;
+        font-weight: 750;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .lede {
+        max-width: 760px;
+        color: #bdc9bc;
+        font-size: 1.08rem;
+      }
+      .card {
+        border: 1px solid #2c3b2e;
+        background: #141a15;
+        border-radius: 14px;
+        padding: 20px;
+        margin: 18px 0;
+      }
+      .finding {
+        border-left: 4px solid #84b46f;
+      }
+      .risk {
+        border-left: 4px solid #d6ad5e;
+      }
+      code {
+        color: #d8f3ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+      }
+      th,
+      td {
+        border: 1px solid #2c3b2e;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #d6e8cc;
+        background: #182019;
+      }
+      a {
+        color: #a9d995;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 013 · analysis</p>
+      <h1>Editable Page Heroes</h1>
+      <p class="lede">
+        Repository, live-browser, schema, renderer, editor, migration, and release analysis for
+        moving the remaining page-specific visual chrome into the Builder's element tree.
+      </p>
+
+      <section class="card finding">
+        <h2>Confirmed root cause</h2>
+        <p>
+          On every non-home page, <code>SiteFrame</code> renders a <code>.page-hero</code> directly
+          from page-level <code>title</code>, <code>eyebrow</code>, <code>intro</code>, and
+          <code>heroMediaId</code> fields before the Puck-owned children. It therefore never appears
+          in Page structure, cannot be selected as a block, and cannot participate in move,
+          duplicate, remove, replace, or overlap controls.
+        </p>
+        <p>
+          The live Builder reproduced this on “Who We Are”: the hero was present in the iframe but
+          absent from the Page structure list. The list began with Site header, then Cards and Rich
+          text sections.
+        </p>
+      </section>
+
+      <h2>Static-surface audit</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Visible surface</th>
+            <th>Current ownership</th>
+            <th>Finding</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Site header</td>
+            <td>Editable section containing Image and Navigation elements</td>
+            <td>Already in the page tree after Spec 011</td>
+            <td>Keep</td>
+          </tr>
+          <tr>
+            <td>Home hero</td>
+            <td>Existing Hero element</td>
+            <td>Selectable, movable, duplicable, removable, and replaceable</td>
+            <td>Keep</td>
+          </tr>
+          <tr>
+            <td>Non-home hero</td>
+            <td>Hard-coded <code>SiteFrame</code> chrome</td>
+            <td>Reported defect</td>
+            <td>Migrate into the existing Hero element with a page-hero layout style</td>
+          </tr>
+          <tr>
+            <td>Page content</td>
+            <td>Section and element tree</td>
+            <td>Already editable</td>
+            <td>Keep</td>
+          </tr>
+          <tr>
+            <td>Global footer</td>
+            <td>Hard-coded <code>SiteFrame</code> chrome with a settings shortcut</td>
+            <td>Persistent shared site chrome with an established centralized editor</td>
+            <td>Keep centralized and outside the page-level element contract</td>
+          </tr>
+          <tr>
+            <td>Skip link and main landmark</td>
+            <td>Accessibility/runtime structure</td>
+            <td>Not author content</td>
+            <td>Remain code-owned</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Catalog decision</h2>
+      <div class="card">
+        <p>
+          A Hero element already exists, so creating a second hero option would duplicate the
+          catalog. The existing Hero receives a <code>pageHero</code> layout style that preserves
+          the current non-home presentation while exposing the same content, media, surface,
+          alignment, and action controls as other heroes.
+        </p>
+        <p>
+          The Footer remains persistent across pages and continues to use its established
+          centralized settings. It is not a page-specific element and no Footer catalog option will
+          be added.
+        </p>
+      </div>
+
+      <h2>Persistence and migration evidence</h2>
+      <div class="card risk">
+        <ul>
+          <li>The current schema and renderer identity is version 7 / 7.0.0.</li>
+          <li>The remote database has one active draft whose latest revision is version 7.</li>
+          <li>
+            Historical revisions exist at versions 1, 2, 3, 5, 6, and 7 and must remain readable.
+          </li>
+          <li>
+            The repository already migrates documents deterministically when they are read or saved.
+          </li>
+          <li>
+            Spec 013 therefore requires a deterministic 7-to-8 migration, not an ad hoc UI
+            transform.
+          </li>
+        </ul>
+      </div>
+
+      <h2>Repository and release state</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <code>main</code> and <code>origin/main</code> both resolve to
+            <code>9d168b8e1d95d2eba2496fd4c5f96ddafceef7ca</code>.
+          </li>
+          <li>The exact head's GitHub Quality workflow passed.</li>
+          <li>The live health endpoint returns production / version 0.1.0.</li>
+          <li>Cloudflare authentication is currently available for the intended church account.</li>
+          <li>
+            Spec 012 link-destination and Split View work remains uncommitted in this checkout and
+            must be preserved, verified, and committed separately before Spec 013.
+          </li>
+          <li>
+            The public PointSite repository and its production publishing controls are outside this
+            release.
+          </li>
+        </ul>
+      </div>
+
+      <h2>Files that define the change</h2>
+      <ul>
+        <li><code>src/site-kit/SiteRenderer.tsx</code> — remove hard-coded visual chrome.</li>
+        <li>
+          <code>src/site-kit/schema.ts</code> and <code>src/site-kit/version.ts</code> — version 8
+          contract.
+        </li>
+        <li><code>src/site-kit/migrations.ts</code> — deterministic 7-to-8 conversion.</li>
+        <li><code>src/site-kit/default-site.ts</code> — make the baseline document block-owned.</li>
+        <li><code>src/site-kit/registry.tsx</code> and <code>site.css</code> — page-hero style.</li>
+        <li>
+          <code>src/client/editor/PageManager.tsx</code> — remove duplicate page-hero fields and
+          create new pages with blocks.
+        </li>
+        <li><code>src/client/editor/BlockInspector.tsx</code> — page-hero style editing.</li>
+        <li>
+          <code>src/client/editor/VisualEditor.tsx</code> — existing Hero catalog/default wiring.
+        </li>
+      </ul>
+    </main>
+  </body>
+</html>

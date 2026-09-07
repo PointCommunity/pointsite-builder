@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tasks: Editable Page Heroes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1040px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 54px 0 84px;
+      }
+      h1,
+      h2 {
+        letter-spacing: -0.025em;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #d9ebd0;
+        margin-top: 2.3rem;
+      }
+      p,
+      li {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      .task {
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      .task h3 {
+        margin-top: 0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 013 · ordered tasks</p>
+      <h1>Editable Page Heroes</h1>
+
+      <section class="task">
+        <h3>☐ T013-0 — Close the pending Builder increment</h3>
+        <p>
+          <strong>Acceptance:</strong> Spec 012 and Builder deployment instructions are preserved,
+          all intended paths are understood, required checks pass, and the work is committed
+          separately.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused tests, complete local gate, staged diff, exact commit
+          readback.
+        </p>
+        <p><strong>Files:</strong> existing dirty paths only.</p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-1 — Write failing ownership and migration tests</h3>
+        <p>
+          <strong>Acceptance:</strong> tests require version 8, a registered page Hero, removed
+          legacy visual fields, unchanged centralized Footer behavior, and deterministic migration.
+        </p>
+        <p><strong>Verify:</strong> focused Vitest run fails for absent v8 behavior.</p>
+        <p>
+          <strong>Files:</strong> <code>tests/unit/document-versioning.test.ts</code>,
+          <code>tests/unit/renderer.test.tsx</code>, <code>tests/unit/default-site.test.ts</code>.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-2 — Implement the version 8 document foundation</h3>
+        <p>
+          <strong>Acceptance:</strong> the existing Hero schema accepts a pageHero style, page
+          visual fields are removed, and the deterministic 7-to-8 migration completes the 0-to-8
+          chain.
+        </p>
+        <p><strong>Verify:</strong> migration/schema unit tests and typecheck pass.</p>
+        <p>
+          <strong>Files:</strong> <code>src/site-kit/schema.ts</code>,
+          <code>src/site-kit/version.ts</code>, <code>src/site-kit/migrations.ts</code>,
+          <code>src/site-kit/editable-page-elements.ts</code>.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-3 — Render the page Hero from elements</h3>
+        <p>
+          <strong>Acceptance:</strong> SiteFrame injects no non-home Hero; the Hero page style
+          preserves semantic output and Point visuals; the centralized Footer remains unchanged.
+        </p>
+        <p>
+          <strong>Verify:</strong> renderer/default-document tests pass for every route and media
+          reference.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>src/site-kit/SiteRenderer.tsx</code>,
+          <code>src/site-kit/registry.tsx</code>, <code>src/site-kit/site.css</code>,
+          <code>src/site-kit/default-site.ts</code>.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-4 — Integrate normal Builder authoring</h3>
+        <p>
+          <strong>Acceptance:</strong> the existing Hero exposes pageHero style; new standard pages
+          start with a registered Hero; Page details has no visual hero fields; Footer settings stay
+          centralized.
+        </p>
+        <p>
+          <strong>Verify:</strong> inspector, page manager, schema, and media-usage unit tests pass.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>src/client/editor/VisualEditor.tsx</code>,
+          <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>src/client/editor/PageManager.tsx</code>,
+          <code>src/client/media/MediaLibrary.tsx</code>.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-5 — Prove the complete author journey</h3>
+        <p>
+          <strong>Acceptance:</strong> a non-home Hero can be selected, edited, moved, duplicated,
+          removed, replaced, saved, and observed after reload; the persistent Footer remains present
+          and no canvas errors occur.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused Playwright test passes in Chromium, then all configured
+          projects.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>tests/e2e/authoring.spec.ts</code> plus at most four focused
+          unit test files.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-6 — Complete final local verification</h3>
+        <p>
+          <strong>Acceptance:</strong> format, type, lint, contract, runbook, coverage, build,
+          performance, dependency audit, and all browser projects pass; task requirements are
+          checked line by line.
+        </p>
+        <p>
+          <strong>Verify:</strong> run every command listed in the specification against the
+          unchanged final tree.
+        </p>
+        <p>
+          <strong>Files:</strong> verification evidence only; no source changes after the final
+          gate.
+        </p>
+      </section>
+
+      <section class="task">
+        <h3>☐ T013-7 — Commit, push, deploy, and verify Builder production</h3>
+        <p>
+          <strong>Acceptance:</strong> only task-owned paths are committed; exact head is on
+          <code>origin/main</code>; GitHub Quality passes; <code>npm run deploy</code> deploys that
+          exact tree; live health and authenticated browser behavior pass.
+        </p>
+        <p>
+          <strong>Verify:</strong> SHA equality, workflow conclusion, Wrangler deployment readback,
+          cache-busted page/assets, <code>/api/health</code>, live non-home editability,
+          save/reload, and console check.
+        </p>
+        <p><strong>Files:</strong> no public PointSite files or deployment settings.</p>
+      </section>
+    </main>
+  </body>
+</html>
