@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>PointSite Builder Development Pipeline Policy</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --panel: #151918;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #d8b76f;
+        --line: #343a37;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 48px 24px 96px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h1 {
+        font-size: clamp(2.25rem, 7vw, 3rem);
+      }
+      h2 {
+        margin-top: 40px;
+        color: var(--accent);
+      }
+      p,
+      li,
+      td {
+        color: var(--muted);
+      }
+      code {
+        color: #f0d18c;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--panel);
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PointSite Builder Development Pipeline</h1>
+    <p>
+      This is the shared policy source for repository-owned PointSite Builder workflow skills. It
+      governs development and deployment of the private Builder application, not publication of the
+      public PointSite.
+    </p>
+
+    <h2>Objective and authority</h2>
+    <p>
+      The agent carries one PM-selected GitHub Issue from an approved draft through specification,
+      implementation, review, exact-revision deployment, live verification, and closure. The PM is
+      GitHub user <code>brimdor</code>. Repository instructions and live GitHub/Cloudflare state
+      take precedence over stale assumptions.
+    </p>
+
+    <h2>Repository and environments</h2>
+    <table>
+      <tr>
+        <th>Concern</th>
+        <th>Controlled value</th>
+      </tr>
+      <tr>
+        <td>Source repository</td>
+        <td><code>PointCommunity/pointsite-builder</code>, default branch <code>main</code></td>
+      </tr>
+      <tr>
+        <td>Builder runtime</td>
+        <td>Production only at <code>https://builder.pointatx.org</code></td>
+      </tr>
+      <tr>
+        <td>Builder Staging or Canary</td>
+        <td>None. Do not create or imply one.</td>
+      </tr>
+      <tr>
+        <td>Public PointSite</td>
+        <td>Separate static, read-only product; never deployed by this pipeline</td>
+      </tr>
+      <tr>
+        <td>PointSite content Staging</td>
+        <td>
+          A separate Builder product workflow targeting
+          <code>PointCommunity/pointsite-staging</code>, not a Builder application environment
+        </td>
+      </tr>
+    </table>
+
+    <h2>Issue model</h2>
+    <p>
+      The repository has no governed GitHub Project or custom workflow fields. Backlog means an
+      open, unassigned Issue with no active implementation PR. Active means an open Issue assigned
+      to
+      <code>brimdor</code>; at most one may be active. Dependabot PRs are maintenance automation and
+      do not consume this slot. Priority, Impact, and Effort are planning estimates in the Issue
+      body, not invented GitHub fields.
+    </p>
+
+    <h2>State flow</h2>
+    <ol>
+      <li>
+        The agent researches and shows the complete HTML Issue plus metadata. Only
+        <code>Approved to create this exact GitHub Issue</code> authorizes creation of that draft.
+      </li>
+      <li>
+        The Issue is created open and unassigned. When the PM selects it, the agent assigns only
+        <code>brimdor</code> and verifies it is the sole active Issue.
+      </li>
+      <li>
+        The agent works from current <code>origin/main</code> on
+        <code>issue/&lt;number&gt;-&lt;slug&gt;</code>, maintaining appropriate spec, plan, task,
+        test, migration, security, accessibility, and operations evidence.
+      </li>
+      <li>
+        The agent creates a PR with <code>Refs #&lt;number&gt;</code>, completes full review and
+        local browser QA, remediates every finding, and requires every GitHub Quality job to pass
+        for the exact head.
+      </li>
+      <li>
+        Unless the PM requested an earlier stop, the agent squash-merges the verified PR, proves the
+        merge tree equals the reviewed tree, and waits for GitHub Quality on the exact
+        <code>origin/main</code> commit.
+      </li>
+      <li>
+        The agent records the current Cloudflare version, applies rehearsed backward-compatible D1
+        migrations when required, runs <code>npm run deploy</code> from the clean exact main
+        revision, and verifies the new Worker version receives 100% traffic.
+      </li>
+      <li>
+        The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
+        relevant live behavior. Only then does it record evidence, close and unassign the Issue, and
+        confirm the active slot is empty.
+      </li>
+    </ol>
+
+    <h2>Commands and gates</h2>
+    <table>
+      <tr>
+        <th>Stage</th>
+        <th>Required command or evidence</th>
+      </tr>
+      <tr>
+        <td>Local quality</td>
+        <td>
+          <code>npm run check</code>, <code>npm run test:performance</code>,
+          <code>npm run test:e2e</code>, focused tests, and <code>git diff --check</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Skill alignment</td>
+        <td><code>npm run skills:check</code></td>
+      </tr>
+      <tr>
+        <td>Pipeline state</td>
+        <td><code>npm run pipeline:health</code></td>
+      </tr>
+      <tr>
+        <td>Cloudflare identity</td>
+        <td><code>npm run cloudflare:verify-account</code></td>
+      </tr>
+      <tr>
+        <td>D1 migration, when applicable</td>
+        <td><code>npm run db:migrate:local</code>, then <code>npm run db:migrate:remote</code></td>
+      </tr>
+      <tr>
+        <td>Production deployment</td>
+        <td><code>npm run deploy</code> from clean exact <code>origin/main</code></td>
+      </tr>
+      <tr>
+        <td>Live verification</td>
+        <td>
+          <code>npm run verify:live</code> plus affected authenticated behavior when available
+        </td>
+      </tr>
+      <tr>
+        <td>Application rollback</td>
+        <td>
+          <code
+            >npx wrangler rollback &lt;recorded-version-id&gt; --message "Rollback failed PointSite
+            Builder release" --yes</code
+          >
+        </td>
+      </tr>
+    </table>
+
+    <h2>Candidate identity</h2>
+    <p>
+      A reviewed candidate is the tuple of Issue, PR URL, exact PR head commit and tree, test
+      evidence, and GitHub Quality run. A released candidate adds the main merge commit and tree,
+      exact-main Quality run, previous and new Cloudflare version IDs, migration evidence,
+      deployment result, and live-verification result. The merge tree must equal the reviewed tree.
+    </p>
+
+    <h2>Direct production and recovery</h2>
+    <p>
+      Builder application work goes directly to its sole production environment after agent QA and
+      exact-main CI. There is no routine second approval and no staging or Canary promotion. Before
+      deployment, record the current 100% Cloudflare version. On runtime failure, roll back to that
+      version and verify recovery. Keep the Issue open and assigned, then make the durable source
+      fix through a reviewable revert or same-Issue remediation. Destructive schema or data recovery
+      always requires PM authorization.
+    </p>
+
+    <h2>Boundaries</h2>
+    <ul>
+      <li>Always preserve unrelated user-owned work and use only task-owned commits.</li>
+      <li>Always keep migrations backward compatible with the recorded rollback version.</li>
+      <li>Always verify the exact remote main commit and GitHub Quality before deployment.</li>
+      <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
+      <li>Never deploy or publish the public PointSite from this pipeline.</li>
+      <li>Never close an Issue after merge alone; verified production is completion.</li>
+    </ul>
+  </body>
+</html>

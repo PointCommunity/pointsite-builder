@@ -1,16 +1,46 @@
-# PointSite Builder Development Instructions
+# PointSite Builder development and release governance
 
-- This file governs the PointSite Builder application, which is separate from the public PointSite website.
-- Canonical repository skills live under `.agents/skills/`. Use `pointsite-builder-create-issue` for researching, drafting, approving, creating, and verifying PointSite Builder GitHub Issues.
-- Preserve the public PointSite as a static, read-only website.
-- Never put credentials, GitHub or session tokens, draft data, or private media in source or logs.
-- All schema changes require migrations, backward compatibility, and tests.
-- The Builder has one deployment environment: production at `https://builder.pointatx.org`. It has no staging or canary environment, and none should be introduced unless the user explicitly requests one.
-- Complete and fully test every authorized Builder change before release. Once verified, commit all and only task-owned changes, push the exact commit to `origin/main`, deploy that exact revision with the repository's production deployment command, and verify the live Builder plus `/api/health`.
-- Do not leave completed Builder work uncommitted, unpushed, or undeployed unless the user explicitly asks. Never commit or deploy partially completed or unverified work.
-- Routine Builder application deployment does not require a separate staging or production approval. If deployment fails, diagnose it without discarding the last known-good deployment and report any unresolved blocker.
-- Roll back a bad Builder release with a reviewable revert commit followed by the same push, deploy, and live-verification sequence; never rewrite shared history.
-- Builder deployments must be auditable and tied to an exact source revision. These direct-deployment rules do not authorize changing the separate public PointSite content-publishing workflow.
-- Use Node.js 22 or later, strict TypeScript, project-native lint/type/test/build checks, and WCAG 2.2 AA as the interface target.
-- Human-facing reports and diagrams must be dark-mode HTML. Markdown under `specs/` and `.specify/` is internal workflow metadata.
+## Authority and source of truth
+
+- This file governs the PointSite Builder application in `PointCommunity/pointsite-builder`, which is separate from the public PointSite website. The PM is the human GitHub user `brimdor` (Chris).
+- Canonical repository skills live under `.agents/skills/`. Always use the relevant `pointsite-builder-*` skill for Issue, review, release, or pipeline work.
+- `.agents/pointsite-builder-pipeline-policy.html` is the shared workflow policy. Skills may narrow a workflow but must not contradict it.
+- `AGENTS.md` is canonical. `CLAUDE.md` and `GEMINI.md` import it; do not duplicate policy into tool-specific instruction files.
+- Preserve unknown user-owned changes. Never reset, restore, clean, stash, overwrite, commit, or deploy them without explicit direction.
+
+## Issue pipeline invariant
+
+- At most one open Builder Issue assigned to `brimdor` may be active. Dependabot pull requests are maintenance automation and do not consume the active Issue slot.
+- Before Issue or code work, read the live repository, open Issues, open pull requests, current branch/head, available labels, and the selected Issue. Fail closed on conflicting ownership or metadata.
+- The repository currently has no governed GitHub Project or custom workflow fields. Do not invent Project statuses, priorities, fields, milestones, or labels; use only live repository metadata.
+- Backlog Issues are open and unassigned. Starting work assigns the selected Issue only to `brimdor`; the Issue remains assigned through review and release, then is closed and unassigned only after verified production completion.
+- With no requested Issue and no active Issue, rank and recommend the top three open unassigned Issues, then wait for PM selection.
+- A request to work an Issue authorizes the complete Builder pipeline through production unless the PM explicitly sets an earlier stopping point. Routine Builder deployment does not require a separate staging, Canary, or production approval.
+
+## Required workflow
+
+- New work: use `pointsite-builder-create-issue`. Show the complete HTML Issue draft and metadata, then require `Approved to create this exact GitHub Issue` before creating it.
+- Backlog audit: use `pointsite-builder-audit-issues`. It may correct only justified labels on open unassigned Issues and must preserve scope and all active work.
+- Implementation: use `pointsite-builder-work-issue`. Assign the selected Issue, create `issue/<number>-<slug>`, implement spec-first and test-first, and create or update a PR containing `Refs #<number>` without an auto-close keyword.
+- Agent QA: use `pointsite-builder-review-issue`. Complete code review, full repository gates, local browser interaction testing for affected flows, and exact-head GitHub Quality before release.
+- Closure: use `pointsite-builder-close-issue`. Squash-merge the verified PR, confirm the merge tree equals the reviewed tree, wait for GitHub Quality on the exact `main` commit, invoke `pointsite-builder-release-production`, and close the Issue only after live production verification.
+- Production: use `pointsite-builder-release-production`. Record the previous Cloudflare version, deploy the exact clean `origin/main` revision with `npm run deploy`, verify the new Cloudflare deployment, `/api/health`, HTML-derived assets, and relevant live behavior, and roll back safely if required.
+- Pipeline audit: use `pointsite-builder-pipeline-health` for read-only Issue, PR, CI, git, Cloudflare, and live-runtime health.
+- Skill changes: use `pointsite-builder-maintain-skills` and run the repository alignment audit before committing.
+
+## Builder production boundary
+
+- The Builder has exactly one deployment environment: production at `https://builder.pointatx.org`. It has no Builder staging or Canary environment, and none may be introduced unless the PM explicitly requests one.
+- The Builder product can publish public-site candidates to `PointCommunity/pointsite-staging`; that content workflow is not a staging deployment of the Builder application and does not alter this direct-to-production pipeline.
+- Preserve the public PointSite as a static, read-only website. Builder deployment never authorizes public PointSite publication or changes to `PointCommunity/pointsite` or `PointCommunity/pointsite-staging`.
+- Builder deployments must be auditable and tied to an exact source revision. Never deploy a dirty tree, an unpushed commit, a failing commit, or a different tree from the reviewed PR.
+- When schema changes are included, require migrations, backward compatibility, tests, local rehearsal, and an explicit recovery plan. Never perform destructive data or schema restoration without PM approval.
+- Record the active Cloudflare version before release. If a new Builder version fails, roll back to that recorded version and verify recovery; use a reviewable revert commit for the durable source fix and never rewrite shared history.
+
+## Quality, security, and documentation
+
+- Use Node.js 22 or later, strict TypeScript, project-native format/lint/type/contract/runbook/test/coverage/build/performance/browser gates, and WCAG 2.2 AA as the interface target.
+- Local hands-on browser QA is required for changed user flows before release. After deployment, verify live health and assets plus affected authenticated behavior when supported access is already available; never request credentials or weaken authentication to manufacture evidence.
+- Never put credentials, GitHub or session tokens, draft data, private media, or sensitive operational values in source, Issues, PRs, logs, artifacts, or responses.
+- Human-facing reports, diagrams, policies, and standalone documents must be HTML with Dark Mode. Markdown under `specs/` and `.specify/` is internal workflow metadata.
 - Use `apply_patch` for hand-authored edits and preserve unrelated work.

@@ -37,6 +37,7 @@ jobs:
       - run: npm run lint -- --max-warnings=0
       - run: npm run contract:lint
       - run: npm run verify:runbooks
+      - run: npm run skills:check
       - run: npm run test:coverage
       - run: npm run build
       - run: npm run test:performance
