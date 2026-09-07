@@ -264,6 +264,7 @@ export function SiteSettings() {
       </section>
       <NavigationEditor
         navigation={document.navigation}
+        pages={document.pages}
         onChange={(navigation) => updateDocument((next) => ({ ...next, navigation }))}
       />
       <CollectionsEditor

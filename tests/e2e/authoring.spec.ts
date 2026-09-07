@@ -567,7 +567,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   };
 
   await drag(
-    page.getByRole('button', { name: 'Blank grid section', exact: true }),
+    page.getByRole('button', { name: 'Blank', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
@@ -671,7 +671,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await page.getByRole('button', { name: 'Toggle left sidebar' }).click();
   await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
   await drag(
-    page.getByRole('button', { name: 'Two columns (50 / 50)', exact: true }),
+    page.getByRole('button', { name: 'Two Columns', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
@@ -708,10 +708,14 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(atomicButton).toBeVisible();
   await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
   await page.getByLabel('Button label').filter({ visible: true }).fill('Visit groups');
-  await page.getByLabel('Button link').filter({ visible: true }).fill('/connect/groups');
+  await page
+    .getByRole('group', { name: 'Button link' })
+    .filter({ visible: true })
+    .getByLabel('Internal page')
+    .selectOption('/neighborhood-groups');
   await expect(twoColumn.getByRole('link', { name: 'Visit groups' })).toHaveAttribute(
     'href',
-    '/connect/groups',
+    '/neighborhood-groups',
   );
   const placementInspector = page.locator('.grid-placement-inspector').filter({ visible: true });
   const buttonColumn = placementInspector.getByLabel('desktop column');
@@ -749,12 +753,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
   await page.getByRole('button', { name: 'Open editor' }).click();
   await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
 
-  for (const name of [
-    'Blank grid section',
-    'Two columns (50 / 50)',
-    'Three columns (equal)',
-    'Full-width section',
-  ]) {
+  for (const name of ['Blank', 'Two Columns', 'Three Columns', 'Full-Width']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   for (const name of ['Hero recipe', 'Image and text recipe', 'Call to action recipe']) {
@@ -765,6 +764,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
   }
   await expect(page.getByRole('button', { name: 'Split feature', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save now', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(1);
@@ -811,7 +811,7 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
     await page.mouse.up();
   };
   await dragInto(
-    page.getByRole('button', { name: 'Two columns (50 / 50)', exact: true }),
+    page.getByRole('button', { name: 'Two Columns', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
@@ -895,11 +895,63 @@ test('ships the logo and menu as independently editable grid elements', async ({
   ).toHaveValue('Our church');
   await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toBeVisible();
 
+  const aboutLink = page
+    .getByRole('group', { name: 'Our church' })
+    .getByRole('group', { name: 'Link' })
+    .first();
+  await aboutLink.getByLabel('Internal page').selectOption('/contact');
+  await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
+    'href',
+    '/contact',
+  );
+  await aboutLink.getByLabel('Type').selectOption('external');
+  await aboutLink.getByLabel('External URL').fill('pointatx.org');
+  await expect(aboutLink.getByLabel('External URL')).toHaveAttribute('aria-invalid', 'true');
+  await aboutLink.getByLabel('External URL').fill('http://legacy.example.com');
+  await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
+    'href',
+    'http://legacy.example.com',
+  );
+
   await canvas.getByRole('img', { name: 'Point Community Church' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Image' })).toBeVisible();
   await canvas.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(canvas.getByRole('img', { name: 'Point Community Church' })).toHaveCount(0);
   await expect(canvas.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
+});
+
+test('aligns Split View text horizontally and vertically without inspector overflow', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('heading', { name: 'Next Generation', exact: true }).click();
+
+  await page.getByLabel('Horizontal alignment').filter({ visible: true }).selectOption('right');
+  await page.getByLabel('Vertical alignment').filter({ visible: true }).selectOption('end');
+
+  const splitView = canvas.locator('.home-feature--split');
+  await expect(splitView).toHaveCSS('text-align', 'right');
+  await expect(splitView.locator('.feature-copy')).toHaveCSS('align-self', 'end');
+  const inspectorOverflow = await page
+    .locator('.block-inspector')
+    .filter({ visible: true })
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return Array.from(element.querySelectorAll('*'))
+        .filter((child) => {
+          if (child instanceof HTMLOptionElement) return false;
+          const childBounds = child.getBoundingClientRect();
+          return (
+            childBounds.width > 0 &&
+            childBounds.height > 0 &&
+            (childBounds.left < bounds.left - 0.5 || childBounds.right > bounds.right + 0.5)
+          );
+        })
+        .map((child) => ({ tag: child.tagName, className: child.className }));
+    });
+  expect(inspectorOverflow).toEqual([]);
 });
 
 test('retains focus while typing a complete FAQ question in the visual inspector', async ({
@@ -1047,7 +1099,7 @@ test('builds a form and places linked YouTube media without code', async ({
     await page.mouse.up();
   };
   await drag(
-    page.getByRole('button', { name: 'Blank grid section', exact: true }),
+    page.getByRole('button', { name: 'Blank', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
@@ -1055,6 +1107,7 @@ test('builds a form and places linked YouTube media without code', async ({
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeEnabled();
   await drag(
     page.getByRole('button', { name: 'Linked media', exact: true }),
     section.locator('[data-puck-dropzone]'),

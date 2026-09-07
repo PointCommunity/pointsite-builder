@@ -63,20 +63,67 @@ describe('BlockInspector', () => {
       expect.arrayContaining([expect.objectContaining({ label: 'Our church' })]),
     );
     expect(menuLabel).toHaveValue('Our church');
+    expect(
+      within(screen.getByRole('group', { name: 'Our church' })).getAllByLabelText('Type')[0],
+    ).toHaveValue('internal');
+  });
+
+  it('offers complete horizontal and vertical alignment for Split View text', () => {
+    const split = allBlocks.find((item) => item.type === 'splitFeature')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={split} document={defaultSiteDocument} onChange={onChange} />);
+
+    expect(
+      within(screen.getByLabelText('Horizontal alignment')).getByRole('option', { name: 'Right' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Bottom' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Horizontal alignment'), {
+      target: { value: 'right' },
+    });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ textAlign: 'right' }));
+    fireEvent.change(screen.getByLabelText('Vertical alignment'), { target: { value: 'end' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ align: 'end' }));
+  });
+
+  it('uses page-aware destinations for action and standalone button links', () => {
+    const actionBlock = allBlocks.find((item) => item.type === 'cta')!;
+    const { rerender } = render(
+      <BlockInspector block={actionBlock} document={defaultSiteDocument} onChange={vi.fn()} />,
+    );
+    const actionLink = screen.getByRole('group', { name: 'Button link' });
+    fireEvent.change(within(actionLink).getByLabelText('Type'), { target: { value: 'internal' } });
+    expect(
+      within(actionLink).getByRole('option', { name: 'Contact Us — /contact' }),
+    ).toBeInTheDocument();
+
+    const buttonBlock = allBlocks.find((item) => item.type === 'button')!;
+    rerender(
+      <BlockInspector block={buttonBlock} document={defaultSiteDocument} onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole('group', { name: 'Button link' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Internal page')).toHaveValue('/contact');
   });
 
   it.each([
     ['FAQ question', allBlocks.find((item) => item.type === 'faq')!, 'Question'],
     ['card title', allBlocks.find((item) => item.type === 'cards')!, 'Title'],
-    ['hero button link', allBlocks.find((item) => item.type === 'hero')!, 'Button link'],
+    [
+      'hero button link',
+      {
+        ...allBlocks.find((item) => item.type === 'hero')!,
+        type: 'hero' as const,
+        actions: [{ label: 'Learn more', href: 'https://example.com', style: 'primary' as const }],
+      },
+      'External URL',
+    ],
     [
       'heading button link',
       {
         ...allBlocks.find((item) => item.type === 'heading')!,
         type: 'heading' as const,
-        actions: [{ label: 'Learn more', href: '/', style: 'primary' as const }],
+        actions: [{ label: 'Learn more', href: 'https://example.com', style: 'primary' as const }],
       },
-      'Button link',
+      'External URL',
     ],
   ])('retains focus while typing in the repeated %s editor', (_name, block, label) => {
     const { unmount } = render(<ControlledInspector initial={block} />);
@@ -157,7 +204,11 @@ describe('BlockInspector', () => {
       );
       const controls = Array.from(
         container.querySelectorAll('input, select, textarea, button'),
-      ).filter((control) => !(control as HTMLInputElement).disabled);
+      ).filter(
+        (control) =>
+          !(control as HTMLInputElement).disabled &&
+          !(control as HTMLElement).hasAttribute('data-local-control'),
+      );
       expect(controls.length).toBeGreaterThan(0);
 
       for (const control of controls) {

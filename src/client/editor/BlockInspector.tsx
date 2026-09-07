@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { NavigationEntry, SiteDocument, SiteElement } from '../../site-kit/types';
 import { NavigationEditor } from '../settings/NavigationEditor';
+import { LinkDestinationField } from './LinkDestinationField';
 
 function Text({
   label,
@@ -89,9 +90,11 @@ type Action = Extract<SiteElement, { type: 'hero' }>['actions'][number];
 type RichNode = Extract<SiteElement, { type: 'richText' }>['content'][number];
 function ActionEditor({
   action,
+  document,
   onChange,
 }: {
   action: Action;
+  document: SiteDocument;
   onChange: (action: Action) => void;
 }) {
   return (
@@ -101,10 +104,11 @@ function ActionEditor({
         value={action.label}
         onChange={(label) => label && onChange({ ...action, label })}
       />
-      <Text
+      <LinkDestinationField
         label="Button link"
         value={action.href}
-        onChange={(href) => href && onChange({ ...action, href })}
+        pages={document.pages}
+        onChange={(href) => onChange({ ...action, href })}
       />
       <Select
         label="Button style"
@@ -152,15 +156,18 @@ const surfaceOptions = [
 
 function StatefulNavigationEditor({
   navigation,
+  pages,
   onChange,
 }: {
   navigation: NavigationEntry[];
+  pages: SiteDocument['pages'];
   onChange: (navigation: NavigationEntry[]) => void;
 }) {
   const [value, setValue] = useState(navigation);
   return (
     <NavigationEditor
       navigation={value}
+      pages={pages}
       onChange={(next) => {
         setValue(next);
         onChange(next);
@@ -246,6 +253,7 @@ export function BlockInspector({
               >
                 <ActionEditor
                   action={action}
+                  document={document}
                   onChange={(next) =>
                     onChange({
                       ...block,
@@ -343,6 +351,7 @@ export function BlockInspector({
               >
                 <ActionEditor
                   action={action}
+                  document={document}
                   onChange={(next) =>
                     onChange({
                       ...block,
@@ -712,11 +721,22 @@ export function BlockInspector({
             </>
           ) : null}
           <Select
+            label="Horizontal alignment"
+            value={block.textAlign ?? 'left'}
+            options={[
+              { label: 'Left', value: 'left' },
+              { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
+            ]}
+            onChange={(textAlign) => onChange({ ...block, textAlign })}
+          />
+          <Select
             label="Vertical alignment"
             value={block.align}
             options={[
-              { label: 'Start', value: 'start' },
+              { label: 'Top', value: 'start' },
               { label: 'Center', value: 'center' },
+              { label: 'Bottom', value: 'end' },
             ]}
             onChange={(align) => onChange({ ...block, align })}
           />
@@ -744,6 +764,7 @@ export function BlockInspector({
               <Row onRemove={() => onChange({ ...block, action: undefined })}>
                 <ActionEditor
                   action={block.action}
+                  document={document}
                   onChange={(action) => onChange({ ...block, action })}
                 />
               </Row>
@@ -800,6 +821,7 @@ export function BlockInspector({
           />
           <ActionEditor
             action={block.action}
+            document={document}
             onChange={(action) => onChange({ ...block, action })}
           />
         </div>
@@ -1284,10 +1306,11 @@ export function BlockInspector({
             value={block.label}
             onChange={(label) => label && onChange({ ...block, label })}
           />
-          <Text
+          <LinkDestinationField
             label="Button link"
             value={block.href}
-            onChange={(href) => href && onChange({ ...block, href })}
+            pages={document.pages}
+            onChange={(href) => onChange({ ...block, href })}
           />
           <Select
             label="Button style"
@@ -1361,6 +1384,7 @@ export function BlockInspector({
           {onNavigationChange ? (
             <StatefulNavigationEditor
               navigation={document.navigation}
+              pages={document.pages}
               onChange={onNavigationChange}
             />
           ) : null}

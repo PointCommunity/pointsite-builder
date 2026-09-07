@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Implementation tasks</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #111712;
+        color: #edf3ea;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        max-width: 72rem;
+        margin: auto;
+        padding: 2rem;
+        line-height: 1.55;
+      }
+      h1 {
+        color: #fff;
+      }
+      li {
+        margin: 1rem 0;
+      }
+      code {
+        color: #c8e6bd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Implementation tasks</h1>
+    <ol>
+      <li>
+        RED: specify HTTP/HTTPS href safety and reusable destination-control behavior. Verify with
+        focused Vitest.
+      </li>
+      <li>
+        GREEN: implement the URL policy and destination control; integrate navigation and button
+        editors. Verify focused component/schema tests.
+      </li>
+      <li>
+        RED/GREEN: specify and implement Split View horizontal/vertical alignment plus section label
+        changes. Verify renderer and browser assertions.
+      </li>
+      <li>
+        RED/GREEN: reproduce empty/missing Linked media insertion failure; prevent insertion and
+        make rendering resilient. Verify unit and browser flows.
+      </li>
+      <li>
+        Run full formatting, type, lint, coverage, build, and Playwright checks; inspect the exact
+        diff.
+      </li>
+    </ol>
+  </body>
+</html>

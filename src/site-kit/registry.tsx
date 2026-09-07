@@ -491,7 +491,7 @@ export function renderBlock(
     }
     case 'mediaEmbed': {
       const media = document.linkedMedia.find((candidate) => candidate.id === block.linkedMediaId);
-      if (!media) throw new Error(`Missing linked media ${block.linkedMediaId}`);
+      if (!media) return <p className="point-linked-media-missing">Linked media is unavailable.</p>;
       const className = `point-linked-media point-aspect--${block.aspect.replace(':', '-')} point-fit--${block.fit}`;
       const content =
         media.type === 'image' ? (
@@ -522,7 +522,7 @@ export function renderBlock(
       if (block.variant === 'photoBanner')
         return (
           <section
-            className={`home-feature home-feature--photo point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
+            className={`home-feature home-feature--photo point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
           >
             <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
             <div className="feature-shade" />
@@ -548,7 +548,7 @@ export function renderBlock(
       if (block.variant === 'splitFeature')
         return (
           <section
-            className={`home-feature home-feature--split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface} shell`}
+            className={`home-feature home-feature--split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface} shell`}
           >
             <div className="feature-image">
               <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
@@ -575,7 +575,7 @@ export function renderBlock(
       if (block.variant === 'imageSplit')
         return (
           <section
-            className={`content-section split-section image-split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
+            className={`content-section split-section image-split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
           >
             <div>
               <img
@@ -614,7 +614,7 @@ export function renderBlock(
         );
       return (
         <section
-          className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-align-vertical--${block.align} point-surface--${block.surface}`}
+          className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
         >
           <div className="point-feature__media">
             <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />

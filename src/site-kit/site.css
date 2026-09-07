@@ -1105,6 +1105,9 @@
 .point-site .point-align--center {
   text-align: center;
 }
+.point-site .point-align--right {
+  text-align: right;
+}
 .point-site .point-heading--narrow {
   max-width: 48rem;
   margin-inline: auto;
@@ -1151,12 +1154,27 @@
   grid-template-columns: 0.7fr 1.3fr;
 }
 .point-site .point-align-vertical--start .feature-copy,
-.point-site .point-align-vertical--start .point-feature__content {
+.point-site .point-align-vertical--start .point-feature__content,
+.point-site .point-align-vertical--start.image-split > div:last-child {
   align-self: start;
 }
 .point-site .point-align-vertical--center .feature-copy,
-.point-site .point-align-vertical--center .point-feature__content {
+.point-site .point-align-vertical--center .point-feature__content,
+.point-site .point-align-vertical--center.image-split > div:last-child {
   align-self: center;
+}
+.point-site .point-align-vertical--end .feature-copy,
+.point-site .point-align-vertical--end .point-feature__content,
+.point-site .point-align-vertical--end.image-split > div:last-child {
+  align-self: end;
+}
+.point-site .point-linked-media-missing {
+  display: grid;
+  min-height: 8rem;
+  place-items: center;
+  margin: 0;
+  border: 1px dashed var(--point-border);
+  color: var(--point-muted-text);
 }
 .point-site .point-image,
 .point-site .wide-photo,

@@ -1,10 +1,13 @@
 import type { NavigationEntry } from '../../site-kit/types';
+import { LinkDestinationField } from '../editor/LinkDestinationField';
 
 export function NavigationEditor({
   navigation,
+  pages,
   onChange,
 }: {
   navigation: NavigationEntry[];
+  pages: { title: string; route: string }[];
   onChange: (navigation: NavigationEntry[]) => void;
 }) {
   const update = (index: number, change: (item: NavigationEntry) => void) => {
@@ -53,18 +56,16 @@ export function NavigationEditor({
                   }
                 />
               </label>
-              <label>
-                <span>Link</span>
-                <input
-                  required
-                  value={item.href}
-                  onChange={(event) =>
-                    update(index, (target) => {
-                      target.href = event.target.value;
-                    })
-                  }
-                />
-              </label>
+              <LinkDestinationField
+                label="Link"
+                value={item.href}
+                pages={pages}
+                onChange={(href) =>
+                  update(index, (target) => {
+                    target.href = href;
+                  })
+                }
+              />
             </div>
             <div className="page-actions">
               <button
@@ -110,18 +111,16 @@ export function NavigationEditor({
                       }
                     />
                   </label>
-                  <label>
-                    <span>Link</span>
-                    <input
-                      required
-                      value={child.href}
-                      onChange={(event) =>
-                        update(index, (target) => {
-                          target.children[childIndex].href = event.target.value;
-                        })
-                      }
-                    />
-                  </label>
+                  <LinkDestinationField
+                    label="Link"
+                    value={child.href}
+                    pages={pages}
+                    onChange={(href) =>
+                      update(index, (target) => {
+                        target.children[childIndex].href = href;
+                      })
+                    }
+                  />
                   <button
                     type="button"
                     className="button button--danger"

@@ -45,7 +45,8 @@ describe('SiteDocumentSchema', () => {
   it.each([
     'javascript:alert(1)',
     'data:text/html,unsafe',
-    'http://pointatx.org',
+    'example.com/path',
+    'ftp://pointatx.org',
     'https://example.com\\@pointatx.org',
   ])('rejects unsafe link %s', (href) => {
     const input = cloneDocument();
@@ -57,6 +58,20 @@ describe('SiteDocumentSchema', () => {
     actions[0].href = href;
     expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
   });
+
+  it.each(['http://pointatx.org', 'https://pointatx.org'])(
+    'accepts explicit web link %s',
+    (href) => {
+      const input = cloneDocument();
+      const pages = input.pages as Array<Record<string, unknown>>;
+      const blocks = pages[0].blocks as Array<Record<string, unknown>>;
+      const items = blocks[0].items as Array<Record<string, unknown>>;
+      const element = items[0].element as Record<string, unknown>;
+      const actions = element.actions as Array<Record<string, unknown>>;
+      actions[0].href = href;
+      expect(SiteDocumentSchema.safeParse(input).success).toBe(true);
+    },
+  );
 
   it('rejects unknown component discriminators and component fields', () => {
     const unknownType = cloneDocument();

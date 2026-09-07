@@ -910,6 +910,7 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   gap: 0.8rem;
   width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 .block-inspector {
   gap: 1rem;
@@ -937,8 +938,54 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   min-height: 6rem;
   resize: vertical;
 }
+.link-destination-field {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.65rem;
+}
+.link-destination-field > legend {
+  padding-inline: 0.3rem;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.link-destination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.link-destination-controls label {
+  display: grid;
+  flex: 1 1 8rem;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.link-destination-controls .link-destination-value {
+  flex-grow: 2;
+}
+.link-destination-controls span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.link-destination-controls input,
+.link-destination-controls select {
+  width: 100%;
+  min-width: 0;
+}
+.field-error {
+  margin: 0.5rem 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
 .inspector-group {
   min-inline-size: 0;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   padding: 0.8rem;

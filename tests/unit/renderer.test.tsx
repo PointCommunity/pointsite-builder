@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
-import { allBlocksDocument } from '../fixtures/block-data';
+import { allBlocks, allBlocksDocument } from '../fixtures/block-data';
 import { blockDefinitions, renderBlock, renderSection } from '../../src/site-kit/registry';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -111,6 +111,43 @@ describe('controlled public renderer', () => {
       rel: 'noreferrer',
     });
     expect(screen.getByRole('link', { name: 'Visit' })).not.toHaveAttribute('target');
+  });
+
+  it('renders intentionally insecure HTTP links as hardened external destinations', () => {
+    const button = {
+      ...allBlocks.find((block) => block.type === 'button')!,
+      type: 'button' as const,
+      href: 'http://legacy.example.com/info',
+    };
+    render(<>{renderBlock(button, allBlocksDocument)}</>);
+
+    expect(screen.getByRole('link', { name: 'Get connected' })).toMatchObject({
+      target: '_blank',
+      rel: 'noreferrer',
+    });
+  });
+
+  it('applies Split View horizontal and vertical text alignment', () => {
+    const split = {
+      ...allBlocks.find((block) => block.type === 'splitFeature')!,
+      type: 'splitFeature' as const,
+      textAlign: 'right' as const,
+      align: 'end' as const,
+    };
+    const { container } = render(<>{renderBlock(split, allBlocksDocument)}</>);
+
+    expect(container.querySelector('.point-align--right.point-align-vertical--end')).not.toBeNull();
+  });
+
+  it('renders a missing linked-media reference without crashing the builder view', () => {
+    const linkedMedia = {
+      ...allBlocks.find((block) => block.type === 'mediaEmbed')!,
+      type: 'mediaEmbed' as const,
+      linkedMediaId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa99',
+    };
+    render(<>{renderBlock(linkedMedia, allBlocksDocument)}</>);
+
+    expect(screen.getByText('Linked media is unavailable.')).toBeVisible();
   });
 
   it('submits public forms only to the configured mail client', () => {

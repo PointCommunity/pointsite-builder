@@ -30,6 +30,22 @@ export function isSafeHttpsUrl(value: string): boolean {
   }
 }
 
+export function isSafeExternalHttpUrl(value: string): boolean {
+  if (containsControlOrBackslash(value)) return false;
+
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isSafeMailtoUrl(value: string): boolean {
   if (containsControlOrBackslash(value) || !value.startsWith('mailto:')) return false;
   const address = value.slice('mailto:'.length).split('?')[0] ?? '';
@@ -45,8 +61,8 @@ export const SafeHrefSchema = z
   .string()
   .max(2048)
   .refine(
-    (value) => isSafeInternalPath(value) || isSafeHttpsUrl(value) || isSafeMailtoUrl(value),
-    'Link must be a safe site path, HTTPS URL, or email link',
+    (value) => isSafeInternalPath(value) || isSafeExternalHttpUrl(value) || isSafeMailtoUrl(value),
+    'Link must be a safe site path, HTTP or HTTPS URL, or email link',
   );
 
 export const SafeHttpsUrlSchema = z

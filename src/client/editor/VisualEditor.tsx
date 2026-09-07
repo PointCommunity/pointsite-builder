@@ -65,10 +65,10 @@ const sectionTypes = [
   'FullWidthSection',
 ] as const;
 const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
-  Section: 'Blank grid section',
-  TwoColumnSection: 'Two columns (50 / 50)',
-  ThreeColumnSection: 'Three columns (equal)',
-  FullWidthSection: 'Full-width section',
+  Section: 'Blank',
+  TwoColumnSection: 'Two Columns',
+  ThreeColumnSection: 'Three Columns',
+  FullWidthSection: 'Full-Width',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
 const gapValues = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' };
@@ -152,6 +152,7 @@ function defaultElement<T extends SiteElement['type']>(
       mediaSide: 'left',
       proportion: 'half',
       align: 'center',
+      textAlign: 'left',
       surface: 'canvas',
     },
     cta: {
@@ -664,6 +665,9 @@ export function VisualEditor({
       label: blockDefinitions[type].label,
       inline: true,
       fields,
+      ...(type === 'mediaEmbed' && document.linkedMedia.length === 0
+        ? { permissions: { insert: false } }
+        : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {
         const parentProps = parent
           ? (parent.props as unknown as Record<string, unknown>)

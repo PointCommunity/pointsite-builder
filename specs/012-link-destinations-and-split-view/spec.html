@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PointSite Builder link destinations and Split View</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        background: #111712;
+        color: #edf3ea;
+      }
+      body {
+        max-width: 76rem;
+        margin: 0 auto;
+        padding: 2rem;
+        line-height: 1.55;
+      }
+      h1,
+      h2 {
+        color: #fff;
+      }
+      code {
+        color: #c8e6bd;
+      }
+      section {
+        border-top: 1px solid #3d4a3d;
+        margin-top: 1.5rem;
+      }
+      li {
+        margin-block: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Spec: Link destinations, Split View alignment, and safe linked-media insertion</h1>
+    <section>
+      <h2>Objective</h2>
+      <p>
+        Make navigation links and every button destination easy to configure as either an internal
+        page or an external website without overcrowding the editor. Expand Split View alignment
+        controls and prevent Linked media insertion from crashing when the draft has no linked-media
+        record.
+      </p>
+    </section>
+    <section>
+      <h2>Assumptions</h2>
+      <ul>
+        <li>
+          “Links fields” refers to top-level and child navigation entries shown in the supplied
+          screenshot.
+        </li>
+        <li>
+          “All button links” includes hero, heading, Split View, call-to-action, and standalone
+          Button element destinations.
+        </li>
+        <li>
+          Existing persisted <code>href</code> strings remain the storage contract; link type is
+          derived, avoiding a document migration.
+        </li>
+        <li>
+          Draft, hidden, and published pages are all valid internal choices because authors may link
+          pages before publishing.
+        </li>
+        <li>
+          Linked image/video source URLs remain HTTPS-only; the new HTTP allowance applies to
+          navigational external links.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Stack and project structure</h2>
+      <p>
+        React 19, TypeScript 5.9, Puck 0.23, Zod 4, Vitest/Testing Library, and Playwright. Shared
+        link validation belongs in <code>src/site-kit/url-policy.ts</code>; reusable controls belong
+        in <code>src/client/editor/</code>; renderer behavior stays in
+        <code>src/site-kit/registry.tsx</code> and <code>site.css</code>.
+      </p>
+    </section>
+    <section>
+      <h2>Commands</h2>
+      <ul>
+        <li>
+          Focused tests:
+          <code
+            >npm test -- tests/unit/link-destination-field.test.tsx
+            tests/unit/block-inspector.test.tsx tests/unit/renderer.test.tsx
+            tests/unit/site-document.test.ts</code
+          >
+        </li>
+        <li>
+          Focused browser:
+          <code
+            >PLAYWRIGHT_PORT=4198 npx playwright test tests/e2e/authoring.spec.ts
+            --project=desktop-chromium --grep "link destinations|Linked media|Sections
+            toolbox"</code
+          >
+        </li>
+        <li>
+          Full checks:
+          <code
+            >npm run format:check &amp;&amp; npm run typecheck &amp;&amp; npm run lint --
+            --max-warnings=0 &amp;&amp; npm run test:coverage &amp;&amp; npm run build &amp;&amp;
+            PLAYWRIGHT_PORT=4198 npm run test:e2e</code
+          >
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Testing strategy</h2>
+      <p>
+        Use RED/GREEN unit tests for HTTP URL policy, internal-page selection, external validation,
+        button reuse, Split View schema/rendering, and missing linked media. Add focused browser
+        coverage for the compact navigation/button controls, new section labels, Split View
+        alignment, and disabled/enabled Linked media insertion.
+      </p>
+    </section>
+    <section>
+      <h2>Boundaries</h2>
+      <ul>
+        <li>
+          Always preserve existing href values and strict rejection of scripts, credentials, control
+          characters, backslashes, and unsupported schemes.
+        </li>
+        <li>
+          Ask first before changing publishing, authentication, dependencies, or the public
+          PointSite repository.
+        </li>
+        <li>Never expose credentials or permit arbitrary HTML/JavaScript URLs.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Success criteria</h2>
+      <ul>
+        <li>Navigation and all button destinations expose Internal/External type selection.</li>
+        <li>
+          Internal selection lists page titles and routes; External accepts valid
+          <code>http://</code> and <code>https://</code> URLs and visibly rejects
+          missing/unsupported schemes.
+        </li>
+        <li>Section drawer labels read Blank, Two Columns, Three Columns, and Full-Width.</li>
+        <li>
+          Split View text supports Left/Center/Right horizontally and Top/Center/Bottom vertically.
+        </li>
+        <li>
+          Linked media cannot be inserted without an available item and a missing legacy reference
+          renders safely instead of crashing.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Open questions</h2>
+      <p>None.</p>
+    </section>
+  </body>
+</html>

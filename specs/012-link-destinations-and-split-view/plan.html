@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Implementation plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #111712;
+        color: #edf3ea;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        max-width: 72rem;
+        margin: auto;
+        padding: 2rem;
+        line-height: 1.55;
+      }
+      h1,
+      h2 {
+        color: #fff;
+      }
+      section {
+        border-top: 1px solid #3d4a3d;
+        margin-top: 1.5rem;
+      }
+      code {
+        color: #c8e6bd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Implementation plan</h1>
+    <section>
+      <h2>1. Link contract</h2>
+      <p>
+        Add an HTTP-or-HTTPS navigation URL policy and a reusable, compact destination control that
+        derives type from the existing href. Cover it with focused tests before integrating it.
+      </p>
+    </section>
+    <section>
+      <h2>2. Navigation and buttons</h2>
+      <p>
+        Pass the page catalog into NavigationEditor and every ActionEditor/standalone Button
+        destination. Keep existing href persistence unchanged and validate external drafts before
+        committing them.
+      </p>
+    </section>
+    <section>
+      <h2>3. Split View and labels</h2>
+      <p>
+        Add optional horizontal text alignment, extend vertical alignment to bottom, render both as
+        semantic classes, and rename the four section recipes.
+      </p>
+    </section>
+    <section>
+      <h2>4. Linked media</h2>
+      <p>
+        Disable insertion when no linked-media item exists and render missing legacy references as a
+        safe editor/public placeholder rather than throwing.
+      </p>
+    </section>
+    <section>
+      <h2>5. Verification</h2>
+      <p>
+        Run focused RED/GREEN tests, then formatting, types, lint, coverage, build, and the
+        cross-browser authoring suite on an unoccupied port. Inspect the final diff and preserve
+        production/publishing boundaries.
+      </p>
+    </section>
+    <section>
+      <h2>Risks</h2>
+      <ul>
+        <li>
+          Partially typed external URLs could invalidate autosave; mitigate with local draft state
+          and commit only valid values.
+        </li>
+        <li>
+          Older internal paths may not match current pages; retain a “current path” option until
+          deliberately changed.
+        </li>
+        <li>
+          Puck insert permissions may be stale after Library changes; configuration rerenders from
+          the current document and browser coverage verifies re-enabling.
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>
