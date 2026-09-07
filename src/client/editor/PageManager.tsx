@@ -1,4 +1,5 @@
 import type { SiteDocument } from '../../site-kit/types';
+import { createEditableHeaderSection } from '../../site-kit/editable-header';
 import { useEditor } from './EditorProvider';
 
 // This colocated pure helper keeps page creation and its tests bound to the UI behavior.
@@ -51,6 +52,7 @@ export function PageManager({
     const title = 'New page';
     const id = crypto.randomUUID();
     updateDocument((next) => {
+      const logo = next.media.find((item) => item.sourcePath.endsWith('/point-logo.png'));
       next.pages.push({
         id,
         title,
@@ -59,12 +61,11 @@ export function PageManager({
           next.pages.map((item) => item.route),
         ),
         status: 'draft',
-        showHeader: true,
         template: 'standard',
         eyebrow: 'New page',
         intro: 'Add a short introduction for this page.',
         metadata: { title, description: 'Add a short description for this page.' },
-        blocks: [],
+        blocks: [createEditableHeaderSection(id, logo?.id)],
       });
       return next;
     });
@@ -216,18 +217,6 @@ export function PageManager({
               <option value="standard">Standard page</option>
               <option value="home">Homepage</option>
             </select>
-          </label>
-          <label className="inspector-check">
-            <input
-              type="checkbox"
-              checked={page.showHeader}
-              onChange={(event) =>
-                updatePage((target) => {
-                  target.showHeader = event.target.checked;
-                })
-              }
-            />
-            <span>Show built-in site header</span>
           </label>
           <label>
             <span>Page eyebrow</span>

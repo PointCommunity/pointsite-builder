@@ -5,6 +5,7 @@ import { SectionInspector, type SectionSettings } from '../../src/client/editor/
 const settings: SectionSettings = {
   name: 'Grid section',
   layout: 'grid',
+  position: 'flow',
   columns: 3,
   gap: 'medium',
   width: 'shell',

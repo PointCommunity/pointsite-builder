@@ -184,6 +184,7 @@ describe('SiteDocumentSchema', () => {
         type: 'section',
         name: 'Complete element library',
         layout: 'grid',
+        position: 'flow',
         columns: 12,
         gap: 'medium',
         width: 'shell',

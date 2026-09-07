@@ -1,5 +1,6 @@
 import { SiteDocumentSchema } from './schema';
 import { createCompatibilitySection } from './migrations';
+import { createEditableHeaderSection } from './editable-header';
 import type { SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 
@@ -305,19 +306,29 @@ const page = (
     heroMediaId?: string;
     template?: 'home' | 'standard';
   } = {},
-): SiteDocument['pages'][number] => ({
-  id: uid(5_000 + sequence),
-  title,
-  route,
-  status: 'published',
-  showHeader: true,
-  template: chrome.template ?? (route === '/' ? 'home' : 'standard'),
-  ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
-  intro: chrome.intro ?? description,
-  ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
-  metadata: { title: `${title} | Point Community Church`, description },
-  blocks: elements.map(createCompatibilitySection),
-});
+): SiteDocument['pages'][number] => {
+  const id = uid(5_000 + sequence);
+  const template = chrome.template ?? (route === '/' ? 'home' : 'standard');
+  return {
+    id,
+    title,
+    route,
+    status: 'published',
+    template,
+    ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
+    intro: chrome.intro ?? description,
+    ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
+    metadata: { title: `${title} | Point Community Church`, description },
+    blocks: [
+      createEditableHeaderSection(
+        id,
+        mediaId('/assets/point-logo.png'),
+        template === 'home' ? 'overlay' : 'flow',
+      ),
+      ...elements.map(createCompatibilitySection),
+    ],
+  };
+};
 
 const pages: SiteDocument['pages'] = [
   page(

@@ -328,6 +328,7 @@ export const SectionBlockSchema = z
     type: z.literal('section'),
     name: z.string().trim().min(1).max(80),
     layout: z.enum(['compatibility', 'flow', 'grid']),
+    position: z.enum(['flow', 'overlay']),
     columns: z.union([
       z.literal(1),
       z.literal(2),
@@ -526,7 +527,6 @@ const PageSchema = z.strictObject({
   title: z.string().trim().min(1).max(120),
   route: CanonicalRouteSchema,
   status: z.enum(['draft', 'published', 'hidden']),
-  showHeader: z.boolean(),
   template: z.enum(['home', 'standard']).optional(),
   eyebrow: z.string().trim().max(80).optional(),
   intro: z.string().trim().max(500).optional(),
@@ -541,7 +541,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(6),
+    schemaVersion: z.literal(7),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

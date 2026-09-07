@@ -11,11 +11,12 @@ export const IDS = {
   section: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   placement: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   linkedMedia: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  logoMedia: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 6,
-  rendererVersion: '6.0.0',
+  schemaVersion: 7,
+  rendererVersion: '7.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',
@@ -59,7 +60,6 @@ export const validSiteDocument = {
       title: 'Home',
       route: '/',
       status: 'published',
-      showHeader: true,
       metadata: {
         title: 'Point Community Church',
         description: 'A church community in South Austin.',
@@ -70,6 +70,7 @@ export const validSiteDocument = {
           type: 'section',
           name: 'Hero section',
           layout: 'compatibility',
+          position: 'flow',
           columns: 1,
           gap: 'none',
           width: 'full',
@@ -123,7 +124,13 @@ export const validSiteDocument = {
       ],
     },
   ],
-  media: [],
+  media: [
+    {
+      id: IDS.logoMedia,
+      sourcePath: '/assets/point-logo.png',
+      alt: 'Point Community Church',
+    },
+  ],
   linkedMedia: [],
   collections: {
     people: [{ id: IDS.person, name: 'Point Team', role: 'Leadership', bio: 'Serving Point.' }],

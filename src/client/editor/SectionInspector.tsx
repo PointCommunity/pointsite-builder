@@ -90,6 +90,15 @@ export function SectionInspector({
           onChange({ ...settings, layout, ...(layout === 'grid' ? { columns: 12 } : {}) })
         }
       />
+      <Select
+        label="Section placement"
+        value={settings.position}
+        options={[
+          { label: 'In page flow', value: 'flow' },
+          { label: 'Overlay next section', value: 'overlay' },
+        ]}
+        onChange={(position) => onChange({ ...settings, position })}
+      />
       {settings.layout === 'grid' ? (
         <p className="inspector-help">Standard responsive grid: 12 columns</p>
       ) : null}

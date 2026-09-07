@@ -29,7 +29,10 @@ export function NavigationEditor({
       <div className="settings-heading">
         <div>
           <h3 id="navigation-title">Navigation</h3>
-          <p>Top-level links appear in the site header. Optional child links form each section.</p>
+          <p>
+            These shared links appear in every Navigation element. Optional child links form each
+            menu.
+          </p>
         </div>
       </div>
       <div className="settings-list">

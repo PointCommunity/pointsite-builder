@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import siteCss from '../../site-kit/site.css?inline';
 import { SiteRenderer } from '../../site-kit/SiteRenderer';
@@ -32,22 +32,6 @@ export function SitePreviewFrame({
     setMountNode(frame.contentDocument?.getElementById('site-preview-root') ?? null);
   }, []);
 
-  useEffect(() => {
-    if (!mountNode) return;
-    const navigate = (event: MouseEvent) => {
-      const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
-      if (!anchor) return;
-      const url = new URL(anchor.href);
-      const target = document.pages.find((page) => page.route === url.pathname);
-      if (!target || url.origin !== globalThis.location.origin) return;
-      event.preventDefault();
-      onNavigate(target.route);
-    };
-    const frameDocument = mountNode.ownerDocument;
-    frameDocument.addEventListener('click', navigate);
-    return () => frameDocument.removeEventListener('click', navigate);
-  }, [document.pages, mountNode, onNavigate]);
-
   return (
     <div
       className="preview-frame-viewport"
@@ -62,7 +46,10 @@ export function SitePreviewFrame({
         onLoad={(event) => connectFrame(event.currentTarget)}
       />
       {mountNode
-        ? createPortal(<SiteRenderer document={document} route={route} />, mountNode)
+        ? createPortal(
+            <SiteRenderer document={document} route={route} onNavigate={onNavigate} />,
+            mountNode,
+          )
         : null}
     </div>
   );

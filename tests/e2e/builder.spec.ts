@@ -226,6 +226,10 @@ test('changes the design and creates a page without code', async ({ page }) => {
   await page.getByRole('button', { name: 'Layout' }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await expect(page.getByLabel('Choose page')).toContainText('New page');
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(canvas.locator('section[aria-label="Site header"]')).toBeVisible();
+  await expect(canvas.getByRole('img', { name: 'Point Community Church' })).toBeVisible();
+  await expect(canvas.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
   await expect(page.getByText(/Production is locked/)).toHaveCount(0);
 });
 

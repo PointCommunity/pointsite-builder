@@ -53,9 +53,11 @@ function ActionLink({
 function NavigationBlock({
   block,
   document,
+  onNavigate,
 }: {
   block: Extract<SiteElement, { type: 'navigation' }>;
   document: SiteDocument;
+  onNavigate?: (route: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const navigationId = `point-navigation-${block.id}`;
@@ -84,14 +86,31 @@ function NavigationBlock({
       >
         {document.navigation.map((item) => (
           <div className="point-navigation__item" key={item.id}>
-            <a href={item.href} {...linkAttributes(item.href)}>
+            <a
+              href={item.href}
+              {...linkAttributes(item.href)}
+              onClick={(event) => {
+                if (!onNavigate || !item.href.startsWith('/')) return;
+                event.preventDefault();
+                onNavigate(item.href);
+              }}
+            >
               {item.label}
               {item.children.length ? <span aria-hidden="true">⌄</span> : null}
             </a>
             {item.children.length ? (
               <div className="point-navigation__dropdown">
                 {item.children.map((child) => (
-                  <a href={child.href} key={child.id} {...linkAttributes(child.href)}>
+                  <a
+                    href={child.href}
+                    key={child.id}
+                    {...linkAttributes(child.href)}
+                    onClick={(event) => {
+                      if (!onNavigate || !child.href.startsWith('/')) return;
+                      event.preventDefault();
+                      onNavigate(child.href);
+                    }}
+                  >
                     {child.label}
                   </a>
                 ))}
@@ -341,7 +360,11 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
   });
 }
 
-export function renderBlock(block: SiteElement, document: SiteDocument): ReactNode {
+export function renderBlock(
+  block: SiteElement,
+  document: SiteDocument,
+  onNavigate?: (route: string) => void,
+): ReactNode {
   switch (block.type) {
     case 'hero': {
       const media = block.mediaId ? mediaRecord(document, block.mediaId) : undefined;
@@ -952,7 +975,7 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
         </div>
       );
     case 'navigation':
-      return <NavigationBlock block={block} document={document} />;
+      return <NavigationBlock block={block} document={document} onNavigate={onNavigate} />;
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
@@ -966,10 +989,14 @@ const sectionTotalGap = {
   large: '33rem',
 } as const;
 
-export function renderSection(section: SectionBlock, document: SiteDocument): ReactNode {
+export function renderSection(
+  section: SectionBlock,
+  document: SiteDocument,
+  onNavigate?: (route: string) => void,
+): ReactNode {
   if (section.layout === 'compatibility') {
     const placement = section.items[0];
-    return placement ? renderBlock(placement.element, document) : null;
+    return placement ? renderBlock(placement.element, document, onNavigate) : null;
   }
 
   const style = {
@@ -982,7 +1009,7 @@ export function renderSection(section: SectionBlock, document: SiteDocument): Re
 
   return (
     <section
-      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}`}
+      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--position-${section.position} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}`}
       aria-label={section.name}
     >
       {section.backgroundMediaId ? (
@@ -1023,7 +1050,7 @@ export function renderSection(section: SectionBlock, document: SiteDocument): Re
               key={placement.id}
               style={placementStyle}
             >
-              {renderBlock(placement.element, document)}
+              {renderBlock(placement.element, document, onNavigate)}
             </div>
           );
         })}
