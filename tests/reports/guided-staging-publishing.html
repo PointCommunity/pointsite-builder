@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acceptance: Guided Staging Publishing</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #09100b;
+        color: #edf5ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1b3220, #09100b 38rem);
+      }
+      main {
+        width: min(1120px, calc(100% - 40px));
+        margin: auto;
+        padding: 56px 0 88px;
+      }
+      h1 {
+        margin: 0.2rem 0 0.8rem;
+        font-size: clamp(2.2rem, 5vw, 3.8rem);
+      }
+      h2 {
+        margin-top: 2.5rem;
+        color: #d9ecd2;
+      }
+      p,
+      li,
+      td,
+      th {
+        line-height: 1.58;
+      }
+      .eyebrow,
+      .pass {
+        color: #a6da92;
+        font-weight: 800;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+      }
+      .lede {
+        max-width: 830px;
+        color: #c2cfc0;
+        font-size: 1.08rem;
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 14px;
+        margin: 28px 0;
+      }
+      .card {
+        padding: 18px;
+        border: 1px solid #304434;
+        border-radius: 14px;
+        background: #131c15;
+      }
+      .card strong {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 1.15rem;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid #304434;
+        border-radius: 14px;
+      }
+      table {
+        width: 100%;
+        min-width: 760px;
+        border-collapse: collapse;
+        background: #111913;
+      }
+      th,
+      td {
+        padding: 14px 16px;
+        border-bottom: 1px solid #293a2d;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #d9ecd2;
+        background: #18231a;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      code {
+        color: #d9f8cc;
+        background: #202d22;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+      .pending {
+        color: #f4cb75;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">PointSite Builder · GitHub Issue #18 · pre-release evidence</p>
+      <h1>Guided Staging publishing acceptance</h1>
+      <p class="lede">
+        The exact candidate replaces the ambiguous publish dialog with a durable five-step path:
+        saved revision, publication, verification, protected review, and deliberate acceptance. This
+        record covers implementation and local review. Exact PR, deployment, and real protected
+        Staging evidence are release gates and are recorded in GitHub after this file is frozen.
+      </p>
+
+      <div class="summary">
+        <div class="card"><strong class="pass">238 passed</strong>Unit and integration tests</div>
+        <div class="card"><strong class="pass">94 passed</strong>Cross-browser journeys</div>
+        <div class="card">
+          <strong class="pass">0 vulnerabilities</strong>High-severity audit gate
+        </div>
+        <div class="card"><strong class="pass">1.59 ms p95</strong>API load; 100 ms budget</div>
+      </div>
+
+      <h2>Acceptance criteria</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Evidence</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Complete sequence before publishing</td>
+              <td>
+                Five named steps render before the first action in <code>StagingPublish</code>.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Active job replaces duplicate publish</td>
+              <td>
+                Lifecycle derives publishing/verifying states without <code>canPublish</code>;
+                reusable job lookup binds revision candidate and base.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Automatic bounded advancement</td>
+              <td>
+                Pending work polls every 10 seconds and pauses after 15 minutes measured from the
+                durable job timestamp.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Manual recovery</td>
+              <td>
+                Refresh remains available for pending, paused, failed, stale, review-ready, and
+                accepted states.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Close, reopen, and reload restoration</td>
+              <td>
+                Authorized workflow read restores the latest draft job, exact candidate evidence,
+                and latest approval from D1.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Protected review before acceptance</td>
+              <td>
+                The verified review-ready state exposes the protected Staging link and a separate
+                deliberate acceptance control.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Technical evidence is optional</td>
+              <td>
+                Hashes, checksums, job identity, commit, workflow, and deployment links live in a
+                closed details region.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Exact-candidate acceptance lock</td>
+              <td>
+                The server requires passed evidence, exact tuple equality, and a fresh Staging-head
+                match before approval.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Failure and drift recovery</td>
+              <td>
+                Failed, cancelled, timed-out, changed revision, and changed Staging states disable
+                acceptance and name the safe next action.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Official acceptance and Production lock</td>
+              <td>
+                Accepted state identifies the exact official Staging candidate and repeats that the
+                public website is unchanged.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Authorization, idempotency, and audit</td>
+              <td>
+                Every workflow route rechecks publish access; stable operation keys and
+                unchanged-evidence suppression prevent duplicate work and audit noise.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Verification matrix</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Surface</th>
+              <th>Fresh evidence</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Repository gate</td>
+              <td>
+                Formatting, TypeScript, lint, OpenAPI, runbooks, skills, coverage, and production
+                build completed together.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Coverage</td>
+              <td>
+                41 files and 238 tests passed; 83.96% statements, 69.93% branches, 90.25% functions,
+                87.14% lines.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Browsers</td>
+              <td>
+                94 runnable tests passed across Chromium, Firefox, WebKit, and mobile Chromium; nine
+                declared unsupported cases skipped.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Accessibility</td>
+              <td>
+                Automated axe, keyboard, focus, reflow, and non-color status tests passed. Hands-on
+                review confirmed focus wrap and restoration to Publish at 760 px.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Local recovery</td>
+              <td>
+                Fresh local migrations succeeded. Hands-on Publisher dialog showed the full
+                lifecycle and an actionable unavailable state without exposing implementation
+                details.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Performance</td>
+              <td>
+                1,000 requests at concurrency 25 measured 1.59 ms p95 against a 100 ms budget;
+                JavaScript gzip total 420,757 bytes against 500,000.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Security</td>
+              <td>
+                Dependency audit reported zero vulnerabilities; authorization, drift,
+                Production-lock, and sensitive-output integration tests passed.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Release proof</td>
+              <td>
+                Exact-head Quality, squash-tree equality, Builder production deployment, real
+                protected Staging restoration, and unchanged public PointSite are mandatory
+                downstream gates.
+              </td>
+              <td class="pending">Pending release pipeline</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Review disposition</h2>
+      <div class="card">
+        <p>
+          Correctness, regressions, authorization, privacy, error recovery, operations,
+          accessibility, responsiveness, contracts, and documentation were reviewed against the
+          Issue. No unresolved implementation findings remain before PR Quality and release
+          validation.
+        </p>
+      </div>
+    </main>
+  </body>
+</html>
