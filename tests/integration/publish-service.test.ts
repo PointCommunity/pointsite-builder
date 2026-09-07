@@ -16,7 +16,7 @@ const commitSha = 'b'.repeat(40);
 const config = { appId: '1', installationId: '2', privateKey: 'unused' };
 type VerificationResult =
   | { status: 'pending' }
-  | { status: 'failed'; failedChecks: string[] }
+  | { status: 'failed'; failedChecks: string[]; failedCheckUrls: Record<string, string> }
   | { status: 'passed'; evidence: StagingVerificationEvidence };
 
 async function setup() {
@@ -154,11 +154,20 @@ describe('staging publish coordinator', () => {
     client.verificationForCommit.mockResolvedValueOnce({
       status: 'failed',
       failedChecks: ['deploy'],
+      failedCheckUrls: {
+        deploy: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+      },
     });
     await expect(
       publisher.refreshVerification(result.jobId ?? '', input.actor, 'request-failed'),
     ).resolves.toMatchObject({
-      evidence: { verificationStatus: 'failed', failedChecks: ['deploy'] },
+      evidence: {
+        verificationStatus: 'failed',
+        failedChecks: ['deploy'],
+        failedCheckUrls: {
+          deploy: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+        },
+      },
     });
 
     const changed = structuredClone(draft.document);

@@ -111,6 +111,50 @@
         </ul>
       </div>
 
+      <h2>PM failure-recovery correction · 2026-09-07</h2>
+      <div class="card">
+        <p>
+          A second production review showed that an accurate failure status is still unusable when
+          it tells a non-technical user to “review” or “rerun” checks without identifying the failed
+          work, linking to it, or explaining when the problem requires a site maintainer. The
+          complete workflow must remain understandable in every success, waiting, blocked, and
+          failure state.
+        </p>
+        <ul>
+          <li>
+            <strong>FR-015-019:</strong> Every lifecycle and action-error state must answer what
+            happened, whether the signed-in user needs to act, the exact next action, and what that
+            action will and will not change.
+          </li>
+          <li>
+            <strong>FR-015-020:</strong> Failed verification must list each failed check in ordinary
+            language and provide a direct link to its GitHub result when available, with a safe
+            exact-commit checks fallback for older evidence.
+          </li>
+          <li>
+            <strong>FR-015-021:</strong> Builder must distinguish checking the latest result from
+            rerunning a failed external check; it must never label a status read as a repair.
+          </li>
+          <li>
+            <strong>FR-015-022:</strong> Failure recovery must give a numbered, non-technical path:
+            open the failed checks, retry them once when GitHub offers that action, return and check
+            the result, and escalate to a Builder Administrator or site maintainer if the retry is
+            unavailable or fails again.
+          </li>
+          <li>
+            <strong>FR-015-023:</strong> The recovery copy must state when editing the draft is not
+            an appropriate repair and must keep acceptance locked until fresh exact-candidate
+            evidence passes.
+          </li>
+          <li>
+            <strong>FR-015-024:</strong> Request failures such as changed revisions, changed
+            Staging, lost permission, rate limiting, unavailable configuration, and transient
+            network errors must map to safe, role-appropriate next steps rather than raw system
+            messages.
+          </li>
+        </ul>
+      </div>
+
       <h2>Assumptions accepted from Issue #18 and live evidence</h2>
       <div class="card">
         <ol>

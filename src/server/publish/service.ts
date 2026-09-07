@@ -30,11 +30,13 @@ interface StagingClient {
     message: string;
     files: Awaited<ReturnType<typeof buildCandidate>>['files'];
   }): Promise<StagingCommit>;
-  verificationForCommit(
-    commitSha: string,
-  ): Promise<
+  verificationForCommit(commitSha: string): Promise<
     | { status: 'pending' }
-    | { status: 'failed'; failedChecks: string[] }
+    | {
+        status: 'failed';
+        failedChecks: string[];
+        failedCheckUrls: Record<string, string>;
+      }
     | { status: 'passed'; evidence: StagingVerificationEvidence }
   >;
 }
@@ -87,7 +89,12 @@ export class StagingPublisher {
             candidateChecksum: job.candidateChecksum,
             commitSha: job.resultSha,
             verificationStatus: result.status,
-            ...(result.status === 'failed' ? { failedChecks: result.failedChecks } : {}),
+            ...(result.status === 'failed'
+              ? {
+                  failedChecks: result.failedChecks,
+                  failedCheckUrls: result.failedCheckUrls,
+                }
+              : {}),
           };
     await this.jobs.recordVerification(id, actor, requestId, evidence);
     return { ...job, evidence };

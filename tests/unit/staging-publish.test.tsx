@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../src/client/api';
+import { api, ClientApiError } from '../../src/client/api';
 import { EditorProvider } from '../../src/client/editor/EditorProvider';
 import { StagingPublish } from '../../src/client/publish/StagingPublish';
 import type { StagingWorkflowSnapshot } from '../../src/client/publish/workflow';
@@ -74,6 +74,21 @@ const accepted: StagingWorkflowSnapshot = {
     publishJobId: job.id,
     decision: 'approved',
     createdAt: '2026-09-07T12:03:00Z',
+  },
+};
+
+const verificationFailed: StagingWorkflowSnapshot = {
+  ...verifying,
+  job: {
+    ...job,
+    evidence: {
+      verificationStatus: 'failed' as const,
+      failedChecks: ['verify', 'deploy'],
+      failedCheckUrls: {
+        verify: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
+        deploy: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/12',
+      },
+    },
   },
 };
 
@@ -202,5 +217,49 @@ describe('guided Staging publishing', () => {
     expect(screen.getByText(/No Production action is available here yet/i)).toBeVisible();
     expect(screen.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /publish.*production/i })).toBeNull();
+  });
+
+  it('gives a non-technical user the complete failed-check recovery path', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(verificationFailed);
+    renderPublish('administrator');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Resolve 2 failed Staging checks' }),
+    ).toBeVisible();
+    expect(screen.getByText('Website safety checks')).toBeVisible();
+    expect(screen.getByText('Staging update')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Open website safety check' })).toHaveAttribute(
+      'href',
+      verificationFailed.job!.evidence.failedCheckUrls!.verify,
+    );
+    expect(screen.getByRole('link', { name: 'Open Staging update check' })).toHaveAttribute(
+      'href',
+      verificationFailed.job!.evidence.failedCheckUrls!.deploy,
+    );
+    expect(screen.getByText(/Re-run jobs.*Re-run failed jobs/i)).toBeVisible();
+    expect(screen.getByText(/do not change the draft just to clear this message/i)).toBeVisible();
+    expect(screen.getByText(/site maintainer/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'I reran the checks — check again' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Check verification again' })).toBeNull();
+  });
+
+  it('turns an action error into a recovery instruction and support reference', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(verificationFailed);
+    vi.spyOn(api, 'refreshStagingVerification').mockRejectedValue(
+      new ClientApiError(403, 'FORBIDDEN', 'Technical permission response', 'request-123'),
+    );
+    renderPublish('publisher');
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'I reran the checks — check again' }),
+    );
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Your access changed');
+    expect(alert).toHaveTextContent(/sign in again/i);
+    expect(alert).toHaveTextContent(/Builder Administrator/i);
+    expect(alert).toHaveTextContent('request-123');
+    expect(alert).toHaveTextContent('FORBIDDEN');
+    expect(alert).not.toHaveTextContent('Technical permission response');
   });
 });

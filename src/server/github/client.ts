@@ -126,11 +126,13 @@ export class GitHubStagingClient {
     return { sha: commit.sha, url: commit.html_url };
   }
 
-  async verificationForCommit(
-    commitSha: string,
-  ): Promise<
+  async verificationForCommit(commitSha: string): Promise<
     | { status: 'pending' }
-    | { status: 'failed'; failedChecks: string[] }
+    | {
+        status: 'failed';
+        failedChecks: string[];
+        failedCheckUrls: Record<string, string>;
+      }
     | { status: 'passed'; evidence: StagingVerificationEvidence }
   > {
     Sha.parse(commitSha);
@@ -148,7 +150,16 @@ export class GitHubStagingClient {
     const failedChecks = [quality, deploy]
       .filter((check) => check.conclusion !== 'success')
       .map((check) => check.name);
-    if (failedChecks.length) return { status: 'failed', failedChecks };
+    if (failedChecks.length)
+      return {
+        status: 'failed',
+        failedChecks,
+        failedCheckUrls: Object.fromEntries(
+          [quality, deploy]
+            .filter((check) => check.conclusion !== 'success')
+            .map((check) => [check.name, check.html_url]),
+        ),
+      };
     return {
       status: 'passed',
       evidence: {

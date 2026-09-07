@@ -149,7 +149,13 @@ describe('GitHub staging client', () => {
         'token',
         failed,
       ).verificationForCommit(commit),
-    ).resolves.toMatchObject({ status: 'failed', failedChecks: ['verify'] });
+    ).resolves.toMatchObject({
+      status: 'failed',
+      failedChecks: ['verify'],
+      failedCheckUrls: {
+        verify: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
+      },
+    });
   });
 });
 

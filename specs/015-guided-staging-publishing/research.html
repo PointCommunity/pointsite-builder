@@ -126,6 +126,30 @@
           </li>
         </ul>
       </div>
+      <h2>Failure-recovery evidence</h2>
+      <div class="card">
+        <ul>
+          <li>
+            The live failed candidate has two terminal GitHub checks named
+            <code>verify</code> and <code>deploy</code>, each with a stable result URL.
+          </li>
+          <li>
+            Both checks failed because the generated Builder document is incompatible with the
+            current Staging site's accepted schema. Re-reading status or editing draft prose cannot
+            repair that class of failure; a site maintainer must correct compatibility first.
+          </li>
+          <li>
+            The current failed evidence persists only check names. New evidence can also retain the
+            already-sanitized GitHub result URLs without a database migration, while an exact-commit
+            checks URL gives old records a safe fallback.
+          </li>
+          <li>
+            GitHub rerun authorization is not part of the Builder's proven least-privilege
+            installation contract. The safe correction is therefore an explicit guided handoff, not
+            an unverified automatic-rerun control.
+          </li>
+        </ul>
+      </div>
       <h2>State and recovery decision</h2>
       <table>
         <thead>

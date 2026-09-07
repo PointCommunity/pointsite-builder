@@ -113,12 +113,12 @@
       </p>
 
       <div class="summary">
-        <div class="card"><strong class="pass">240 passed</strong>Unit and integration tests</div>
+        <div class="card"><strong class="pass">270 passed</strong>Unit and integration tests</div>
         <div class="card"><strong class="pass">97 passed</strong>Cross-browser journeys</div>
         <div class="card">
           <strong class="pass">0 vulnerabilities</strong>High-severity audit gate
         </div>
-        <div class="card"><strong class="pass">1.68 ms p95</strong>API load; 100 ms budget</div>
+        <div class="card"><strong class="pass">1.71 ms p95</strong>API load; 100 ms budget</div>
       </div>
 
       <h2>Acceptance criteria</h2>
@@ -177,6 +177,36 @@
               <td>
                 Outcome-oriented retry or check controls remain available for pending, paused,
                 failed, unavailable, and stale states.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Every lifecycle state explains the decision</td>
+              <td>
+                A table-driven contract covers loading, unavailable, ready, publishing, verifying,
+                paused, review-ready, accepted, publish-failed, verification-failed, and stale
+                states. Each state defines what happened, whether action is required, the primary
+                action when present, and what the action will and will not change.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Failed checks are directly actionable</td>
+              <td>
+                Verification failures translate <code>verify</code> and <code>deploy</code> into
+                ordinary language, link directly to each result, explain GitHub's one-time retry,
+                state that Builder's check button does not rerun work, and give the Publisher or
+                Administrator a site-maintainer escalation path.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Request errors include recovery and support context</td>
+              <td>
+                Permission, rate-limit, revision drift, Staging drift, duplicate action, incomplete
+                acceptance, validation, missing job, unavailable configuration, service, and unknown
+                failures map to safe instructions. Raw server prose stays hidden; the request ID and
+                stable code remain available as a support reference.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -263,8 +293,8 @@
             <tr>
               <td>Coverage</td>
               <td>
-                41 files and 240 tests passed; 83.96% statements, 69.93% branches, 90.25% functions,
-                87.14% lines.
+                42 files and 270 tests passed; 83.98% statements, 69.93% branches, 90.30% functions,
+                87.17% lines.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -279,25 +309,27 @@
             <tr>
               <td>Accessibility</td>
               <td>
-                Automated axe, keyboard, focus, reflow, and non-color status tests passed. Hands-on
-                review at 809 × 813 confirmed the primary action remains visible, the modal has no
-                horizontal overflow, and focus wraps through action, evidence, and Close controls.
+                Automated axe, keyboard, focus, reflow, and non-color status tests passed. The full
+                failed-check recovery panel also passed axe and horizontal-overflow checks at the
+                narrow 760-pixel supported workspace width on Chromium, Firefox, and WebKit.
               </td>
               <td class="pass">Pass</td>
             </tr>
             <tr>
               <td>Local recovery</td>
               <td>
-                Hands-on Administrator dialog showed the role-aware next step and a full-width safe
-                recovery action before system status or technical evidence.
+                Failed-state browser journeys showed ordinary check names, two direct evidence
+                links, one-time rerun instructions, a do-not-edit warning, maintainer escalation,
+                and the honest <em>I reran the checks — check again</em> action before technical
+                evidence.
               </td>
               <td class="pass">Pass</td>
             </tr>
             <tr>
               <td>Performance</td>
               <td>
-                1,000 requests at concurrency 25 measured 1.68 ms p95 against a 100 ms budget;
-                JavaScript gzip total 421,741 bytes against 500,000.
+                1,000 requests at concurrency 25 measured 1.71 ms p95 against a 100 ms budget;
+                JavaScript gzip total 423,497 bytes against 500,000.
               </td>
               <td class="pass">Pass</td>
             </tr>
