@@ -44,8 +44,8 @@ const EXPECTED_ASSETS = [
 describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
-    expect(defaultSiteDocument.schemaVersion).toBe(6);
-    expect(defaultSiteDocument.rendererVersion).toBe('6.0.0');
+    expect(defaultSiteDocument.schemaVersion).toBe(7);
+    expect(defaultSiteDocument.rendererVersion).toBe('7.0.0');
   });
 
   it('represents every current generated route and navigation link', () => {
@@ -135,7 +135,7 @@ describe('default PointSite document', () => {
     const beliefs = defaultSiteDocument.pages.find((page) => page.route === '/what-we-believe');
 
     expect(home).toMatchObject({ eyebrow: 'Point ATX', template: 'home' });
-    expect(home?.blocks.map((section) => variantOf(section.items[0]?.element))).toEqual([
+    expect(home?.blocks.slice(1).map((section) => variantOf(section.items[0]?.element))).toEqual([
       'homeHero',
       'homeIntro',
       'photoBanner',
@@ -148,7 +148,7 @@ describe('default PointSite document', () => {
       template: 'standard',
     });
     expect(about?.heroMediaId).toBeTruthy();
-    expect(about?.blocks.map((section) => variantOf(section.items[0]?.element))).toEqual([
+    expect(about?.blocks.slice(1).map((section) => variantOf(section.items[0]?.element))).toEqual([
       'splitEditorial',
       'identity',
       'prose',
@@ -164,14 +164,21 @@ describe('default PointSite document', () => {
     expect(
       defaultSiteDocument.pages
         .find((page) => page.route === '/contact')
-        ?.blocks.map((section) => variantOf(section.items[0]?.element)),
+        ?.blocks.slice(1)
+        .map((section) => variantOf(section.items[0]?.element)),
     ).toEqual(['contact', 'rental']);
   });
 
   it('standardizes every production-derived module inside a compatibility section', () => {
     for (const page of defaultSiteDocument.pages) {
       expect(page.blocks.length).toBeGreaterThan(0);
-      for (const section of page.blocks) {
+      expect(page.blocks[0]).toMatchObject({
+        type: 'section',
+        name: 'Site header',
+        layout: 'grid',
+        items: [{ element: { type: 'image' } }, { element: { type: 'navigation' } }],
+      });
+      for (const section of page.blocks.slice(1)) {
         expect(section).toMatchObject({ type: 'section', layout: 'compatibility' });
         expect(section.items).toHaveLength(1);
       }

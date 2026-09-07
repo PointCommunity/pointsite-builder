@@ -200,6 +200,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     return {
       name: 'Two column section',
       layout: 'grid',
+      position: 'flow',
       columns: 12,
       gap: 'medium',
       width: 'shell',
@@ -213,6 +214,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     return {
       name: 'Three column section',
       layout: 'grid',
+      position: 'flow',
       columns: 12,
       gap: 'medium',
       width: 'shell',
@@ -226,6 +228,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
     return {
       name: 'Full width section',
       layout: 'grid',
+      position: 'flow',
       columns: 12,
       gap: 'medium',
       width: 'full',
@@ -238,6 +241,7 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   return {
     name: 'Blank section',
     layout: 'grid',
+    position: 'flow',
     columns: 12,
     gap: 'medium',
     width: 'shell',
@@ -395,7 +399,7 @@ function SectionComponent({
     : undefined;
   return (
     <section
-      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding} point-layout-section--overlay-${settings.overlay}`}
+      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--position-${settings.position} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding} point-layout-section--overlay-${settings.overlay}`}
       aria-label={settings.name}
       data-point-section-id={id}
       onPointerMoveCapture={(event: PointerEvent<HTMLElement>) =>
@@ -497,6 +501,7 @@ function sectionToData(section: SectionBlock): ComponentData {
       settings: {
         name: section.name,
         layout: section.layout,
+        position: section.position,
         columns: section.columns,
         gap: section.gap,
         width: section.width,
@@ -613,7 +618,19 @@ export function VisualEditor({
         }: {
           value: SiteElement;
           onChange: (value: SiteElement) => void;
-        }) => <BlockInspector block={value} document={document} onChange={onChange} />,
+        }) => (
+          <BlockInspector
+            block={value}
+            document={document}
+            onChange={onChange}
+            onNavigationChange={(navigation) =>
+              updateDocument((next) => {
+                next.navigation = navigation;
+                return next;
+              })
+            }
+          />
+        ),
       },
       span: {
         type: 'select',

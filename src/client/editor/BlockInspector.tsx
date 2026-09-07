@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
-import type { SiteDocument, SiteElement } from '../../site-kit/types';
+import { useState, type ReactNode } from 'react';
+import type { NavigationEntry, SiteDocument, SiteElement } from '../../site-kit/types';
+import { NavigationEditor } from '../settings/NavigationEditor';
 
 function Text({
   label,
@@ -149,14 +150,35 @@ const surfaceOptions = [
   { label: 'Primary', value: 'primary' },
 ] as const;
 
+function StatefulNavigationEditor({
+  navigation,
+  onChange,
+}: {
+  navigation: NavigationEntry[];
+  onChange: (navigation: NavigationEntry[]) => void;
+}) {
+  const [value, setValue] = useState(navigation);
+  return (
+    <NavigationEditor
+      navigation={value}
+      onChange={(next) => {
+        setValue(next);
+        onChange(next);
+      }}
+    />
+  );
+}
+
 export function BlockInspector({
   block,
   document,
   onChange,
+  onNavigationChange,
 }: {
   block: SiteElement;
   document: SiteDocument;
   onChange: (block: SiteElement) => void;
+  onNavigationChange?: (navigation: NavigationEntry[]) => void;
 }) {
   switch (block.type) {
     case 'hero':
@@ -1336,6 +1358,12 @@ export function BlockInspector({
             ]}
             onChange={(surface) => onChange({ ...block, surface })}
           />
+          {onNavigationChange ? (
+            <StatefulNavigationEditor
+              navigation={document.navigation}
+              onChange={onNavigationChange}
+            />
+          ) : null}
         </div>
       );
   }

@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import { allBlocksDocument } from '../fixtures/block-data';
 import { blockDefinitions, renderBlock, renderSection } from '../../src/site-kit/registry';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
@@ -9,10 +10,10 @@ describe('controlled public renderer', () => {
   it('renders the Point Classic production chrome and homepage structure', () => {
     const { container } = render(<SiteRenderer document={defaultSiteDocument} route="/" />);
 
-    expect(container.querySelector('.site-header.site-header--overlay')).not.toBeNull();
-    expect(screen.getByRole('link', { name: 'Point Community Church home' })).toContainElement(
-      screen.getByRole('img', { name: 'Point' }),
-    );
+    expect(container.querySelector('.site-header')).toBeNull();
+    expect(container.querySelector('.point-layout-section--position-overlay')).not.toBeNull();
+    expect(screen.getByRole('img', { name: 'Point Community Church' })).toBeVisible();
+    expect(screen.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
     expect(container.querySelector('.home-hero')).not.toBeNull();
     expect(container.querySelector('.home-intro')).not.toBeNull();
     expect(container.querySelector('.home-feature--photo')).not.toBeNull();
@@ -31,7 +32,8 @@ describe('controlled public renderer', () => {
       <SiteRenderer document={defaultSiteDocument} route="/who-we-are" />,
     );
 
-    expect(container.querySelector('.site-header:not(.site-header--overlay)')).not.toBeNull();
+    expect(container.querySelector('.site-header')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
     expect(container.querySelector('.page-hero.page-hero--image')).not.toBeNull();
     expect(container.querySelector('.page-body.shell')).not.toBeNull();
     expect(screen.getByText('About Point')).toHaveClass('eyebrow');
@@ -39,41 +41,22 @@ describe('controlled public renderer', () => {
     expect(screen.getByText('We are a family of disciples on mission.')).toBeVisible();
   });
 
-  it('can remove the built-in header and render navigation as an ordinary element', () => {
+  it('routes internal Navigation element links through preview navigation', () => {
+    const onNavigate = vi.fn();
+    render(<SiteRenderer document={defaultSiteDocument} route="/" onNavigate={onNavigate} />);
+
+    fireEvent.click(screen.getByRole('link', { name: /^Who We Are$/ }));
+
+    expect(onNavigate).toHaveBeenCalledWith('/who-we-are');
+  });
+
+  it('can remove the logo independently while retaining editable navigation', () => {
     const document = structuredClone(defaultSiteDocument);
     const page = document.pages[0];
     if (!page) throw new Error('Expected home page');
-    page.showHeader = false;
-    page.blocks.push({
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa61',
-      type: 'section',
-      name: 'Custom navigation',
-      layout: 'grid',
-      columns: 12,
-      gap: 'small',
-      width: 'shell',
-      surface: 'transparent',
-      padding: 'small',
-      minRows: 2,
-      backgroundPosition: 'center',
-      overlay: 'none',
-      items: [
-        {
-          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb61',
-          span: 8,
-          align: 'center',
-          grid: { desktop: { column: 5, row: 1, columnSpan: 8, rowSpan: 2 } },
-          element: {
-            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc61',
-            type: 'navigation',
-            label: 'Church navigation',
-            orientation: 'responsive',
-            align: 'right',
-            surface: 'transparent',
-          },
-        },
-      ],
-    });
+    const header = page.blocks.find((section) => section.name === 'Site header');
+    if (!header) throw new Error('Expected editable site header');
+    header.items = header.items.filter((item) => item.element.type !== 'image');
 
     const { container } = render(<SiteRenderer document={document} route="/" />);
     expect(container.querySelector('.site-header')).toBeNull();
@@ -86,7 +69,8 @@ describe('controlled public renderer', () => {
       const { container, unmount } = render(
         <SiteRenderer document={defaultSiteDocument} route={page.route} />,
       );
-      expect(container.querySelector('.site-header')).not.toBeNull();
+      expect(container.querySelector('.site-header')).toBeNull();
+      expect(container.querySelector('section[aria-label="Site header"]')).not.toBeNull();
       expect(container.querySelector('.site-footer')).not.toBeNull();
       expect(container.querySelector('#point-main')).not.toBeNull();
       expect(container.textContent).toContain(
@@ -152,6 +136,7 @@ describe('controlled public renderer', () => {
       type: 'section',
       name: 'Test grid',
       layout: 'grid' as const,
+      position: 'flow' as const,
       columns: 12 as const,
       gap: 'large' as const,
       width: 'narrow' as const,

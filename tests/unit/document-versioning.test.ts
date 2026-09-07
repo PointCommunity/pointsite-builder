@@ -4,6 +4,21 @@ import { migrateDocument, UnsupportedSchemaVersionError } from '../../src/site-k
 import { RENDERER_VERSION, SCHEMA_VERSION } from '../../src/site-kit/version';
 
 describe('document versioning', () => {
+  const versionSixDocument = () => {
+    const legacy = structuredClone(validSiteDocument) as unknown as Record<string, unknown>;
+    legacy.schemaVersion = 6;
+    legacy.rendererVersion = '6.0.0';
+    const pages = legacy.pages as Array<Record<string, unknown>>;
+    for (const page of pages) {
+      page.showHeader = true;
+      page.blocks = (page.blocks as Array<Record<string, unknown>>).map((section) => {
+        const legacySection = { ...section };
+        delete legacySection.position;
+        return legacySection;
+      });
+    }
+    return legacy;
+  };
   const versionOneDocument = () => {
     const current = structuredClone(validSiteDocument);
     return {
@@ -57,7 +72,15 @@ describe('document versioning', () => {
     legacy.schemaVersion = 0;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6']);
+    expect(migrated.applied).toEqual([
+      '0-to-1',
+      '1-to-2',
+      '2-to-3',
+      '3-to-4',
+      '4-to-5',
+      '5-to-6',
+      '6-to-7',
+    ]);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
 
@@ -69,9 +92,9 @@ describe('document versioning', () => {
   it('migrates version one into deterministic standardized sections', () => {
     const first = migrateDocument(versionOneDocument());
     const second = migrateDocument(versionOneDocument());
-    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6']);
+    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7']);
     expect(first.document).toEqual(second.document);
-    expect(first.document.pages[0]?.blocks[0]).toMatchObject({
+    expect(first.document.pages[0]?.blocks[1]).toMatchObject({
       type: 'section',
       layout: 'compatibility',
       items: [{ element: { type: 'hero' } }],
@@ -91,9 +114,9 @@ describe('document versioning', () => {
 
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
-    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5', '5-to-6']);
+    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7']);
     expect(first.document).toEqual(second.document);
-    expect(first.document.pages[0]?.blocks[0]?.items[0]?.grid.desktop).toEqual({
+    expect(first.document.pages[0]?.blocks[1]?.items[0]?.grid.desktop).toEqual({
       column: 1,
       row: 1,
       columnSpan: 12,
@@ -128,13 +151,13 @@ describe('document versioning', () => {
     }
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6']);
+    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6', '6-to-7']);
     expect(
       migrated.document.pages.flatMap((page) =>
-        page.blocks.flatMap((section) => section.items.map((item) => item.element.id)),
+        page.blocks.slice(1).flatMap((section) => section.items.map((item) => item.element.id)),
       ),
     ).toEqual(originalElementIds);
-    expect(migrated.document.pages[0]?.blocks[0]).toMatchObject({
+    expect(migrated.document.pages[0]?.blocks[1]).toMatchObject({
       backgroundPosition: 'center',
       overlay: 'none',
     });
@@ -152,7 +175,7 @@ describe('document versioning', () => {
     delete fields[0].width;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['4-to-5', '5-to-6']);
+    expect(migrated.applied).toEqual(['4-to-5', '5-to-6', '6-to-7']);
     expect(migrated.document.linkedMedia).toEqual([]);
     expect(migrated.document.forms[0]).toMatchObject({
       layout: 'two-column',
@@ -169,9 +192,51 @@ describe('document versioning', () => {
     for (const page of pages) delete page.showHeader;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['5-to-6']);
-    expect(migrated.document.pages.every((page) => page.showHeader)).toBe(true);
-    expect(migrated.document.pages[0]?.blocks).toEqual(validSiteDocument.pages[0]?.blocks);
+    expect(migrated.applied).toEqual(['5-to-6', '6-to-7']);
+    const migratedPage = migrated.document.pages[0];
+    expect(migratedPage).not.toHaveProperty('showHeader');
+    expect(migratedPage?.blocks[0]).toMatchObject({
+      name: 'Site header',
+      layout: 'grid',
+      position: 'overlay',
+      items: [
+        { element: { type: 'image', mediaId: validSiteDocument.media[0].id } },
+        { element: { type: 'navigation' } },
+      ],
+    });
+    expect(migratedPage?.blocks.slice(1)).toEqual(
+      validSiteDocument.pages[0]?.blocks.map((section) => ({ ...section, position: 'flow' })),
+    );
+  });
+
+  it('turns a version six built-in header into deterministic editable grid content', () => {
+    const legacy = versionSixDocument();
+
+    const first = migrateDocument(legacy);
+    const second = migrateDocument(legacy);
+
+    expect(first.applied).toEqual(['6-to-7']);
+    expect(first.document).toEqual(second.document);
+    expect(first.document.pages[0]?.blocks[0]?.items.map((item) => item.element.type)).toEqual([
+      'image',
+      'navigation',
+    ]);
+    expect(first.document.pages[0]?.blocks[0]?.items[1]?.grid).toMatchObject({
+      desktop: { column: 5, columnSpan: 8 },
+      mobile: { column: 1, columnSpan: 12 },
+    });
+  });
+
+  it('does not inject an editable header where the version six header was disabled', () => {
+    const legacy = versionSixDocument();
+    const pages = legacy.pages as Array<Record<string, unknown>>;
+    pages[0].showHeader = false;
+
+    const migrated = migrateDocument(legacy);
+
+    expect(migrated.document.pages[0]?.blocks).toEqual(
+      validSiteDocument.pages[0]?.blocks.map((section) => ({ ...section, position: 'flow' })),
+    );
   });
 
   it('fails closed for an unknown future schema version', () => {

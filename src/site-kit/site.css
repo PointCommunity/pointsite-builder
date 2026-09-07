@@ -1245,9 +1245,6 @@
   border: 1px solid var(--point-border);
   background: var(--point-canvas);
 }
-.point-site--editing .site-header--overlay {
-  pointer-events: none;
-}
 .point-site .point-card,
 .point-site .point-people article {
   padding: var(--point-space-medium);
@@ -1267,6 +1264,9 @@
   width: 100%;
   padding: 0.5rem;
   color: var(--point-text);
+}
+.point-site .point-layout-section--position-overlay .point-navigation--transparent {
+  color: var(--point-on-primary);
 }
 .point-site .point-navigation--canvas {
   background: var(--point-canvas);
@@ -1374,6 +1374,16 @@
   width: 100%;
   overflow: hidden;
   color: var(--point-text);
+}
+.point-site main {
+  position: relative;
+}
+.point-site .point-layout-section--position-overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 10;
+  overflow: visible;
+  color: var(--point-on-primary);
 }
 .point-site .point-layout-section__background,
 .point-site .point-layout-section__overlay {

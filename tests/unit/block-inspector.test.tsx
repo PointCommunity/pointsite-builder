@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { BlockInspector } from '../../src/client/editor/BlockInspector';
@@ -41,6 +41,28 @@ describe('BlockInspector', () => {
         items: [...block.items, { question: 'New question', answer: 'Add an answer.' }],
       }),
     );
+  });
+
+  it('edits the shared menu while a Navigation element is selected', () => {
+    const navigation = allBlocks.find((item) => item.type === 'navigation')!;
+    const onNavigationChange = vi.fn();
+    render(
+      <BlockInspector
+        block={navigation}
+        document={defaultSiteDocument}
+        onChange={vi.fn()}
+        onNavigationChange={onNavigationChange}
+      />,
+    );
+
+    const menuLabel = within(screen.getByRole('group', { name: 'About' })).getAllByLabelText(
+      'Label',
+    )[0];
+    fireEvent.change(menuLabel, { target: { value: 'Our church' } });
+    expect(onNavigationChange).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ label: 'Our church' })]),
+    );
+    expect(menuLabel).toHaveValue('Our church');
   });
 
   it.each([
