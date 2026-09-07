@@ -1,6 +1,7 @@
 # PointSite Builder Development Instructions
 
 - This file governs the PointSite Builder application, which is separate from the public PointSite website.
+- Canonical repository skills live under `.agents/skills/`. Use `pointsite-builder-create-issue` for researching, drafting, approving, creating, and verifying PointSite Builder GitHub Issues.
 - Preserve the public PointSite as a static, read-only website.
 - Never put credentials, GitHub or session tokens, draft data, or private media in source or logs.
 - All schema changes require migrations, backward compatibility, and tests.
