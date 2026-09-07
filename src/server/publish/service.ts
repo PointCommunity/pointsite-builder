@@ -5,6 +5,7 @@ import type { MediaService } from '../media/service';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
 import type { D1PublishJobStore, PublishJobRecord } from './jobs';
+import { z } from 'zod';
 
 export interface PublisherConfig {
   appId: string;
@@ -14,6 +15,8 @@ export interface PublisherConfig {
 
 interface PublishInput {
   draftId: string;
+  expectedRevisionId: string;
+  expectedRevisionChecksum: string;
   expectedBaseSha: string;
   actor: string;
   idempotencyKey: string;
@@ -54,6 +57,19 @@ export class StagingPublisher {
     return this.jobs.getById(id);
   }
 
+  async workflowForDraft(draftId: string) {
+    if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    const [currentStagingSha, job] = await Promise.all([
+      this.currentBaseSha(),
+      this.jobs.getLatestForDraft(draftId),
+    ]);
+    return {
+      currentStagingSha,
+      reviewUrl: 'https://staging.pointatx.org',
+      job: job ? this.workflowJob(job) : null,
+    };
+  }
+
   async refreshVerification(id: string, actor: string, requestId: string) {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     const job = await this.jobs.getById(id);
@@ -79,6 +95,11 @@ export class StagingPublisher {
 
   async publish(input: PublishInput) {
     const draft = await this.repository.getDraft(input.draftId);
+    if (
+      draft.revision.id !== input.expectedRevisionId ||
+      draft.revision.checksum !== input.expectedRevisionChecksum
+    )
+      throw new Error('DRAFT_REVISION_DRIFT');
     const candidate = await buildCandidate(draft, this.media);
     let job: PublishJobRecord | null = null;
     if (this.jobs) {
@@ -89,6 +110,7 @@ export class StagingPublisher {
           job.baseSha !== input.expectedBaseSha)
       )
         throw new Error('IDEMPOTENCY_CONFLICT');
+      job ??= await this.jobs.getLatestReusable(candidate.candidateChecksum, input.expectedBaseSha);
       if (job?.status === 'succeeded' && job.resultSha && job.externalUrl) {
         return this.result(
           draft,
@@ -163,6 +185,36 @@ export class StagingPublisher {
       ...(jobId ? { jobId } : {}),
       requestedBy: input.actor,
       status: 'succeeded' as const,
+    };
+  }
+
+  private workflowJob(job: PublishJobRecord) {
+    const candidate = z
+      .strictObject({
+        siteId: z.literal('pointsite'),
+        draftId: z.uuid(),
+        revisionId: z.uuid(),
+        revisionChecksum: z.string().regex(/^[a-f0-9]{64}$/),
+        schemaVersion: z.number().int().positive(),
+        rendererVersion: z.string(),
+        fileCount: z.number().int().positive().optional(),
+      })
+      .parse(job.candidate);
+    return {
+      id: job.id,
+      status: job.status,
+      candidateChecksum: job.candidateChecksum,
+      draftId: candidate.draftId,
+      revisionId: candidate.revisionId,
+      revisionChecksum: candidate.revisionChecksum,
+      schemaVersion: candidate.schemaVersion,
+      rendererVersion: candidate.rendererVersion,
+      stagingBaseSha: job.baseSha,
+      stagingCommitSha: job.resultSha,
+      commitUrl: job.externalUrl,
+      requestedAt: job.requestedAt,
+      completedAt: job.completedAt,
+      evidence: job.evidence,
     };
   }
 

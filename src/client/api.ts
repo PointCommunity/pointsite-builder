@@ -1,6 +1,7 @@
 import type { SiteDocument } from '../site-kit/types';
 import type { DraftRecord, RevisionRecord, Role } from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
+import type { StagingWorkflowSnapshot } from './publish/workflow';
 
 export interface ActorResponse {
   email: string;
@@ -163,11 +164,25 @@ export const api = {
       body: JSON.stringify({ revisionId, expectedChecksum }),
     }),
   stagingBase: () => request<{ sha: string }>('/publish/staging/base'),
-  publishStaging: (draftId: string, expectedBaseSha: string) =>
+  getStagingWorkflow: (draftId: string) =>
+    request<StagingWorkflowSnapshot>(
+      `/publish/staging/workflow?draftId=${encodeURIComponent(draftId)}`,
+    ),
+  publishStaging: (
+    draftId: string,
+    expectedRevisionId: string,
+    expectedRevisionChecksum: string,
+    expectedBaseSha: string,
+  ) =>
     request<StagingPublishResult>('/publish/staging', {
       method: 'POST',
-      headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ draftId, expectedBaseSha }),
+      headers: mutationHeaders(`staging-${expectedRevisionId}-${expectedBaseSha}`),
+      body: JSON.stringify({
+        draftId,
+        expectedRevisionId,
+        expectedRevisionChecksum,
+        expectedBaseSha,
+      }),
     }),
   refreshStagingVerification: (jobId: string) =>
     request<PublishJobResponse>(`/publish/jobs/${jobId}/verification`, {

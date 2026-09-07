@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tasks: Guided Staging Publishing</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1040px, calc(100% - 40px));
+        margin: auto;
+        padding: 54px 0 84px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      p,
+      li {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      .task {
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      .task h2 {
+        margin-top: 0;
+        color: #d9ebd0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 015 · ordered tasks</p>
+      <h1>Guided Staging publishing</h1>
+      <section class="task">
+        <h2>☑ T015-1 — Research and specify</h2>
+        <p>
+          <strong>Acceptance:</strong> lifecycle, timing, state authority, drift, security,
+          accessibility, and recovery decisions are explicit.
+        </p>
+        <p>
+          <strong>Verify:</strong> inspect rendered dark-mode documents and lint the API contract.
+        </p>
+        <p><strong>Files:</strong> <code>specs/015-guided-staging-publishing/*</code>, OpenAPI.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-2 — Write RED lifecycle and persistence tests</h2>
+        <p>
+          <strong>Acceptance:</strong> tests cover every phase, restoration, stable identity,
+          unchanged-evidence audit suppression, failure, retry, and drift.
+        </p>
+        <p><strong>Verify:</strong> focused Vitest fails only for missing Issue #18 behavior.</p>
+        <p><strong>Files:</strong> one new unit test and focused integration tests.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-3 — Implement authoritative server recovery</h2>
+        <p>
+          <strong>Acceptance:</strong> one authorized sanitized endpoint returns current base,
+          latest draft job, evidence, and approval; publish is revision-bound and duplicate-safe.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused integration, authorization, OpenAPI lint, and typecheck.
+        </p>
+        <p>
+          <strong>Files:</strong> publish/approval stores, services, routes, app wiring, client
+          contract.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-4 — Implement the accessible guided workflow</h2>
+        <p>
+          <strong>Acceptance:</strong> five steps, plain-language phase, one safe primary action,
+          bounded polling, manual refresh, protected review, optional details, and Production lock
+          all render correctly.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused unit/browser checks across desktop and narrow supported
+          workspace.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>StagingPublish.tsx</code>, lifecycle helper, API client,
+          Builder CSS.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-5 — Prove recovery and failure journeys</h2>
+        <p>
+          <strong>Acceptance:</strong> immediate pass, prolonged pending, failed verification,
+          close/reopen, reload, stale draft/head, monitoring pause, manual refresh, and accepted
+          completion are automated.
+        </p>
+        <p>
+          <strong>Verify:</strong> Chromium RED/GREEN, then all Playwright projects with axe and
+          keyboard checks.
+        </p>
+        <p><strong>Files:</strong> publishing E2E and fixture updates.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-6 — Create acceptance evidence and run full gates</h2>
+        <p>
+          <strong>Acceptance:</strong> every Issue criterion is linked to fresh evidence; format,
+          type, lint, contracts, runbooks, skills, coverage, build, performance, audit, and browser
+          suites pass.
+        </p>
+        <p>
+          <strong>Verify:</strong> <code>npm run check</code>,
+          <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+          <code>npm audit --audit-level=high</code>, <code>git diff --check</code>.
+        </p>
+        <p><strong>Files:</strong> <code>tests/reports/guided-staging-publishing.html</code>.</p>
+      </section>
+      <section class="task">
+        <h2>☐ T015-7 — Review, merge, deploy, and validate live</h2>
+        <p>
+          <strong>Acceptance:</strong> exact PR head and Quality pass, merge tree matches, exact
+          main passes, Builder production is deployed, workflow restoration is hands-on validated
+          against protected Staging, and public PointSite is unchanged.
+        </p>
+        <p>
+          <strong>Verify:</strong> pipeline readbacks, Cloudflare versions, live health/assets,
+          authenticated browser, real Staging job/reopen/acceptance, and public repo/head
+          comparison.
+        </p>
+        <p><strong>Files:</strong> no new source after the final gate.</p>
+      </section>
+    </main>
+  </body>
+</html>

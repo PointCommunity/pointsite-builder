@@ -107,6 +107,16 @@ const fromRow = (row: ApprovalRow): ApprovalRecord => {
 export class D1ApprovalService {
   constructor(private readonly database: D1Database) {}
 
+  async getLatestForJob(publishJobId: string): Promise<ApprovalRecord | null> {
+    const row = await this.database
+      .prepare(
+        "SELECT id,publish_job_id,candidate_json,evidence_json,candidate_checksum,staging_commit_sha,production_base_sha,decision,actor,note,created_at FROM approvals WHERE gate='staging-acceptance' AND publish_job_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
+      )
+      .bind(publishJobId)
+      .first<ApprovalRow>();
+    return row ? fromRow(row) : null;
+  }
+
   async record(input: {
     publishJobId: string;
     expectedTuple: CandidateTuple;

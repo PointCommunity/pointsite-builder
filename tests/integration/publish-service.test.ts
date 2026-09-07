@@ -38,14 +38,16 @@ async function setup() {
     idempotencyKey: 'create-publish-test',
     requestId: 'request-create',
   });
+  let currentSha = baseSha;
   const client = {
-    currentMainSha: vi.fn(() => Promise.resolve(baseSha)),
-    commitFiles: vi.fn(() =>
-      Promise.resolve({
+    currentMainSha: vi.fn(() => Promise.resolve(currentSha)),
+    commitFiles: vi.fn(() => {
+      currentSha = commitSha;
+      return Promise.resolve({
         sha: commitSha,
         url: `https://github.com/PointCommunity/pointsite-staging/commit/${commitSha}`,
-      }),
-    ),
+      });
+    }),
     verificationForCommit: vi.fn<(_: string) => Promise<VerificationResult>>().mockResolvedValue({
       status: 'passed' as const,
       evidence: {
@@ -88,13 +90,18 @@ describe('staging publish coordinator', () => {
     await expect(publisher.currentBaseSha()).resolves.toBe(baseSha);
     const input = {
       draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
       expectedBaseSha: baseSha,
       actor: 'publisher@pointatx.org',
       idempotencyKey: 'publish-candidate-0001',
       requestId: 'request-publish',
     };
     const result = await publisher.publish(input);
-    const retry = await publisher.publish(input);
+    const retry = await publisher.publish({
+      ...input,
+      idempotencyKey: 'publish-candidate-duplicate-safe',
+    });
     expect(retry).toEqual(result);
     expect(result.jobId).toMatch(/^[0-9a-f-]{36}$/);
     expect(result).toMatchObject({
@@ -105,12 +112,24 @@ describe('staging publish coordinator', () => {
     });
     expect(client.commitFiles).toHaveBeenCalledOnce();
     expect((await jobs.getByKey(input.idempotencyKey))?.status).toBe('succeeded');
+    await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
+      currentStagingSha: commitSha,
+      reviewUrl: 'https://staging.pointatx.org',
+      job: {
+        id: result.jobId,
+        revisionId: draft.revision.id,
+        stagingCommitSha: commitSha,
+        status: 'succeeded',
+      },
+    });
   });
 
   it('records exact verification evidence and rejects a reused key after draft drift', async () => {
     const { publisher, repository, draft, client } = await setup();
     const input = {
       draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
       expectedBaseSha: baseSha,
       actor: 'publisher@pointatx.org',
       idempotencyKey: 'publish-candidate-0002',
@@ -152,7 +171,7 @@ describe('staging publish coordinator', () => {
       idempotencyKey: 'save-before-retry',
       requestId: 'request-save',
     });
-    await expect(publisher.publish(input)).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    await expect(publisher.publish(input)).rejects.toThrow('DRAFT_REVISION_DRIFT');
   });
 
   it('persists a failed commit and refuses verification before a successful result', async () => {
@@ -160,6 +179,8 @@ describe('staging publish coordinator', () => {
     client.commitFiles.mockRejectedValueOnce(new Error('GITHUB_TEST_FAILURE'));
     const input = {
       draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
       expectedBaseSha: baseSha,
       actor: 'publisher@pointatx.org',
       idempotencyKey: 'publish-candidate-0003',

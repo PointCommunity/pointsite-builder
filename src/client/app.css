@@ -696,28 +696,103 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   font-family: ui-monospace, monospace;
   font-size: 0.82rem;
 }
-.publish-result,
-.acceptance-panel {
+.publish-steps {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+.publish-steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 0.55rem;
   min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+.publish-steps li[data-state='current'] {
+  border-width: 2px;
+  border-color: var(--brand-strong);
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
+}
+.publish-steps li[data-state='complete'] .publish-step-marker {
+  background: var(--brand-strong);
+  color: white;
+}
+.publish-step-marker {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.publish-steps strong,
+.publish-steps small {
+  display: block;
+}
+.publish-steps small {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.publish-status,
+.staging-review {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+.publish-status--failed,
+.publish-status--stale,
+.publish-status--unavailable {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.publish-status p,
+.staging-review p,
+.staging-review h3 {
+  margin: 0;
+}
+.publish-actions,
+.technical-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-top: 1rem;
 }
-.publish-result p {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.publish-result > .button,
-.acceptance-panel > .button {
+.publish-actions > .button,
+.staging-review > .button {
   width: fit-content;
   max-width: 100%;
 }
-.acceptance-panel {
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
+.staging-review {
+  margin-top: 1.5rem;
+  border-color: var(--brand-strong);
 }
-.acceptance-panel h3 {
-  margin: 0;
+.staging-review .eyebrow {
+  margin-bottom: -0.35rem;
+}
+.technical-details {
+  margin-top: 1.5rem;
+}
+.technical-details summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+.technical-links a {
+  overflow-wrap: anywhere;
 }
 .production-lock {
   margin-top: 2rem;
@@ -727,6 +802,14 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
 }
 .production-lock p {
   margin-bottom: 0;
+}
+@media (max-width: 850px) {
+  .publish-steps {
+    grid-template-columns: 1fr;
+  }
+  .publish-steps small {
+    font-size: 0.82rem;
+  }
 }
 .media-panel h2 {
   margin: 0;

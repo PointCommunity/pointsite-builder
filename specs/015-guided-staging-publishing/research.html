@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Research: Guided Staging Publishing</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0c100d;
+        color: #eef3ec;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 56px 0 84px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.6rem);
+      }
+      h2 {
+        margin-top: 2.3rem;
+        color: #d6e8cc;
+      }
+      p,
+      li,
+      th,
+      td {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9fc58e;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-weight: 800;
+      }
+      .card {
+        border: 1px solid #2c3b2e;
+        background: #141a15;
+        border-radius: 14px;
+        padding: 20px;
+        margin: 18px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #2c3b2e;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #d6e8cc;
+        background: #182019;
+      }
+      code {
+        color: #d8f3ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+      a {
+        color: #a9d995;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 015 · repository and live-system analysis</p>
+      <h1>Guided Staging publishing research</h1>
+      <h2>Confirmed current behavior</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <code>StagingPublish</code> keeps job/result/approval only in mounted React state.
+          </li>
+          <li>
+            The user must press “Check staging verification”; each press writes evidence and an
+            audit event even when nothing changed.
+          </li>
+          <li>The original Publish action remains available after the exact commit is created.</li>
+          <li>
+            D1 already stores candidate draft/revision identity, job status/result/evidence, and
+            immutable approvals.
+          </li>
+          <li>
+            The protected review URL is live at <code>staging.pointatx.org</code> and returns 401
+            without Cloudflare Access.
+          </li>
+          <li>
+            Staging exposes exact-commit GitHub checks named <code>verify</code> and
+            <code>deploy</code>.
+          </li>
+        </ul>
+      </div>
+      <h2>State and recovery decision</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Problem</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mounted-only identity</td>
+            <td>Read the latest durable job by draft and recover its latest approval.</td>
+          </tr>
+          <tr>
+            <td>Duplicate publication</td>
+            <td>
+              Bind the request to exact revision ID/checksum and derive one stable idempotency key
+              from revision plus base.
+            </td>
+          </tr>
+          <tr>
+            <td>Manual-only verification</td>
+            <td>
+              Poll every 10 seconds while pending, stop on terminal state, and pause after 15
+              minutes.
+            </td>
+          </tr>
+          <tr>
+            <td>Audit noise</td>
+            <td>Persist and audit verification only when serialized evidence changes.</td>
+          </tr>
+          <tr>
+            <td>Candidate drift</td>
+            <td>
+              Compare selected revision with the stored candidate and current Staging head with its
+              result commit.
+            </td>
+          </tr>
+          <tr>
+            <td>External operational jargon</td>
+            <td>
+              Primary UI uses five plain-language steps; technical identifiers remain in a
+              disclosure.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>GitHub evidence model</h2>
+      <p>
+        GitHub check runs expose queued/in-progress/completed states and terminal conclusions
+        including success, failure, cancelled, timed out, skipped, and stale. Deployment statuses
+        similarly progress through pending/in-progress to success or failure. The Builder can
+        therefore map the existing exact-commit <code>verify</code> and <code>deploy</code> checks
+        into pending, failed, and passed without asking users to interpret GitHub.
+      </p>
+      <ul>
+        <li>
+          <a href="https://docs.github.com/en/rest/checks/runs">GitHub REST API: check runs</a>
+        </li>
+        <li>
+          <a
+            href="https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks"
+            >GitHub guide: checks state and conclusions</a
+          >
+        </li>
+        <li>
+          <a href="https://docs.github.com/en/rest/deployments/statuses"
+            >GitHub REST API: deployment statuses</a
+          >
+        </li>
+        <li>
+          <a href="https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+            >GitHub REST API rate limits</a
+          >
+        </li>
+      </ul>
+      <h2>Security and privacy</h2>
+      <div class="card">
+        <ul>
+          <li>
+            Every recovery, refresh, publication, and acceptance route retains server-side role plus
+            live repository-permission checks.
+          </li>
+          <li>The resume response omits idempotency keys and private document content.</li>
+          <li>
+            Automatic updates are bounded, do not run in hidden/unmounted workflows, and stop on
+            terminal state.
+          </li>
+          <li>
+            Acceptance rechecks current Staging head immediately before recording the immutable
+            decision.
+          </li>
+          <li>No Production API or public-repository write is added.</li>
+        </ul>
+      </div>
+    </main>
+  </body>
+</html>

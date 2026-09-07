@@ -294,9 +294,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [draftId, expectedBaseSha]
+              required: [draftId, expectedRevisionId, expectedRevisionChecksum, expectedBaseSha]
               properties:
                 draftId: { type: string, format: uuid }
+                expectedRevisionId: { type: string, format: uuid }
+                expectedRevisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
                 expectedBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
       responses:
         '201':
@@ -305,6 +307,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StagingPublishResult' }
         '409': { $ref: '#/components/responses/Error' }
+  /publish/staging/workflow:
+    get:
+      operationId: getStagingWorkflow
+      parameters:
+        - name: draftId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sanitized latest durable Staging workflow for this draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StagingWorkflowSnapshot' }
+        '422': { $ref: '#/components/responses/Error' }
   /publish/staging/base:
     get:
       operationId: getStagingBase
@@ -637,6 +654,74 @@ components:
       required: [sha]
       properties:
         sha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    StagingWorkflowSnapshot:
+      type: object
+      additionalProperties: false
+      required: [currentStagingSha, reviewUrl, job, approval]
+      properties:
+        currentStagingSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        reviewUrl: { type: string, format: uri }
+        job:
+          oneOf:
+            - $ref: '#/components/schemas/StagingWorkflowJob'
+            - type: 'null'
+        approval:
+          oneOf:
+            - $ref: '#/components/schemas/StagingAcceptanceSummary'
+            - type: 'null'
+    StagingWorkflowJob:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          status,
+          candidateChecksum,
+          draftId,
+          revisionId,
+          revisionChecksum,
+          schemaVersion,
+          rendererVersion,
+          stagingBaseSha,
+          requestedAt,
+          evidence,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        draftId: { type: string, format: uuid }
+        revisionId: { type: string, format: uuid }
+        revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schemaVersion: { type: integer, minimum: 1 }
+        rendererVersion: { type: string }
+        stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+        stagingCommitSha:
+          oneOf:
+            - type: string
+              pattern: '^[a-f0-9]{40}$'
+            - type: 'null'
+        commitUrl:
+          oneOf:
+            - type: string
+              format: uri
+            - type: 'null'
+        requestedAt: { type: string, format: date-time }
+        completedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        evidence: { type: object }
+    StagingAcceptanceSummary:
+      type: object
+      additionalProperties: false
+      required: [id, publishJobId, decision, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        publishJobId: { type: string, format: uuid }
+        decision: { type: string, enum: [approved, rejected, revoked] }
+        createdAt: { type: string, format: date-time }
     CandidateTuple:
       type: object
       additionalProperties: false

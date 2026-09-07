@@ -31,10 +31,15 @@ const draft: DraftRecord = {
 };
 
 test.beforeEach(async ({ page }) => {
+  let publishedToStaging = false;
+  let verificationPassed = false;
+  let acceptedOnStaging = false;
+  const publishTime = new Date().toISOString();
   await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
     const publishResult = {
-      jobId: 'job-1',
+      jobId: '30000000-0000-4000-8000-000000000001',
       siteId: 'pointsite',
       revisionId: draft.revision.id,
       revisionChecksum: draft.revision.checksum,
@@ -45,86 +50,142 @@ test.beforeEach(async ({ page }) => {
       commitSha: 'd'.repeat(40),
       url: 'https://github.com/PointCommunity/pointsite-staging/commit/d',
     };
+    const workflowJob = {
+      id: publishResult.jobId,
+      status: 'succeeded',
+      candidateChecksum: publishResult.candidateChecksum,
+      draftId: draft.id,
+      revisionId: publishResult.revisionId,
+      revisionChecksum: publishResult.revisionChecksum,
+      schemaVersion: publishResult.schemaVersion,
+      rendererVersion: publishResult.rendererVersion,
+      stagingBaseSha: publishResult.stagingBaseSha,
+      stagingCommitSha: publishResult.commitSha,
+      commitUrl: publishResult.url,
+      requestedAt: publishTime,
+      completedAt: publishTime,
+      evidence: {
+        verificationStatus: verificationPassed ? 'passed' : 'pending',
+        ...(verificationPassed
+          ? {
+              workflowUrl: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
+              deploymentUrl: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+              checks: {
+                build: true,
+                schema: true,
+                renderer: true,
+                routes: true,
+                assets: true,
+                accessibility: true,
+                responsive: true,
+                security: true,
+                primaryFlow: true,
+                live: true,
+              },
+            }
+          : {}),
+      },
+    };
+    if (path.endsWith('/publish/staging') && request.method() === 'POST') publishedToStaging = true;
+    if (path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`))
+      verificationPassed = true;
+    if (path.endsWith('/approvals') && request.method() === 'POST') acceptedOnStaging = true;
     const body = path.endsWith('/me')
       ? { email: 'admin@pointatx.org', role: 'administrator', repositoryPermission: 'admin' }
       : path.endsWith('/drafts')
         ? { items: [draft] }
         : path.includes('/revisions')
           ? { items: [draft.revision] }
-          : path.endsWith('/staging/base')
-            ? { sha: 'b'.repeat(40) }
-            : path.endsWith('/publish/staging')
-              ? publishResult
-              : path.endsWith('/publish/jobs/job-1/verification')
-                ? {
-                    id: 'job-1',
-                    status: 'succeeded',
-                    candidateChecksum: publishResult.candidateChecksum,
-                    resultSha: publishResult.commitSha,
-                    evidence: {
-                      verificationStatus: 'passed',
-                      workflowUrl:
-                        'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
-                      deploymentUrl:
-                        'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
-                      checks: {
-                        build: true,
-                        schema: true,
-                        renderer: true,
-                        routes: true,
-                        assets: true,
-                        accessibility: true,
-                        responsive: true,
-                        security: true,
-                        primaryFlow: true,
-                        live: true,
-                      },
-                    },
-                  }
-                : path.endsWith('/approvals/production-base')
-                  ? { sha: 'e'.repeat(40) }
-                  : path.endsWith('/approvals')
-                    ? {
-                        id: 'approval-1',
-                        decision: 'approved',
-                        tuple: {
-                          ...publishResult,
-                          stagingCommitSha: publishResult.commitSha,
-                          productionBaseSha: 'e'.repeat(40),
+          : path.endsWith('/publish/staging/workflow')
+            ? {
+                currentStagingSha: publishedToStaging
+                  ? publishResult.commitSha
+                  : publishResult.stagingBaseSha,
+                reviewUrl: 'https://staging.pointatx.org',
+                job: publishedToStaging ? workflowJob : null,
+                approval: acceptedOnStaging
+                  ? {
+                      id: '40000000-0000-4000-8000-000000000001',
+                      publishJobId: publishResult.jobId,
+                      decision: 'approved',
+                      createdAt: '2026-09-07T12:02:00Z',
+                    }
+                  : null,
+              }
+            : path.endsWith('/staging/base')
+              ? { sha: 'b'.repeat(40) }
+              : path.endsWith('/publish/staging')
+                ? publishResult
+                : path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`)
+                  ? {
+                      id: publishResult.jobId,
+                      status: 'succeeded',
+                      candidateChecksum: publishResult.candidateChecksum,
+                      resultSha: publishResult.commitSha,
+                      evidence: {
+                        verificationStatus: 'passed',
+                        workflowUrl:
+                          'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
+                        deploymentUrl:
+                          'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+                        checks: {
+                          build: true,
+                          schema: true,
+                          renderer: true,
+                          routes: true,
+                          assets: true,
+                          accessibility: true,
+                          responsive: true,
+                          security: true,
+                          primaryFlow: true,
+                          live: true,
                         },
-                      }
-                    : path.endsWith('/media')
-                      ? { items: [] }
-                      : path.endsWith('/admin/roles')
+                      },
+                    }
+                  : path.endsWith('/approvals/production-base')
+                    ? { sha: 'e'.repeat(40) }
+                    : path.endsWith('/approvals')
+                      ? {
+                          id: 'approval-1',
+                          decision: 'approved',
+                          tuple: {
+                            ...publishResult,
+                            stagingCommitSha: publishResult.commitSha,
+                            productionBaseSha: 'e'.repeat(40),
+                          },
+                        }
+                      : path.endsWith('/media')
                         ? { items: [] }
-                        : path.endsWith('/admin/audit')
+                        : path.endsWith('/admin/roles')
                           ? { items: [] }
-                          : path.endsWith('/admin/capacity')
-                            ? {
-                                privateMedia: {
-                                  used: 0,
-                                  limit: 1,
-                                  percent: 0,
-                                  warning: false,
-                                  unit: 'bytes',
-                                },
-                                revisionData: {
-                                  used: 0,
-                                  limit: 1,
-                                  percent: 0,
-                                  warning: false,
-                                  unit: 'bytes',
-                                },
-                                writesToday: {
-                                  used: 0,
-                                  limit: 100000,
-                                  percent: 0,
-                                  warning: false,
-                                  unit: 'operations',
-                                },
-                                measuredAt: '2026-09-05T00:00:00Z',
-                              }
-                            : draft;
+                          : path.endsWith('/admin/audit')
+                            ? { items: [] }
+                            : path.endsWith('/admin/capacity')
+                              ? {
+                                  privateMedia: {
+                                    used: 0,
+                                    limit: 1,
+                                    percent: 0,
+                                    warning: false,
+                                    unit: 'bytes',
+                                  },
+                                  revisionData: {
+                                    used: 0,
+                                    limit: 1,
+                                    percent: 0,
+                                    warning: false,
+                                    unit: 'bytes',
+                                  },
+                                  writesToday: {
+                                    used: 0,
+                                    limit: 100000,
+                                    percent: 0,
+                                    warning: false,
+                                    unit: 'operations',
+                                  },
+                                  measuredAt: '2026-09-05T00:00:00Z',
+                                }
+                              : draft;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -236,6 +297,7 @@ test('changes the design and creates a page without code', async ({ page }) => {
 test('publishes and accepts only exact verified staging while production stays locked', async ({
   page,
 }) => {
+  await page.clock.install();
   const productionWrites: string[] = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
@@ -245,12 +307,43 @@ test('publishes and accepts only exact verified staging while production stays l
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
-  await page.getByRole('button', { name: 'Publish to staging' }).click();
-  await expect(page.getByText(/CI verification is now running/)).toBeVisible();
-  await page.getByRole('button', { name: 'Check staging verification' }).click();
-  await expect(page.getByText(/All mandatory staging evidence passed/)).toBeVisible();
-  await page.getByRole('button', { name: 'Accept exact staging candidate' }).click();
-  await expect(page.getByText(/Staging accepted for this exact candidate/)).toBeVisible();
-  await expect(page.getByText('Production is locked')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close publishing window' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Publish and accept on Staging' })
+      .evaluate((dialog) => dialog.contains(globalThis.document.activeElement)),
+  ).resolves.toBe(true);
+  await expect(
+    page.getByRole('list', { name: 'Staging publishing progress' }).getByRole('listitem'),
+  ).toHaveCount(5);
+  await expect(page.getByText('Ready to publish')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish this revision to Staging' }).click();
+  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
+  await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Close publishing window' }).click();
+  await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
+  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Review protected Staging site' })).toHaveAttribute(
+    'href',
+    'https://staging.pointatx.org',
+  );
+  await expect(page.getByText('c'.repeat(64))).toBeHidden();
+  await page.getByRole('button', { name: 'I reviewed Staging — accept this revision' }).click();
+  await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
+  await expect(page.getByText(/public website has not changed/i)).toBeVisible();
+  await expect(page.getByText('Production remains unchanged')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close publishing window' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
+  await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
   expect(productionWrites).toEqual([]);
 });
