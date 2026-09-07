@@ -4,3 +4,4 @@ playwright-report
 test-results
 .wrangler
 package-lock.json
+.agents/skills/*/references

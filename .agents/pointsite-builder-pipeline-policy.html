@@ -81,6 +81,55 @@
       take precedence over stale assumptions.
     </p>
 
+    <h2>GitHub Project schema</h2>
+    <table>
+      <tr>
+        <th>Concern</th>
+        <th>Controlled values</th>
+      </tr>
+      <tr>
+        <td>Project</td>
+        <td>
+          Private PointCommunity Project <code>PointSite Builder Development</code>, number
+          <code>1</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Status</td>
+        <td>Backlog, On Hold, In Progress, In Review, Done</td>
+      </tr>
+      <tr>
+        <td>Active</td>
+        <td>In Progress or In Review; one Issue maximum across both</td>
+      </tr>
+      <tr>
+        <td>Priority</td>
+        <td>P0 critical, P1 high, P2 normal, P3 low</td>
+      </tr>
+      <tr>
+        <td>Impact</td>
+        <td>High, Medium, Low</td>
+      </tr>
+      <tr>
+        <td>Effort</td>
+        <td>XS, S, M, L, XL</td>
+      </tr>
+      <tr>
+        <td>Labels</td>
+        <td>
+          Exactly one governed <code>type:*</code> label and one or more governed
+          <code>area:*</code> labels
+        </td>
+      </tr>
+      <tr>
+        <td>Completion automation</td>
+        <td>
+          Pull request merged → Done is disabled. Item closed → Done and Done → close Issue remain
+          enabled; the agent sets Done only after verified production.
+        </td>
+      </tr>
+    </table>
+
     <h2>Repository and environments</h2>
     <table>
       <tr>
@@ -114,12 +163,11 @@
 
     <h2>Issue model</h2>
     <p>
-      The repository has no governed GitHub Project or custom workflow fields. Backlog means an
-      open, unassigned Issue with no active implementation PR. Active means an open Issue assigned
-      to
-      <code>brimdor</code>; at most one may be active. Dependabot PRs are maintenance automation and
-      do not consume this slot. Priority, Impact, and Effort are planning estimates in the Issue
-      body, not invented GitHub fields.
+      Every open Issue belongs to the Project with Status, Priority, Impact, and Effort populated.
+      Backlog cards are open and unassigned. Active means Status In Progress or In Review; exactly
+      one Issue maximum may be active and it is assigned only to <code>brimdor</code>. On Hold is
+      inactive and requires an explicit PM pause. Dependabot pull requests are maintenance
+      automation and do not consume the active slot.
     </p>
 
     <h2>State flow</h2>
@@ -129,8 +177,9 @@
         <code>Approved to create this exact GitHub Issue</code> authorizes creation of that draft.
       </li>
       <li>
-        The Issue is created open and unassigned. When the PM selects it, the agent assigns only
-        <code>brimdor</code> and verifies it is the sole active Issue.
+        The Issue is created open and unassigned, added to the Project, fully classified, and set to
+        Backlog. When the PM selects it, the agent moves it to In Progress, assigns only
+        <code>brimdor</code>, and verifies it is the sole active Issue.
       </li>
       <li>
         The agent works from current <code>origin/main</code> on
@@ -139,8 +188,8 @@
       </li>
       <li>
         The agent creates a PR with <code>Refs #&lt;number&gt;</code>, completes full review and
-        local browser QA, remediates every finding, and requires every GitHub Quality job to pass
-        for the exact head.
+        local browser QA, remediates every finding, requires every GitHub Quality job to pass for
+        the exact head, and moves the verified card to In Review.
       </li>
       <li>
         Unless the PM requested an earlier stop, the agent squash-merges the verified PR, proves the
@@ -154,10 +203,55 @@
       </li>
       <li>
         The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
-        relevant live behavior. Only then does it record evidence, close and unassign the Issue, and
-        confirm the active slot is empty.
+        relevant live behavior. Only then does it record evidence, move the card to Done, verify the
+        resulting Issue closure, unassign it, and confirm the active slot is empty.
       </li>
     </ol>
+
+    <h2>Agent-owned Project movement</h2>
+    <p>
+      The PM never has to drag a card, select a Status, or repair Project metadata. Human Issue
+      approval, work selection, pause or resume requests, findings, and requested stopping points
+      are decision gates; the agent performs and immediately verifies the corresponding Project
+      transition.
+    </p>
+    <table>
+      <tr>
+        <th>Pipeline event</th>
+        <th>Agent-owned action</th>
+        <th>Required readback</th>
+      </tr>
+      <tr>
+        <td>Approved Issue creation</td>
+        <td>Set Backlog; leave open and unassigned.</td>
+        <td>Status, Priority, Impact, Effort, governed labels, assignment, and inactivity.</td>
+      </tr>
+      <tr>
+        <td>PM selects or resumes work</td>
+        <td>Set In Progress and assign only <code>brimdor</code>.</td>
+        <td>Sole active card and complete aligned metadata.</td>
+      </tr>
+      <tr>
+        <td>PM explicitly pauses work</td>
+        <td>Set On Hold and preserve branch, PR, and evidence.</td>
+        <td>No active slot consumed and resumable state intact.</td>
+      </tr>
+      <tr>
+        <td>Agent QA and exact-head Quality succeed</td>
+        <td>Set In Review.</td>
+        <td>Reviewed commit/tree, PR, checks, assignment, and sole active card.</td>
+      </tr>
+      <tr>
+        <td>A finding changes the candidate</td>
+        <td>Set In Progress before remediation.</td>
+        <td>Earlier review evidence invalidated and a new candidate required.</td>
+      </tr>
+      <tr>
+        <td>Production verifies healthy</td>
+        <td>Close, unassign, and set Done.</td>
+        <td>Release evidence, closed state, Done metadata, and zero active cards.</td>
+      </tr>
+    </table>
 
     <h2>Commands and gates</h2>
     <table>
@@ -225,6 +319,14 @@
       version and verify recovery. Keep the Issue open and assigned, then make the durable source
       fix through a reviewable revert or same-Issue remediation. Destructive schema or data recovery
       always requires PM authorization.
+    </p>
+
+    <h2>GitHub enforcement limitation</h2>
+    <p>
+      GitHub currently rejects branch protection and repository rulesets for this private repository
+      at the organization plan level. Repository skills and deterministic audits enforce the PR,
+      exact-tree, and Quality contract and report this limitation. They never claim unavailable
+      branch rules are active.
     </p>
 
     <h2>Boundaries</h2>

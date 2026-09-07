@@ -16,6 +16,14 @@ const pipelineSkillNames = [
   'pointsite-builder-pipeline-health',
   'pointsite-builder-maintain-skills',
 ];
+const sharedDesignSkillNames = [
+  'awesome-design',
+  'design-taste-frontend',
+  'image-to-code',
+  'playwright-cli',
+  'web-design-guidelines',
+];
+const skillNames = [...pipelineSkillNames, ...sharedDesignSkillNames];
 const errors = [];
 
 function read(relativePath) {
@@ -43,6 +51,11 @@ if (claude !== '@AGENTS.md') errors.push('CLAUDE.md must contain only @AGENTS.md
 if (gemini !== '@./AGENTS.md') errors.push('GEMINI.md must contain only @./AGENTS.md');
 requireText(policy, 'color-scheme: dark', policyPath);
 requireText(policy, 'Approved to create this exact GitHub Issue', policyPath);
+requireText(policy, 'PointSite Builder Development', policyPath);
+requireText(policy, 'Backlog, On Hold, In Progress, In Review, Done', policyPath);
+requireText(policy, 'Agent-owned Project movement', policyPath);
+requireText(policy, 'Pull request merged', policyPath);
+requireText(policy, 'is disabled', policyPath);
 requireText(policy, 'Production only at', policyPath);
 requireText(
   policy,
@@ -50,16 +63,33 @@ requireText(
   policyPath,
 );
 requireText(policy, 'Never close an Issue after merge alone', policyPath);
-requireText(
-  agents,
-  'At most one open Builder Issue assigned to `brimdor` may be active',
-  'AGENTS.md',
-);
+requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
+requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
 requireText(agents, 'It has no Builder staging or Canary environment', 'AGENTS.md');
 requireText(agents, 'deploy the exact clean `origin/main` revision', 'AGENTS.md');
 
+const transitionContracts = {
+  'pointsite-builder-create-issue': 'never ask the PM to add or move the card',
+  'pointsite-builder-work-issue': 'agent-owned Project transition',
+  'pointsite-builder-review-issue': 'agent-owned Project transition',
+  'pointsite-builder-close-issue': 'agent-owned Project transition',
+};
+for (const [skillName, contract] of Object.entries(transitionContracts)) {
+  requireText(
+    read(`.agents/skills/${skillName}/SKILL.md`),
+    contract,
+    `.agents/skills/${skillName}/SKILL.md`,
+  );
+}
+
 for (const skillName of pipelineSkillNames) {
   requireText(agents, `\`${skillName}\``, 'AGENTS.md');
+}
+for (const skillName of sharedDesignSkillNames) {
+  requireText(agents, `\`${skillName}\``, 'AGENTS.md');
+}
+
+for (const skillName of skillNames) {
   const canonicalRelative = `.agents/skills/${skillName}/SKILL.md`;
   const canonical = read(canonicalRelative);
   const frontmatter = canonical.match(/^---\n([\s\S]*?)\n---\n/);
@@ -89,7 +119,7 @@ if (fs.existsSync(canonicalRoot)) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
-  const expected = [...pipelineSkillNames].sort();
+  const expected = [...skillNames].sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     errors.push(
       `canonical skill registry mismatch: expected ${expected.join(', ')}; found ${actual.join(', ')}`,
@@ -128,5 +158,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `PointSite Builder skill alignment OK: ${pipelineSkillNames.length} workflow skills and Claude adapters.`,
+  `PointSite Builder skill alignment OK: ${pipelineSkillNames.length} workflow skills, ${sharedDesignSkillNames.length} shared design skills, and ${skillNames.length} Claude adapters.`,
 );

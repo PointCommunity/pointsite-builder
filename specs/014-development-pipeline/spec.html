@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PointSite Builder Development Pipeline Specification</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --panel: #151918;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #d8b76f;
+        --line: #343a37;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 48px 24px 96px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h1 {
+        font-size: clamp(2.25rem, 7vw, 3rem);
+      }
+      h2 {
+        margin-top: 40px;
+        color: var(--accent);
+      }
+      p,
+      li,
+      td {
+        color: var(--muted);
+      }
+      code {
+        color: #f0d18c;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--panel);
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PointSite Builder Development Pipeline</h1>
+
+    <h2>Objective</h2>
+    <p>
+      Establish one complete, repository-owned development pipeline for
+      <code>PointCommunity/pointsite-builder</code>. The pipeline will use a private organization
+      GitHub Project modeled on <code>Zuriel-Labs/versa</code>, portable agent skills, deterministic
+      checks, local hands-on validation, and direct deployment of an exact verified revision to
+      <code>https://builder.pointatx.org</code>.
+    </p>
+
+    <h2>Confirmed assumptions</h2>
+    <ul>
+      <li>The Project owner is the <code>PointCommunity</code> organization.</li>
+      <li>
+        The Project title is <code>PointSite Builder Development</code> and it remains private.
+      </li>
+      <li>
+        Versa supplies the Project schema, views, built-in workflows, one-active-Issue invariant,
+        agent-owned metadata movement, canonical-skill layout, and cross-agent adapters.
+      </li>
+      <li>
+        Builder deliberately diverges from Versa at release: there is no Builder Staging or Canary.
+        Local QA and exact-head GitHub Quality lead directly to Builder production.
+      </li>
+      <li>
+        The Builder's separate ability to publish public-site content to
+        <code>PointCommunity/pointsite-staging</code> is a product workflow, not a Builder
+        deployment environment.
+      </li>
+    </ul>
+
+    <h2>GitHub Project contract</h2>
+    <table>
+      <tr>
+        <th>Concern</th>
+        <th>Required configuration</th>
+      </tr>
+      <tr>
+        <td>Status</td>
+        <td>Backlog, On Hold, In Progress, In Review, Done</td>
+      </tr>
+      <tr>
+        <td>Active</td>
+        <td>In Progress or In Review; one Issue maximum across both</td>
+      </tr>
+      <tr>
+        <td>Priority</td>
+        <td>P0, P1, P2, P3</td>
+      </tr>
+      <tr>
+        <td>Impact</td>
+        <td>High, Medium, Low</td>
+      </tr>
+      <tr>
+        <td>Effort</td>
+        <td>XS, S, M, L, XL</td>
+      </tr>
+      <tr>
+        <td>Views</td>
+        <td>Backlog Priorities and Kanban board views grouped by Status</td>
+      </tr>
+      <tr>
+        <td>Built-in workflows</td>
+        <td>
+          Keep Item added → Backlog, linked pull request → In Progress, item closed → Done, Done →
+          close Issue, and sub-issue addition enabled. Disable pull request merged → Done because
+          merge alone is not Builder completion.
+        </td>
+      </tr>
+      <tr>
+        <td>Repository</td>
+        <td>Link only <code>PointCommunity/pointsite-builder</code>.</td>
+      </tr>
+    </table>
+    <p>
+      Every open Builder Issue must be in the Project with complete Status, Priority, Impact, and
+      Effort values. Existing Issue #18 is onboarded through Backlog and initially classified as P1,
+      High impact, and M effort based on its approved Issue body. Any later, independently selected
+      work transition must be preserved when it satisfies the governed active-Issue contract.
+    </p>
+
+    <h2>Issue and label model</h2>
+    <p>
+      Each governed Issue has exactly one <code>type:*</code> label and at least one relevant
+      <code>area:*</code> label. The Builder taxonomy covers defects, features, maintenance,
+      security, authoring, data, deployment, documentation, identity, media, publishing, UI, and
+      workflow. Existing generic GitHub labels remain available for compatibility, but the governed
+      pipeline uses the namespaced labels.
+    </p>
+
+    <h2>State flow</h2>
+    <ol>
+      <li>
+        An approved Issue is created open and unassigned, added to the Project, fully classified,
+        and set to Backlog.
+      </li>
+      <li>PM selection moves it to In Progress and assigns only <code>brimdor</code>.</li>
+      <li>
+        Implementation occurs on <code>issue/&lt;number&gt;-&lt;slug&gt;</code> with specification,
+        tests, and a PR containing <code>Refs #&lt;number&gt;</code>.
+      </li>
+      <li>
+        Agent QA includes full repository gates and hands-on local browser checks. A verified exact
+        PR head moves to In Review.
+      </li>
+      <li>
+        Unless the PM requested an earlier stop, the verified PR is squash-merged and the merge tree
+        must equal the reviewed tree.
+      </li>
+      <li>
+        The exact clean <code>origin/main</code> commit must pass GitHub Quality, then deploy
+        directly to Builder production.
+      </li>
+      <li>
+        Only verified live production permits Issue closure, unassignment, and Project Status Done.
+      </li>
+      <li>
+        On a production failure, restore the recorded Cloudflare version, keep the Issue open and
+        active, and remediate through a reviewable change.
+      </li>
+    </ol>
+
+    <h2>Repository structure</h2>
+    <table>
+      <tr>
+        <th>Path</th>
+        <th>Purpose</th>
+      </tr>
+      <tr>
+        <td><code>AGENTS.md</code></td>
+        <td>Durable repository authority and routing</td>
+      </tr>
+      <tr>
+        <td><code>.agents/pointsite-builder-pipeline-policy.html</code></td>
+        <td>Shared dark-mode pipeline contract</td>
+      </tr>
+      <tr>
+        <td><code>.agents/skills/pointsite-builder-*/</code></td>
+        <td>Eight Builder-specific workflow skills</td>
+      </tr>
+      <tr>
+        <td>
+          <code
+            >.agents/skills/{awesome-design,design-taste-frontend,image-to-code,playwright-cli,web-design-guidelines}/</code
+          >
+        </td>
+        <td>Approved shared frontend skills copied with provenance</td>
+      </tr>
+      <tr>
+        <td><code>.claude/skills/*/SKILL.md</code></td>
+        <td>Regular-file adapters to canonical skills</td>
+      </tr>
+      <tr>
+        <td><code>CLAUDE.md</code> and <code>GEMINI.md</code></td>
+        <td>Imports of <code>AGENTS.md</code></td>
+      </tr>
+      <tr>
+        <td><code>.github/workflows/quality.yml</code></td>
+        <td>Exact-revision quality and skill-alignment checks</td>
+      </tr>
+    </table>
+
+    <h2>Commands</h2>
+    <ul>
+      <li>
+        <code>npm run skills:check</code> validates skill registries, adapters, policy, Project
+        contract scripts, and release helpers.
+      </li>
+      <li>
+        <code>npm run pipeline:health</code> performs a read-only live audit of Git, Issues, Project
+        metadata, PR linkage, and CI.
+      </li>
+      <li>
+        <code>npm run check</code> runs skill alignment, formatting, types, lint, contracts,
+        runbooks, coverage, and build.
+      </li>
+      <li>
+        <code>npm run test:performance</code> and <code>npm run test:e2e</code> remain required
+        release gates.
+      </li>
+      <li>
+        <code>npm run deploy</code> deploys only a clean, pushed, exact
+        <code>origin/main</code> revision.
+      </li>
+      <li>
+        <code>npm run verify:live</code> checks production health, HTML, and HTML-derived assets.
+      </li>
+    </ul>
+
+    <h2>Testing strategy</h2>
+    <ul>
+      <li>
+        Unit-test pipeline snapshot logic, health payloads, HTML validation, and asset extraction.
+      </li>
+      <li>Validate every canonical skill and regular-file adapter.</li>
+      <li>
+        Run the alignment audit, formatter, TypeScript, lint, contracts, runbooks, coverage, build,
+        performance, and browser suites.
+      </li>
+      <li>
+        Run the live pipeline audit after GitHub setup and compare the Project schema, repository
+        link, workflows, views, open cards, labels, assignments, and PR linkage.
+      </li>
+      <li>
+        Do not deploy production for this governance-only change unless the change is merged through
+        the newly established Issue pipeline.
+      </li>
+    </ul>
+
+    <h2>Boundaries</h2>
+    <ul>
+      <li>Always preserve unknown user-owned changes and commit only task-owned files.</li>
+      <li>Always read back GitHub mutations and verify exact live state.</li>
+      <li>Always keep Builder deployment separate from public PointSite publishing.</li>
+      <li>
+        Ask first before destructive schema/data recovery or expanding this Project to another
+        repository.
+      </li>
+      <li>Never create a Builder Canary or Builder Staging environment.</li>
+      <li>Never close an Issue on merge alone.</li>
+      <li>Never weaken authentication or expose credentials to manufacture release evidence.</li>
+    </ul>
+
+    <h2>Platform limitation</h2>
+    <p>
+      GitHub currently returns a plan-level error when branch protection or repository rulesets are
+      requested for this private repository. Until the organization plan changes, the repository
+      skills and health audit must enforce and report the PR, exact-tree, and Quality requirements;
+      they must not claim GitHub is enforcing unavailable branch rules.
+    </p>
+
+    <h2>One-time bootstrap record</h2>
+    <p>
+      This Project integration completes the repository pipeline bootstrap that began in commit
+      <code>69de51e</code> before the governed Project existed. It is therefore recorded directly on
+      <code>main</code> as the final bootstrap exception. Issue #18 was independently selected after
+      Project creation and remains the sole active product Issue; these governance files are not
+      added to that Issue's feature scope. All later Builder work follows the Project pipeline.
+    </p>
+
+    <h2>Success criteria</h2>
+    <ul>
+      <li>
+        The private Project exists under PointCommunity and matches the approved schema, views, and
+        five-enabled-workflow completion policy.
+      </li>
+      <li>
+        The Builder repository is linked and all open Issues have complete, aligned Project
+        metadata.
+      </li>
+      <li>
+        Issue #18 has P1, High, M, governed labels, and a valid Project state aligned with its live
+        assignment.
+      </li>
+      <li>
+        AGENTS, policy, eight Builder workflow skills, five shared skills, adapters, scripts,
+        package commands, and Quality checks agree.
+      </li>
+      <li>
+        The complete local verification suite passes, including realistic positive and negative
+        pipeline tests.
+      </li>
+      <li>
+        No source deployment, Builder runtime mutation, public PointSite mutation, or public-site
+        publication occurs during pipeline setup.
+      </li>
+    </ul>
+  </body>
+</html>

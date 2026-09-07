@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PointSite Builder Development Pipeline Plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --panel: #151918;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #d8b76f;
+        --line: #343a37;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 48px 24px 96px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h1 {
+        font-size: clamp(2.25rem, 7vw, 3rem);
+      }
+      h2 {
+        margin-top: 40px;
+        color: var(--accent);
+      }
+      p,
+      li,
+      td {
+        color: var(--muted);
+      }
+      code {
+        color: #f0d18c;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--panel);
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Implementation Plan</h1>
+    <p>
+      This plan implements the approved specification without deploying the Builder application.
+    </p>
+    <h2>Sequence</h2>
+    <ol>
+      <li>Copy Versa Development into a private PointCommunity Project without copying cards.</li>
+      <li>
+        Rename and describe the Project for Builder, link the Builder repository, verify fields and
+        views, and disable the copied merge → Done workflow that would close an Issue before
+        production verification.
+      </li>
+      <li>
+        Create the governed Builder label taxonomy; add and classify every open Issue with complete
+        Project metadata.
+      </li>
+      <li>
+        Update AGENTS, the shared policy, and eight Builder pipeline skills for Project-owned state
+        transitions and direct production.
+      </li>
+      <li>
+        Copy the five approved shared frontend skills and their provenance, then add regular-file
+        Claude adapters.
+      </li>
+      <li>Update deterministic audits, tests, package commands, lint scope, and GitHub Quality.</li>
+      <li>
+        Run skill validation, focused script tests, full quality, performance, browser, and live
+        read-only pipeline audits.
+      </li>
+      <li>
+        Review the final diff and live GitHub readback; report remaining platform limitations.
+      </li>
+    </ol>
+    <h2>Risks and controls</h2>
+    <table>
+      <tr>
+        <th>Risk</th>
+        <th>Control</th>
+      </tr>
+      <tr>
+        <td>Copying Versa cards</td>
+        <td>Copy without drafts or items, then verify the new Project begins empty.</td>
+      </tr>
+      <tr>
+        <td>Canary terminology leaks into Builder</td>
+        <td>
+          Alignment audit rejects Builder Canary/Staging release packages and checks the
+          direct-production contract.
+        </td>
+      </tr>
+      <tr>
+        <td>Project automation marks work complete too early</td>
+        <td>
+          Health checks require closed Issues for Done and the closure skill restores In Review if
+          post-merge production fails.
+        </td>
+      </tr>
+      <tr>
+        <td>Unknown local changes are overwritten</td>
+        <td>Patch only relevant files and preserve the existing dirty worktree.</td>
+      </tr>
+      <tr>
+        <td>Unavailable branch rules are reported as active</td>
+        <td>Record the GitHub plan limitation and make the pipeline audit report it explicitly.</td>
+      </tr>
+    </table>
+    <h2>Verification checkpoints</h2>
+    <ul>
+      <li>GitHub Project readback matches the exact approved schema.</li>
+      <li>
+        Issue #18 readback matches P1, High, M and a valid governed state aligned with its live
+        assignment.
+      </li>
+      <li>All 13 canonical skills and 13 Claude adapters validate and align.</li>
+      <li>Repository source gates, performance, and browser tests pass.</li>
+      <li>The final pipeline-health audit has no errors and no state mutation.</li>
+    </ul>
+  </body>
+</html>
