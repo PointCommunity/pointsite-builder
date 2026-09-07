@@ -318,7 +318,7 @@ test('publishes and accepts only exact verified staging while production stays l
     page.getByRole('list', { name: 'Staging publishing progress' }).getByRole('listitem'),
   ).toHaveCount(5);
   await expect(page.getByText('Ready to publish')).toBeVisible();
-  await page.getByRole('button', { name: 'Publish this revision to Staging' }).click();
+  await page.getByRole('button', { name: /Publish revision \d+ to Staging/ }).click();
   await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
   await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
 
@@ -329,12 +329,12 @@ test('publishes and accepts only exact verified staging while production stays l
   await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
   await page.clock.runFor(10_000);
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Review protected Staging site' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'Open Staging for review' })).toHaveAttribute(
     'href',
     'https://staging.pointatx.org',
   );
   await expect(page.getByText('c'.repeat(64))).toBeHidden();
-  await page.getByRole('button', { name: 'I reviewed Staging — accept this revision' }).click();
+  await page.getByRole('button', { name: 'Accept this Staging version' }).click();
   await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
   await expect(page.getByText(/public website has not changed/i)).toBeVisible();
   await expect(page.getByText('Production remains unchanged')).toBeVisible();

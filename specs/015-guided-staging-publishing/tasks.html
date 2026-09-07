@@ -133,7 +133,7 @@
         <p><strong>Files:</strong> <code>tests/reports/guided-staging-publishing.html</code>.</p>
       </section>
       <section class="task">
-        <h2>☐ T015-7 — Review, merge, deploy, and validate live</h2>
+        <h2>☑ T015-7 — Review, merge, deploy, and validate live</h2>
         <p>
           <strong>Acceptance:</strong> exact PR head and Quality pass, merge tree matches, exact
           main passes, Builder production is deployed, workflow restoration is hands-on validated
@@ -145,6 +145,33 @@
           comparison.
         </p>
         <p><strong>Files:</strong> no new source after the final gate.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-8 — Make the next action unmistakable</h2>
+        <p>
+          <strong>Acceptance:</strong> a role-aware next-step region owns the primary control,
+          outcome-oriented labels replace system jargon, and every control explains its effect.
+        </p>
+        <p>
+          <strong>Verify:</strong> RED/GREEN component coverage for ready, automatic, paused,
+          review-ready, accepted Publisher, and accepted Administrator states.
+        </p>
+        <p>
+          <strong>Files:</strong> publishing component, editor route, workflow tests, and Builder
+          CSS.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☐ T015-9 — Prove the corrected role journeys</h2>
+        <p>
+          <strong>Acceptance:</strong> Publisher and Administrator users always know whether to act,
+          what to click, what happens next, and why Production has no action when disabled.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused browser journeys, keyboard/focus and responsive checks,
+          full repository gates, exact-head review, and authenticated live validation.
+        </p>
+        <p><strong>Files:</strong> publishing E2E and dark-mode acceptance evidence.</p>
       </section>
     </main>
   </body>

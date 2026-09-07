@@ -75,6 +75,32 @@
     <main>
       <p class="eyebrow">Spec 015 · repository and live-system analysis</p>
       <h1>Guided Staging publishing research</h1>
+      <h2>PM screenshot finding · 2026-09-07</h2>
+      <div class="card">
+        <ul>
+          <li>
+            The paused-state screenshot makes <em>Automatic monitoring paused</em> the dominant
+            message while the available action appears as a detached secondary button.
+          </li>
+          <li>
+            <em>Refresh Staging status</em> describes a system operation, not the user's goal, and
+            does not say whether it republishes content.
+          </li>
+          <li>
+            The component receives no role context, so it cannot tell a Publisher or Administrator
+            whether the next decision belongs to them.
+          </li>
+          <li>
+            Builder has four application roles: Viewer, Editor, Publisher, and Administrator. It has
+            no separate Owner role; GitHub organization ownership must not bypass the active
+            Builder-role and live repository-permission checks.
+          </li>
+          <li>
+            Production promotion remains hard-disabled. The honest user experience is an explicit
+            role-aware handoff with no fake Production action until the separate gate is enabled.
+          </li>
+        </ul>
+      </div>
       <h2>Confirmed current behavior</h2>
       <div class="card">
         <ul>

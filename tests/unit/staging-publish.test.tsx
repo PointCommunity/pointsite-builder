@@ -5,7 +5,7 @@ import { EditorProvider } from '../../src/client/editor/EditorProvider';
 import { StagingPublish } from '../../src/client/publish/StagingPublish';
 import type { StagingWorkflowSnapshot } from '../../src/client/publish/workflow';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
-import type { DraftRecord } from '../../src/server/repositories/contracts';
+import type { DraftRecord, Role } from '../../src/server/repositories/contracts';
 
 const document = structuredClone(defaultSiteDocument);
 const draft: DraftRecord = {
@@ -90,10 +90,10 @@ const published = {
   url: job.commitUrl,
 };
 
-const renderPublish = () =>
+const renderPublish = (role: Extract<Role, 'publisher' | 'administrator'> = 'publisher') =>
   render(
     <EditorProvider initialDraft={draft}>
-      <StagingPublish />
+      <StagingPublish role={role} />
     </EditorProvider>,
   );
 
@@ -138,8 +138,10 @@ describe('guided Staging publishing', () => {
 
     renderPublish();
     expect(await screen.findByText('Ready to publish')).toBeVisible();
+    expect(screen.getByText('Your next step · Publisher')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Publish revision 3 to Staging' })).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this revision to Staging' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish revision 3 to Staging' }));
     await waitFor(() =>
       expect(publish).toHaveBeenCalledWith(
         draft.id,
@@ -149,18 +151,16 @@ describe('guided Staging publishing', () => {
       ),
     );
     expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Publish this revision to Staging' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Publish revision 3 to Staging' })).toBeNull();
 
     await act(() => vi.advanceTimersByTimeAsync(10_000));
     await waitFor(() => expect(verify).toHaveBeenCalledWith(job.id));
     expect(await screen.findByText('Staging is ready for review')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Review protected Staging site' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open Staging for review' })).toHaveAttribute(
       'href',
       ready.reviewUrl,
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'I reviewed Staging — accept this revision' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Accept this Staging version' }));
     expect(await screen.findByText('Official Staging candidate accepted')).toBeVisible();
     expect(screen.getByText(/public website has not changed/i)).toBeVisible();
     expect(load).toHaveBeenCalledTimes(4);
@@ -172,7 +172,35 @@ describe('guided Staging publishing', () => {
     renderPublish();
     expect(await screen.findByText('Official Staging candidate accepted')).toBeVisible();
     expect(screen.queryByRole('button', { name: /publish this revision/i })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
+    expect(screen.getByText(/No more publishing action is required from you/i)).toBeVisible();
     expect(screen.getByText(/Production remains unchanged/i)).toBeVisible();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('turns paused monitoring into one obvious action and explains its effect', async () => {
+    vi.setSystemTime('2026-09-07T12:20:00Z');
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(verifying);
+    renderPublish();
+
+    expect(await screen.findByRole('heading', { name: 'Continue verification' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Continue verification' })).toBeEnabled();
+    expect(
+      screen.getByText(
+        /This checks the existing Staging version only\. It does not publish again/i,
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Refresh Staging status' })).toBeNull();
+  });
+
+  it('gives an Administrator an honest Production handoff without a fake action', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(accepted);
+    renderPublish('administrator');
+
+    expect(await screen.findByText('Your next step · Administrator')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
+    expect(screen.getByText(/No Production action is available here yet/i)).toBeVisible();
+    expect(screen.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /publish.*production/i })).toBeNull();
   });
 });

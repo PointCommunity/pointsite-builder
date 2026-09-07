@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
-type Scenario = 'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out';
+type Scenario =
+  'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out' | 'accepted';
 
 const document = structuredClone(defaultSiteDocument);
 const draft: DraftRecord = {
@@ -32,20 +33,26 @@ const draft: DraftRecord = {
   deletedAt: null,
 };
 
-async function mockPublishing(page: Page, scenario: Scenario) {
+async function mockPublishing(
+  page: Page,
+  scenario: Scenario,
+  role: 'publisher' | 'administrator' = 'publisher',
+) {
   let verificationRequests = 0;
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path.endsWith('/verification')) verificationRequests += 1;
     const passed =
-      scenario === 'immediate'
-        ? verificationRequests >= 1
-        : scenario === 'prolonged'
-          ? verificationRequests >= 2
-          : scenario === 'failed-then-passed'
+      scenario === 'accepted'
+        ? true
+        : scenario === 'immediate'
+          ? verificationRequests >= 1
+          : scenario === 'prolonged'
             ? verificationRequests >= 2
-            : false;
+            : scenario === 'failed-then-passed'
+              ? verificationRequests >= 2
+              : false;
     const failed = scenario === 'failed-then-passed' && verificationRequests === 1;
     const requestedAt =
       scenario === 'timed-out'
@@ -73,7 +80,7 @@ async function mockPublishing(page: Page, scenario: Scenario) {
     const body = path.endsWith('/me')
       ? {
           email: 'publisher@pointatx.org',
-          role: 'publisher',
+          role,
           repositoryPermission: 'write',
         }
       : path.endsWith('/drafts')
@@ -85,7 +92,15 @@ async function mockPublishing(page: Page, scenario: Scenario) {
                 currentStagingSha: job.stagingCommitSha,
                 reviewUrl: 'https://staging.pointatx.org',
                 job,
-                approval: null,
+                approval:
+                  scenario === 'accepted'
+                    ? {
+                        id: '40000000-0000-4000-8000-000000000011',
+                        publishJobId: job.id,
+                        decision: 'approved',
+                        createdAt: new Date().toISOString(),
+                      }
+                    : null,
               }
             : path.endsWith('/verification')
               ? job
@@ -126,7 +141,7 @@ test('keeps following prolonged verification without duplicate publication', asy
   await page.clock.runFor(10_000);
   await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
   await expect.poll(requests).toBe(1);
-  await expect(page.getByRole('button', { name: 'Refresh Staging status' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Check now' })).toBeEnabled();
   await page.clock.runFor(10_000);
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
   expect(requests()).toBe(2);
@@ -142,7 +157,7 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   await expect(page.getByText('Staging verification failed')).toBeVisible();
   await expect(page.getByText(/Acceptance remains locked/)).toBeVisible();
   await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Refresh Staging status' }).click();
+  await page.getByRole('button', { name: 'Check verification again' }).click();
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
 });
 
@@ -151,7 +166,7 @@ test('marks a changed draft candidate stale and offers safe republication', asyn
   await openPublishing(page);
   await expect(page.getByText('A new Staging candidate is required')).toBeVisible();
   await expect(page.getByText(/draft changed/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Publish a new Staging candidate' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish current revision 7' })).toBeVisible();
   await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
 });
 
@@ -162,7 +177,9 @@ test('pauses old pending monitoring with a manual fallback and accessible respon
   await mockPublishing(page, 'timed-out');
   await openPublishing(page);
   await expect(page.getByText('Automatic monitoring paused')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Refresh Staging status' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Continue verification' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue verification' })).toBeVisible();
+  await expect(page.getByText(/does not publish again/i)).toBeVisible();
   const dialog = page.getByRole('dialog', { name: 'Publish and accept on Staging' });
   await expect(
     dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
@@ -171,4 +188,16 @@ test('pauses old pending monitoring with a manual fallback and accessible respon
   expect(
     results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
   ).toEqual([]);
+});
+
+test('gives an Administrator a clear Production handoff without an unavailable action', async ({
+  page,
+}) => {
+  await mockPublishing(page, 'accepted', 'administrator');
+  await openPublishing(page);
+  await expect(page.getByText('Your next step · Administrator')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
+  await expect(page.getByText(/No Production action is available here yet/i)).toBeVisible();
+  await expect(page.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /publish.*production/i })).toHaveCount(0);
 });

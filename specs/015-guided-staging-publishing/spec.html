@@ -71,6 +71,46 @@
         Builder for decisions; GitHub remains optional technical evidence.
       </p>
 
+      <h2>PM acceptance correction · 2026-09-07</h2>
+      <div class="card">
+        <p>
+          The first production release exposed accurate progress, but it made the user interpret a
+          status panel before finding the available control below it. The corrected experience must
+          lead with the signed-in user's next step and make the safe action unmistakable.
+        </p>
+        <ul>
+          <li>
+            <strong>FR-015-013:</strong> Immediately after the progress tracker, show one dominant
+            <em>Your next step</em> region that names the responsible role and the action or clearly
+            says that no action is needed.
+          </li>
+          <li>
+            <strong>FR-015-014:</strong> When an action is available, place its primary control in
+            that region and label it with the outcome, such as <em>Continue verification</em>, not
+            an implementation-oriented status refresh.
+          </li>
+          <li>
+            <strong>FR-015-015:</strong> Explain underneath the control what it will and will not
+            do, especially whether it publishes content or only checks progress.
+          </li>
+          <li>
+            <strong>FR-015-016:</strong> Present Staging review before acceptance as two visibly
+            ordered actions: open and review the protected site, then return and accept the exact
+            version.
+          </li>
+          <li>
+            <strong>FR-015-017:</strong> After Staging acceptance, tell Publishers that their work
+            is complete and tell Administrators that Production has no available action until its
+            separately protected workflow is enabled.
+          </li>
+          <li>
+            <strong>FR-015-018:</strong> GitHub organization ownership alone never grants an action;
+            an owner must also hold the applicable active Builder role and live repository
+            permission checked by the server.
+          </li>
+        </ul>
+      </div>
+
       <h2>Assumptions accepted from Issue #18 and live evidence</h2>
       <div class="card">
         <ol>
