@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spec 015: Guided Staging Publishing</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1c2d20, #0b100c 36rem);
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 56px 0 88px;
+      }
+      h1 {
+        font-size: clamp(2.1rem, 5vw, 3.8rem);
+        margin: 0.2rem 0 0.7rem;
+      }
+      h2 {
+        margin-top: 2.4rem;
+        color: #d9ebd0;
+      }
+      p,
+      li {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+      }
+      .lede {
+        max-width: 800px;
+        color: #c0cbbd;
+        font-size: 1.1rem;
+      }
+      .card {
+        margin: 18px 0;
+        padding: 20px;
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+      a {
+        color: #a9da95;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">PointSite Builder · Spec 015 · GitHub Issue #18</p>
+      <h1>Guided, resumable Staging publishing</h1>
+      <p class="lede">
+        Turn one exact saved Builder revision into an officially accepted Staging candidate through
+        a plain-language, recoverable workflow. Publishers and Administrators stay inside the
+        Builder for decisions; GitHub remains optional technical evidence.
+      </p>
+
+      <h2>Assumptions accepted from Issue #18 and live evidence</h2>
+      <div class="card">
+        <ol>
+          <li>
+            The review destination is the protected <code>https://staging.pointatx.org</code>.
+          </li>
+          <li>
+            Existing D1 publish jobs and immutable approvals are authoritative; no migration is
+            required.
+          </li>
+          <li>
+            Automatic verification polls every 10 seconds while pending and pauses after 15 minutes.
+          </li>
+          <li>
+            Draft-revision drift or a Staging head different from the candidate commit makes the
+            workflow stale.
+          </li>
+          <li>
+            A stable revision-and-base idempotency key makes repeat submissions converge on one job.
+          </li>
+        </ol>
+      </div>
+
+      <h2>Objective</h2>
+      <p>
+        A Publisher or Administrator can open Publish, understand the full five-step path, start one
+        exact publication, leave, return, watch verification advance automatically, review the
+        protected site, and deliberately accept the exact candidate. Every failure names a safe
+        recovery action and the interface always states that Production is unchanged.
+      </p>
+
+      <h2>Lifecycle contract</h2>
+      <div class="card">
+        <ol>
+          <li>
+            <strong>Ready:</strong> saved revision and current Staging base are known; Publish is
+            available.
+          </li>
+          <li>
+            <strong>Publishing:</strong> one durable job is queued or running; duplicate publication
+            is locked.
+          </li>
+          <li>
+            <strong>Verifying:</strong> the exact commit exists and Builder follows required checks
+            and deployment.
+          </li>
+          <li>
+            <strong>Review ready:</strong> all evidence passed; the protected Staging link and
+            acceptance action are available.
+          </li>
+          <li>
+            <strong>Accepted:</strong> immutable approval identifies the official Staging candidate;
+            Production is unchanged.
+          </li>
+        </ol>
+        <p>
+          Failed publish, failed verification, timed-out monitoring, unavailable status, and stale
+          candidates are explicit states with retry, refresh, review, or republish guidance.
+        </p>
+      </div>
+
+      <h2>Functional requirements</h2>
+      <ul>
+        <li>
+          <strong>FR-015-001:</strong> Show the complete lifecycle, current step, completed steps,
+          and next action before publication.
+        </li>
+        <li>
+          <strong>FR-015-002:</strong> Restore the latest applicable durable job and approval by
+          draft on dialog reopen and full reload.
+        </li>
+        <li>
+          <strong>FR-015-003:</strong> Require exact revision ID and checksum on publish; reject
+          revision drift server-side.
+        </li>
+        <li>
+          <strong>FR-015-004:</strong> Reuse one idempotent job for the same revision, candidate,
+          and Staging base.
+        </li>
+        <li>
+          <strong>FR-015-005:</strong> Poll verification at a bounded interval only while pending;
+          pause after the bounded window and retain manual refresh.
+        </li>
+        <li>
+          <strong>FR-015-006:</strong> Persist verification evidence and audit only when its state
+          or evidence changes.
+        </li>
+        <li>
+          <strong>FR-015-007:</strong> Keep commit hashes, checksums, and GitHub links inside
+          optional technical details.
+        </li>
+        <li>
+          <strong>FR-015-008:</strong> Offer a clear link to review protected Staging before the
+          deliberate acceptance action.
+        </li>
+        <li>
+          <strong>FR-015-009:</strong> Lock acceptance unless mandatory evidence passes and current
+          Staging still equals the exact candidate commit.
+        </li>
+        <li>
+          <strong>FR-015-010:</strong> Make ready, publishing, verifying, review-ready, accepted,
+          failed, paused, unavailable, and stale states non-color-dependent and actionable.
+        </li>
+        <li>
+          <strong>FR-015-011:</strong> Recheck Publisher or Administrator role plus current GitHub
+          write authority on publish, refresh, restore, and acceptance APIs.
+        </li>
+        <li>
+          <strong>FR-015-012:</strong> Never write the public PointSite repository or imply that
+          Staging acceptance changed Production.
+        </li>
+      </ul>
+
+      <h2>Tech stack and project structure</h2>
+      <p>
+        React 19, TypeScript 5.9, Hono, D1, Zod, Vitest, Testing Library, Playwright, and GitHub App
+        installation APIs.
+      </p>
+      <ul>
+        <li>
+          <code>src/server/publish/</code> — durable job recovery, deduplication, and verification
+          observation.
+        </li>
+        <li>
+          <code>src/server/approvals/</code> — immutable acceptance recovery and exact-candidate
+          enforcement.
+        </li>
+        <li>
+          <code>src/client/publish/</code> — lifecycle derivation, bounded polling, accessible
+          progression, and recovery copy.
+        </li>
+        <li>
+          <code>tests/unit</code>, <code>tests/integration</code>, <code>tests/e2e</code> —
+          transition, persistence, authorization, drift, retry, browser, and accessibility proof.
+        </li>
+      </ul>
+
+      <h2>Code style</h2>
+      <div class="card">
+        <pre><code>const lifecycle = deriveStagingLifecycle({
+  revision: draft.revision,
+  snapshot,
+  monitoringPaused,
+});
+
+if (lifecycle.acceptanceLocked) return recoveryFor(lifecycle.phase);</code></pre>
+        <p>
+          Use explicit discriminated phases, pure derivation, server-owned authorization, minimal
+          transport shapes, and state-based tests.
+        </p>
+      </div>
+
+      <h2>Commands</h2>
+      <div class="card">
+        <p>
+          <code
+            >npm run test -- tests/unit/staging-workflow.test.ts
+            tests/integration/publish-service.test.ts tests/integration/approvals.test.ts</code
+          >
+        </p>
+        <p><code>npm run check</code></p>
+        <p><code>npm run test:performance</code></p>
+        <p><code>npm run test:e2e</code></p>
+        <p><code>npm audit --audit-level=high</code></p>
+        <p><code>git diff --check</code></p>
+        <p><code>npm run pipeline:health</code></p>
+      </div>
+
+      <h2>Testing strategy</h2>
+      <ul>
+        <li>
+          RED first for each lifecycle phase, latest-job restoration, changed revision, Staging
+          drift, idempotent replay, and unchanged-evidence audit suppression.
+        </li>
+        <li>
+          Integration coverage for API authorization, sanitized workflow snapshots, approval
+          recovery, exact-revision conflicts, and stale-candidate rejection.
+        </li>
+        <li>
+          Browser coverage for immediate pass, prolonged pending, verification failure,
+          close/reopen, reload, stale revision, monitoring pause/manual refresh, and accepted
+          completion.
+        </li>
+        <li>
+          Hands-on keyboard, focus, responsive, live-region, protected-link, production-lock, and
+          deployed restoration checks.
+        </li>
+      </ul>
+
+      <h2>Boundaries</h2>
+      <div class="card">
+        <p>
+          <strong>Always:</strong> preserve current roles, exact-candidate checks, auditability,
+          protected Staging, and the static public-site boundary.
+        </p>
+        <p>
+          <strong>Ask first:</strong> changing role policy, adding a deployment environment,
+          weakening Cloudflare Access, adding credentials, or enabling Production promotion.
+        </p>
+        <p>
+          <strong>Never:</strong> trust client state for permission, expose tokens/private draft
+          payloads, accept after drift/failure, or write public PointSite.
+        </p>
+      </div>
+
+      <h2>Success criteria and open questions</h2>
+      <p>
+        Every Issue #18 acceptance criterion is mapped to automated or hands-on evidence, the full
+        repository gate passes, exact-head GitHub Quality passes, and deployed Builder production
+        resumes a real protected Staging workflow without any public PointSite change.
+      </p>
+      <p>
+        <strong>Open questions:</strong> None. The Issue body, repository policy, live
+        configuration, and existing contracts resolve the implementation decisions.
+      </p>
+    </main>
+  </body>
+</html>

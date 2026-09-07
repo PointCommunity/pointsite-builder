@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plan: Guided Staging Publishing</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0c100d;
+        color: #eef3ec;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 54px 0 82px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #d9ebd0;
+        margin-top: 2.3rem;
+      }
+      p,
+      li,
+      td,
+      th {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      .card {
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+        padding: 20px;
+        margin: 18px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid #2d3d30;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #182019;
+        color: #d9ebd0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 015 · implementation plan</p>
+      <h1>Guided Staging publishing</h1>
+      <h2>Architecture decisions</h2>
+      <div class="card">
+        <ol>
+          <li>
+            Add a sanitized workflow snapshot assembled from the latest D1 job, current Staging
+            head, and latest immutable approval.
+          </li>
+          <li>
+            Keep lifecycle derivation as a pure shared client function with explicit, exhaustive
+            phases.
+          </li>
+          <li>
+            Strengthen publication with expected revision ID/checksum and stable client idempotency.
+          </li>
+          <li>
+            Reuse the existing verification operation but suppress unchanged persistence/audit
+            writes.
+          </li>
+          <li>
+            Recheck Staging head inside the acceptance route; client state never unlocks the server
+            gate.
+          </li>
+          <li>
+            Use the existing protected site in a new review step; GitHub links remain supplementary.
+          </li>
+        </ol>
+      </div>
+      <h2>Dependency order</h2>
+      <p>
+        <code
+          >contract → RED state/persistence tests → server recovery → UI progression/polling →
+          browser proof → release</code
+        >
+      </p>
+      <h2>Phases</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>Outcome</th>
+            <th>Checkpoint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1. Contract</td>
+            <td>Spec, research, OpenAPI, plan, and tasks define the exact lifecycle.</td>
+            <td>Every Issue criterion maps to evidence.</td>
+          </tr>
+          <tr>
+            <td>2. RED foundation</td>
+            <td>
+              Failing tests specify lifecycle derivation, restoration, deduplication, audit
+              suppression, and drift.
+            </td>
+            <td>Failures prove absent behavior.</td>
+          </tr>
+          <tr>
+            <td>3. Server slice</td>
+            <td>
+              Authorized sanitized recovery and acceptance drift checks work from existing D1
+              records.
+            </td>
+            <td>Focused unit/integration and contract checks pass.</td>
+          </tr>
+          <tr>
+            <td>4. Client slice</td>
+            <td>
+              Accessible five-step progression resumes, polls safely, and gives specific recovery
+              actions.
+            </td>
+            <td>Component/unit and focused Chromium journeys pass.</td>
+          </tr>
+          <tr>
+            <td>5. Full QA</td>
+            <td>All local quality, security, performance, contract, and browser gates pass.</td>
+            <td>Final tree is clean and reviewed.</td>
+          </tr>
+          <tr>
+            <td>6. Pipeline and release</td>
+            <td>
+              PR exact head passes Quality, merges with identical tree, Builder production deploys,
+              and real Staging flow is validated.
+            </td>
+            <td>Live health/assets/authenticated workflow pass; public PointSite unchanged.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Risks and mitigations</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Risk</th>
+            <th>Mitigation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Polling consumes GitHub/API limits</td>
+            <td>
+              10-second interval, mounted/pending only, 15-minute cap, manual fallback, no unchanged
+              audit.
+            </td>
+          </tr>
+          <tr>
+            <td>Old job restored for a changed draft</td>
+            <td>
+              Return candidate identity and derive a visible stale state; publish exact current
+              revision only.
+            </td>
+          </tr>
+          <tr>
+            <td>Staging changes after verification</td>
+            <td>Compare head during snapshots and again server-side at acceptance.</td>
+          </tr>
+          <tr>
+            <td>Duplicate commits from refresh/retry</td>
+            <td>Stable idempotency plus candidate reuse in the job store.</td>
+          </tr>
+          <tr>
+            <td>Screen-reader noise</td>
+            <td>
+              Announce phase changes, not every poll; show timestamps visually without live
+              repetition.
+            </td>
+          </tr>
+          <tr>
+            <td>Unrelated local work</td>
+            <td>Continue in the isolated issue worktree and commit only task-owned paths.</td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>
