@@ -1,0 +1,174 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import type { DraftRecord } from '../../src/server/repositories/contracts';
+
+type Scenario = 'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out';
+
+const document = structuredClone(defaultSiteDocument);
+const draft: DraftRecord = {
+  id: '10000000-0000-4000-8000-000000000011',
+  siteId: 'pointsite',
+  name: 'Guided publishing',
+  status: 'active',
+  latestRevisionId: '20000000-0000-4000-8000-000000000011',
+  document,
+  revision: {
+    id: '20000000-0000-4000-8000-000000000011',
+    draftId: '10000000-0000-4000-8000-000000000011',
+    sequence: 7,
+    parentRevisionId: null,
+    checksum: 'a'.repeat(64),
+    document,
+    label: null,
+    schemaVersion: document.schemaVersion,
+    rendererVersion: document.rendererVersion,
+    createdBy: 'publisher@pointatx.org',
+    createdAt: '2026-09-07T17:00:00Z',
+  },
+  createdBy: 'publisher@pointatx.org',
+  createdAt: '2026-09-07T17:00:00Z',
+  updatedAt: '2026-09-07T17:00:00Z',
+  deletedAt: null,
+};
+
+async function mockPublishing(page: Page, scenario: Scenario) {
+  let verificationRequests = 0;
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/verification')) verificationRequests += 1;
+    const passed =
+      scenario === 'immediate'
+        ? verificationRequests >= 1
+        : scenario === 'prolonged'
+          ? verificationRequests >= 2
+          : scenario === 'failed-then-passed'
+            ? verificationRequests >= 2
+            : false;
+    const failed = scenario === 'failed-then-passed' && verificationRequests === 1;
+    const requestedAt =
+      scenario === 'timed-out'
+        ? new Date(Date.now() - 16 * 60_000).toISOString()
+        : new Date().toISOString();
+    const job = {
+      id: '30000000-0000-4000-8000-000000000011',
+      status: 'succeeded',
+      candidateChecksum: 'b'.repeat(64),
+      draftId: draft.id,
+      revisionId: scenario === 'stale' ? '20000000-0000-4000-8000-000000000099' : draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      schemaVersion: document.schemaVersion,
+      rendererVersion: document.rendererVersion,
+      stagingBaseSha: 'c'.repeat(40),
+      stagingCommitSha: 'd'.repeat(40),
+      commitUrl: `https://github.com/PointCommunity/pointsite-staging/commit/${'d'.repeat(40)}`,
+      requestedAt,
+      completedAt: requestedAt,
+      evidence: {
+        verificationStatus: passed ? 'passed' : failed ? 'failed' : 'pending',
+        ...(failed ? { failedChecks: ['deploy'] } : {}),
+      },
+    };
+    const body = path.endsWith('/me')
+      ? {
+          email: 'publisher@pointatx.org',
+          role: 'publisher',
+          repositoryPermission: 'write',
+        }
+      : path.endsWith('/drafts')
+        ? { items: [draft] }
+        : path.includes('/revisions')
+          ? { items: [draft.revision] }
+          : path.endsWith('/publish/staging/workflow')
+            ? {
+                currentStagingSha: job.stagingCommitSha,
+                reviewUrl: 'https://staging.pointatx.org',
+                job,
+                approval: null,
+              }
+            : path.endsWith('/verification')
+              ? job
+              : path.endsWith('/media')
+                ? { items: [] }
+                : draft;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+  });
+  return () => verificationRequests;
+}
+
+async function openPublishing(page: Page) {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+}
+
+test('automatically advances an immediate exact verification', async ({ page }) => {
+  await page.clock.install();
+  const requests = await mockPublishing(page, 'immediate');
+  await openPublishing(page);
+  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
+  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  expect(requests()).toBe(1);
+});
+
+test('keeps following prolonged verification without duplicate publication', async ({ page }) => {
+  await page.clock.install();
+  const requests = await mockPublishing(page, 'prolonged');
+  await openPublishing(page);
+  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
+  await expect.poll(requests).toBe(1);
+  await expect(page.getByRole('button', { name: 'Refresh Staging status' })).toBeEnabled();
+  await page.clock.runFor(10_000);
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  expect(requests()).toBe(2);
+  await expect(page.getByRole('button', { name: /publish .*Staging/i })).toHaveCount(0);
+});
+
+test('explains failed verification and recovers with manual refresh', async ({ page }) => {
+  await page.clock.install();
+  await mockPublishing(page, 'failed-then-passed');
+  await openPublishing(page);
+  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(page.getByText('Staging verification failed')).toBeVisible();
+  await expect(page.getByText(/Acceptance remains locked/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refresh Staging status' }).click();
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+});
+
+test('marks a changed draft candidate stale and offers safe republication', async ({ page }) => {
+  await mockPublishing(page, 'stale');
+  await openPublishing(page);
+  await expect(page.getByText('A new Staging candidate is required')).toBeVisible();
+  await expect(page.getByText(/draft changed/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish a new Staging candidate' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
+});
+
+test('pauses old pending monitoring with a manual fallback and accessible responsive status', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 760, height: 900 });
+  await mockPublishing(page, 'timed-out');
+  await openPublishing(page);
+  await expect(page.getByText('Automatic monitoring paused')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Refresh Staging status' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Publish and accept on Staging' });
+  await expect(
+    dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).resolves.toBe(true);
+  const results = await new AxeBuilder({ page }).include('.publish-modal').analyze();
+  expect(
+    results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
+  ).toEqual([]);
+});

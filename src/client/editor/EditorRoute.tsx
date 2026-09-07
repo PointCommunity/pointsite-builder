@@ -1,4 +1,12 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import type { DraftRecord, Role } from '../../server/repositories/contracts';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
@@ -39,9 +47,46 @@ function Workspace({
   const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'layout');
   const [publishOpen, setPublishOpen] = useState(false);
+  const publishButtonRef = useRef<HTMLButtonElement>(null);
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const [structureRevision, setStructureRevision] = useState(0);
   const editable = role !== 'viewer' && draft.status === 'active';
+  const closePublishing = () => {
+    setPublishOpen(false);
+    window.queueMicrotask(() => publishButtonRef.current?.focus());
+  };
+  const trapPublishingFocus = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closePublishing();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey && globalThis.document.activeElement === first) {
+      event.preventDefault();
+      event.nativeEvent.preventDefault();
+      window.queueMicrotask(() => last.focus());
+    } else if (!event.shiftKey && globalThis.document.activeElement === last) {
+      event.preventDefault();
+      event.nativeEvent.preventDefault();
+      window.queueMicrotask(() => first.focus());
+    }
+  };
+  const keepPublishingFocus = (event: FocusEvent<HTMLElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    const dialog = event.currentTarget;
+    window.queueMicrotask(() =>
+      dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus(),
+    );
+  };
   const openFooterSettings = () => {
     setPanel('settings');
     globalThis.setTimeout(() => {
@@ -93,6 +138,7 @@ function Workspace({
           ) : null}
           {canPublish && panel === 'layout' ? (
             <button
+              ref={publishButtonRef}
               className="button button--primary"
               type="button"
               onClick={() => setPublishOpen(true)}
@@ -220,11 +266,8 @@ function Workspace({
         <div
           className="modal-backdrop"
           role="presentation"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setPublishOpen(false);
-          }}
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPublishOpen(false);
+            if (event.target === event.currentTarget) closePublishing();
           }}
         >
           <section
@@ -232,12 +275,14 @@ function Workspace({
             role="dialog"
             aria-modal="true"
             aria-labelledby="publish-title"
+            onKeyDownCapture={trapPublishingFocus}
+            onBlurCapture={keepPublishingFocus}
           >
             <button
               autoFocus
               className="button modal-close"
               type="button"
-              onClick={() => setPublishOpen(false)}
+              onClick={closePublishing}
               aria-label="Close publishing window"
             >
               Close
