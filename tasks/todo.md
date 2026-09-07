@@ -9,7 +9,7 @@
 - [x] T013-4 Integrate Page Manager, the existing Hero catalog/inspector, and media use.
 - [x] T013-5 Prove Hero edit/move/duplicate/remove/replace/save/reload behavior and Footer continuity in the browser.
 - [x] T013-6 Run the complete local verification and requirement checklist.
-- [ ] T013-7 Commit, push, pass CI, deploy exact Builder head, and verify production.
+- [x] T013-7 Commit, push, pass CI, deploy exact Builder head, and verify production.
 
 **Review gate:** approved by the user on 2026-09-07.
 
