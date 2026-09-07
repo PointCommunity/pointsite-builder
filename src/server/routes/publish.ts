@@ -4,20 +4,46 @@ import { requirePublishAccess } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest } from '../http/security';
 import type { StagingPublisher } from '../publish/service';
+import type { D1ApprovalService } from '../approvals/service';
 import type { ApiVariables } from './drafts';
 
 const PublishSchema = z.strictObject({
   draftId: z.uuid(),
+  expectedRevisionId: z.uuid(),
+  expectedRevisionChecksum: z.string().regex(/^[a-f0-9]{64}$/),
   expectedBaseSha: z.string().regex(/^[a-f0-9]{40}$/),
 });
 
-export function createPublishRoutes(publisher?: StagingPublisher) {
+const WorkflowQuerySchema = z.strictObject({ draftId: z.uuid() });
+
+export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1ApprovalService) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   routes.get('/staging/base', async (context) => {
     requirePublishAccess(context.get('actor'));
     if (!publisher)
       throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
     return context.json({ sha: await publisher.currentBaseSha() });
+  });
+  routes.get('/staging/workflow', async (context) => {
+    requirePublishAccess(context.get('actor'));
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
+    const query = WorkflowQuerySchema.safeParse(context.req.query());
+    if (!query.success) throw new ApiError(422, 'VALIDATION_FAILED', 'Choose a valid draft');
+    const workflow = await publisher.workflowForDraft(query.data.draftId);
+    const approval =
+      workflow.job && approvals ? await approvals.getLatestForJob(workflow.job.id) : null;
+    return context.json({
+      ...workflow,
+      approval: approval
+        ? {
+            id: approval.id,
+            publishJobId: approval.publishJobId,
+            decision: approval.decision,
+            createdAt: approval.createdAt,
+          }
+        : null,
+    });
   });
   routes.post('/staging', async (context) => {
     const actor = requirePublishAccess(context.get('actor'));
@@ -45,6 +71,12 @@ export function createPublishRoutes(publisher?: StagingPublisher) {
           409,
           'IDEMPOTENCY_CONFLICT',
           'This publish retry belongs to a different candidate',
+        );
+      if (error instanceof Error && error.message === 'DRAFT_REVISION_DRIFT')
+        throw new ApiError(
+          409,
+          'DRAFT_REVISION_DRIFT',
+          'The draft changed; reopen publishing for the latest saved revision',
         );
       if (error instanceof Error && error.message === 'PUBLISH_JOB_NOT_CLAIMABLE')
         throw new ApiError(

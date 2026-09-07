@@ -25,6 +25,7 @@ const mapError = (error: unknown): never => {
     'APPROVAL_TUPLE_MISMATCH',
     'APPROVAL_EVIDENCE_INCOMPLETE',
     'IDEMPOTENCY_CONFLICT',
+    'STAGING_CANDIDATE_DRIFT',
   ]);
   if (conflict.has(error.message))
     throw new ApiError(
@@ -39,6 +40,7 @@ export function createApprovalRoutes(
   service: D1ApprovalService | undefined,
   limiter: SlidingWindowRateLimiter,
   productionBaseSha?: () => Promise<string>,
+  stagingBaseSha?: () => Promise<string>,
 ) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   const available = () => {
@@ -66,6 +68,16 @@ export function createApprovalRoutes(
     if (!parsed.success)
       throw new ApiError(422, 'VALIDATION_FAILED', 'Review the exact approval candidate');
     try {
+      if (parsed.data.decision === 'approved') {
+        if (!stagingBaseSha)
+          throw new ApiError(
+            503,
+            'STAGING_BASE_UNAVAILABLE',
+            'Current Staging status is unavailable',
+          );
+        if ((await stagingBaseSha()) !== parsed.data.expectedTuple.stagingCommitSha)
+          throw new Error('STAGING_CANDIDATE_DRIFT');
+      }
       return context.json(
         await available().record({
           ...parsed.data,

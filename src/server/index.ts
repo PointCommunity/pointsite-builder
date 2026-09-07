@@ -74,7 +74,7 @@ export function createApp(dependencies: AppDependencies) {
   });
   app.route('/api/drafts', createDraftRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
-  app.route('/api/publish', createPublishRoutes(dependencies.publisher));
+  app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
   app.route(
     '/api/admin',
@@ -82,7 +82,12 @@ export function createApp(dependencies: AppDependencies) {
   );
   app.route(
     '/api/approvals',
-    createApprovalRoutes(dependencies.approvals, mutationLimiter, dependencies.productionBaseSha),
+    createApprovalRoutes(
+      dependencies.approvals,
+      mutationLimiter,
+      dependencies.productionBaseSha,
+      dependencies.publisher ? () => dependencies.publisher!.currentBaseSha() : undefined,
+    ),
   );
 
   app.notFound(() => {

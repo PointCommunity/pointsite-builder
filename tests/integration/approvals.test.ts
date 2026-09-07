@@ -93,6 +93,12 @@ describe('exact staging approval', () => {
     const approval = await service.record(input);
     const repeated = await service.record(input);
     expect(repeated.id).toBe(approval.id);
+    await expect(service.getLatestForJob('job-1')).resolves.toMatchObject({
+      id: approval.id,
+      publishJobId: 'job-1',
+      decision: 'approved',
+    });
+    await expect(service.getLatestForJob('missing')).resolves.toBeNull();
     await expect(service.eligibility(tuple, tuple.productionBaseSha)).resolves.toMatchObject({
       eligible: true,
       approvalId: approval.id,

@@ -68,6 +68,29 @@ export class D1PublishJobStore {
     return row ? fromRow(row) : null;
   }
 
+  async getLatestForDraft(draftId: string): Promise<PublishJobRecord | null> {
+    const row = await this.database
+      .prepare(
+        "SELECT id,idempotency_key,status,candidate_checksum,candidate_json,base_sha,result_sha,external_url,evidence_json,requested_by,requested_at,completed_at FROM publish_jobs WHERE environment='staging' AND json_extract(candidate_json,'$.draftId')=? ORDER BY requested_at DESC,id DESC LIMIT 1",
+      )
+      .bind(draftId)
+      .first<JobRow>();
+    return row ? fromRow(row) : null;
+  }
+
+  async getLatestReusable(
+    candidateChecksum: string,
+    baseSha: string,
+  ): Promise<PublishJobRecord | null> {
+    const row = await this.database
+      .prepare(
+        "SELECT id,idempotency_key,status,candidate_checksum,candidate_json,base_sha,result_sha,external_url,evidence_json,requested_by,requested_at,completed_at FROM publish_jobs WHERE environment='staging' AND candidate_checksum=? AND base_sha=? ORDER BY requested_at DESC,id DESC LIMIT 1",
+      )
+      .bind(candidateChecksum, baseSha)
+      .first<JobRow>();
+    return row ? fromRow(row) : null;
+  }
+
   async create(input: {
     idempotencyKey: string;
     candidateChecksum: string;
@@ -105,7 +128,7 @@ export class D1PublishJobStore {
   async markRunning(id: string, actor: string, requestId: string): Promise<void> {
     const update = await this.database
       .prepare(
-        "UPDATE publish_jobs SET status='running',completed_at=NULL WHERE id=? AND status IN ('queued','failed')",
+        "UPDATE publish_jobs SET status='running',completed_at=NULL WHERE id=? AND status IN ('queued','failed','cancelled')",
       )
       .bind(id)
       .run();
@@ -154,6 +177,9 @@ export class D1PublishJobStore {
   ): Promise<void> {
     const serialized = JSON.stringify(evidence);
     if (serialized.length > 32_768) throw new Error('PUBLISH_EVIDENCE_TOO_LARGE');
+    const current = await this.getById(id);
+    if (!current || current.status !== 'succeeded') throw new Error('PUBLISH_JOB_NOT_VERIFIABLE');
+    if (JSON.stringify(current.evidence) === serialized) return;
     const update = await this.database
       .prepare("UPDATE publish_jobs SET evidence_json=? WHERE id=? AND status='succeeded'")
       .bind(serialized, id)

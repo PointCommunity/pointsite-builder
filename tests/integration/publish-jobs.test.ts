@@ -22,7 +22,15 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
   const created = await store.create({
     idempotencyKey: 'publish-test-key-0001',
     candidateChecksum: 'a'.repeat(64),
-    candidate: { draftId: 'draft' },
+    candidate: {
+      siteId: 'pointsite',
+      draftId: '10000000-0000-4000-8000-000000000001',
+      revisionId: '20000000-0000-4000-8000-000000000001',
+      revisionChecksum: 'd'.repeat(64),
+      schemaVersion: 8,
+      rendererVersion: '8.0.0',
+      fileCount: 2,
+    },
     baseSha: 'b'.repeat(40),
     actor: 'publisher@pointatx.org',
     requestId: 'request-1',
@@ -37,6 +45,32 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
     status: 'succeeded',
     resultSha: 'c'.repeat(40),
   });
+  expect(await store.getLatestForDraft('10000000-0000-4000-8000-000000000001')).toMatchObject({
+    id: created.id,
+    candidateChecksum: 'a'.repeat(64),
+  });
+  expect(await store.getLatestReusable('a'.repeat(64), 'b'.repeat(40))).toMatchObject({
+    id: created.id,
+    status: 'succeeded',
+  });
+
+  const pendingEvidence = {
+    candidateChecksum: 'a'.repeat(64),
+    commitSha: 'c'.repeat(40),
+    verificationStatus: 'pending',
+  };
+  await store.recordVerification(
+    created.id,
+    'publisher@pointatx.org',
+    'request-2',
+    pendingEvidence,
+  );
+  await store.recordVerification(
+    created.id,
+    'publisher@pointatx.org',
+    'request-3',
+    pendingEvidence,
+  );
   const audits = await database
     .prepare("SELECT action FROM audit_events WHERE target_type='publish-job'")
     .all<{ action: string }>();
@@ -44,5 +78,6 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
     'publish.queued',
     'publish.running',
     'publish.succeeded',
+    'publish.verification-recorded',
   ]);
 });
