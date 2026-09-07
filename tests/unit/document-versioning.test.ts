@@ -57,7 +57,7 @@ describe('document versioning', () => {
     legacy.schemaVersion = 0;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5']);
+    expect(migrated.applied).toEqual(['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6']);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
 
@@ -69,7 +69,7 @@ describe('document versioning', () => {
   it('migrates version one into deterministic standardized sections', () => {
     const first = migrateDocument(versionOneDocument());
     const second = migrateDocument(versionOneDocument());
-    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4', '4-to-5']);
+    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]).toMatchObject({
       type: 'section',
@@ -91,7 +91,7 @@ describe('document versioning', () => {
 
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
-    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5']);
+    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5', '5-to-6']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]?.items[0]?.grid.desktop).toEqual({
       column: 1,
@@ -128,7 +128,7 @@ describe('document versioning', () => {
     }
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['3-to-4', '4-to-5']);
+    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6']);
     expect(
       migrated.document.pages.flatMap((page) =>
         page.blocks.flatMap((section) => section.items.map((item) => item.element.id)),
@@ -152,13 +152,26 @@ describe('document versioning', () => {
     delete fields[0].width;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['4-to-5']);
+    expect(migrated.applied).toEqual(['4-to-5', '5-to-6']);
     expect(migrated.document.linkedMedia).toEqual([]);
     expect(migrated.document.forms[0]).toMatchObject({
       layout: 'two-column',
       density: 'comfortable',
       fields: [{ width: 'half' }],
     });
+  });
+
+  it('migrates version five pages with the built-in header visible', () => {
+    const legacy = structuredClone(validSiteDocument) as unknown as Record<string, unknown>;
+    legacy.schemaVersion = 5;
+    legacy.rendererVersion = '5.0.0';
+    const pages = legacy.pages as Array<Record<string, unknown>>;
+    for (const page of pages) delete page.showHeader;
+
+    const migrated = migrateDocument(legacy);
+    expect(migrated.applied).toEqual(['5-to-6']);
+    expect(migrated.document.pages.every((page) => page.showHeader)).toBe(true);
+    expect(migrated.document.pages[0]?.blocks).toEqual(validSiteDocument.pages[0]?.blocks);
   });
 
   it('fails closed for an unknown future schema version', () => {

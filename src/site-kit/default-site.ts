@@ -310,6 +310,7 @@ const page = (
   title,
   route,
   status: 'published',
+  showHeader: true,
   template: chrome.template ?? (route === '/' ? 'home' : 'standard'),
   ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
   intro: chrome.intro ?? description,

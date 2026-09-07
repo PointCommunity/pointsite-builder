@@ -1,5 +1,5 @@
-export const SCHEMA_VERSION = 5 as const;
-export const RENDERER_VERSION = '5.0.0' as const;
+export const SCHEMA_VERSION = 6 as const;
+export const RENDERER_VERSION = '6.0.0' as const;
 
 export interface RendererIdentity {
   schemaVersion: typeof SCHEMA_VERSION;

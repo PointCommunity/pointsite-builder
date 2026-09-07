@@ -142,7 +142,7 @@ export function SiteFrame({
       <a className="skip-link point-skip-link" href="#point-main">
         Skip to main content
       </a>
-      {isHome ? <SiteHeader document={document} overlay /> : <SiteHeader document={document} />}
+      {page.showHeader ? <SiteHeader document={document} overlay={isHome} /> : null}
       <main id="point-main">
         {!isHome ? (
           <header className={`page-hero ${hero ? 'page-hero--image' : ''}`}>

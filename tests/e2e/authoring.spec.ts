@@ -302,11 +302,11 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
   await page.getByRole('button', { name: 'Preview' }).click();
   const frame = page.locator('iframe.preview-frame');
   for (const [label, width] of [
-    ['mobile', 360],
+    ['phone', 360],
     ['tablet', 768],
     ['desktop', 1280],
   ] as const) {
-    await page.getByRole('radio', { name: label }).check();
+    await page.getByRole('button', { name: `Preview at ${label} width` }).click();
     await expect(frame).toHaveCSS('width', `${width}px`);
     await expect(frame).toHaveAttribute('title', new RegExp(`${width} pixel`));
     expect(
@@ -317,7 +317,12 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
     ).toBe(width);
   }
   const preview = frame.contentFrame();
-  await page.getByRole('radio', { name: 'mobile' }).check();
+  await expect(page.getByRole('heading', { name: 'Live preview' })).toBeVisible();
+  await expect(page.getByLabel('Page').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zoom preview out' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zoom preview in' })).toBeVisible();
+  await expect(page.getByLabel('Preview zoom')).toHaveValue('auto');
+  await page.getByRole('button', { name: 'Preview at phone width' }).click();
   await expect(preview.locator('.menu-toggle')).toBeVisible();
   await preview.locator('.site-footer').scrollIntoViewIfNeeded();
   await expect(preview.locator('.site-footer')).toBeVisible();
@@ -597,10 +602,11 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(placement).toHaveCSS('align-self', 'end');
 
   const moveHandle = canvas.getByRole('button', { name: 'Move heading on desktop grid' });
+  const initialRow = Number(await page.getByLabel('desktop row').last().inputValue());
   await moveHandle.press('ArrowRight');
   await moveHandle.press('ArrowDown');
   await expect(placement).toHaveCSS('grid-column-start', '5');
-  await expect(placement).toHaveCSS('grid-row-start', '2');
+  await expect(placement).toHaveCSS('grid-row-start', String(initialRow + 1));
 
   const resizeHandle = canvas.getByRole('button', {
     name: 'Resize heading from south east',
@@ -671,7 +677,10 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(twoColumnSlot).toBeVisible();
   await drag(page.getByRole('button', { name: 'Image', exact: true }), twoColumnSlot);
   const imagePlacement = twoColumn.locator('.point-layout-item');
-  await expect(imagePlacement).toHaveCSS('grid-column-start', '1');
+  const imageColumn = Number(await page.getByLabel('desktop column').last().inputValue());
+  const imageRow = Number(await page.getByLabel('desktop row').last().inputValue());
+  expect(imageColumn).toBeGreaterThan(1);
+  await expect(imagePlacement).toHaveCSS('grid-column-start', String(imageColumn));
   await expect(imagePlacement).toHaveCSS('grid-column-end', 'span 6');
   const [gridBox, imageBox] = await Promise.all([
     twoColumnSlot.boundingBox(),
@@ -703,16 +712,17 @@ test('builds a standardized section by dragging an element from the toybox', asy
   );
   const placementInspector = page.locator('.grid-placement-inspector').filter({ visible: true });
   const buttonColumn = placementInspector.getByLabel('desktop column');
+  const buttonRow = placementInspector.getByLabel('desktop row');
   await expect(placementInspector).toHaveAttribute('data-occupied-elements', '1');
-  await placementInspector.getByLabel('desktop row').fill('1');
-  const previousButtonColumn = await buttonColumn.inputValue();
-  await buttonColumn.fill('1');
+  await buttonColumn.fill(String(imageColumn));
+  const previousButtonRow = await buttonRow.inputValue();
+  await buttonRow.fill(String(imageRow));
   await expect(
     page.getByRole('alert').filter({ hasText: 'overlaps another element' }),
   ).toBeVisible();
-  await expect(buttonColumn).toHaveValue(previousButtonColumn);
+  await expect(buttonRow).toHaveValue(previousButtonRow);
 
-  await page.getByRole('button', { name: 'Save now' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -750,6 +760,114 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
   for (const name of ['Heading', 'Text', 'Button', 'Image']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
+  await expect(page.getByRole('button', { name: 'Split feature', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save now', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(1);
+  await expect(page.locator('.visual-editor')).toHaveCSS('--puck-line-placeholder-width', '6px');
+});
+
+test('shows a snapped phantom while inserting into a grid and resizes from edges', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const dragInto = async (
+    source: ReturnType<typeof page.locator>,
+    target: ReturnType<typeof page.locator>,
+    targetEdge = false,
+  ) => {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, targetEdge ? to!.y + 6 : to!.y + to!.height / 2, {
+      steps: 16,
+    });
+    const settledTarget = await target.boundingBox();
+    expect(settledTarget).not.toBeNull();
+    await page.mouse.move(
+      settledTarget!.x + settledTarget!.width / 2,
+      targetEdge ? settledTarget!.y + 6 : settledTarget!.y + settledTarget!.height / 2,
+      { steps: 4 },
+    );
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+  await dragInto(
+    page.getByRole('button', { name: 'Two columns (50 / 50)', exact: true }),
+    canvas.locator('.home-hero'),
+    true,
+  );
+  const grid = canvas
+    .locator('section[aria-label="Two column section"]')
+    .locator('[data-puck-dropzone]');
+  const source = page
+    .getByRole('button', { name: 'Heading', exact: true })
+    .filter({ visible: true });
+  await grid.scrollIntoViewIfNeeded();
+  const [from, to] = await Promise.all([source.boundingBox(), grid.boundingBox()]);
+  expect(from).not.toBeNull();
+  expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+    steps: 4,
+  });
+  await page.mouse.move(to!.x + 24, to!.y + 24, { steps: 16 });
+  const phantom = canvas.locator('.point-grid-drop-preview');
+  await expect(phantom).toContainText('Heading');
+  const first = await phantom.boundingBox();
+  await page.mouse.move(to!.x + to!.width * 0.6, to!.y + 24, { steps: 8 });
+  const second = await phantom.boundingBox();
+  expect(first).not.toBeNull();
+  expect(second).not.toBeNull();
+  expect(second!.x).toBeGreaterThan(first!.x);
+  await page.mouse.up();
+
+  const insertedHeading = canvas.getByRole('heading', { name: 'Section heading' });
+  const headingBox = await insertedHeading.boundingBox();
+  expect(headingBox).not.toBeNull();
+  await page.mouse.click(
+    headingBox!.x + headingBox!.width / 2,
+    headingBox!.y + headingBox!.height / 2,
+  );
+  const east = canvas.getByRole('button', { name: 'Resize heading from east' });
+  const north = canvas.getByRole('button', { name: 'Resize heading from north', exact: true });
+  await expect(east).toBeVisible();
+  await expect(north).toBeVisible();
+  const eastHitArea = await east.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { width: Number.parseFloat(style.width), height: Number.parseFloat(style.height) };
+  });
+  expect(eastHitArea.width).toBeGreaterThanOrEqual(16);
+  expect(eastHitArea.height).toBeGreaterThanOrEqual(24);
+});
+
+test('can hide the built-in header and offers navigation as a draggable element', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(canvas.locator('.site-header')).toBeVisible();
+  await page.getByText('Page details').click();
+  await page.getByLabel('Show built-in site header').uncheck();
+  await expect(canvas.locator('.site-header')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
 });
 
 test('retains focus while typing a complete FAQ question in the visual inspector', async ({
@@ -902,7 +1020,7 @@ test('builds a form and places linked YouTube media without code', async ({
     true,
   );
   const section = canvas.locator('.point-layout-section').last();
-  await page.getByRole('button', { name: 'Save now' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();
   await drag(
@@ -941,7 +1059,7 @@ test('recovers from a server-side revision conflict without overwriting', async 
   await page.getByRole('button', { name: 'Open editor' }).click();
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('button', { name: 'Save now' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Load latest' })).toBeVisible();
   await page.getByRole('button', { name: 'Load latest' }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();

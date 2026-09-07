@@ -45,6 +45,33 @@ describe('responsive grid layout', () => {
     });
   });
 
+  it('resizes from each cardinal edge without moving the opposite edge', () => {
+    expect(resizeGridArea(desktop, 'north', 0, -2)).toEqual({
+      column: 1,
+      row: 1,
+      columnSpan: 6,
+      rowSpan: 6,
+    });
+    expect(resizeGridArea(desktop, 'east', 2, 0)).toEqual({
+      column: 1,
+      row: 1,
+      columnSpan: 8,
+      rowSpan: 4,
+    });
+    expect(resizeGridArea(desktop, 'south', 0, 2)).toEqual({
+      column: 1,
+      row: 1,
+      columnSpan: 6,
+      rowSpan: 6,
+    });
+    expect(resizeGridArea(desktop, 'west', 2, 0)).toEqual({
+      column: 3,
+      row: 1,
+      columnSpan: 4,
+      rowSpan: 4,
+    });
+  });
+
   it('finds the first unoccupied location', () => {
     const items = [
       { grid: { desktop: { column: 1, row: 1, columnSpan: 6, rowSpan: 4 } } },

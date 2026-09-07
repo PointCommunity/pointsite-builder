@@ -59,6 +59,7 @@ export function PageManager({
           next.pages.map((item) => item.route),
         ),
         status: 'draft',
+        showHeader: true,
         template: 'standard',
         eyebrow: 'New page',
         intro: 'Add a short introduction for this page.',
@@ -215,6 +216,18 @@ export function PageManager({
               <option value="standard">Standard page</option>
               <option value="home">Homepage</option>
             </select>
+          </label>
+          <label className="inspector-check">
+            <input
+              type="checkbox"
+              checked={page.showHeader}
+              onChange={(event) =>
+                updatePage((target) => {
+                  target.showHeader = event.target.checked;
+                })
+              }
+            />
+            <span>Show built-in site header</span>
           </label>
           <label>
             <span>Page eyebrow</span>

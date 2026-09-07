@@ -39,6 +39,48 @@ describe('controlled public renderer', () => {
     expect(screen.getByText('We are a family of disciples on mission.')).toBeVisible();
   });
 
+  it('can remove the built-in header and render navigation as an ordinary element', () => {
+    const document = structuredClone(defaultSiteDocument);
+    const page = document.pages[0];
+    if (!page) throw new Error('Expected home page');
+    page.showHeader = false;
+    page.blocks.push({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa61',
+      type: 'section',
+      name: 'Custom navigation',
+      layout: 'grid',
+      columns: 12,
+      gap: 'small',
+      width: 'shell',
+      surface: 'transparent',
+      padding: 'small',
+      minRows: 2,
+      backgroundPosition: 'center',
+      overlay: 'none',
+      items: [
+        {
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb61',
+          span: 8,
+          align: 'center',
+          grid: { desktop: { column: 5, row: 1, columnSpan: 8, rowSpan: 2 } },
+          element: {
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc61',
+            type: 'navigation',
+            label: 'Church navigation',
+            orientation: 'responsive',
+            align: 'right',
+            surface: 'transparent',
+          },
+        },
+      ],
+    });
+
+    const { container } = render(<SiteRenderer document={document} route="/" />);
+    expect(container.querySelector('.site-header')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Give' })).toHaveAttribute('href', '/give');
+  });
+
   it('renders every current production route with its editable page chrome and footer', () => {
     for (const page of defaultSiteDocument.pages) {
       const { container, unmount } = render(
@@ -96,7 +138,7 @@ describe('controlled public renderer', () => {
   });
 
   it('publishes accessible non-drag structure metadata for every block', () => {
-    expect(Object.keys(blockDefinitions)).toHaveLength(16);
+    expect(Object.keys(blockDefinitions)).toHaveLength(17);
     for (const definition of Object.values(blockDefinitions)) {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);

@@ -18,11 +18,13 @@ export function SitePreviewFrame({
   document,
   route,
   width,
+  scale,
   onNavigate,
 }: {
   document: SiteDocument;
   route: string;
   width: number;
+  scale: number;
   onNavigate: (route: string) => void;
 }) {
   const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
@@ -47,17 +49,21 @@ export function SitePreviewFrame({
   }, [document.pages, mountNode, onNavigate]);
 
   return (
-    <>
+    <div
+      className="preview-frame-viewport"
+      style={{ width: width * scale }}
+      data-preview-scale={scale}
+    >
       <iframe
         className="preview-frame"
         title={`Live preview of ${route} at ${width} pixels`}
         srcDoc={previewShell}
-        style={{ width }}
+        style={{ width, height: `${100 / scale}%`, transform: `scale(${scale})` }}
         onLoad={(event) => connectFrame(event.currentTarget)}
       />
       {mountNode
         ? createPortal(<SiteRenderer document={document} route={route} />, mountNode)
         : null}
-    </>
+    </div>
   );
 }

@@ -1298,5 +1298,45 @@ export function BlockInspector({
           />
         </div>
       );
+    case 'navigation':
+      return (
+        <div className="block-inspector inspector-grid">
+          <Text
+            label="Navigation label"
+            value={block.label}
+            onChange={(label) => label && onChange({ ...block, label })}
+          />
+          <Select
+            label="Navigation layout"
+            value={block.orientation}
+            options={[
+              { label: 'Responsive', value: 'responsive' },
+              { label: 'Horizontal', value: 'horizontal' },
+              { label: 'Vertical', value: 'vertical' },
+            ]}
+            onChange={(orientation) => onChange({ ...block, orientation })}
+          />
+          <Select
+            label="Navigation alignment"
+            value={block.align}
+            options={[
+              { label: 'Left', value: 'left' },
+              { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
+            ]}
+            onChange={(align) => onChange({ ...block, align })}
+          />
+          <Select
+            label="Navigation background"
+            value={block.surface}
+            options={[
+              { label: 'Transparent', value: 'transparent' },
+              { label: 'Canvas', value: 'canvas' },
+              { label: 'Primary', value: 'primary' },
+            ]}
+            onChange={(surface) => onChange({ ...block, surface })}
+          />
+        </div>
+      );
   }
 }

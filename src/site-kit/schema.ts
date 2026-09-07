@@ -255,6 +255,15 @@ const ButtonBlockSchema = z.strictObject({
   align: z.enum(['left', 'center', 'right']),
 });
 
+const NavigationBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('navigation'),
+  label: z.string().trim().min(1).max(80),
+  orientation: z.enum(['responsive', 'horizontal', 'vertical']),
+  align: z.enum(['left', 'center', 'right']),
+  surface: z.enum(['transparent', 'canvas', 'primary']),
+});
+
 function isSafePlainText(value: string): boolean {
   return ![...value].some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -279,6 +288,7 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   SpacerBlockSchema,
   TextBlockSchema,
   ButtonBlockSchema,
+  NavigationBlockSchema,
 ]);
 
 export const GridAreaSchema = z
@@ -516,6 +526,7 @@ const PageSchema = z.strictObject({
   title: z.string().trim().min(1).max(120),
   route: CanonicalRouteSchema,
   status: z.enum(['draft', 'published', 'hidden']),
+  showHeader: z.boolean(),
   template: z.enum(['home', 'standard']).optional(),
   eyebrow: z.string().trim().max(80).optional(),
   intro: z.string().trim().max(500).optional(),
@@ -530,7 +541,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(5),
+    schemaVersion: z.literal(6),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

@@ -124,6 +124,14 @@ export const allBlocks: SiteElement[] = [
     aspect: '16:9',
     fit: 'cover',
   },
+  {
+    id: '22222222-2222-4222-8222-222222222217',
+    type: 'navigation',
+    label: 'Page navigation',
+    orientation: 'responsive',
+    align: 'right',
+    surface: 'transparent',
+  },
 ];
 
 export const allBlocksDocument: SiteDocument = {

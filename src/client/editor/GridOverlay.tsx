@@ -8,6 +8,7 @@ import {
   resizeGridArea,
   updateGridArea,
   type GridArea,
+  type GridResizeHandle,
 } from '../../site-kit/grid-layout';
 import type { ElementPlacement } from '../../site-kit/types';
 import type { SectionSettings } from './SectionInspector';
@@ -15,8 +16,6 @@ import { useGridBreakpoint } from './GridBreakpointContext';
 import { usePointPuck } from './puck-store';
 import { setActiveGridSection } from './grid-interaction-store';
 import { childComponents, siblingComponents } from './puck-grid-data';
-
-type Edge = 'north-west' | 'north-east' | 'south-west' | 'south-east';
 
 function isGrid(value: unknown): value is ElementPlacement['grid'] {
   return Boolean(
@@ -199,7 +198,7 @@ export function GridOverlay({
     });
   };
 
-  const begin = (event: PointerEvent<HTMLButtonElement>, mode: 'move' | Edge) => {
+  const begin = (event: PointerEvent<HTMLButtonElement>, mode: 'move' | GridResizeHandle) => {
     event.preventDefault();
     event.stopPropagation();
     const ownerDocument = event.currentTarget.ownerDocument;
@@ -247,7 +246,7 @@ export function GridOverlay({
     ownerDocument.addEventListener('pointercancel', finish, { once: true });
   };
 
-  const keyMove = (event: KeyboardEvent<HTMLButtonElement>, mode: 'move' | Edge) => {
+  const keyMove = (event: KeyboardEvent<HTMLButtonElement>, mode: 'move' | GridResizeHandle) => {
     let columns = 0;
     let rows = 0;
     if (event.key === 'ArrowLeft') columns = -1;
@@ -265,6 +264,18 @@ export function GridOverlay({
     );
   };
 
+  const area = areaForBreakpoint(grid, breakpoint);
+  const resizeHandles: GridResizeHandle[] = [
+    'north-west',
+    ...(area.columnSpan >= 2 ? (['north'] as const) : []),
+    'north-east',
+    ...(area.rowSpan >= 2 ? (['east'] as const) : []),
+    'south-east',
+    ...(area.columnSpan >= 2 ? (['south'] as const) : []),
+    'south-west',
+    ...(area.rowSpan >= 2 ? (['west'] as const) : []),
+  ];
+
   return (
     <>
       {children}
@@ -279,7 +290,7 @@ export function GridOverlay({
         >
           <span>Move</span>
         </button>
-        {(['north-west', 'north-east', 'south-west', 'south-east'] as const).map((edge) => (
+        {resizeHandles.map((edge) => (
           <button
             type="button"
             key={edge}

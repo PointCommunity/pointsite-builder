@@ -23,6 +23,7 @@ export const blockDefinitions: Record<
   spacer: { label: 'Spacer', supportsMoveButtons: true },
   text: { label: 'Text', supportsMoveButtons: true },
   button: { label: 'Button', supportsMoveButtons: true },
+  navigation: { label: 'Navigation', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -46,6 +47,60 @@ function ActionLink({
     >
       {action.label}
     </a>
+  );
+}
+
+function NavigationBlock({
+  block,
+  document,
+}: {
+  block: Extract<SiteElement, { type: 'navigation' }>;
+  document: SiteDocument;
+}) {
+  const [open, setOpen] = useState(false);
+  const navigationId = `point-navigation-${block.id}`;
+  return (
+    <div
+      className={`point-navigation point-navigation--${block.orientation} point-navigation--${block.align} point-navigation--${block.surface}`}
+    >
+      {block.orientation === 'responsive' ? (
+        <button
+          className="point-navigation__toggle"
+          type="button"
+          aria-expanded={open}
+          aria-controls={navigationId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          Menu
+        </button>
+      ) : null}
+      <nav
+        id={navigationId}
+        className={
+          open ? 'point-navigation__menu point-navigation__menu--open' : 'point-navigation__menu'
+        }
+        aria-label={block.label}
+        onClick={() => setOpen(false)}
+      >
+        {document.navigation.map((item) => (
+          <div className="point-navigation__item" key={item.id}>
+            <a href={item.href} {...linkAttributes(item.href)}>
+              {item.label}
+              {item.children.length ? <span aria-hidden="true">⌄</span> : null}
+            </a>
+            {item.children.length ? (
+              <div className="point-navigation__dropdown">
+                {item.children.map((child) => (
+                  <a href={child.href} key={child.id} {...linkAttributes(child.href)}>
+                    {child.label}
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </nav>
+    </div>
   );
 }
 
@@ -896,6 +951,8 @@ export function renderBlock(block: SiteElement, document: SiteDocument): ReactNo
           <ActionLink action={block} />
         </div>
       );
+    case 'navigation':
+      return <NavigationBlock block={block} document={document} />;
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }

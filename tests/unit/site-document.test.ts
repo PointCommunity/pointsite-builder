@@ -157,6 +157,14 @@ describe('SiteDocumentSchema', () => {
         aspect: '16:9',
         fit: 'cover',
       },
+      {
+        id: IDS.block,
+        type: 'navigation',
+        label: 'Church navigation',
+        orientation: 'responsive',
+        align: 'right',
+        surface: 'transparent',
+      },
     ];
 
     for (const block of blocks) {
@@ -200,7 +208,7 @@ describe('SiteDocumentSchema', () => {
     const reloaded = SiteDocumentSchema.parse(JSON.parse(saved));
     const types = reloaded.pages[0].blocks[0].items.map((item) => item.element.type);
     expect(new Set(types)).toEqual(new Set(allBlocks.map((block) => block.type)));
-    expect(types).toHaveLength(16);
+    expect(types).toHaveLength(17);
   });
 
   it('rejects unsafe atomic button hyperlinks', () => {

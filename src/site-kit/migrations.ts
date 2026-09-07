@@ -113,8 +113,8 @@ function migrateThreeToFour(input: object): unknown {
   const legacy = input as { pages?: Array<Record<string, unknown>> };
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 4,
+    rendererVersion: '4.0.0',
     pages: (legacy.pages ?? []).map((page) => ({
       ...page,
       blocks: ((page.blocks as Array<Record<string, unknown>>) ?? []).map((section) => {
@@ -142,8 +142,8 @@ function migrateFourToFive(input: object): unknown {
   };
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 5,
+    rendererVersion: '5.0.0',
     linkedMedia: [],
     forms: (legacy.forms ?? []).map((form) => ({
       ...form,
@@ -151,6 +151,16 @@ function migrateFourToFive(input: object): unknown {
       density: 'comfortable',
       fields: (form.fields ?? []).map((field) => ({ ...field, width: 'half' })),
     })),
+  };
+}
+
+function migrateFiveToSix(input: object): unknown {
+  const legacy = input as { pages?: Array<Record<string, unknown>> };
+  return {
+    ...input,
+    schemaVersion: SCHEMA_VERSION,
+    rendererVersion: RENDERER_VERSION,
+    pages: (legacy.pages ?? []).map((page) => ({ ...page, showHeader: true })),
   };
 }
 
@@ -166,48 +176,64 @@ export function migrateDocument(input: unknown): MigrationResult {
     const versionTwo = migrateOneToTwo(versionOne as object);
     return {
       document: SiteDocumentSchema.parse(
-        migrateFourToFive(
-          migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object) as object,
+        migrateFiveToSix(
+          migrateFourToFive(
+            migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object) as object,
+          ) as object,
         ),
       ),
-      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5'],
+      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6'],
     };
   }
 
   if (version === 1)
     return {
       document: SiteDocumentSchema.parse(
-        migrateFourToFive(
-          migrateThreeToFour(
-            migrateTwoToThree(migrateOneToTwo(input as object) as object) as object,
+        migrateFiveToSix(
+          migrateFourToFive(
+            migrateThreeToFour(
+              migrateTwoToThree(migrateOneToTwo(input as object) as object) as object,
+            ) as object,
           ) as object,
         ),
       ),
-      applied: ['1-to-2', '2-to-3', '3-to-4', '4-to-5'],
+      applied: ['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6'],
     };
 
   if (version === 2)
     return {
       document: SiteDocumentSchema.parse(
-        migrateFourToFive(
-          migrateThreeToFour(migrateTwoToThree(input as object) as object) as object,
+        migrateFiveToSix(
+          migrateFourToFive(
+            migrateThreeToFour(migrateTwoToThree(input as object) as object) as object,
+          ) as object,
         ),
       ),
-      applied: ['2-to-3', '3-to-4', '4-to-5'],
+      applied: ['2-to-3', '3-to-4', '4-to-5', '5-to-6'],
     };
 
   if (version === 3)
     return {
       document: SiteDocumentSchema.parse(
-        migrateFourToFive(migrateThreeToFour(input as object) as object),
+        migrateFiveToSix(
+          migrateFourToFive(migrateThreeToFour(input as object) as object) as object,
+        ),
       ),
-      applied: ['3-to-4', '4-to-5'],
+      applied: ['3-to-4', '4-to-5', '5-to-6'],
     };
 
   if (version === 4)
     return {
-      document: SiteDocumentSchema.parse(migrateFourToFive(input as object)),
-      applied: ['4-to-5'],
+      document: SiteDocumentSchema.parse(
+        migrateFiveToSix(migrateFourToFive(input as object) as object),
+      ),
+      applied: ['4-to-5', '5-to-6'],
+    };
+
+  if (version === 5)
+    return {
+      document: SiteDocumentSchema.parse(migrateFiveToSix(input as object)),
+      applied: ['5-to-6'],
     };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };

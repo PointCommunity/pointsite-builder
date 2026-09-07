@@ -3,6 +3,8 @@ import type { ElementPlacement, SectionBlock, SiteElement } from './types';
 export type GridBreakpoint = 'desktop' | 'tablet' | 'mobile';
 export type GridArea = ElementPlacement['grid']['desktop'];
 export type ResponsiveGridArea = ElementPlacement['grid'];
+export type GridResizeHandle =
+  'north' | 'north-east' | 'east' | 'south-east' | 'south' | 'south-west' | 'west' | 'north-west';
 
 export const GRID_COLUMNS = 12;
 export const MAX_GRID_ROWS = 1_000;
@@ -24,6 +26,7 @@ const defaultRows: Record<SiteElement['type'], number> = {
   spacer: 2,
   text: 3,
   button: 2,
+  navigation: 2,
 };
 
 export function defaultRowSpan(type: SiteElement['type']): number {
@@ -119,7 +122,7 @@ export function moveGridArea(area: GridArea, columns: number, rows: number): Gri
 
 export function resizeGridArea(
   area: GridArea,
-  edge: 'north-west' | 'north-east' | 'south-west' | 'south-east',
+  edge: GridResizeHandle,
   columns: number,
   rows: number,
 ): GridArea {
@@ -127,13 +130,13 @@ export function resizeGridArea(
   if (edge.includes('west')) {
     next.column += columns;
     next.columnSpan -= columns;
-  } else {
+  } else if (edge.includes('east')) {
     next.columnSpan += columns;
   }
   if (edge.includes('north')) {
     next.row += rows;
     next.rowSpan -= rows;
-  } else {
+  } else if (edge.includes('south')) {
     next.rowSpan += rows;
   }
   return clampGridArea(next);

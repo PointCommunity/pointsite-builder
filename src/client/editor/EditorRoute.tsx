@@ -88,7 +88,7 @@ function Workspace({
               disabled={saveState === 'saved' || saveState === 'saving'}
               onClick={() => void saveNow()}
             >
-              Save now
+              Save
             </button>
           ) : null}
           {canPublish && panel === 'layout' ? (

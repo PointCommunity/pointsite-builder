@@ -14,8 +14,8 @@ export const IDS = {
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 5,
-  rendererVersion: '5.0.0',
+  schemaVersion: 6,
+  rendererVersion: '6.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',
@@ -59,6 +59,7 @@ export const validSiteDocument = {
       title: 'Home',
       route: '/',
       status: 'published',
+      showHeader: true,
       metadata: {
         title: 'Point Community Church',
         description: 'A church community in South Austin.',
