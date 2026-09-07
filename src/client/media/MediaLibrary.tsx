@@ -43,7 +43,6 @@ function displayNameFor(item: SiteMedia): string {
 function mediaUsage(document: SiteDocument, id: string): number {
   let count = 0;
   for (const page of document.pages) {
-    if (page.heroMediaId === id) count += 1;
     if (page.metadata.ogImageMediaId === id) count += 1;
     for (const section of page.blocks) {
       if (section.backgroundMediaId === id) count += 1;

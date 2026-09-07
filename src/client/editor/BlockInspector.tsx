@@ -197,6 +197,7 @@ export function BlockInspector({
             options={[
               { label: 'Standard hero', value: 'standard' },
               { label: 'Point homepage hero', value: 'homeHero' },
+              { label: 'Point page hero', value: 'pageHero' },
             ]}
             onChange={(variant) => onChange({ ...block, variant })}
           />

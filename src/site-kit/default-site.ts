@@ -1,6 +1,7 @@
 import { SiteDocumentSchema } from './schema';
 import { createCompatibilitySection } from './migrations';
 import { createEditableHeaderSection } from './editable-header';
+import { createEditablePageHeroSection } from './editable-page-hero';
 import type { SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 
@@ -315,11 +316,19 @@ const page = (
     route,
     status: 'published',
     template,
-    ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
-    intro: chrome.intro ?? description,
-    ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
     metadata: { title: `${title} | Point Community Church`, description },
     blocks: [
+      ...(template === 'standard'
+        ? [
+            createEditablePageHeroSection({
+              id,
+              title,
+              ...(chrome.eyebrow ? { eyebrow: chrome.eyebrow } : {}),
+              intro: chrome.intro ?? description,
+              ...(chrome.heroMediaId ? { heroMediaId: chrome.heroMediaId } : {}),
+            }),
+          ]
+        : []),
       createEditableHeaderSection(
         id,
         mediaId('/assets/point-logo.png'),

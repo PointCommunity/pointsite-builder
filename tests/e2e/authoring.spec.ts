@@ -296,6 +296,83 @@ test('operates page modules by keyboard and announces the result', async ({ page
   await expect(canvas.locator('.home-hero')).toHaveCount(2);
 });
 
+test('edits, rearranges, replaces, and persists a non-home Hero as a normal element', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; unit coverage still proves the shared Hero contract.',
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
+  let canvas = page.locator('.visual-editor iframe').contentFrame();
+
+  await expect(page.getByRole('button', { name: 'Hero', exact: true })).toBeVisible();
+  await expect(page.getByText('Page hero', { exact: true })).toBeVisible();
+  await expect(canvas.locator('.page-hero')).toHaveCount(1);
+  expect(
+    await canvas.locator('.page-hero').evaluate((element) => ({
+      left: element.getBoundingClientRect().left,
+      width: element.getBoundingClientRect().width,
+      viewport: window.innerWidth,
+      horizontalOverflow:
+        document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    })),
+  ).toEqual({ left: 0, width: 1280, viewport: 1280, horizontalOverflow: 0 });
+  await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
+  await canvas.getByRole('heading', { level: 1, name: 'Who We Are' }).click();
+  await expect(page.getByLabel('Layout style').filter({ visible: true })).toHaveValue('pageHero');
+  await page.getByLabel('Heading').filter({ visible: true }).fill('Our editable story');
+  await expect(canvas.getByRole('heading', { level: 1, name: 'Our editable story' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Duplicate Page hero' }).click();
+  await expect(canvas.locator('.page-hero')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Move Page hero copy down' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Page hero copy moved.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Remove Page hero', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Page hero copy', exact: true }).click();
+  await expect(canvas.locator('.page-hero')).toHaveCount(0);
+  await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
+
+  const source = page.getByRole('button', { name: 'Hero', exact: true });
+  const target = canvas.locator('section[aria-label="Site header"]');
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+  expect(from).not.toBeNull();
+  expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+    steps: 4,
+  });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + 6, { steps: 16 });
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+
+  await expect(canvas.getByRole('heading', { level: 1, name: 'Welcome to Point' })).toBeVisible();
+  await expect(page.getByLabel('Layout style').filter({ visible: true })).toHaveValue('standard');
+  await page.getByLabel('Layout style').filter({ visible: true }).selectOption('pageHero');
+  await page.getByLabel('Heading').filter({ visible: true }).fill('Replacement page hero');
+  await expect(
+    canvas.getByRole('heading', { level: 1, name: 'Replacement page hero' }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
+  canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(
+    canvas.getByRole('heading', { level: 1, name: 'Replacement page hero' }),
+  ).toBeVisible();
+  await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
+});
+
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -759,7 +836,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
   for (const name of ['Hero recipe', 'Image and text recipe', 'Call to action recipe']) {
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
-  for (const name of ['Heading', 'Text', 'Button', 'Image']) {
+  for (const name of ['Hero', 'Heading', 'Text', 'Button', 'Image']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Split feature', exact: true })).toBeVisible();
@@ -822,6 +899,7 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
     .getByRole('button', { name: 'Heading', exact: true })
     .filter({ visible: true });
   await grid.scrollIntoViewIfNeeded();
+  await source.scrollIntoViewIfNeeded();
   const [from, to] = await Promise.all([source.boundingBox(), grid.boundingBox()]);
   expect(from).not.toBeNull();
   expect(to).not.toBeNull();

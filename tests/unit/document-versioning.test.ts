@@ -19,6 +19,21 @@ describe('document versioning', () => {
     }
     return legacy;
   };
+  const versionSevenStandardPageDocument = () => {
+    const legacy = structuredClone(validSiteDocument) as unknown as Record<string, unknown>;
+    legacy.schemaVersion = 7;
+    legacy.rendererVersion = '7.0.0';
+    const pages = legacy.pages as Array<Record<string, unknown>>;
+    const page = pages[0];
+    if (!page) throw new Error('Expected a legacy page');
+    page.title = 'Who We Are';
+    page.route = '/who-we-are';
+    page.template = 'standard';
+    page.eyebrow = 'About Point';
+    page.intro = 'We are a family of disciples on mission.';
+    page.heroMediaId = validSiteDocument.media[0].id;
+    return legacy;
+  };
   const versionOneDocument = () => {
     const current = structuredClone(validSiteDocument);
     return {
@@ -80,6 +95,7 @@ describe('document versioning', () => {
       '4-to-5',
       '5-to-6',
       '6-to-7',
+      '7-to-8',
     ]);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
@@ -92,7 +108,15 @@ describe('document versioning', () => {
   it('migrates version one into deterministic standardized sections', () => {
     const first = migrateDocument(versionOneDocument());
     const second = migrateDocument(versionOneDocument());
-    expect(first.applied).toEqual(['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7']);
+    expect(first.applied).toEqual([
+      '1-to-2',
+      '2-to-3',
+      '3-to-4',
+      '4-to-5',
+      '5-to-6',
+      '6-to-7',
+      '7-to-8',
+    ]);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[1]).toMatchObject({
       type: 'section',
@@ -114,7 +138,7 @@ describe('document versioning', () => {
 
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
-    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7']);
+    expect(first.applied).toEqual(['2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[1]?.items[0]?.grid.desktop).toEqual({
       column: 1,
@@ -151,7 +175,7 @@ describe('document versioning', () => {
     }
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6', '6-to-7']);
+    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8']);
     expect(
       migrated.document.pages.flatMap((page) =>
         page.blocks.slice(1).flatMap((section) => section.items.map((item) => item.element.id)),
@@ -175,7 +199,7 @@ describe('document versioning', () => {
     delete fields[0].width;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['4-to-5', '5-to-6', '6-to-7']);
+    expect(migrated.applied).toEqual(['4-to-5', '5-to-6', '6-to-7', '7-to-8']);
     expect(migrated.document.linkedMedia).toEqual([]);
     expect(migrated.document.forms[0]).toMatchObject({
       layout: 'two-column',
@@ -192,7 +216,7 @@ describe('document versioning', () => {
     for (const page of pages) delete page.showHeader;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['5-to-6', '6-to-7']);
+    expect(migrated.applied).toEqual(['5-to-6', '6-to-7', '7-to-8']);
     const migratedPage = migrated.document.pages[0];
     expect(migratedPage).not.toHaveProperty('showHeader');
     expect(migratedPage?.blocks[0]).toMatchObject({
@@ -215,7 +239,7 @@ describe('document versioning', () => {
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
 
-    expect(first.applied).toEqual(['6-to-7']);
+    expect(first.applied).toEqual(['6-to-7', '7-to-8']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]?.items.map((item) => item.element.type)).toEqual([
       'image',
@@ -237,6 +261,48 @@ describe('document versioning', () => {
     expect(migrated.document.pages[0]?.blocks).toEqual(
       validSiteDocument.pages[0]?.blocks.map((section) => ({ ...section, position: 'flow' })),
     );
+  });
+
+  it('turns version seven page chrome into one deterministic existing Hero element', () => {
+    const legacy = versionSevenStandardPageDocument();
+    const originalBlocks = structuredClone(
+      (legacy.pages as Array<{ blocks: unknown[] }>)[0]?.blocks ?? [],
+    );
+
+    const first = migrateDocument(legacy);
+    const second = migrateDocument(versionSevenStandardPageDocument());
+    const page = first.document.pages[0];
+
+    expect(first.applied).toEqual(['7-to-8']);
+    expect(first.document).toEqual(second.document);
+    expect(page).not.toHaveProperty('eyebrow');
+    expect(page).not.toHaveProperty('intro');
+    expect(page).not.toHaveProperty('heroMediaId');
+    expect(page?.blocks[0]).toMatchObject({
+      name: 'Page hero',
+      layout: 'compatibility',
+      position: 'flow',
+      items: [
+        {
+          element: {
+            type: 'hero',
+            variant: 'pageHero',
+            eyebrow: 'About Point',
+            heading: 'Who We Are',
+            body: 'We are a family of disciples on mission.',
+            mediaId: validSiteDocument.media[0].id,
+            align: 'left',
+            surface: 'image',
+            actions: [],
+          },
+        },
+      ],
+    });
+    expect(page?.blocks.slice(1)).toEqual(originalBlocks);
+
+    const repeated = migrateDocument(first.document);
+    expect(repeated.applied).toEqual([]);
+    expect(repeated.document).toEqual(first.document);
   });
 
   it('fails closed for an unknown future schema version', () => {

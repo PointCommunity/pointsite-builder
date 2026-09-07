@@ -6,11 +6,6 @@ import { themeToTokens } from './tokens';
 import type { PageDocument, SiteDocument } from './types';
 import './site.css';
 
-function mediaSource(document: SiteDocument, id?: string): string | undefined {
-  if (!id) return undefined;
-  return document.media.find((candidate) => candidate.id === id)?.sourcePath;
-}
-
 function SiteFooter({
   document,
   editing = false,
@@ -81,7 +76,6 @@ export function SiteFrame({
   onNavigate?: (route: string) => void;
 }) {
   const isHome = page.template === 'home' || page.route === '/';
-  const hero = mediaSource(document, page.heroMediaId);
   const navigate = (event: ReactMouseEvent) => {
     if (!onNavigate) return;
     const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
@@ -105,17 +99,6 @@ export function SiteFrame({
         Skip to main content
       </a>
       <main id="point-main">
-        {!isHome ? (
-          <header className={`page-hero ${hero ? 'page-hero--image' : ''}`}>
-            {hero ? <img src={hero} alt="" /> : null}
-            {hero ? <div className="hero-shade" /> : null}
-            <div className="shell page-hero-copy">
-              {page.eyebrow ? <p className="eyebrow">{page.eyebrow}</p> : null}
-              <h1>{page.title}</h1>
-              {page.intro ? <p>{page.intro}</p> : null}
-            </div>
-          </header>
-        ) : null}
         {isHome ? children : <div className="page-body shell">{children}</div>}
       </main>
       <SiteFooter document={document} editing={editing} onEdit={onEditFooter} />

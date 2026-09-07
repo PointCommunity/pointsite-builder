@@ -85,6 +85,13 @@ describe('BlockInspector', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ align: 'end' }));
   });
 
+  it('offers the Point page hero style on the existing Hero element', () => {
+    const hero = allBlocks.find((item) => item.type === 'hero')!;
+    render(<BlockInspector block={hero} document={defaultSiteDocument} onChange={vi.fn()} />);
+
+    expect(screen.getByRole('option', { name: 'Point page hero' })).toBeInTheDocument();
+  });
+
   it('uses page-aware destinations for action and standalone button links', () => {
     const actionBlock = allBlocks.find((item) => item.type === 'cta')!;
     const { rerender } = render(

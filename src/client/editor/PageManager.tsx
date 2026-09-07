@@ -1,5 +1,6 @@
 import type { SiteDocument } from '../../site-kit/types';
 import { createEditableHeaderSection } from '../../site-kit/editable-header';
+import { createEditablePageHeroSection } from '../../site-kit/editable-page-hero';
 import { useEditor } from './EditorProvider';
 
 // This colocated pure helper keeps page creation and its tests bound to the UI behavior.
@@ -62,10 +63,16 @@ export function PageManager({
         ),
         status: 'draft',
         template: 'standard',
-        eyebrow: 'New page',
-        intro: 'Add a short introduction for this page.',
         metadata: { title, description: 'Add a short description for this page.' },
-        blocks: [createEditableHeaderSection(id, logo?.id)],
+        blocks: [
+          createEditablePageHeroSection({
+            id,
+            title,
+            eyebrow: 'New page',
+            intro: 'Add a short introduction for this page.',
+          }),
+          createEditableHeaderSection(id, logo?.id),
+        ],
       });
       return next;
     });
@@ -216,48 +223,6 @@ export function PageManager({
             >
               <option value="standard">Standard page</option>
               <option value="home">Homepage</option>
-            </select>
-          </label>
-          <label>
-            <span>Page eyebrow</span>
-            <input
-              maxLength={80}
-              value={page.eyebrow ?? ''}
-              onChange={(event) =>
-                updatePage((target) => {
-                  target.eyebrow = event.target.value || undefined;
-                })
-              }
-            />
-          </label>
-          <label className="field-wide">
-            <span>Page introduction</span>
-            <textarea
-              maxLength={500}
-              value={page.intro ?? ''}
-              onChange={(event) =>
-                updatePage((target) => {
-                  target.intro = event.target.value || undefined;
-                })
-              }
-            />
-          </label>
-          <label>
-            <span>Page hero image</span>
-            <select
-              value={page.heroMediaId ?? ''}
-              onChange={(event) =>
-                updatePage((target) => {
-                  target.heroMediaId = event.target.value || undefined;
-                })
-              }
-            >
-              <option value="">No hero image</option>
-              {document.media.map((media) => (
-                <option value={media.id} key={media.id}>
-                  {media.alt || media.sourcePath}
-                </option>
-              ))}
             </select>
           </label>
           <label>

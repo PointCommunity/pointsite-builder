@@ -42,7 +42,7 @@ const HeroBlockSchema = z.strictObject({
   align: z.enum(['left', 'center']),
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
-  variant: z.enum(['standard', 'homeHero']).optional(),
+  variant: z.enum(['standard', 'homeHero', 'pageHero']).optional(),
 });
 
 const HeadingBlockSchema = z.strictObject({
@@ -529,9 +529,6 @@ const PageSchema = z.strictObject({
   route: CanonicalRouteSchema,
   status: z.enum(['draft', 'published', 'hidden']),
   template: z.enum(['home', 'standard']).optional(),
-  eyebrow: z.string().trim().max(80).optional(),
-  intro: z.string().trim().max(500).optional(),
-  heroMediaId: uuid.optional(),
   metadata: z.strictObject({
     title: z.string().trim().min(1).max(70),
     description: z.string().trim().min(1).max(180),
@@ -542,7 +539,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(7),
+    schemaVersion: z.literal(8),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

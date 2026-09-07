@@ -9,6 +9,17 @@ function cloneDocument(): Record<string, unknown> {
 }
 
 describe('SiteDocumentSchema', () => {
+  it('rejects removed page-level visual hero fields', () => {
+    for (const field of ['eyebrow', 'intro', 'heroMediaId']) {
+      const input = cloneDocument();
+      const page = (input.pages as Array<Record<string, unknown>>)[0];
+      if (!page) throw new Error('Expected a page fixture');
+      page[field] = field === 'heroMediaId' ? IDS.linkedMedia : 'Legacy visual value';
+
+      expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+    }
+  });
+
   it('accepts a strict, versioned site document', () => {
     expect(SiteDocumentSchema.parse(validSiteDocument)).toEqual(validSiteDocument);
   });

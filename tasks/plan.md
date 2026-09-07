@@ -2,10 +2,10 @@
 
 ## Active plan: Spec 013 editable page elements
 
-The current review-gated plan is recorded in dark-mode HTML at
+The approved plan is recorded in dark-mode HTML at
 [`specs/013-editable-page-elements/plan.html`](../specs/013-editable-page-elements/plan.html).
-Implementation begins only after the human approves the assumptions and scope in
-[`spec.html`](../specs/013-editable-page-elements/spec.html). The dependency order is:
+The user approved the assumptions and scope in
+[`spec.html`](../specs/013-editable-page-elements/spec.html) on 2026-09-07. The dependency order is:
 
 1. Verify and commit the pending Spec 012 Builder increment separately.
 2. Write failing version-8 migration and page-ownership tests.

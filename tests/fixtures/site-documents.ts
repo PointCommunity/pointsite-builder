@@ -15,8 +15,8 @@ export const IDS = {
 } as const;
 
 export const validSiteDocument = {
-  schemaVersion: 7,
-  rendererVersion: '7.0.0',
+  schemaVersion: 8,
+  rendererVersion: '8.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point',

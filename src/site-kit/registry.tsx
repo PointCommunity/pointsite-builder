@@ -368,6 +368,29 @@ export function renderBlock(
   switch (block.type) {
     case 'hero': {
       const media = block.mediaId ? mediaRecord(document, block.mediaId) : undefined;
+      if (block.variant === 'pageHero') {
+        const hasImage = Boolean(media && block.surface === 'image');
+        return (
+          <section
+            className={`page-hero page-hero--${block.surface}${hasImage ? ' page-hero--image' : ''} point-align--${block.align}`}
+          >
+            {hasImage ? <img src={media?.sourcePath} alt="" /> : null}
+            {hasImage ? <div className="hero-shade" aria-hidden="true" /> : null}
+            <div className="shell page-hero-copy">
+              {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
+              <h1>{block.heading}</h1>
+              {block.body ? <p>{block.body}</p> : null}
+              {block.actions.length ? (
+                <div className="point-actions">
+                  {block.actions.map((action, index) => (
+                    <ActionLink action={action} key={index} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        );
+      }
       if (block.variant === 'homeHero')
         return (
           <section className={`home-hero home-hero--${block.align} home-hero--${block.surface}`}>

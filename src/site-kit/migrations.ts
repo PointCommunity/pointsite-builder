@@ -3,6 +3,7 @@ import { legacyGridAreas } from './grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 import { createEditableHeaderSection, derivedUuid } from './editable-header';
+import { createEditablePageHeroSection, type LegacyPageHero } from './editable-page-hero';
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(version: unknown) {
@@ -170,8 +171,8 @@ function migrateSixToSeven(input: object): unknown {
   )?.id;
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 7,
+    rendererVersion: '7.0.0',
     pages: (legacy.pages ?? []).map((page) => {
       const { showHeader = true, ...nextPage } = page;
       const blocks = ((page.blocks as Array<Record<string, unknown>>) ?? []).map((section) => ({
@@ -196,6 +197,29 @@ function migrateSixToSeven(input: object): unknown {
   };
 }
 
+function migrateSevenToEight(input: object): unknown {
+  const legacy = input as { pages?: Array<Record<string, unknown>> };
+  return {
+    ...input,
+    schemaVersion: SCHEMA_VERSION,
+    rendererVersion: RENDERER_VERSION,
+    pages: (legacy.pages ?? []).map((page) => {
+      const { eyebrow, intro, heroMediaId, ...nextPage } = page;
+      const isHome = page.template === 'home' || page.route === '/';
+      const blocks = ((page.blocks as Array<Record<string, unknown>>) ?? []) as SectionBlock[];
+      if (isHome) return { ...nextPage, blocks };
+      const hero = createEditablePageHeroSection({
+        id: String(page.id),
+        title: String(page.title),
+        ...(typeof eyebrow === 'string' && eyebrow ? { eyebrow } : {}),
+        ...(typeof intro === 'string' && intro ? { intro } : {}),
+        ...(typeof heroMediaId === 'string' && heroMediaId ? { heroMediaId } : {}),
+      } satisfies LegacyPageHero);
+      return { ...nextPage, blocks: [hero, ...blocks] };
+    }),
+  };
+}
+
 export function migrateDocument(input: unknown): MigrationResult {
   const version = readVersion(input);
 
@@ -208,80 +232,102 @@ export function migrateDocument(input: unknown): MigrationResult {
     const versionTwo = migrateOneToTwo(versionOne as object);
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(
-          migrateFiveToSix(
-            migrateFourToFive(
-              migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object) as object,
+        migrateSevenToEight(
+          migrateSixToSeven(
+            migrateFiveToSix(
+              migrateFourToFive(
+                migrateThreeToFour(migrateTwoToThree(versionTwo as object) as object) as object,
+              ) as object,
             ) as object,
           ) as object,
         ),
       ),
-      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7'],
+      applied: ['0-to-1', '1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8'],
     };
   }
 
   if (version === 1)
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(
-          migrateFiveToSix(
-            migrateFourToFive(
-              migrateThreeToFour(
-                migrateTwoToThree(migrateOneToTwo(input as object) as object) as object,
+        migrateSevenToEight(
+          migrateSixToSeven(
+            migrateFiveToSix(
+              migrateFourToFive(
+                migrateThreeToFour(
+                  migrateTwoToThree(migrateOneToTwo(input as object) as object) as object,
+                ) as object,
               ) as object,
             ) as object,
           ) as object,
         ),
       ),
-      applied: ['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7'],
+      applied: ['1-to-2', '2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8'],
     };
 
   if (version === 2)
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(
-          migrateFiveToSix(
-            migrateFourToFive(
-              migrateThreeToFour(migrateTwoToThree(input as object) as object) as object,
+        migrateSevenToEight(
+          migrateSixToSeven(
+            migrateFiveToSix(
+              migrateFourToFive(
+                migrateThreeToFour(migrateTwoToThree(input as object) as object) as object,
+              ) as object,
             ) as object,
           ) as object,
         ),
       ),
-      applied: ['2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7'],
+      applied: ['2-to-3', '3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8'],
     };
 
   if (version === 3)
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(
-          migrateFiveToSix(
-            migrateFourToFive(migrateThreeToFour(input as object) as object) as object,
+        migrateSevenToEight(
+          migrateSixToSeven(
+            migrateFiveToSix(
+              migrateFourToFive(migrateThreeToFour(input as object) as object) as object,
+            ) as object,
           ) as object,
         ),
       ),
-      applied: ['3-to-4', '4-to-5', '5-to-6', '6-to-7'],
+      applied: ['3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8'],
     };
 
   if (version === 4)
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(migrateFiveToSix(migrateFourToFive(input as object) as object) as object),
+        migrateSevenToEight(
+          migrateSixToSeven(
+            migrateFiveToSix(migrateFourToFive(input as object) as object) as object,
+          ) as object,
+        ),
       ),
-      applied: ['4-to-5', '5-to-6', '6-to-7'],
+      applied: ['4-to-5', '5-to-6', '6-to-7', '7-to-8'],
     };
 
   if (version === 5)
     return {
       document: SiteDocumentSchema.parse(
-        migrateSixToSeven(migrateFiveToSix(input as object) as object),
+        migrateSevenToEight(
+          migrateSixToSeven(migrateFiveToSix(input as object) as object) as object,
+        ),
       ),
-      applied: ['5-to-6', '6-to-7'],
+      applied: ['5-to-6', '6-to-7', '7-to-8'],
     };
 
   if (version === 6)
     return {
-      document: SiteDocumentSchema.parse(migrateSixToSeven(input as object)),
-      applied: ['6-to-7'],
+      document: SiteDocumentSchema.parse(
+        migrateSevenToEight(migrateSixToSeven(input as object) as object),
+      ),
+      applied: ['6-to-7', '7-to-8'],
+    };
+
+  if (version === 7)
+    return {
+      document: SiteDocumentSchema.parse(migrateSevenToEight(input as object)),
+      applied: ['7-to-8'],
     };
 
   return { document: SiteDocumentSchema.parse(input), applied: [] };

@@ -773,7 +773,7 @@ export function VisualEditor({
       site: { title: 'Site elements', components: ['navigation'] },
       content: {
         title: 'Text and buttons',
-        components: ['heading', 'text', 'richText', 'button'],
+        components: ['hero', 'heading', 'text', 'richText', 'button'],
       },
       media: {
         title: 'Images and media',

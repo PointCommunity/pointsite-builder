@@ -41,6 +41,34 @@ describe('controlled public renderer', () => {
     expect(screen.getByText('We are a family of disciples on mission.')).toBeVisible();
   });
 
+  it('does not inject a non-home hero after its Hero element is removed', () => {
+    const document = structuredClone(defaultSiteDocument);
+    const page = document.pages.find((candidate) => candidate.route === '/who-we-are');
+    if (!page) throw new Error('Expected Who We Are page');
+    page.blocks = page.blocks.filter((section) => section.name !== 'Page hero');
+
+    const { container } = render(<SiteRenderer document={document} route="/who-we-are" />);
+
+    expect(container.querySelector('.page-hero')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Who We Are' })).not.toBeInTheDocument();
+    expect(container.querySelector('.site-footer')).not.toBeNull();
+  });
+
+  it('keeps the editable Hero in the same page canvas as overlay-capable sections', () => {
+    const document = structuredClone(defaultSiteDocument);
+    const page = document.pages.find((candidate) => candidate.route === '/who-we-are');
+    if (!page) throw new Error('Expected Who We Are page');
+    const header = page.blocks.find((section) => section.name === 'Site header');
+    if (!header) throw new Error('Expected Site header section');
+    header.position = 'overlay';
+
+    const { container } = render(<SiteRenderer document={document} route="/who-we-are" />);
+    const body = container.querySelector('.page-body');
+
+    expect(body?.querySelector('.page-hero')).not.toBeNull();
+    expect(body?.querySelector('.point-layout-section--position-overlay')).not.toBeNull();
+  });
+
   it('routes internal Navigation element links through preview navigation', () => {
     const onNavigate = vi.fn();
     render(<SiteRenderer document={defaultSiteDocument} route="/" onNavigate={onNavigate} />);
@@ -101,6 +129,7 @@ describe('controlled public renderer', () => {
       'src',
       'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE',
     );
+    expect(Object.keys(blockDefinitions).filter((type) => type === 'hero')).toEqual(['hero']);
   });
 
   it('hardens external links and preserves internal navigation', () => {
