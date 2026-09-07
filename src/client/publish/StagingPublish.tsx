@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ClientApiError, type CandidateTuple } from '../api';
 import { useEditor } from '../editor/EditorProvider';
-import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow';
+import type { Role } from '../../server/repositories/contracts';
+import {
+  deriveStagingWorkflow,
+  type StagingWorkflowSnapshot,
+  type StagingWorkflowView,
+} from './workflow';
+
+type PublishingRole = Extract<Role, 'publisher' | 'administrator'>;
 
 const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
@@ -28,7 +35,70 @@ const actionErrorMessage = (error: unknown) => {
   return error.message || 'The action stopped safely. Refresh the workflow and try again.';
 };
 
-export function StagingPublish() {
+const nextStepCopy = (lifecycle: StagingWorkflowView, role: PublishingRole, revision: number) => {
+  switch (lifecycle.phase) {
+    case 'loading':
+      return {
+        title: 'Loading your next step',
+        guidance: 'No action is needed while Builder recovers the latest saved progress.',
+      };
+    case 'unavailable':
+      return {
+        title: 'Try loading the workflow again',
+        guidance: 'Builder could not load the saved publishing status. Your content is unchanged.',
+      };
+    case 'ready':
+      return {
+        title: `Publish revision ${revision} to Staging`,
+        guidance: 'This creates one protected Staging candidate. It does not change Production.',
+      };
+    case 'publishing':
+      return {
+        title: 'No action needed — publishing is underway',
+        guidance: 'Builder is creating the protected Staging version and will keep checking it.',
+      };
+    case 'verifying':
+      return {
+        title: 'No action needed — Builder is verifying Staging',
+        guidance: 'Builder will advance automatically when every required check finishes.',
+      };
+    case 'paused':
+      return {
+        title: 'Continue verification',
+        guidance: 'Select the button below to check this exact Staging version now.',
+      };
+    case 'review-ready':
+      return {
+        title: 'Review Staging, then accept this version',
+        guidance: 'Complete these two actions in order. Production will remain unchanged.',
+      };
+    case 'accepted':
+      return {
+        title: 'Your Staging work is complete',
+        guidance:
+          role === 'administrator'
+            ? 'No Production action is available here yet. Production publishing remains protected and disabled until its separate setup and approval are complete.'
+            : 'No more publishing action is required from you. This exact version is now the official Staging candidate.',
+      };
+    case 'failed':
+      return lifecycle.step === 2
+        ? {
+            title: 'Try publishing this revision again',
+            guidance: 'The earlier attempt stopped safely. Retrying will not change Production.',
+          }
+        : {
+            title: 'Check Staging verification again',
+            guidance: 'Acceptance stays locked until every required check passes.',
+          };
+    case 'stale':
+      return {
+        title: `Publish the current revision ${revision}`,
+        guidance: 'The earlier candidate is no longer current and cannot be accepted.',
+      };
+  }
+};
+
+export function StagingPublish({ role }: { role: PublishingRole }) {
   const { draft, saveState } = useEditor();
   const [snapshot, setSnapshot] = useState<StagingWorkflowSnapshot | null | undefined>(undefined);
   const [monitoringStartedAt, setMonitoringStartedAt] = useState<number | null>(null);
@@ -66,6 +136,8 @@ export function StagingPublish() {
       }),
     [draft.revision.checksum, draft.revision.id, monitoringPaused, snapshot],
   );
+  const nextStep = nextStepCopy(lifecycle, role, draft.revision.sequence);
+  const roleLabel = role === 'administrator' ? 'Administrator' : 'Publisher';
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -184,6 +256,99 @@ export function StagingPublish() {
         })}
       </ol>
 
+      <section className="publish-next-action" aria-labelledby="publish-next-action-title">
+        <p className="eyebrow">Your next step · {roleLabel}</p>
+        <h3 id="publish-next-action-title">{nextStep.title}</h3>
+        <p>{nextStep.guidance}</p>
+
+        {lifecycle.phase === 'review-ready' ? (
+          <ol className="publish-review-actions" aria-label="Required Staging review actions">
+            <li>
+              <strong>Open and review Staging</strong>
+              <span>Check the affected pages and interactions in the protected website.</span>
+              <a
+                className="button button--primary"
+                href={snapshot?.reviewUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Staging for review
+              </a>
+            </li>
+            <li>
+              <strong>Return here and accept it</strong>
+              <span>Accept only after the protected site looks and works as expected.</span>
+              <button
+                className="button button--primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void accept()}
+              >
+                {busy ? 'Accepting…' : 'Accept this Staging version'}
+              </button>
+            </li>
+          </ol>
+        ) : (
+          <div className="publish-actions">
+            {lifecycle.canPublish ? (
+              <button
+                className="button button--primary"
+                type="button"
+                disabled={busy || saveState !== 'saved'}
+                onClick={() => void publish()}
+              >
+                {busy
+                  ? 'Starting publication…'
+                  : lifecycle.phase === 'ready'
+                    ? `Publish revision ${draft.revision.sequence} to Staging`
+                    : lifecycle.phase === 'stale'
+                      ? `Publish current revision ${draft.revision.sequence}`
+                      : 'Try publishing again'}
+              </button>
+            ) : null}
+            {lifecycle.canRefresh && lifecycle.phase !== 'accepted' ? (
+              <button
+                className={`button ${
+                  ['paused', 'unavailable'].includes(lifecycle.phase) ||
+                  (lifecycle.phase === 'failed' && !lifecycle.canPublish)
+                    ? 'button--primary'
+                    : ''
+                }`}
+                type="button"
+                disabled={busy}
+                onClick={() => void refresh()}
+              >
+                {busy
+                  ? 'Checking…'
+                  : lifecycle.phase === 'paused'
+                    ? 'Continue verification'
+                    : lifecycle.phase === 'unavailable'
+                      ? 'Try loading again'
+                      : lifecycle.phase === 'failed'
+                        ? 'Check verification again'
+                        : 'Check now'}
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {lifecycle.phase === 'paused' ? (
+          <p className="publish-action-impact">
+            This checks the existing Staging version only. It does not publish again.
+          </p>
+        ) : null}
+        {lifecycle.phase === 'publishing' || lifecycle.phase === 'verifying' ? (
+          <p className="publish-action-impact">
+            You may leave this window open or close it and return later. Your progress is saved.
+          </p>
+        ) : null}
+        {lifecycle.phase === 'accepted' ? (
+          <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
+            Open accepted Staging site
+          </a>
+        ) : null}
+      </section>
+
       <div
         className={`publish-status publish-status--${lifecycle.phase}`}
         role="status"
@@ -202,49 +367,6 @@ export function StagingPublish() {
         <p className="form-error" role="alert">
           {actionError}
         </p>
-      ) : null}
-
-      <div className="publish-actions">
-        {lifecycle.canPublish ? (
-          <button
-            className="button button--primary"
-            type="button"
-            disabled={busy || saveState !== 'saved'}
-            onClick={() => void publish()}
-          >
-            {busy
-              ? 'Starting publication…'
-              : lifecycle.phase === 'ready'
-                ? 'Publish this revision to Staging'
-                : 'Publish a new Staging candidate'}
-          </button>
-        ) : null}
-        {lifecycle.canRefresh ? (
-          <button className="button" type="button" disabled={busy} onClick={() => void refresh()}>
-            {busy ? 'Refreshing…' : 'Refresh Staging status'}
-          </button>
-        ) : null}
-      </div>
-
-      {lifecycle.phase === 'review-ready' || lifecycle.phase === 'accepted' ? (
-        <section className="staging-review" aria-labelledby="staging-review-title">
-          <p className="eyebrow">Protected review</p>
-          <h3 id="staging-review-title">Review the exact site before acceptance</h3>
-          <p>Open Staging, check the affected pages and interactions, then return here.</p>
-          <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
-            Review protected Staging site
-          </a>
-          {lifecycle.canAccept ? (
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void accept()}
-            >
-              I reviewed Staging — accept this revision
-            </button>
-          ) : null}
-        </section>
       ) : null}
 
       <details className="technical-details">
@@ -305,8 +427,13 @@ export function StagingPublish() {
       <aside className="production-lock">
         <strong>Production remains unchanged</strong>
         <p>
-          Only protected Staging can change here. Publishing the public website requires a separate
-          Administrator-only process.
+          {role === 'administrator'
+            ? 'Production publishing is not enabled in Builder yet. There is no Production button until the separate protected setup and approval are complete.'
+            : 'Your Publisher role ends at accepted Staging. An Administrator can continue only after the separate protected Production workflow is enabled.'}
+        </p>
+        <p className="production-role-note">
+          A GitHub organization owner must also have an active Builder Administrator role and the
+          required live repository permission before any Production action can appear.
         </p>
       </aside>
     </section>

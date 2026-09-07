@@ -262,7 +262,7 @@ function Workspace({
           <AdminRoute />
         </main>
       ) : null}
-      {publishOpen && canPublish ? (
+      {publishOpen && canPublish && (role === 'publisher' || role === 'administrator') ? (
         <div
           className="modal-backdrop"
           role="presentation"
@@ -287,7 +287,7 @@ function Workspace({
             >
               Close
             </button>
-            <StagingPublish />
+            <StagingPublish role={role} />
           </section>
         </div>
       ) : null}

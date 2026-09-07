@@ -743,8 +743,8 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   font-size: 0.75rem;
   line-height: 1.35;
 }
-.publish-status,
-.staging-review {
+.publish-next-action,
+.publish-status {
   display: grid;
   gap: 0.65rem;
   min-width: 0;
@@ -754,15 +754,32 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   border-radius: 0.65rem;
   background: color-mix(in srgb, var(--brand) 8%, var(--surface));
 }
+.publish-next-action {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border-width: 2px;
+  border-color: var(--brand-strong);
+  background: color-mix(in srgb, var(--brand) 16%, var(--surface));
+}
+.publish-next-action .eyebrow,
+.publish-next-action h3,
+.publish-next-action p {
+  margin: 0;
+}
+.publish-next-action h3 {
+  font-size: 1.35rem;
+}
+.publish-action-impact {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
 .publish-status--failed,
 .publish-status--stale,
 .publish-status--unavailable {
   border-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
-.publish-status p,
-.staging-review p,
-.staging-review h3 {
+.publish-status p {
   margin: 0;
 }
 .publish-actions,
@@ -773,16 +790,39 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   margin-top: 1rem;
 }
 .publish-actions > .button,
-.staging-review > .button {
+.publish-next-action > .button {
   width: fit-content;
   max-width: 100%;
 }
-.staging-review {
-  margin-top: 1.5rem;
-  border-color: var(--brand-strong);
+.publish-review-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: review-step;
 }
-.staging-review .eyebrow {
-  margin-bottom: -0.35rem;
+.publish-review-actions li {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--surface);
+  counter-increment: review-step;
+}
+.publish-review-actions strong::before {
+  content: counter(review-step) '. ';
+}
+.publish-review-actions span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.publish-review-actions .button {
+  align-self: end;
+  width: 100%;
 }
 .technical-details {
   margin-top: 1.5rem;
@@ -803,12 +843,24 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
 .production-lock p {
   margin-bottom: 0;
 }
+.production-role-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 @media (max-width: 850px) {
   .publish-steps {
     grid-template-columns: 1fr;
   }
   .publish-steps small {
     font-size: 0.82rem;
+  }
+  .publish-review-actions {
+    grid-template-columns: 1fr;
+  }
+  .publish-actions,
+  .publish-actions > .button,
+  .publish-next-action > .button {
+    width: 100%;
   }
 }
 .media-panel h2 {

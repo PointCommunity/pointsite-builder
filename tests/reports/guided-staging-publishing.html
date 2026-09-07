@@ -103,22 +103,22 @@
   </head>
   <body>
     <main>
-      <p class="eyebrow">PointSite Builder · GitHub Issue #18 · pre-release evidence</p>
+      <p class="eyebrow">PointSite Builder · GitHub Issue #18 · acceptance correction</p>
       <h1>Guided Staging publishing acceptance</h1>
       <p class="lede">
-        The exact candidate replaces the ambiguous publish dialog with a durable five-step path:
-        saved revision, publication, verification, protected review, and deliberate acceptance. This
-        record covers implementation and local review. Exact PR, deployment, and real protected
-        Staging evidence are release gates and are recorded in GitHub after this file is frozen.
+        The durable five-step path now leads with a role-aware <em>Your next step</em> region. Every
+        available action is prominent, names its outcome, and explains its effect; passive states
+        say that no action is needed. This record includes the original release evidence plus the
+        PM's screenshot-driven usability correction.
       </p>
 
       <div class="summary">
-        <div class="card"><strong class="pass">238 passed</strong>Unit and integration tests</div>
-        <div class="card"><strong class="pass">94 passed</strong>Cross-browser journeys</div>
+        <div class="card"><strong class="pass">240 passed</strong>Unit and integration tests</div>
+        <div class="card"><strong class="pass">97 passed</strong>Cross-browser journeys</div>
         <div class="card">
           <strong class="pass">0 vulnerabilities</strong>High-severity audit gate
         </div>
-        <div class="card"><strong class="pass">1.59 ms p95</strong>API load; 100 ms budget</div>
+        <div class="card"><strong class="pass">1.68 ms p95</strong>API load; 100 ms budget</div>
       </div>
 
       <h2>Acceptance criteria</h2>
@@ -136,6 +136,23 @@
               <td>Complete sequence before publishing</td>
               <td>
                 Five named steps render before the first action in <code>StagingPublish</code>.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>One unmistakable next action</td>
+              <td>
+                The dominant region immediately after the tracker names the Publisher or
+                Administrator, gives one outcome-oriented primary control when action is required,
+                and explicitly says when Builder is acting automatically.
+              </td>
+              <td class="pass">Pass</td>
+            </tr>
+            <tr>
+              <td>Action effect is explained</td>
+              <td>
+                Paused monitoring offers <em>Continue verification</em> and states that it checks
+                the existing Staging version without publishing again.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -158,8 +175,8 @@
             <tr>
               <td>Manual recovery</td>
               <td>
-                Refresh remains available for pending, paused, failed, stale, review-ready, and
-                accepted states.
+                Outcome-oriented retry or check controls remain available for pending, paused,
+                failed, unavailable, and stale states.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -174,8 +191,8 @@
             <tr>
               <td>Protected review before acceptance</td>
               <td>
-                The verified review-ready state exposes the protected Staging link and a separate
-                deliberate acceptance control.
+                The verified review-ready state presents 2 numbered actions: open and review the
+                protected site, then return and deliberately accept the exact version.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -206,8 +223,9 @@
             <tr>
               <td>Official acceptance and Production lock</td>
               <td>
-                Accepted state identifies the exact official Staging candidate and repeats that the
-                public website is unchanged.
+                Accepted state tells Publishers their work is complete. Administrators see that no
+                Production action exists until its separate protected gate is enabled; organization
+                ownership alone does not bypass Builder role and repository permission.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -245,7 +263,7 @@
             <tr>
               <td>Coverage</td>
               <td>
-                41 files and 238 tests passed; 83.96% statements, 69.93% branches, 90.25% functions,
+                41 files and 240 tests passed; 83.96% statements, 69.93% branches, 90.25% functions,
                 87.14% lines.
               </td>
               <td class="pass">Pass</td>
@@ -253,7 +271,7 @@
             <tr>
               <td>Browsers</td>
               <td>
-                94 runnable tests passed across Chromium, Firefox, WebKit, and mobile Chromium; nine
+                97 runnable tests passed across Chromium, Firefox, WebKit, and mobile Chromium; 9
                 declared unsupported cases skipped.
               </td>
               <td class="pass">Pass</td>
@@ -262,24 +280,24 @@
               <td>Accessibility</td>
               <td>
                 Automated axe, keyboard, focus, reflow, and non-color status tests passed. Hands-on
-                review confirmed focus wrap and restoration to Publish at 760 px.
+                review at 809 × 813 confirmed the primary action remains visible, the modal has no
+                horizontal overflow, and focus wraps through action, evidence, and Close controls.
               </td>
               <td class="pass">Pass</td>
             </tr>
             <tr>
               <td>Local recovery</td>
               <td>
-                Fresh local migrations succeeded. Hands-on Publisher dialog showed the full
-                lifecycle and an actionable unavailable state without exposing implementation
-                details.
+                Hands-on Administrator dialog showed the role-aware next step and a full-width safe
+                recovery action before system status or technical evidence.
               </td>
               <td class="pass">Pass</td>
             </tr>
             <tr>
               <td>Performance</td>
               <td>
-                1,000 requests at concurrency 25 measured 1.59 ms p95 against a 100 ms budget;
-                JavaScript gzip total 420,757 bytes against 500,000.
+                1,000 requests at concurrency 25 measured 1.68 ms p95 against a 100 ms budget;
+                JavaScript gzip total 421,741 bytes against 500,000.
               </td>
               <td class="pass">Pass</td>
             </tr>
@@ -294,9 +312,9 @@
             <tr>
               <td>Release proof</td>
               <td>
-                Exact-head Quality, squash-tree equality, Builder production deployment, real
-                protected Staging restoration, and unchanged public PointSite are mandatory
-                downstream gates.
+                The original Issue #18 release passed exact-head Quality, squash-tree equality,
+                Builder production deployment, protected Staging restoration, and unchanged public
+                PointSite. The acceptance-correction release must repeat those gates.
               </td>
               <td class="pending">Pending release pipeline</td>
             </tr>
@@ -309,8 +327,8 @@
         <p>
           Correctness, regressions, authorization, privacy, error recovery, operations,
           accessibility, responsiveness, contracts, and documentation were reviewed against the
-          Issue. No unresolved implementation findings remain before PR Quality and release
-          validation.
+          Issue and PM acceptance correction. No unresolved implementation or web-design findings
+          remain before PR Quality and release validation.
         </p>
       </div>
     </main>
