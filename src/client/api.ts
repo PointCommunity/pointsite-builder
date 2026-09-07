@@ -84,6 +84,9 @@ export interface PublishJobResponse {
   resultSha: string | null;
   evidence: {
     verificationStatus?: string;
+    failureCode?: string;
+    failedChecks?: string[];
+    failedCheckUrls?: Record<string, string>;
     workflowUrl?: string;
     deploymentUrl?: string;
     checks?: Record<string, boolean>;
@@ -95,6 +98,7 @@ export class ClientApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ClientApiError';
@@ -104,11 +108,16 @@ export class ClientApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { code?: string; message?: string };
+    const body = (await response.json().catch(() => ({}))) as {
+      code?: string;
+      message?: string;
+      requestId?: string;
+    };
     throw new ClientApiError(
       response.status,
       body.code ?? 'REQUEST_FAILED',
       body.message ?? 'Request failed',
+      body.requestId,
     );
   }
   return await response.json();

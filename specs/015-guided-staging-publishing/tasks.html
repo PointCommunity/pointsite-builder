@@ -162,7 +162,7 @@
         </p>
       </section>
       <section class="task">
-        <h2>☐ T015-9 — Prove the corrected role journeys</h2>
+        <h2>☑ T015-9 — Prove the corrected role journeys</h2>
         <p>
           <strong>Acceptance:</strong> Publisher and Administrator users always know whether to act,
           what to click, what happens next, and why Production has no action when disabled.
@@ -172,6 +172,22 @@
           full repository gates, exact-head review, and authenticated live validation.
         </p>
         <p><strong>Files:</strong> publishing E2E and dark-mode acceptance evidence.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T015-10 — Make every failure recoverable for non-technical users</h2>
+        <p>
+          <strong>Acceptance:</strong> every lifecycle and request-error state explains what
+          happened, whether to act, the exact action, its effect, and the escalation path when
+          Builder cannot perform the repair.
+        </p>
+        <p>
+          <strong>Verify:</strong> RED/GREEN server, component, and browser coverage for failed
+          checks and request errors, then a complete phase-by-phase clarity audit and full gates.
+        </p>
+        <p>
+          <strong>Files:</strong> GitHub evidence contract, publishing workflow/component, API error
+          mapping, browser tests, and dark-mode acceptance evidence.
+        </p>
       </section>
     </main>
   </body>

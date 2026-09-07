@@ -19,6 +19,7 @@ export interface StagingWorkflowJob {
     verificationStatus?: VerificationStatus;
     failureCode?: string;
     failedChecks?: string[];
+    failedCheckUrls?: Record<string, string>;
     workflowUrl?: string;
     deploymentUrl?: string;
     checks?: Record<string, boolean>;
@@ -149,7 +150,7 @@ export function deriveStagingWorkflow(input: {
       'failed',
       3,
       'Staging verification failed',
-      'Acceptance remains locked. Review the failed checks, rerun them, then refresh here.',
+      'Acceptance remains locked. Use the recovery steps above; checking again only reads the latest result.',
       { canRefresh: true },
     );
 
