@@ -311,6 +311,15 @@
       deployment result, and live-verification result. The merge tree must equal the reviewed tree.
     </p>
 
+    <h2>Lean completion evidence</h2>
+    <p>
+      Routine Issue completion uses the existing Issue or PR for concise durable release evidence
+      and a concise final chat handoff for the PM. Do not create or open a standalone acceptance
+      report, duplicate closeout document, or summary artifact unless the PM explicitly requests
+      that artifact as a deliverable. Specifications, tests, CI, deployment output, and live
+      verification are the authoritative evidence; do not duplicate them into another document.
+    </p>
+
     <h2>Direct production and recovery</h2>
     <p>
       Builder application work goes directly to its sole production environment after agent QA and
@@ -337,6 +346,7 @@
       <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
       <li>Never deploy or publish the public PointSite from this pipeline.</li>
       <li>Never close an Issue after merge alone; verified production is completion.</li>
+      <li>Never generate or open a redundant closeout report for routine Issue completion.</li>
     </ul>
   </body>
 </html>

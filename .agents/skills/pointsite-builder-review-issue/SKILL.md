@@ -15,4 +15,6 @@ Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole act
 6. As the agent-owned Project transition, move the Issue to In Review and immediately read back the card, assignment, metadata, and sole-active count.
 7. If the PM requested a review-only or pre-deployment stop, report the verified candidate and stop. Otherwise invoke `pointsite-builder-close-issue`; there is no Builder Canary, Builder Staging deployment, or separate routine production-approval gate.
 
+Use the PR or Issue and concise chat updates for review evidence. Do not create or open a standalone acceptance report or duplicate QA summary unless the PM explicitly requested that artifact.
+
 PM findings before release are blocking: move the card back to In Progress before remediation and create a new reviewed candidate. Never deploy a changed or failing head.

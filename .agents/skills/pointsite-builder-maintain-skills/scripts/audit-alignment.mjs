@@ -67,6 +67,9 @@ requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
 requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
 requireText(agents, 'It has no Builder staging or Canary environment', 'AGENTS.md');
 requireText(agents, 'deploy the exact clean `origin/main` revision', 'AGENTS.md');
+requireText(agents, 'Do not create or open a standalone acceptance report', 'AGENTS.md');
+requireText(policy, 'Lean completion evidence', policyPath);
+requireText(policy, 'Do not create or open a standalone acceptance', policyPath);
 
 const transitionContracts = {
   'pointsite-builder-create-issue': 'never ask the PM to add or move the card',
@@ -75,6 +78,21 @@ const transitionContracts = {
   'pointsite-builder-close-issue': 'agent-owned Project transition',
 };
 for (const [skillName, contract] of Object.entries(transitionContracts)) {
+  requireText(
+    read(`.agents/skills/${skillName}/SKILL.md`),
+    contract,
+    `.agents/skills/${skillName}/SKILL.md`,
+  );
+}
+
+const leanCloseoutContracts = {
+  'pointsite-builder-create-issue': 'Do not require a standalone acceptance report',
+  'pointsite-builder-work-issue': 'Do not create or open a standalone acceptance report',
+  'pointsite-builder-review-issue': 'Do not create or open a standalone acceptance report',
+  'pointsite-builder-close-issue': 'do not create or open a standalone acceptance report',
+  'pointsite-builder-release-production': 'Do not duplicate this evidence into a standalone report',
+};
+for (const [skillName, contract] of Object.entries(leanCloseoutContracts)) {
   requireText(
     read(`.agents/skills/${skillName}/SKILL.md`),
     contract,

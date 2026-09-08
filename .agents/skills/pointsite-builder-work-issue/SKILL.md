@@ -21,7 +21,8 @@ Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the live Pro
 3. Diagnose and research before editing. For medium or larger changes, create or update the repository's spec, plan, and tasks before implementation; obtain clarification only for decisions that evidence cannot resolve.
 4. Implement the smallest coherent solution test-first. Keep scope, acceptance criteria, labels, and planning estimates current when evidence materially changes them, obtaining PM approval before changing the Issue body.
 5. Run focused checks while iterating, then the complete gates required by `AGENTS.md`.
-6. Commit only task-owned files, push the feature branch, and create or update a PR targeting `main`. The PR body must contain `Refs #<number>` and must not use an auto-closing keyword.
-7. Hand off directly to `pointsite-builder-review-issue`. A PR is not completion and does not authorize closing the Issue.
+6. Keep acceptance traceability in the specification, tasks, automated tests, PR, and Issue. Do not create or open a standalone acceptance report or duplicate summary artifact unless the PM explicitly requested it as a deliverable.
+7. Commit only task-owned files, push the feature branch, and create or update a PR targeting `main`. The PR body must contain `Refs #<number>` and must not use an auto-closing keyword.
+8. Hand off directly to `pointsite-builder-review-issue`. A PR is not completion and does not authorize closing the Issue.
 
 If the PM explicitly pauses work, move the card to On Hold, preserve the Issue, branch, PR, and evidence, remove assignment unless the PM directs otherwise, and verify the active slot is released. On resumption, perform and verify the In Progress transition before editing.

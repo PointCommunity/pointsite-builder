@@ -5,7 +5,9 @@
 ### I. Spec-first, traceable delivery
 
 Every capability must map from a testable requirement to an implementation task
-and acceptance evidence. Specifications define behavior; plans define technology.
+and verifiable test or live evidence. Specifications define behavior; plans define
+technology. Routine completion must not duplicate that evidence into a standalone
+acceptance report unless the PM explicitly requests the report as a deliverable.
 
 ### II. Production isolation by construction
 
@@ -76,7 +78,7 @@ it must not silently incur cost.
 2. No staging deployment without local validation and a clean candidate commit.
 3. No production credential or repository permission before staging acceptance.
 4. No production merge without exact-head approval and successful required checks.
-5. No completion report without live verification or a truthful external blocker.
+5. No completion claim without live verification or a truthful external blocker.
 
 ## Governance
 
@@ -88,7 +90,8 @@ minor; wording corrections are patch updates.
 
 | Version | Date       | Changes                                |
 | ------- | ---------- | -------------------------------------- |
+| 1.1.1   | 2026-09-07 | Prevented redundant completion reports |
 | 1.1.0   | 2026-09-07 | Added action-based autosave capability |
 | 1.0.0   | 2026-09-05 | Initial PointSite Builder governance   |
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-05 | **Last Amended**: 2026-09-07
+**Version**: 1.1.1 | **Ratified**: 2026-09-05 | **Last Amended**: 2026-09-07
