@@ -25,17 +25,17 @@ import { SiteElementSchema } from '../../site-kit/schema';
 import {
   areaForBreakpoint,
   defaultRowSpan,
-  gridAreaFromPoint,
   GRID_COLUMNS,
   nextGridArea,
-  resolveGridArea,
+  updateGridArea,
 } from '../../site-kit/grid-layout';
 import type { SectionBlock, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
 import siteCss from '../../site-kit/site.css?inline';
+import editorCanvasCss from './editor-canvas.css?inline';
 import { BlockInspector } from './BlockInspector';
 import { GridOverlay } from './GridOverlay';
-import { setGridBreakpoint } from './GridBreakpointContext';
+import { getGridBreakpoint, setGridBreakpoint, useGridBreakpoint } from './GridBreakpointContext';
 import { breakpointForWidth } from './grid-breakpoint';
 import { GridPlacementInspector } from './GridPlacementInspector';
 import { SectionInspector, type SectionSettings } from './SectionInspector';
@@ -46,6 +46,9 @@ import { mutationForContext } from './action-attribution';
 import { consumePuckActionIntent, setPuckActionIntent } from './puck-action-intent';
 import {
   getDraggedElementType,
+  deriveGridDropIntent,
+  getGridDropIntent,
+  setGridDropIntent,
   setDraggedElementType,
   setPointerFeedbackHidden,
 } from './grid-drag-preview';
@@ -278,13 +281,19 @@ function SectionComponent({
 }) {
   const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
   const isGridInteracting = useGridInteraction(id);
+  const breakpoint = useGridBreakpoint();
   const gridRef = useRef<HTMLElement | null>(null);
   const [dropPreview, setDropPreview] = useState<{
     label: string;
+    valid: boolean;
     style: CSSProperties;
   } | null>(null);
+  const [dropAnnouncement, setDropAnnouncement] = useState('');
+  const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearDropPreview = () => {
     setDropPreview(null);
+    setDropAnnouncement('');
+    if (announcementTimer.current) clearTimeout(announcementTimer.current);
     const ownerDocument = gridRef.current?.ownerDocument;
     if (ownerDocument) setPointerFeedbackHidden(ownerDocument, false);
   };
@@ -322,30 +331,49 @@ function SectionComponent({
     const items = childComponents(currentPuckData(), id)
       .map((item) => item.props.grid as SectionBlock['items'][number]['grid'])
       .filter(Boolean);
-    const fallback = nextGridArea(
-      items.map((grid) => ({ grid })),
-      defaultSpan,
-      defaultRowSpan(draggedType),
-    );
-    const pointed = gridAreaFromPoint(lastGridPointer, defaultSpan, defaultRowSpan(draggedType));
-    const area = resolveGridArea(
-      pointed,
-      fallback,
-      items.map((grid) => areaForBreakpoint(grid, 'desktop')),
-    ).area;
-    const sectionRect = gridRef.current.closest('section')?.getBoundingClientRect() ?? rect;
-    const columnSize = (rect.width - columnGap * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-    const columnStep = columnSize + columnGap;
-    const rowStep = cellSize + rowGap;
-    setDropPreview({
+    const renderedAreas = Array.from(
+      gridRef.current.querySelectorAll<HTMLElement>('.point-layout-item--grid'),
+    )
+      .filter(
+        (item) => !item.closest('[data-dnd-dragging]') && !item.closest('[data-dnd-placeholder]'),
+      )
+      .map((item) => {
+        const rendered = getComputedStyle(item);
+        const prefix = `--point-grid-${breakpoint}`;
+        return {
+          column: Number.parseInt(rendered.getPropertyValue(`${prefix}-column`), 10),
+          row: Number.parseInt(rendered.getPropertyValue(`${prefix}-row`), 10),
+          columnSpan: Number.parseInt(rendered.getPropertyValue(`${prefix}-column-span`), 10),
+          rowSpan: Number.parseInt(rendered.getPropertyValue(`${prefix}-row-span`), 10),
+        };
+      })
+      .filter((area) => Object.values(area).every(Number.isFinite));
+    const intent = deriveGridDropIntent({
+      type: draggedType,
       label: blockDefinitions[draggedType].label,
+      sectionId: id,
+      breakpoint,
+      metrics: lastGridPointer,
+      columnSpan: defaultSpan,
+      rowSpan: defaultRowSpan(draggedType),
+      occupied: renderedAreas.length
+        ? renderedAreas
+        : items.map((grid) => areaForBreakpoint(grid, breakpoint)),
+    });
+    setGridDropIntent(intent);
+    const sectionRect = gridRef.current.closest('section')?.getBoundingClientRect() ?? rect;
+    setDropPreview({
+      label: intent.label,
+      valid: intent.valid,
       style: {
-        left: rect.left - sectionRect.left + (area.column - 1) * columnStep,
-        top: rect.top - sectionRect.top + (area.row - 1) * rowStep,
-        width: area.columnSpan * columnSize + (area.columnSpan - 1) * columnGap,
-        height: area.rowSpan * cellSize + (area.rowSpan - 1) * rowGap,
+        left: rect.left - sectionRect.left + intent.bounds.left,
+        top: rect.top - sectionRect.top + intent.bounds.top,
+        width: intent.bounds.width,
+        height: intent.bounds.height,
       },
     });
+    if (announcementTimer.current) clearTimeout(announcementTimer.current);
+    announcementTimer.current = setTimeout(() => setDropAnnouncement(intent.label), 350);
     setPointerFeedbackHidden(gridRef.current.ownerDocument, true);
   };
   const forwardGridPointer = useEffectEvent(trackGridPointerCoordinates);
@@ -379,6 +407,12 @@ function SectionComponent({
     const ownerDocument = gridRef.current?.ownerDocument;
     if (ownerDocument) setPointerFeedbackHidden(ownerDocument, false);
   }, [isDragging]);
+  useEffect(
+    () => () => {
+      if (announcementTimer.current) clearTimeout(announcementTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid || !isDragging || settings.layout !== 'grid') return;
@@ -437,10 +471,18 @@ function SectionComponent({
         minEmptyHeight={96}
       />
       {isDragging && dropPreview ? (
-        <div className="point-grid-drop-preview" style={dropPreview.style} aria-hidden="true">
+        <div
+          className={`point-grid-drop-preview point-grid-drop-preview--${dropPreview.valid ? 'valid' : 'invalid'}`}
+          data-drop-valid={dropPreview.valid}
+          style={dropPreview.style}
+          aria-hidden="true"
+        >
           <span>{dropPreview.label}</span>
         </div>
       ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {dropAnnouncement}
+      </p>
     </section>
   );
 }
@@ -458,6 +500,7 @@ function CanvasBreakpointReporter() {
 function DrawerDragReporter() {
   useEffect(() => {
     const track = (event: globalThis.PointerEvent) => {
+      setGridDropIntent(null);
       const target = event.target as HTMLElement | null;
       const drawerItem = target?.closest<HTMLElement>('[data-testid^="drawer-item:"]');
       const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '') as
@@ -589,12 +632,13 @@ function VisualEditorImpl({
   onEditFooter: () => void;
 }) {
   const { document, updateDocument, stageDocument, completeDocument } = useEditorDocument();
+  const [interactionRevision, setInteractionRevision] = useState(0);
   const page = document.pages.find((candidate) => candidate.id === pageId);
   const data = useMemo<Data>(
     () => ({ content: (page?.blocks ?? []).map(sectionToData), root: { props: {} } }),
     // Puck owns page-content state until an explicit structure reset changes its instance key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pageId, structureRevision],
+    [pageId, structureRevision, interactionRevision],
   );
   if (!page) return <p>Choose a page to edit.</p>;
 
@@ -728,22 +772,22 @@ function VisualEditorImpl({
         const defaultSpan =
           parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
         const fallback = nextGridArea(parentItems, defaultSpan, defaultRowSpan(type));
-        const pointed =
-          lastGridPointer?.sectionId === parentId
-            ? gridAreaFromPoint(lastGridPointer, defaultSpan, defaultRowSpan(type))
-            : fallback;
-        const resolved = resolveGridArea(
-          pointed,
-          fallback,
-          parentItems.map((item) => areaForBreakpoint(item.grid, 'desktop')),
-        );
-        const grid = { desktop: resolved.area };
+        const intent = getGridDropIntent();
+        const applies =
+          parentSettings?.layout === 'grid' &&
+          intent?.sectionId === parentId &&
+          intent.type === type;
+        const activeBreakpoint = intent?.breakpoint ?? getGridBreakpoint();
+        const grid = applies
+          ? updateGridArea({ desktop: fallback }, activeBreakpoint, intent.area)
+          : { desktop: fallback };
         return {
           props: {
             ...data.props,
             block: { ...data.props.block, id: crypto.randomUUID() },
             span: parentSettings?.layout === 'grid' ? defaultSpan : 12,
             grid,
+            ...(applies && !intent.valid ? { gridDropRejected: true } : {}),
           },
         };
       },
@@ -805,7 +849,7 @@ function VisualEditorImpl({
     root: {
       render: ({ children }: { children: ReactNode }) => (
         <>
-          <style>{siteCss}</style>
+          <style>{`${siteCss}\n${editorCanvasCss}`}</style>
           <CanvasBreakpointReporter />
           <SiteFrame document={document} page={page} editing onEditFooter={onEditFooter}>
             {children}
@@ -818,6 +862,7 @@ function VisualEditorImpl({
     <div
       className="visual-editor"
       aria-label={`Visual canvas for ${page.title}`}
+      data-interaction-revision={interactionRevision}
       onClickCapture={(event) => {
         const button = (event.target as Element).closest('button');
         const cue =
@@ -837,13 +882,21 @@ function VisualEditorImpl({
     >
       <DrawerDragReporter />
       <Puck
-        key={`${page.id}:${structureRevision}`}
+        key={`${page.id}:${structureRevision}:${interactionRevision}`}
         config={config}
         data={data}
         dnd={editorDnd}
         overrides={editorOverrides}
         onAction={(action: PuckAction, nextState) => {
           if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
+          const rejectedInsert =
+            (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
+            (action.type === 'replace' && action.data.props.gridDropRejected === true);
+          if (rejectedInsert) {
+            setGridDropIntent(null);
+            queueMicrotask(() => setInteractionRevision((value) => value + 1));
+            return;
+          }
           const explicit = consumePuckActionIntent();
           if (action.type === 'setData' || (action.type === 'set' && !explicit)) return;
           let mutation: ReturnType<typeof mutationForContext> & { transient?: boolean };

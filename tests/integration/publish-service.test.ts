@@ -41,6 +41,7 @@ async function setup() {
   let currentSha = baseSha;
   const client = {
     currentMainSha: vi.fn(() => Promise.resolve(currentSha)),
+    assertRendererCompatible: vi.fn(() => Promise.resolve()),
     commitFiles: vi.fn(() => {
       currentSha = commitSha;
       return Promise.resolve({
@@ -206,5 +207,25 @@ describe('staging publish coordinator', () => {
       publisher.refreshVerification(job?.id ?? '', input.actor, 'request-verify'),
     ).rejects.toThrow('PUBLISH_JOB_NOT_VERIFIABLE');
     await expect(publisher.getJob('missing')).resolves.toBeNull();
+  });
+
+  it('fails before candidate writes when protected Staging has a different renderer', async () => {
+    const { publisher, draft, client, jobs } = await setup();
+    client.assertRendererCompatible.mockRejectedValueOnce(
+      new Error('STAGING_RENDERER_MISMATCH: site.css'),
+    );
+    await expect(
+      publisher.publish({
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedRevisionChecksum: draft.revision.checksum,
+        expectedBaseSha: baseSha,
+        actor: 'publisher@pointatx.org',
+        idempotencyKey: 'publish-renderer-mismatch',
+        requestId: 'request-renderer-mismatch',
+      }),
+    ).rejects.toThrow('STAGING_RENDERER_MISMATCH: site.css');
+    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(await jobs.getByKey('publish-renderer-mismatch')).toBeNull();
   });
 });

@@ -1,0 +1,23 @@
+.point-grid-drop-preview--invalid {
+  border-color: #8f2f26;
+  border-style: dashed;
+  background-color: rgb(255 187 174 / 0.78);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 0.6rem,
+    rgb(112 25 18 / 0.16) 0.6rem 1.2rem
+  );
+  color: #2d0c08;
+}
+
+.point-grid-drop-preview span {
+  max-width: calc(100% - 1rem);
+  white-space: normal;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .point-grid-drop-preview {
+    transition: none !important;
+  }
+}
