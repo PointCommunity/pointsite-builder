@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Research: Canvas and Staging parity</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b100c;
+        color: #edf3ea;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1050px, calc(100% - 40px));
+        margin: auto;
+        padding: 52px 0 88px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #b8df9f;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #344638;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.1rem 0.3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Spec 017 · repository and live-system research</p>
+      <h1>Why the canvas cannot yet be trusted</h1>
+      <h2>Confirmed renderer topology</h2>
+      <div class="card">
+        <p>
+          The editor root injects the exact canonical <code>site.css</code> and renders through
+          <code>SiteFrame</code>. Standalone preview uses an isolated iframe with the same CSS and
+          <code>SiteRenderer</code>. Protected Staging keeps a copied 16-file <code>site-kit</code>.
+          The remote Staging main observed on 2026-09-08 declares schema 8 / renderer 8.0.0 and all
+          16 Git blob IDs match Builder <code>origin/main</code>.
+        </p>
+      </div>
+      <h2>Root cause 1: collision fallback is presented as intent</h2>
+      <p>
+        <code>SectionComponent</code> calls
+        <code>resolveGridArea(pointed, fallback, occupied)</code> and paints <code>.area</code>. On
+        collision, that value is the fallback rather than the pointer target. Insert resolution
+        repeats the same call and persists the fallback. The behavior is internally consistent but
+        violates direct manipulation: the collision is invisible and the requested location is
+        silently changed.
+      </p>
+      <h2>Root cause 2: semantic version does not prove parity</h2>
+      <p>
+        Candidate content and its manifest carry schema and renderer version, but Builder does not
+        read Staging renderer files before writing. A stale or locally modified Staging renderer can
+        share <code>8.0.0</code>; failure is deferred to Staging CI after the candidate commit.
+        GitHub content metadata exposes each file's Git blob SHA at an immutable commit, allowing a
+        content-free exact contract check before writes.
+      </p>
+      <h2>Existing capabilities to preserve</h2>
+      <ul>
+        <li>New section variants already default to 12-column grid layout.</li>
+        <li>
+          Existing documents retain compatibility/flow layouts and migration-generated grid
+          coordinates.
+        </li>
+        <li>
+          Phone/tablet/desktop placement values persist in the SiteDocument and render through
+          shared CSS variables.
+        </li>
+        <li>
+          Pointer transforms already account for iframe scaling and grid measurements; selected
+          elements already offer keyboard movement/resizing and inspector inputs.
+        </li>
+        <li>Authoring-only overlays exist only in the editing root.</li>
+      </ul>
+      <h2>Decision</h2>
+      <p>
+        Keep the canonical site-kit unchanged in this Issue. Introduce authoring-only drop intent
+        state and styles in the editor, reject invalid insertion by restoring the controlled Puck
+        document, and add a server-side exact renderer preflight pinned to the expected Staging base
+        SHA. This avoids touching the dirty local Staging checkout and makes publication fail before
+        mutation.
+      </p>
+    </main>
+  </body>
+</html>

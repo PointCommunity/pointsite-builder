@@ -10,6 +10,10 @@ export function setGridBreakpoint(value: GridBreakpoint) {
   for (const listener of listeners) listener();
 }
 
+export function getGridBreakpoint(): GridBreakpoint {
+  return activeBreakpoint;
+}
+
 export function useGridBreakpoint(): GridBreakpoint {
   return useSyncExternalStore(
     (listener) => {

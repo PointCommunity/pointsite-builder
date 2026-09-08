@@ -433,21 +433,38 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
   await expect(canvas.locator('.page-hero')).toHaveCount(0);
   await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
 
-  const source = page.getByRole('button', { name: 'Hero', exact: true });
-  const target = canvas.locator('section[aria-label="Site header"]');
-  await source.scrollIntoViewIfNeeded();
-  await target.scrollIntoViewIfNeeded();
-  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
-  expect(from).not.toBeNull();
-  expect(to).not.toBeNull();
-  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
-    steps: 4,
-  });
-  await page.mouse.move(to!.x + to!.width / 2, to!.y + 6, { steps: 16 });
-  await page.waitForTimeout(250);
-  await page.mouse.up();
+  const drag = async (
+    source: ReturnType<typeof page.locator>,
+    target: ReturnType<typeof page.locator>,
+    edge = false,
+  ) => {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, edge ? to!.y + 6 : to!.y + to!.height / 2, {
+      steps: 16,
+    });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+  await drag(
+    page.getByRole('button', { name: 'Blank', exact: true }),
+    canvas.locator('section[aria-label="Site header"]'),
+    true,
+  );
+  const blankSection = canvas.locator('section[aria-label="Blank section"]').last();
+  await expect(blankSection).toBeVisible();
+  await drag(
+    page.getByRole('button', { name: 'Hero', exact: true }),
+    blankSection.locator('[data-puck-dropzone]'),
+  );
 
   await expect(canvas.getByRole('heading', { level: 1, name: 'Welcome to Point' })).toBeVisible();
   await expect(page.getByLabel('Layout style').filter({ visible: true })).toHaveValue('standard');
@@ -714,6 +731,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
     source: ReturnType<typeof page.locator>,
     target: ReturnType<typeof page.locator>,
     targetEdge = false,
+    targetXRatio = 0.5,
   ) => {
     await source.scrollIntoViewIfNeeded();
     await target.scrollIntoViewIfNeeded();
@@ -726,16 +744,39 @@ test('builds a standardized section by dragging an element from the toybox', asy
     await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
       steps: 4,
     });
-    await page.mouse.move(to!.x + to!.width / 2, targetEdge ? to!.y + 6 : to!.y + to!.height / 2, {
-      steps: 16,
-    });
+    await page.mouse.move(
+      to!.x + to!.width * targetXRatio,
+      targetEdge ? to!.y + 6 : to!.y + to!.height / 2,
+      {
+        steps: 16,
+      },
+    );
     const settledTarget = await target.boundingBox();
     expect(settledTarget).not.toBeNull();
     await page.mouse.move(
-      settledTarget!.x + settledTarget!.width / 2,
+      settledTarget!.x + settledTarget!.width * targetXRatio,
       targetEdge ? settledTarget!.y + 6 : settledTarget!.y + settledTarget!.height / 2,
       { steps: 4 },
     );
+    const phantom = canvas.locator('.point-grid-drop-preview');
+    if ((await phantom.count()) && (await phantom.getAttribute('data-drop-valid')) === 'false') {
+      let foundValid = false;
+      for (const yRatio of [0.05, 0.5, 0.95]) {
+        for (const xRatio of [0.05, 0.5, 0.95]) {
+          await page.mouse.move(
+            settledTarget!.x + settledTarget!.width * xRatio,
+            settledTarget!.y + settledTarget!.height * yRatio,
+            { steps: 3 },
+          );
+          if ((await phantom.getAttribute('data-drop-valid')) === 'true') {
+            foundValid = true;
+            break;
+          }
+        }
+        if (foundValid) break;
+      }
+      expect(foundValid, 'an unoccupied grid target must be available').toBe(true);
+    }
     await page.waitForTimeout(250);
     await page.mouse.up();
   };
@@ -892,8 +933,8 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(twoColumnSlot).toBeVisible();
   await drag(page.getByRole('button', { name: 'Image', exact: true }), twoColumnSlot);
   const imagePlacement = twoColumn.locator('.point-layout-item');
-  const imageColumn = Number(await page.getByLabel('desktop column').last().inputValue());
-  const imageRow = Number(await page.getByLabel('desktop row').last().inputValue());
+  let imageColumn = Number(await page.getByLabel('desktop column').last().inputValue());
+  let imageRow = Number(await page.getByLabel('desktop row').last().inputValue());
   expect(imageColumn).toBeGreaterThan(1);
   await expect(imagePlacement).toHaveCSS('grid-column-start', String(imageColumn));
   await expect(imagePlacement).toHaveCSS('grid-column-end', 'span 6');
@@ -907,6 +948,10 @@ test('builds a standardized section by dragging an element from the toybox', asy
   expect(imageBox!.width).toBeGreaterThan(gridBox!.width * 0.35);
 
   await canvas.getByRole('button', { name: 'Move image on desktop grid' }).focus();
+  await page.getByLabel('desktop column').last().fill('7');
+  await page.getByLabel('desktop row').last().fill('1');
+  imageColumn = 7;
+  imageRow = 1;
   const inspector = page.locator('.block-inspector').last();
   await expect(page.getByLabel('desktop width in columns').last()).toHaveValue('6');
   const inspectorOverflow = await inspector.evaluate((element) => ({
@@ -915,7 +960,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   }));
   expect(inspectorOverflow.scrollWidth).toBeLessThanOrEqual(inspectorOverflow.clientWidth);
 
-  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot);
+  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot, true, 0.05);
   const atomicButton = twoColumn.getByRole('link', { name: 'Learn more', exact: true });
   await expect(atomicButton).toBeVisible();
   await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
@@ -1065,6 +1110,7 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   await page.mouse.move(to!.x + 24, to!.y + 24, { steps: 16 });
   const phantom = canvas.locator('.point-grid-drop-preview');
   await expect(phantom).toContainText('Heading');
+  await expect(phantom).toHaveAttribute('data-drop-valid', 'true');
   const first = await phantom.boundingBox();
   await page.mouse.move(to!.x + to!.width * 0.6, to!.y + 24, { steps: 8 });
   const second = await phantom.boundingBox();
@@ -1073,10 +1119,49 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   expect(second!.x).toBeGreaterThan(first!.x);
   await page.mouse.up();
 
+  await expect(canvas.getByRole('heading', { name: 'Section heading' })).toHaveCount(1);
   test.skip(
     browserName === 'firefox',
-    'Playwright Firefox cannot reliably select a freshly dropped Puck item across the iframe; the drag and phantom assertions above still run.',
+    'Playwright Firefox cannot reliably preserve a freshly dropped Puck item for a second cross-frame collision drag.',
   );
+  const occupiedHeading = canvas
+    .locator('.point-layout-item--grid')
+    .filter({ has: canvas.getByRole('heading', { name: 'Section heading' }) });
+  const occupiedBox = await occupiedHeading.boundingBox();
+  expect(occupiedBox).not.toBeNull();
+  await expect(occupiedHeading.locator('xpath=ancestor::section[1]')).toHaveAttribute(
+    'aria-label',
+    'Two column section',
+  );
+  await source.scrollIntoViewIfNeeded();
+  await grid.scrollIntoViewIfNeeded();
+  const [secondFrom, secondTo] = await Promise.all([source.boundingBox(), grid.boundingBox()]);
+  expect(secondFrom).not.toBeNull();
+  expect(secondTo).not.toBeNull();
+  await page.mouse.move(
+    secondFrom!.x + secondFrom!.width / 2,
+    secondFrom!.y + secondFrom!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    secondFrom!.x + secondFrom!.width / 2 + 8,
+    secondFrom!.y + secondFrom!.height / 2 + 8,
+    { steps: 4 },
+  );
+  await page.mouse.move(
+    occupiedBox!.x + occupiedBox!.width / 2,
+    occupiedBox!.y + Math.min(24, occupiedBox!.height / 2),
+    { steps: 16 },
+  );
+  await expect(phantom).toHaveAttribute('data-drop-valid', 'false');
+  await expect(phantom).toContainText('blocked by another element');
+  await expect(
+    canvas.getByRole('status').filter({ hasText: /columns .*blocked by another element/i }),
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(page.locator('.visual-editor')).toHaveAttribute('data-interaction-revision', '1');
+  await expect(canvas.getByRole('heading', { name: 'Section heading' })).toHaveCount(1);
+
   const insertedHeading = canvas.getByRole('heading', { name: 'Section heading' });
   const headingBox = await insertedHeading.boundingBox();
   expect(headingBox).not.toBeNull();
@@ -1416,7 +1501,7 @@ test('builds a form and places linked YouTube media without code', async ({
     canvas.locator('.home-hero'),
     true,
   );
-  const section = canvas.locator('.point-layout-section').last();
+  const section = canvas.locator('section[aria-label="Blank section"]').last();
   await expect.poll(() => controls.saveRequests.length).toBe(sectionBaseline + 1);
   await expect(page.getByText('All changes saved')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();

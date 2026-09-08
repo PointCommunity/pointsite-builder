@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Spec 017: Canvas and Staging parity</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b100c;
+        color: #edf3ea;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1050px, calc(100% - 40px));
+        margin: auto;
+        padding: 52px 0 88px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #b8df9f;
+        margin-top: 2.2rem;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #344638;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.1rem 0.3rem;
+      }
+      li {
+        margin: 0.35rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Spec 017 · GitHub Issue #25</p>
+      <h1>Trustworthy canvas and protected-Staging parity</h1>
+      <h2>Objective</h2>
+      <div class="card">
+        <p>
+          Give PointSite authors one deterministic, grid-backed composition model. At a matching
+          viewport, the editing canvas geometry (excluding authoring chrome), standalone preview,
+          and protected Staging renderer must interpret the exact saved revision identically. A
+          visible insertion phantom must represent the actual proposed cells and must never hide
+          collision fallback.
+        </p>
+      </div>
+      <h2>Users and scenarios</h2>
+      <ul>
+        <li>
+          Authors drag any supported element into any visible, unoccupied grid cells and see its
+          type, coordinates, footprint, and validity before release.
+        </li>
+        <li>
+          Keyboard authors move and resize selected elements by grid cell with announced blocked
+          states.
+        </li>
+        <li>
+          Publishers receive a safe preflight failure before Staging changes if any canonical
+          renderer source or stylesheet differs.
+        </li>
+        <li>
+          Existing compatibility and flow sections keep their rendered appearance until an author
+          explicitly converts them; new pages and sections remain grid-backed by default.
+        </li>
+      </ul>
+      <h2>Canonical contracts</h2>
+      <ul>
+        <li>
+          <strong>Rendering:</strong> <code>SiteFrame</code>, <code>SiteRenderer</code>, the
+          registry, tokens, schema, migrations, layout functions, and <code>site.css</code> are the
+          canonical site-kit.
+        </li>
+        <li>
+          <strong>Identity:</strong> schema and semantic renderer version are necessary but
+          insufficient. Builder pins the Git blob identity of every file synchronized to protected
+          Staging and verifies those paths at the exact expected Staging base commit before creating
+          candidate blobs or commits.
+        </li>
+        <li>
+          <strong>Geometry:</strong> twelve columns; coordinates are one-based; the active
+          responsive breakpoint falls back to desktop only when no explicit override exists;
+          snapping and bounds use the measured grid surface after iframe scaling.
+        </li>
+        <li>
+          <strong>Collision:</strong> an occupied target is invalid. The phantom remains at the
+          pointed cells, is labeled invalid in text and pattern, and releasing it persists no
+          element. There is no automatic relocation.
+        </li>
+      </ul>
+      <h2>Responsive and accessibility requirements</h2>
+      <ul>
+        <li>
+          Supported authoring viewports are phone 360 px, tablet 768 px, and desktop 1280 px, plus
+          zoomed and scrolled states.
+        </li>
+        <li>
+          Valid and invalid states use text and shape/pattern, not color alone; motion respects
+          <code>prefers-reduced-motion</code>.
+        </li>
+        <li>
+          Dragging has the existing keyboard/grid-inspector alternative. Move/resize failures and
+          rejected drops use restrained polite status messages.
+        </li>
+        <li>
+          Authoring controls, guides, and phantoms are absent from standalone preview and published
+          markup.
+        </li>
+      </ul>
+      <h2>Compatibility and failure behavior</h2>
+      <ul>
+        <li>
+          No automatic schema migration changes compatibility or flow layout into grid. Explicit
+          conversion uses existing deterministic placement data and remains undoable.
+        </li>
+        <li>
+          A renderer contract mismatch fails with <code>STAGING_RENDERER_MISMATCH</code> before
+          GitHub write calls. Base drift continues to fail with <code>STAGING_BASE_DRIFT</code>.
+        </li>
+        <li>
+          No credentials, draft content, private media, or protected access details are included in
+          mismatch diagnostics.
+        </li>
+      </ul>
+      <h2>Project structure and commands</h2>
+      <ul>
+        <li>
+          Client: <code>src/client/editor</code>; canonical renderer: <code>src/site-kit</code>;
+          publication: <code>src/server/publish</code> and <code>src/server/github</code>; tests:
+          <code>tests/unit</code>, <code>tests/integration</code>, and <code>tests/e2e</code>.
+        </li>
+        <li>
+          Focused:
+          <code
+            >npm test -- --run tests/unit/grid-drag-preview.test.ts tests/unit/github-client.test.ts
+            tests/integration/publish-service.test.ts</code
+          >.
+        </li>
+        <li>
+          Complete: <code>npm run check</code>, <code>npm run test:performance</code>,
+          <code>npm run test:e2e</code>, and <code>git diff --check</code>.
+        </li>
+      </ul>
+      <h2>Boundaries</h2>
+      <ul>
+        <li>
+          <strong>Always:</strong> preserve exact saved data, verify renderer identity at the
+          expected base SHA, test RED then GREEN, and retain pointer plus keyboard operation.
+        </li>
+        <li>
+          <strong>Ask first:</strong> Issue-body changes, dependencies, destructive schema/data
+          work, or public PointSite publication.
+        </li>
+        <li>
+          <strong>Never:</strong> silently relocate a blocked drop, mutate the dirty local Staging
+          checkout, leak authoring chrome, weaken authentication, or deploy public Production
+          PointSite.
+        </li>
+      </ul>
+      <h2>Success criteria</h2>
+      <ul>
+        <li>
+          Tests prove pointed geometry is the phantom and persisted geometry for valid drops, while
+          invalid drops persist nothing.
+        </li>
+        <li>
+          Renderer-contract tests prove every synchronized source file matches Staging at the exact
+          base commit and mismatch prevents writes.
+        </li>
+        <li>
+          Canvas and standalone preview share the same renderer and site CSS; representative
+          visual/browser checks cover phone, tablet, desktop, scroll, zoom, existing content, and
+          all element categories.
+        </li>
+        <li>
+          Save, reload, reopen, and publish preserve grid data; staging verification accepts the
+          exact candidate; public Production PointSite is unchanged.
+        </li>
+      </ul>
+      <h2>Open questions</h2>
+      <p>
+        None. Issue #25 defines the product boundaries, the repository supplies the canonical
+        16-file renderer sync list, and the existing grid inspector supplies the non-drag
+        interaction.
+      </p>
+    </main>
+  </body>
+</html>

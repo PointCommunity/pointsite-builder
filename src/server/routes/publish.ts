@@ -64,6 +64,12 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         201,
       );
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
+        throw new ApiError(
+          409,
+          'STAGING_RENDERER_MISMATCH',
+          'Staging renderer differs from Builder; ask a site maintainer to sync it before publishing',
+        );
       if (error instanceof Error && error.message === 'STAGING_BASE_DRIFT')
         throw new ApiError(409, 'STAGING_BASE_DRIFT', 'Staging changed; refresh the candidate');
       if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT')

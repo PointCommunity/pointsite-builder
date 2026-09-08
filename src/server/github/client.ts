@@ -7,6 +7,7 @@ const RefResponse = z.object({ object: z.object({ sha: Sha }) });
 const BlobResponse = z.object({ sha: Sha });
 const TreeResponse = z.object({ sha: Sha });
 const CommitResponse = z.object({ sha: Sha, html_url: z.url() });
+const ContentResponse = z.object({ sha: Sha });
 const CheckRunsResponse = z.object({
   check_runs: z
     .array(
@@ -86,6 +87,36 @@ export class GitHubStagingClient {
   async currentMainSha(): Promise<string> {
     const value = await this.call('GET', 'git/ref/heads/main');
     return RefResponse.parse(value).object.sha;
+  }
+
+  async assertRendererCompatible(
+    expectedBaseSha: string,
+    contract: Record<string, string>,
+  ): Promise<void> {
+    Sha.parse(expectedBaseSha);
+    const entries = Object.entries(contract);
+    for (const [filename, expectedBlob] of entries) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(filename))
+        throw new Error('STAGING_RENDERER_CONTRACT_INVALID');
+      Sha.parse(expectedBlob);
+    }
+    const observedBlobs = await Promise.all(
+      entries.map(
+        async ([filename]) =>
+          ContentResponse.parse(
+            await this.call(
+              'GET',
+              `contents/site-kit/${encodeURIComponent(filename)}?ref=${expectedBaseSha}`,
+            ),
+          ).sha,
+      ),
+    );
+    const mismatch = entries.findIndex(
+      ([, expectedBlob], index) => observedBlobs[index] !== expectedBlob,
+    );
+    if (mismatch >= 0) {
+      throw new Error(`STAGING_RENDERER_MISMATCH: ${entries[mismatch][0]}`);
+    }
   }
 
   async commitFiles(input: {

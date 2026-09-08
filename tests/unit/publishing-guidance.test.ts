@@ -67,6 +67,7 @@ describe('non-technical publishing guidance', () => {
     ['RATE_LIMITED', 'Builder needs a moment', /same action again/i],
     ['DRAFT_REVISION_DRIFT', 'A newer saved version is available', /reopen Publish/i],
     ['STAGING_BASE_DRIFT', 'Staging changed', /load the latest status/i],
+    ['STAGING_RENDERER_MISMATCH', 'Staging renderer needs to be synchronized', /draft is safe/i],
     ['IDEMPOTENCY_CONFLICT', 'Builder found an earlier action', /load the saved progress/i],
     ['APPROVAL_JOB_NOT_SUCCEEDED', 'Staging is not ready to accept', /failed checks/i],
     ['APPROVAL_EVIDENCE_INCOMPLETE', 'Staging is not ready to accept', /failed checks/i],

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { GitHubProductionReader, GitHubStagingClient } from '../../src/server/github/client';
+import { STAGING_RENDERER_CONTRACT } from '../../src/server/publish/renderer-contract';
 
 const base = 'a'.repeat(40);
 const blobA = 'b'.repeat(40);
@@ -17,6 +18,32 @@ function response(body: unknown, status = 200) {
 }
 
 describe('GitHub staging client', () => {
+  it('checks every canonical renderer file at the immutable expected base', async () => {
+    const fetcher = vi.fn(() => response({ sha: blobA }));
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(
+      client.assertRendererCompatible(
+        base,
+        Object.fromEntries(Object.keys(STAGING_RENDERER_CONTRACT).map((path) => [path, blobA])),
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(Object.keys(STAGING_RENDERER_CONTRACT).length);
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringContaining(`contents/site-kit/SiteRenderer.tsx?ref=${base}`),
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('fails a renderer mismatch before any candidate write request', async () => {
+    const fetcher = vi.fn(() => response({ sha: blobB }));
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(
+      client.assertRendererCompatible(base, { 'SiteRenderer.tsx': blobA }),
+    ).rejects.toThrow('STAGING_RENDERER_MISMATCH: SiteRenderer.tsx');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect((fetcher.mock.calls as unknown[][])[0]?.[1]).toMatchObject({ method: 'GET' });
+  });
+
   it('creates two blobs and advances main once for the expected base', async () => {
     const fetcher = vi
       .fn()

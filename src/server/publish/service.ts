@@ -4,6 +4,7 @@ import type { StagingCommit, StagingVerificationEvidence } from '../github/clien
 import type { MediaService } from '../media/service';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
+import { STAGING_RENDERER_CONTRACT } from './renderer-contract';
 import type { D1PublishJobStore, PublishJobRecord } from './jobs';
 import { z } from 'zod';
 
@@ -25,6 +26,10 @@ interface PublishInput {
 
 interface StagingClient {
   currentMainSha(): Promise<string>;
+  assertRendererCompatible(
+    expectedBaseSha: string,
+    contract: Record<string, string>,
+  ): Promise<void>;
   commitFiles(input: {
     expectedBaseSha: string;
     message: string;
@@ -107,6 +112,8 @@ export class StagingPublisher {
       draft.revision.checksum !== input.expectedRevisionChecksum
     )
       throw new Error('DRAFT_REVISION_DRIFT');
+    const client = await this.client();
+    await client.assertRendererCompatible(input.expectedBaseSha, STAGING_RENDERER_CONTRACT);
     const candidate = await buildCandidate(draft, this.media);
     let job: PublishJobRecord | null = null;
     if (this.jobs) {
@@ -148,9 +155,7 @@ export class StagingPublisher {
     }
     let commit: { sha: string; url: string };
     try {
-      commit = await (
-        await this.client()
-      ).commitFiles({
+      commit = await client.commitFiles({
         expectedBaseSha: input.expectedBaseSha,
         message: `Publish builder revision ${draft.revision.sequence} to staging`,
         files: candidate.files,

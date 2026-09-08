@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tasks: Canvas and Staging parity</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b100c;
+        color: #edf3ea;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1050px, calc(100% - 40px));
+        margin: auto;
+        padding: 52px 0 88px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #b8df9f;
+      }
+      .task {
+        background: #141b15;
+        border: 1px solid #344638;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.1rem 0.3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Spec 017 · ordered tasks</p>
+      <h1>Canvas and Staging parity tasks</h1>
+      <section class="task">
+        <h2>☑ T017-1 — Research and specification</h2>
+        <p>
+          Trace canvas, preview, persisted layout, candidate, remote Staging renderer,
+          accessibility, and release boundaries. Verify: review Spec 017 against every Issue #25
+          criterion.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-2 — RED drop-intent tests</h2>
+        <p>
+          Prove valid pointed bounds/cells, invalid collision state without fallback, stale-state
+          clearing, scale/scroll coordinate inputs, and accessible labels. Files: focused editor
+          unit tests.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-3 — RED renderer-contract tests</h2>
+        <p>
+          Prove all synchronized files are checked at the expected base SHA and a single mismatch
+          prevents blob/tree/commit/ref writes. Files: GitHub client and publishing tests.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-4 — Implement deterministic phantom and rejection</h2>
+        <p>
+          Render element type, row/column footprint, valid/invalid text and pattern at the pointed
+          cells; persist only valid coordinates; remount from saved state after invalid release;
+          retain keyboard alternative and reduced motion.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-5 — Implement exact renderer preflight</h2>
+        <p>
+          Pin the 16-file canonical contract, fetch immutable Staging path identities, fail safely
+          before candidate writes, and expose a recoverable publish error without sensitive data.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-6 — Browser and renderer evidence</h2>
+        <p>
+          Cover every element category, edges/lower rows/collisions, 360/768/1280, scroll/zoom,
+          save/reload, canvas vs preview geometry, authoring-chrome isolation, keyboard,
+          announcements, and axe-assisted checks.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☐ T017-7 — Full review and release</h2>
+        <p>
+          Run focused and complete gates, review, PR, exact-head Quality, merge-tree proof,
+          exact-main Quality, direct Builder production deployment, live verification, Issue/Project
+          closure, and public PointSite unchanged proof.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

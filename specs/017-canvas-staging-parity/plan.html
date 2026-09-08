@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Plan: Canvas and Staging parity</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b100c;
+        color: #edf3ea;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1050px, calc(100% - 40px));
+        margin: auto;
+        padding: 52px 0 88px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        color: #b8df9f;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #344638;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.1rem 0.3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Spec 017 · implementation plan</p>
+      <h1>One visible intent, one exact renderer</h1>
+      <h2>Dependency order</h2>
+      <ol>
+        <li>Specify immutable drop-intent and renderer-contract boundaries.</li>
+        <li>
+          Write RED unit/integration tests for valid/invalid intent geometry and renderer mismatch
+          before writes.
+        </li>
+        <li>Implement pure drop-intent derivation and exact GitHub renderer contract preflight.</li>
+        <li>
+          Integrate the valid/invalid phantom, restrained announcements, and invalid-drop rollback
+          into Puck.
+        </li>
+        <li>
+          Add browser coverage across pointer positions, collision, responsive viewports, scrolling,
+          zoom, keyboard operation, save/reload, preview, and authoring-chrome isolation.
+        </li>
+        <li>
+          Run complete local gates, create PR, complete exact-head review/Quality, merge, deploy
+          exact main, and verify production Builder and protected Staging workflow without
+          publishing public Production.
+        </li>
+      </ol>
+      <h2>Risk controls</h2>
+      <ul>
+        <li>
+          <strong>Puck internal insert before callback:</strong> an invalid insert is not staged or
+          autosaved; increment an editor-instance revision to remount from the controlled saved
+          document.
+        </li>
+        <li>
+          <strong>Stale pointer state:</strong> bind intent to element type and section ID; clear it
+          on leave and drag end.
+        </li>
+        <li>
+          <strong>Contract drift:</strong> compare all 16 synchronized files at
+          <code>expectedBaseSha</code>, never mutable <code>main</code>; only safe filenames are
+          exposed on failure.
+        </li>
+        <li>
+          <strong>Renderer divergence from styling:</strong> move phantom styling out of shared
+          <code>site.css</code> into authoring CSS so this Issue does not require a Staging renderer
+          sync.
+        </li>
+      </ul>
+      <h2>Verification checkpoints</h2>
+      <ul>
+        <li>
+          RED: collision intent test expects invalid pointed coordinates; publish test expects no
+          commit on one changed blob.
+        </li>
+        <li>GREEN: focused unit/integration suite.</li>
+        <li>
+          UI: Chromium, Firefox, and WebKit where Puck synthesis is supported; manual keyboard and
+          responsive matrix; axe results treated as partial evidence only.
+        </li>
+        <li>
+          Release: full repository gates, exact feature-head Quality, tree-equivalent squash merge,
+          exact-main Quality, prior Cloudflare version, deployment, live health/assets/authenticated
+          flow, and zero public PointSite mutation.
+        </li>
+      </ul>
+    </main>
+  </body>
+</html>

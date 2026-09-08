@@ -154,6 +154,12 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Use the available check action to load the latest status. Builder will then offer the safe current revision if a new candidate is required.',
       };
+    case 'STAGING_RENDERER_MISMATCH':
+      return {
+        title: 'Staging renderer needs to be synchronized',
+        guidance:
+          'Your draft is safe and no candidate was published. Ask a site maintainer to synchronize the protected Staging renderer with Builder, then try again.',
+      };
     case 'IDEMPOTENCY_CONFLICT':
       return {
         title: 'Builder found an earlier action',
