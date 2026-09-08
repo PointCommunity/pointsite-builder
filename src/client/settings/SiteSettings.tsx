@@ -1,5 +1,6 @@
 import type { SiteDocument } from '../../site-kit/types';
 import { useEditor } from '../editor/EditorProvider';
+import { mutationForContext } from '../editor/action-attribution';
 import { ThemeEditor } from './ThemeEditor';
 import { NavigationEditor } from './NavigationEditor';
 import { CollectionsEditor } from './CollectionsEditor';
@@ -10,7 +11,7 @@ export function SiteSettings() {
     updateDocument((next) => {
       change(next.site);
       return next;
-    });
+    }, mutationForContext('site-settings'));
   return (
     <div className="settings-panel">
       <header className="section-heading">
@@ -265,15 +266,24 @@ export function SiteSettings() {
       <NavigationEditor
         navigation={document.navigation}
         pages={document.pages}
-        onChange={(navigation) => updateDocument((next) => ({ ...next, navigation }))}
+        onChange={(navigation) =>
+          updateDocument((next) => ({ ...next, navigation }), mutationForContext('navigation'))
+        }
       />
       <CollectionsEditor
         document={document}
-        onChange={(collections) => updateDocument((next) => ({ ...next, collections }))}
+        onChange={(collections) =>
+          updateDocument((next) => ({ ...next, collections }), mutationForContext('collections'))
+        }
       />
       <ThemeEditor
         theme={document.theme}
-        onChange={(theme) => updateDocument((next) => ({ ...next, theme }))}
+        onChange={(theme) =>
+          updateDocument(
+            (next) => ({ ...next, theme }),
+            mutationForContext('theme', 'control-change'),
+          )
+        }
       />
     </div>
   );

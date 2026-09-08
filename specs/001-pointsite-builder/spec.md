@@ -148,7 +148,7 @@ be bypassed with client state or a forged header.
 - **FR-007**: Editors MUST be able to manage global identity, contact, service, giving, social, navigation, footer, and search/social metadata.
 - **FR-008**: Editors MUST be able to manage theme colors, typography choices, spacing density, button treatment, section surfaces, and reusable presets within validated bounds.
 - **FR-009**: The initial data set MUST reproduce every current PointSite route, navigation item, organization setting, form, content collection, and public asset reference.
-- **FR-010**: Draft changes MUST autosave after no more than five seconds of idle time and expose saving, saved, conflict, offline, and error states.
+- **FR-010**: Every completed draft-document action MUST autosave in order without a global Save button. Text entry completes after one second of inactivity or blur; discrete controls, add, remove, duplicate, reorder, drop, move, resize, undo, and redo complete at the end of the operation. The interface MUST expose pending, saving, saved, retrying, conflict, validation, offline, and error states.
 - **FR-011**: Every successful draft save MUST create an attributable immutable revision, with at least 90 days of recoverable automatic history.
 - **FR-012**: Stale saves MUST be rejected using optimistic concurrency and MUST NOT overwrite newer work.
 - **FR-013**: Editors MUST be able to name a revision, compare revision metadata, and restore an earlier revision as a new revision.

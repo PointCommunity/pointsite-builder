@@ -32,6 +32,8 @@ interface DraftRow {
   renderer_version: string;
   revision_created_by: string;
   revision_created_at: string;
+  action_category: RevisionRow['action_category'];
+  action_context: RevisionRow['action_context'];
 }
 
 interface RevisionRow {
@@ -46,6 +48,8 @@ interface RevisionRow {
   renderer_version: string;
   created_by: string;
   created_at: string;
+  action_category: RevisionRecord['actionCategory'];
+  action_context: RevisionRecord['actionContext'];
 }
 
 const DRAFT_SELECT = `
@@ -55,7 +59,8 @@ const DRAFT_SELECT = `
     r.document_json,
     COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
     r.schema_version, r.renderer_version,
-    r.created_by AS revision_created_by, r.created_at AS revision_created_at
+    r.created_by AS revision_created_by, r.created_at AS revision_created_at,
+    r.action_category, r.action_context
   FROM drafts d
   JOIN revisions r ON r.id = d.latest_revision_id
 `;
@@ -74,6 +79,8 @@ function parseRevision(row: RevisionRow): RevisionRecord {
     rendererVersion: document.rendererVersion,
     createdBy: row.created_by,
     createdAt: row.created_at,
+    actionCategory: row.action_category,
+    actionContext: row.action_context,
   };
 }
 
@@ -90,6 +97,8 @@ function parseDraft(row: DraftRow): DraftRecord {
     renderer_version: row.renderer_version,
     created_by: row.revision_created_by,
     created_at: row.revision_created_at,
+    action_category: row.action_category,
+    action_context: row.action_context,
   });
   return {
     id: row.id,
@@ -134,7 +143,8 @@ export class D1DraftRepository implements DraftRepository {
       .prepare(
         `SELECT r.id, r.draft_id, r.sequence, r.parent_revision_id, r.checksum, r.document_json,
         COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
-        r.schema_version, r.renderer_version, r.created_by, r.created_at FROM revisions r WHERE r.id = ?`,
+        r.schema_version, r.renderer_version, r.created_by, r.created_at,
+        r.action_category, r.action_context FROM revisions r WHERE r.id = ?`,
       )
       .bind(id)
       .first<RevisionRow>();
@@ -170,6 +180,8 @@ export class D1DraftRepository implements DraftRepository {
         rendererVersion: document.rendererVersion,
         createdBy: input.actor,
         createdAt: now,
+        actionCategory: 'add',
+        actionContext: 'draft',
       },
       createdBy: input.actor,
       createdAt: now,
@@ -186,7 +198,7 @@ export class D1DraftRepository implements DraftRepository {
         .bind(draftId, input.name, input.actor, now, now),
       this.database
         .prepare(
-          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES (?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) VALUES (?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           revisionId,
@@ -198,6 +210,8 @@ export class D1DraftRepository implements DraftRepository {
           document.rendererVersion,
           input.actor,
           now,
+          record.revision.actionCategory,
+          record.revision.actionContext,
         ),
       this.database
         .prepare(`UPDATE drafts SET latest_revision_id = ? WHERE id = ?`)
@@ -244,6 +258,8 @@ export class D1DraftRepository implements DraftRepository {
       rendererVersion: document.rendererVersion,
       createdBy: input.actor,
       createdAt: now,
+      actionCategory: input.action.category,
+      actionContext: input.action.context,
     };
     const record: DraftRecord = {
       ...current,
@@ -256,11 +272,12 @@ export class D1DraftRepository implements DraftRepository {
       draftId: current.id,
       expectedChecksum: input.expectedChecksum,
       document,
+      action: input.action,
     });
-    await this.database.batch([
+    const [revisionWrite] = await this.database.batch([
       this.database
         .prepare(
-          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id = ? AND latest_revision_id = ?`,
+          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id = ? AND latest_revision_id = ?`,
         )
         .bind(
           revisionId,
@@ -273,6 +290,8 @@ export class D1DraftRepository implements DraftRepository {
           document.rendererVersion,
           input.actor,
           now,
+          revision.actionCategory,
+          revision.actionContext,
           current.id,
           current.revision.id,
         ),
@@ -281,11 +300,19 @@ export class D1DraftRepository implements DraftRepository {
           `UPDATE drafts SET latest_revision_id = ?, updated_at = ? WHERE id = ? AND latest_revision_id = ?`,
         )
         .bind(revisionId, now, current.id, current.revision.id),
-      this.auditStatement(input.actor, 'draft.save', current.id, input.requestId, {
+      this.guardedAuditStatement(
+        input.actor,
+        'draft.save',
+        current.id,
+        input.requestId,
+        {
+          sequence: revision.sequence,
+          actionCategory: input.action.category,
+          actionContext: input.action.context,
+        },
         revisionId,
-        sequence: revision.sequence,
-      }),
-      this.idempotencyStatement(
+      ),
+      this.guardedIdempotencyStatement(
         'draft.save',
         input.idempotencyKey,
         input.actor,
@@ -293,8 +320,12 @@ export class D1DraftRepository implements DraftRepository {
         200,
         JSON.stringify(record),
         now,
+        revisionId,
       ),
     ]);
+    if ((revisionWrite?.meta.changes ?? 0) !== 1) {
+      throw new ConflictError('The draft has a newer revision');
+    }
     return record;
   }
 
@@ -303,7 +334,8 @@ export class D1DraftRepository implements DraftRepository {
       .prepare(
         `SELECT r.id, r.draft_id, r.sequence, r.parent_revision_id, r.checksum, r.document_json,
         COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
-        r.schema_version, r.renderer_version, r.created_by, r.created_at
+        r.schema_version, r.renderer_version, r.created_by, r.created_at,
+        r.action_category, r.action_context
         FROM revisions r WHERE r.draft_id = ? ORDER BY r.sequence DESC LIMIT 100`,
       )
       .bind(draftId)
@@ -321,6 +353,7 @@ export class D1DraftRepository implements DraftRepository {
       ...input,
       document: parseRevision(source).document,
       idempotencyKey: `restore:${input.idempotencyKey.slice(0, 92)}`,
+      action: { category: 'restore', context: 'revision-history' },
       label: `Restored revision ${source.sequence}`,
     });
   }
@@ -424,6 +457,25 @@ export class D1DraftRepository implements DraftRepository {
       .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires);
   }
 
+  private guardedIdempotencyStatement(
+    scope: string,
+    key: string,
+    actor: string,
+    requestHash: string,
+    statusCode: number,
+    responseJson: string,
+    now: string,
+    revisionId: string,
+  ): D1PreparedStatement {
+    const expires = new Date(Date.parse(now) + 24 * 60 * 60 * 1_000).toISOString();
+    return this.database
+      .prepare(
+        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
+      )
+      .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires, revisionId);
+  }
+
   private auditStatement(
     actor: string,
     action: string,
@@ -443,6 +495,31 @@ export class D1DraftRepository implements DraftRepository {
         targetId,
         requestId,
         JSON.stringify(metadata),
+      );
+  }
+
+  private guardedAuditStatement(
+    actor: string,
+    action: string,
+    targetId: string,
+    requestId: string,
+    metadata: AuditEventRecord['metadata'],
+    revisionId: string,
+  ): D1PreparedStatement {
+    return this.database
+      .prepare(
+        `INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
+         SELECT ?, ?, ?, ?, 'draft', ?, 'succeeded', ?, ? WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        new Date().toISOString(),
+        actor,
+        action,
+        targetId,
+        requestId,
+        JSON.stringify(metadata),
+        revisionId,
       );
   }
 }

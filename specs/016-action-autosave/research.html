@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Research: Action-based autosave</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1c2d20, #0b100c 36rem);
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 56px 0 88px;
+      }
+      h1 {
+        margin: 0.2rem 0 0.7rem;
+        font-size: clamp(2.1rem, 5vw, 3.7rem);
+      }
+      h2 {
+        margin-top: 2.4rem;
+        color: #d9ebd0;
+      }
+      p,
+      li,
+      th,
+      td {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+      }
+      .card {
+        margin: 18px 0;
+        padding: 20px;
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid #2d3d30;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #d9ebd0;
+        background: #182019;
+      }
+      code {
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        color: #d8f4ca;
+        background: #202a21;
+      }
+      a {
+        color: #a9da95;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 016 · repository and primary-source analysis</p>
+      <h1>Action-based autosave research</h1>
+      <h2>Confirmed current behavior</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <code>EditorProvider</code> marks one whole document unsaved, waits five seconds, and
+            saves the latest state.
+          </li>
+          <li>
+            A save response replaces the local document, so a newer edit made during the request can
+            be overwritten by an older acknowledgement.
+          </li>
+          <li>
+            The global Save button invokes the same function; browser online events trigger the only
+            automatic retry.
+          </li>
+          <li>
+            The API already supplies compare-and-swap, idempotency, canonical no-op checks,
+            transactional D1 revision/pointer/audit writes, and immutable history.
+          </li>
+          <li>
+            All draft surfaces converge on <code>updateDocument</code>: Layout, page details and
+            structure, Forms, Library attachments and linked media, Navigation, Theme, Site
+            settings, and Collections.
+          </li>
+        </ul>
+      </div>
+      <h2>Decision: explicit serialized queue</h2>
+      <p>
+        Each completed action becomes a queue entry with a stable UUID, immutable document snapshot,
+        finite category, content-free context, and attempt count. One pump owns the authoritative
+        checksum and sends only the head. An acknowledgement advances the server base but never
+        replaces newer local state.
+      </p>
+      <p>
+        Saving every React update would create keystroke revisions; one trailing debounce would
+        erase meaningful sequential actions; parallel saves would reorder compare-and-swap bases.
+        All three alternatives were rejected.
+      </p>
+      <h2>Decision: surface adapters</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Surface</th>
+            <th>Boundary</th>
+            <th>Adapter</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Layout canvas</td>
+            <td>Puck typed action</td>
+            <td>
+              Map recorded insert, duplicate, replace, reorder, move, remove, set-data, and
+              set-state actions. Stage <code>recordHistory: false</code> pointer frames without
+              queueing.
+            </td>
+          </tr>
+          <tr>
+            <td>Canvas fields</td>
+            <td>Set-data action</td>
+            <td>Coalesce text-capable focused controls; save other controls discretely.</td>
+          </tr>
+          <tr>
+            <td>Grid handles</td>
+            <td>Final custom dispatch</td>
+            <td>Set explicit move or resize intent before the recorded dispatch.</td>
+          </tr>
+          <tr>
+            <td>Undo/redo</td>
+            <td>History set-state</td>
+            <td>
+              Capture the history control or keyboard intent and classify the resulting state.
+            </td>
+          </tr>
+          <tr>
+            <td>Other workspaces</td>
+            <td>Shared provider call</td>
+            <td>
+              Pass a static context and derive the finite category from the initiating control.
+            </td>
+          </tr>
+          <tr>
+            <td>Revision restore</td>
+            <td>Server-confirmed restore</td>
+            <td>Assign restore/revision-history metadata server-side.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <a href="https://puckeditor.com/docs/api-reference/components/puck">Puck's component API</a>
+        documents <code>onAction(action, appState, prevAppState)</code> for tracking changes and
+        side effects.
+      </p>
+      <h2>Decision: content-free attribution</h2>
+      <p>
+        The browser sends enum values only. The server rejects unknown categories or contexts and
+        stores the pair on the immutable revision and audit metadata. Edited values, dynamic titles,
+        internal IDs, checksums, request IDs, documents, and media values never enter action
+        metadata.
+      </p>
+      <h2>Decision: additive D1 migration</h2>
+      <p>
+        Add nullable <code>action_category</code> and <code>action_context</code> columns and
+        recreate the revision immutability trigger. Legacy rows remain readable as null; new
+        create/save/restore records populate both. No table rebuild or backfill is needed.
+      </p>
+      <p>
+        Cloudflare documents that
+        <a href="https://developers.cloudflare.com/d1/worker-api/d1-database/#batch">D1 batches</a>
+        execute sequentially as a transaction and roll back the sequence on failure.
+      </p>
+      <h2>Capacity model refreshed 2026-09-07</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Constraint</th>
+            <th>Official Free limit</th>
+            <th>Expected load</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Worker requests</td>
+            <td>100,000/day</td>
+            <td>50 actions/day = 0.05%; original plus three retries for every action = 0.2%.</td>
+          </tr>
+          <tr>
+            <td>D1 writes</td>
+            <td>100,000 rows/day; indexed writes add written rows</td>
+            <td>
+              One four-statement batch/action. Conservative 16 rows/action gives 800/day normally or
+              3,200/day under universal retries.
+            </td>
+          </tr>
+          <tr>
+            <td>D1 reads</td>
+            <td>5 million rows/day</td>
+            <td>Indexed draft/idempotency reads remain far below 1% at expected load.</td>
+          </tr>
+          <tr>
+            <td>D1 storage</td>
+            <td>500 MB/database</td>
+            <td>
+              Measured 65.9 KiB reference document × 50/day × 90 days ≈ 289.6 MiB; warn at 350 MiB.
+            </td>
+          </tr>
+          <tr>
+            <td>D1 row size</td>
+            <td>2 MB per string/BLOB/table row</td>
+            <td>
+              The reference document uses about 3.2%; the 1,500,000-byte canonical document ceiling
+              leaves headroom for row and statement overhead.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Sources:
+        <a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a>,
+        <a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a>, and
+        <a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a>. D1 Free
+        exhaustion returns errors until the midnight UTC reset, so retries must stop visibly.
+      </p>
+      <h2>Accessibility decision</h2>
+      <p>
+        One persistent text-and-icon region announces logical saving, retry, and saved
+        transitions—not keystrokes or pointer frames. Conflict, validation, queue-limit, and
+        terminal failures use alert semantics without moving focus. This follows
+        <a href="https://www.w3.org/TR/WCAG22/#status-messages">WCAG 2.2 SC 4.1.3</a> and
+        <a href="https://www.w3.org/WAI/WCAG22/Understanding/status-messages"
+          >W3C status-message guidance</a
+        >.
+      </p>
+    </main>
+  </body>
+</html>

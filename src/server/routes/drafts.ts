@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { defaultSiteDocument } from '../../site-kit/default-site';
 import { SiteDocumentSchema } from '../../site-kit/schema';
+import { DraftActionSchema } from '../../shared/draft-actions';
 import type { Actor } from '../auth/roles';
 import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
@@ -21,8 +22,11 @@ const CreateDraftSchema = z.strictObject({
 
 const SaveDraftSchema = z.strictObject({
   document: z.unknown(),
+  action: DraftActionSchema,
   label: z.string().trim().max(100).optional(),
 });
+
+export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;
 
 function validationError(error: z.ZodError): ApiError {
   return new ApiError(
@@ -83,6 +87,16 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
     const parsed = SaveDraftSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
+    if (
+      new TextEncoder().encode(JSON.stringify(parsed.data.document)).byteLength >
+      MAX_DRAFT_DOCUMENT_BYTES
+    ) {
+      throw new ApiError(
+        413,
+        'DOCUMENT_TOO_LARGE',
+        'This draft is too large to save. Reduce its content and try again.',
+      );
+    }
     const document = SiteDocumentSchema.safeParse(parsed.data.document);
     if (!document.success) throw validationError(document.error);
     try {
@@ -93,6 +107,7 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
         actor: actor.email,
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
+        action: parsed.data.action,
         label: parsed.data.label,
       });
       return context.json(draft);

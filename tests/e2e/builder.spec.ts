@@ -23,6 +23,8 @@ const draft: DraftRecord = {
     rendererVersion: document.rendererVersion,
     createdBy: 'admin@pointatx.org',
     createdAt: '2026-09-05T00:00:00Z',
+    actionCategory: 'text-edit',
+    actionContext: 'page-content',
   },
   createdBy: 'admin@pointatx.org',
   createdAt: '2026-09-05T00:00:00Z',

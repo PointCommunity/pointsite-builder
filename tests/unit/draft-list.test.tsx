@@ -23,6 +23,8 @@ function archivedDraft(): DraftRecord {
       rendererVersion: defaultSiteDocument.rendererVersion,
       createdBy: 'editor@pointatx.org',
       createdAt: '2026-09-06T12:00:00Z',
+      actionCategory: null,
+      actionContext: null,
     },
     createdBy: 'editor@pointatx.org',
     createdAt: '2026-09-06T12:00:00Z',

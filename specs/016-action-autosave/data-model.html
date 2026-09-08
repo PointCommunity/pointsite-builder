@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data model: Action-based autosave</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1040px, calc(100% - 40px));
+        margin: auto;
+        padding: 54px 0 84px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        margin-top: 2.3rem;
+        color: #d9ebd0;
+      }
+      p,
+      li,
+      th,
+      td {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid #2d3d30;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #182019;
+        color: #d9ebd0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 016 · data and state</p>
+      <h1>Action autosave data model</h1>
+      <h2>Client queue entry</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Rule</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>id</code></td>
+            <td>Client UUID reused as the idempotency key for every retry.</td>
+          </tr>
+          <tr>
+            <td><code>document</code></td>
+            <td>Immutable structured clone of the complete document at action completion.</td>
+          </tr>
+          <tr>
+            <td><code>category</code></td>
+            <td>
+              text-edit, control-change, add, remove, duplicate, reorder, move, resize, replace,
+              undo, redo, or restore.
+            </td>
+          </tr>
+          <tr>
+            <td><code>context</code></td>
+            <td>
+              page content, page details, page structure, forms, library attachment, linked media,
+              navigation, theme, site settings, collections, section settings, element settings,
+              element layout, revision history, or draft.
+            </td>
+          </tr>
+          <tr>
+            <td><code>attempt</code></td>
+            <td>Zero through three automatic retries; identity and order never change.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Revision extension</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Validation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>action_category</code></td>
+            <td>TEXT nullable</td>
+            <td>Null only for legacy rows; otherwise a server enum.</td>
+          </tr>
+          <tr>
+            <td><code>action_context</code></td>
+            <td>TEXT nullable</td>
+            <td>Null only for legacy rows; otherwise a server enum.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Both columns are immutable. Draft creation uses add/draft; revision restoration uses
+        restore/revision history.
+      </p>
+      <h2>Queue transitions</h2>
+      <p><code>editing → pending → saving → saved</code></p>
+      <p>
+        <code>saving → retrying → saving</code> is bounded to three retries. Offline pauses at
+        pending/offline. Conflict, validation, queue limit, and exhausted retry remain visible
+        without removing the queue head.
+      </p>
+      <h2>Atomic persistence</h2>
+      <p>
+        A changed action inserts one revision, advances the draft pointer with compare-and-swap,
+        appends one <code>draft.save</code> audit event with category/context/sequence, and stores
+        the idempotent response in one D1 batch. A canonical checksum no-op returns the current
+        draft without revision or audit insertion.
+      </p>
+      <h2>Rollback compatibility</h2>
+      <p>
+        Migration 0008 adds nullable columns and recreates the immutability trigger. The previous
+        Worker ignores the columns, so application rollback remains safe. No existing record is
+        rewritten or removed.
+      </p>
+    </main>
+  </body>
+</html>

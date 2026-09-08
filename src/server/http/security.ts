@@ -1,6 +1,6 @@
 import { ApiError } from './errors';
 
-const MAX_JSON_BYTES = 1_048_576;
+const MAX_JSON_BYTES = 1_600_000;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{16,100}$/;
 
 export function requireMutationHeaders(

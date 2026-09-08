@@ -82,6 +82,8 @@ export class InMemoryRepository implements DraftRepository {
       rendererVersion: document.rendererVersion,
       createdBy: input.actor,
       createdAt: now,
+      actionCategory: 'add',
+      actionContext: 'draft',
     };
     const draft: DraftRecord = {
       id,
@@ -139,6 +141,8 @@ export class InMemoryRepository implements DraftRepository {
       rendererVersion: document.rendererVersion,
       createdBy: input.actor,
       createdAt: now,
+      actionCategory: input.action.category,
+      actionContext: input.action.context,
     };
     const updated: DraftRecord = {
       ...current,
@@ -152,8 +156,9 @@ export class InMemoryRepository implements DraftRepository {
     this.#drafts.set(input.draftId, clone(updated));
     this.#idempotency.set(operationKey, clone(updated));
     this.#recordAudit(input.actor, 'draft.save', input.draftId, input.requestId, {
-      revisionId: revision.id,
       sequence: revision.sequence,
+      actionCategory: input.action.category,
+      actionContext: input.action.context,
     });
     return clone(updated);
   }
@@ -174,6 +179,7 @@ export class InMemoryRepository implements DraftRepository {
       actor: input.actor,
       idempotencyKey: `restore:${input.idempotencyKey.slice(0, 92)}`,
       requestId: input.requestId,
+      action: { category: 'restore', context: 'revision-history' },
       label: `Restored revision ${source.sequence}`,
     });
   }

@@ -30,6 +30,8 @@ function draft(): DraftRecord {
       rendererVersion: document.rendererVersion,
       createdBy: 'editor',
       createdAt: '2026-09-05T00:00:00Z',
+      actionCategory: null,
+      actionContext: null,
     },
     createdBy: 'editor',
     createdAt: '2026-09-05T00:00:00Z',

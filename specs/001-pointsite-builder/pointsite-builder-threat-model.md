@@ -67,7 +67,7 @@ separate static export with no mutation API.
 - Enforce same-origin mutation requests, exact content types, Fetch Metadata, bounded bodies, and per-actor action rates.
 - Redact credentials and content payloads; use Worker secrets; scan source/history and CI logs.
 - Lock dependency versions, review lockfile changes, audit packages, pin Actions by commit where practical, produce SBOM.
-- Debounce autosave, cap publish concurrency, expose 70 percent warnings, and fail visibly at limits.
+- Coalesce only active text entry, serialize one save per completed logical action, bound retries and queue depth, cap publish concurrency, expose 70 percent warnings, and fail visibly at limits.
 - Append audit events transactionally with state changes and export before retention purge.
 - Bind approvals to the full candidate tuple and production base; protected PR checks and separate merge authorization.
 

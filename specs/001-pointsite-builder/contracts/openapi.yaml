@@ -90,9 +90,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [document]
+              description: The canonical serialized document must not exceed 1,500,000 bytes.
+              required: [document, action]
               properties:
                 document: { $ref: '#/components/schemas/SiteDocument' }
+                action: { $ref: '#/components/schemas/DraftAction' }
                 label: { type: string, maxLength: 100 }
       responses:
         '200':
@@ -560,6 +562,8 @@ components:
           label,
           schemaVersion,
           rendererVersion,
+          actionCategory,
+          actionContext,
           createdBy,
           createdAt,
         ]
@@ -572,9 +576,90 @@ components:
         document: { $ref: '#/components/schemas/SiteDocument' }
         schemaVersion: { type: integer }
         rendererVersion: { type: string }
+        actionCategory:
+          type: [string, 'null']
+          enum:
+            [
+              text-edit,
+              control-change,
+              add,
+              remove,
+              duplicate,
+              reorder,
+              move,
+              resize,
+              replace,
+              undo,
+              redo,
+              restore,
+              null,
+            ]
+        actionContext:
+          type: [string, 'null']
+          enum:
+            [
+              page-content,
+              page-details,
+              page-structure,
+              forms,
+              library-attachment,
+              linked-media,
+              navigation,
+              theme,
+              site-settings,
+              collections,
+              section-settings,
+              element-settings,
+              element-layout,
+              revision-history,
+              draft,
+              null,
+            ]
         label: { type: [string, 'null'] }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
+    DraftAction:
+      type: object
+      additionalProperties: false
+      required: [category, context]
+      properties:
+        category:
+          type: string
+          enum:
+            [
+              text-edit,
+              control-change,
+              add,
+              remove,
+              duplicate,
+              reorder,
+              move,
+              resize,
+              replace,
+              undo,
+              redo,
+              restore,
+            ]
+        context:
+          type: string
+          enum:
+            [
+              page-content,
+              page-details,
+              page-structure,
+              forms,
+              library-attachment,
+              linked-media,
+              navigation,
+              theme,
+              site-settings,
+              collections,
+              section-settings,
+              element-settings,
+              element-layout,
+              revision-history,
+              draft,
+            ]
     RevisionList:
       type: object
       additionalProperties: false

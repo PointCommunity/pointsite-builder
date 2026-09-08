@@ -98,11 +98,13 @@ version and checksum are part of candidate identity.
 
 ## Free-plan operating envelope
 
-**Decision**: Design for at most 10 concurrent administrators, five-second
-debounced autosave, revisions only on semantic changes, five-megabyte individual
-images, 250-megabyte private media warning threshold, one publish job at a time,
-and quota warnings at 70 percent. Only Workers Free and D1 Free are allowed;
-exhaustion returns errors until reset or space is reclaimed.
+**Decision**: Design for at most 10 concurrent administrators, one ordered save
+per completed logical action, one-second idle or blur completion for text entry,
+revisions only on semantic changes, a 1,500,000-byte canonical draft-document
+ceiling, five-megabyte individual images, a 250-megabyte private media warning
+threshold, one publish job at a time, and quota warnings at 70 percent. Only
+Workers Free and D1 Free are allowed; exhaustion returns errors until reset or
+space is reclaimed.
 
 **Rationale**: Current Cloudflare documentation lists 100,000 Worker requests/day,
 5 million D1 rows read/day, and 100,000 D1 rows written/day on Free. This workload
@@ -111,7 +113,8 @@ are rechecked before deployment because platform pricing can change.
 
 **Alternatives considered**: any paid plan or subscription (rejected), R2 (requires
 a billing subscription), no limits (unexpected failure risk), save on every
-keystroke (wasteful writes).
+keystroke (wasteful writes), and one trailing whole-document debounce (loses
+logical action boundaries and can overwrite newer in-flight work).
 
 ## Accessibility and browser support
 

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { api } from '../../src/client/api';
 import { EditorProvider, useEditor } from '../../src/client/editor/EditorProvider';
 import { availableRoute, PageManager } from '../../src/client/editor/PageManager';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -27,6 +28,8 @@ function draft(): DraftRecord {
       rendererVersion: document.rendererVersion,
       createdBy: 'editor@pointatx.org',
       createdAt: '2026-09-05T00:00:00.000Z',
+      actionCategory: null,
+      actionContext: null,
     },
     createdBy: 'editor@pointatx.org',
     createdAt: '2026-09-05T00:00:00.000Z',
@@ -54,9 +57,11 @@ describe('page management', () => {
     expect(availableRoute('', ['/page', '/page-2'])).toBe('/page-3');
   });
 
-  it('creates a standard page with an editable Hero and no duplicate visual fields', () => {
+  it('creates a standard page with an editable Hero and no duplicate visual fields', async () => {
+    const initialDraft = draft();
+    const save = vi.spyOn(api, 'saveDraft').mockResolvedValue(initialDraft);
     render(
-      <EditorProvider initialDraft={draft()}>
+      <EditorProvider initialDraft={initialDraft}>
         <Harness />
       </EditorProvider>,
     );
@@ -79,5 +84,7 @@ describe('page management', () => {
       items: [{ element: { type: 'hero', variant: 'pageHero' } }],
     });
     expect(page.blocks[1]).toMatchObject({ name: 'Site header' });
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    save.mockRestore();
   });
 });

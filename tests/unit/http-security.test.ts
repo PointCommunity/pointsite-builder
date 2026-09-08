@@ -45,7 +45,7 @@ describe('HTTP security controls', () => {
   it('rejects oversized and malformed JSON before route handling', async () => {
     await expect(
       requireMutationRequest(
-        mutationRequest({}, JSON.stringify({ data: 'x'.repeat(1_048_576) })),
+        mutationRequest({}, JSON.stringify({ data: 'x'.repeat(1_600_000) })),
         origin,
       ),
     ).rejects.toMatchObject({ code: 'REQUEST_TOO_LARGE' });

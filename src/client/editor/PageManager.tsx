@@ -2,6 +2,7 @@ import type { SiteDocument } from '../../site-kit/types';
 import { createEditableHeaderSection } from '../../site-kit/editable-header';
 import { createEditablePageHeroSection } from '../../site-kit/editable-page-hero';
 import { useEditor } from './EditorProvider';
+import { mutationForContext } from './action-attribution';
 
 // This colocated pure helper keeps page creation and its tests bound to the UI behavior.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -37,75 +38,84 @@ export function PageManager({
       const target = next.pages.find((item) => item.id === page.id);
       if (target) change(target);
       return next;
-    });
+    }, mutationForContext('page-details'));
 
   const move = (delta: number) =>
-    updateDocument((next) => {
-      const from = next.pages.findIndex((item) => item.id === page.id);
-      const to = from + delta;
-      if (from < 0 || to < 0 || to >= next.pages.length) return next;
-      const [item] = next.pages.splice(from, 1);
-      if (item) next.pages.splice(to, 0, item);
-      return next;
-    });
+    updateDocument(
+      (next) => {
+        const from = next.pages.findIndex((item) => item.id === page.id);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= next.pages.length) return next;
+        const [item] = next.pages.splice(from, 1);
+        if (item) next.pages.splice(to, 0, item);
+        return next;
+      },
+      mutationForContext('page-structure', 'reorder'),
+    );
 
   const create = () => {
     const title = 'New page';
     const id = crypto.randomUUID();
-    updateDocument((next) => {
-      const logo = next.media.find((item) => item.sourcePath.endsWith('/point-logo.png'));
-      next.pages.push({
-        id,
-        title,
-        route: availableRoute(
+    updateDocument(
+      (next) => {
+        const logo = next.media.find((item) => item.sourcePath.endsWith('/point-logo.png'));
+        next.pages.push({
+          id,
           title,
-          next.pages.map((item) => item.route),
-        ),
-        status: 'draft',
-        template: 'standard',
-        metadata: { title, description: 'Add a short description for this page.' },
-        blocks: [
-          createEditablePageHeroSection({
-            id,
+          route: availableRoute(
             title,
-            eyebrow: 'New page',
-            intro: 'Add a short introduction for this page.',
-          }),
-          createEditableHeaderSection(id, logo?.id),
-        ],
-      });
-      return next;
-    });
+            next.pages.map((item) => item.route),
+          ),
+          status: 'draft',
+          template: 'standard',
+          metadata: { title, description: 'Add a short description for this page.' },
+          blocks: [
+            createEditablePageHeroSection({
+              id,
+              title,
+              eyebrow: 'New page',
+              intro: 'Add a short introduction for this page.',
+            }),
+            createEditableHeaderSection(id, logo?.id),
+          ],
+        });
+        return next;
+      },
+      mutationForContext('page-structure', 'add'),
+    );
     onPageIdChange(id);
   };
 
   const duplicate = () => {
     const id = crypto.randomUUID();
-    updateDocument((next) => {
-      const source = next.pages.find((item) => item.id === page.id);
-      if (!source) return next;
-      const title = `${source.title} copy`;
-      const copy = structuredClone(source);
-      copy.id = id;
-      copy.title = title;
-      copy.route = availableRoute(
-        title,
-        next.pages.map((item) => item.route),
-      );
-      copy.status = 'draft';
-      copy.metadata.title = title.slice(0, 70);
-      copy.blocks = copy.blocks.map((section) => ({
-        ...section,
-        id: crypto.randomUUID(),
-        items: section.items.map((placement) => ({
-          ...placement,
+    updateDocument(
+      (next) => {
+        const source = next.pages.find((item) => item.id === page.id);
+        if (!source) return next;
+        const title = `${source.title} copy`;
+        const copy = structuredClone(source);
+        copy.id = id;
+        copy.title = title;
+        copy.route = availableRoute(
+          title,
+          next.pages.map((item) => item.route),
+        );
+        copy.status = 'draft';
+        copy.metadata.title = title.slice(0, 70);
+        copy.blocks = copy.blocks.map((section) => ({
+          ...section,
           id: crypto.randomUUID(),
-          element: { ...placement.element, id: crypto.randomUUID() },
-        })),
-      }));
-      next.pages.splice(next.pages.indexOf(source) + 1, 0, copy);
-      return next;
-    });
+          items: section.items.map((placement) => ({
+            ...placement,
+            id: crypto.randomUUID(),
+            element: { ...placement.element, id: crypto.randomUUID() },
+          })),
+        }));
+        next.pages.splice(next.pages.indexOf(source) + 1, 0, copy);
+        return next;
+      },
+      mutationForContext('page-structure', 'duplicate'),
+    );
     onPageIdChange(id);
   };
 
@@ -113,10 +123,13 @@ export function PageManager({
     if (document.pages.length === 1) return;
     if (!window.confirm(`Delete “${page.title}” from this draft?`)) return;
     const fallback = document.pages[index === 0 ? 1 : index - 1];
-    updateDocument((next) => {
-      next.pages = next.pages.filter((item) => item.id !== page.id);
-      return next;
-    });
+    updateDocument(
+      (next) => {
+        next.pages = next.pages.filter((item) => item.id !== page.id);
+        return next;
+      },
+      mutationForContext('page-structure', 'remove'),
+    );
     if (fallback) onPageIdChange(fallback.id);
   };
 

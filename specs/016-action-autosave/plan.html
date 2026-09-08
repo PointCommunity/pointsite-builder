@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plan: Action-based autosave</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1c2d20, #0b100c 36rem);
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 54px 0 84px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      h2 {
+        margin-top: 2.3rem;
+        color: #d9ebd0;
+      }
+      p,
+      li,
+      th,
+      td {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      .card {
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+        padding: 20px;
+        margin: 18px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid #2d3d30;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #182019;
+        color: #d9ebd0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 016 · implementation plan</p>
+      <h1>Action-based autosave</h1>
+      <h2>Technical context</h2>
+      <div class="card">
+        <p>
+          TypeScript 5.9, React 19, Puck 0.23, Hono 4, Zod 4, Cloudflare Workers and D1,
+          Vitest/Testing Library, Miniflare, and Playwright. Builder production is the only runtime;
+          public PointSite and protected Staging remain untouched.
+        </p>
+      </div>
+      <h2>Architecture decisions</h2>
+      <ol>
+        <li>Define shared action schemas and human-language mappings.</li>
+        <li>
+          Build a deterministic serialized queue with injected save and scheduling boundaries.
+        </li>
+        <li>
+          Have the editor provider stage transient documents, coalesce text, close text on blur or
+          another action, pump one request, preserve newer local state, and expose recovery
+          commands.
+        </li>
+        <li>
+          Adapt every surface with a static context; use Puck <code>onAction</code> and explicit
+          grid intent for canvas actions.
+        </li>
+        <li>
+          Extend revisions and the save contract with strict action metadata; update History and
+          audit language.
+        </li>
+        <li>
+          Measure request, write, storage, retry, and latency behavior; retain the 70% capacity
+          warning.
+        </li>
+      </ol>
+      <h2>Constitution check</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Principle</th>
+            <th>Status</th>
+            <th>Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Spec-first traceability</td>
+            <td>Pass</td>
+            <td>Issue criteria map through Spec 016, tasks, tests, and acceptance evidence.</td>
+          </tr>
+          <tr>
+            <td>Production isolation</td>
+            <td>Pass</td>
+            <td>Only Builder client/API/D1 change; no public or Staging publication.</td>
+          </tr>
+          <tr>
+            <td>Controlled design system</td>
+            <td>Pass</td>
+            <td>Typed document and Puck registry remain authoritative.</td>
+          </tr>
+          <tr>
+            <td>Security and privacy</td>
+            <td>Pass</td>
+            <td>Strict enums, server enforcement, content-free metadata.</td>
+          </tr>
+          <tr>
+            <td>Test before promotion</td>
+            <td>Pass</td>
+            <td>RED/GREEN tests plus every repository/browser gate.</td>
+          </tr>
+          <tr>
+            <td>Recoverable operations</td>
+            <td>Pass</td>
+            <td>CAS, idempotency, immutable history, ordered queue, bounded retry.</td>
+          </tr>
+          <tr>
+            <td>Free-first controls</td>
+            <td>Pass</td>
+            <td>Current official limits and a conservative action/storage model.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Dependency order</h2>
+      <p>
+        <code
+          >contract and migration → queue RED/GREEN → provider RED/GREEN → surface adapters →
+          history/audit → browser and capacity evidence → review and release</code
+        >
+      </p>
+      <h2>Verification strategy</h2>
+      <ul>
+        <li>
+          Unit: boundaries, text coalescing, ordering, in-flight edits, retry, offline, conflict,
+          validation, no-op, queue limit, undo, redo.
+        </li>
+        <li>
+          Integration: strict contract, additive migration, atomic
+          revision/pointer/audit/idempotency, legacy rows, no-op, restore metadata.
+        </li>
+        <li>
+          Browser: every named workspace, rapid actions, absent global Save, status semantics,
+          specialized Save controls unchanged.
+        </li>
+        <li>
+          Complete: repository checks, performance, security, all browsers, exact-head Quality,
+          migration rehearsal, production health/assets, authenticated hands-on workflow.
+        </li>
+      </ul>
+      <h2>Migration recovery</h2>
+      <p>
+        Rehearse migration 0008 locally before remote application. It is additive and the previous
+        Worker ignores it. Record the Cloudflare version before deployment; application rollback
+        needs no schema rollback. Destructive database restoration remains PM-authorized only.
+      </p>
+    </main>
+  </body>
+</html>

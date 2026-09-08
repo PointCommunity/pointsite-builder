@@ -17,8 +17,10 @@ describe('friendly audit language', () => {
         candidateChecksum: 'd786424ae1b897d7edafb7914c1e4e6c16b962acca93a151faa474019f25111b',
         productionBaseSha: '0187c95c8a9d3441049616a801f66f6f6d11050e',
         restored: true,
+        actionCategory: 'text-edit',
+        actionContext: 'page-details',
       }),
-    ).toBe('Revision 3 · Restored: Yes');
+    ).toBe('Revision 3 · Restored: Yes · Action: Edited text · Area: Page details');
     expect(auditTargetLabel('draft', '273da879-1234')).toBe('Draft');
     expect(auditTargetLabel('role', '@brimdor')).toBe('GitHub account @brimdor');
   });

@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useRef,
   useState,
   type FocusEvent,
@@ -18,6 +19,7 @@ import { AdminRoute } from '../admin/AdminRoute';
 import { EditorProvider, useEditor } from './EditorProvider';
 import { PageManager } from './PageManager';
 import { StructurePanel } from './StructurePanel';
+import { mutationForContext } from './action-attribution';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
@@ -44,13 +46,39 @@ function Workspace({
   onClose: () => void;
   themeToggle: ReactNode;
 }) {
-  const { draft, document, updateDocument, saveNow, saveState, reloadLatest } = useEditor();
+  const {
+    draft,
+    document,
+    updateDocument,
+    saveState,
+    autosave,
+    reloadLatest,
+    retryAutosave,
+    copyRecoveryData,
+  } = useEditor();
   const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'layout');
   const [publishOpen, setPublishOpen] = useState(false);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
   const [structureRevision, setStructureRevision] = useState(0);
+  const [recoveryCopied, setRecoveryCopied] = useState(false);
+  const [recoveryStatus, setRecoveryStatus] = useState('');
   const editable = role !== 'viewer' && draft.status === 'active';
+  const requestClose = () => {
+    if (autosave.canLeave) onClose();
+    else setRecoveryStatus('Copy the pending draft before discarding changes and leaving.');
+  };
+  const copyPendingDraft = async () => {
+    try {
+      await copyRecoveryData();
+      setRecoveryCopied(true);
+      setRecoveryStatus('Pending draft copied. You can now load the latest version or leave.');
+    } catch {
+      setRecoveryStatus(
+        'The pending draft could not be copied. Keep this page open and try again.',
+      );
+    }
+  };
   const closePublishing = () => {
     setPublishOpen(false);
     window.queueMicrotask(() => publishButtonRef.current?.focus());
@@ -87,14 +115,14 @@ function Workspace({
       dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus(),
     );
   };
-  const openFooterSettings = () => {
+  const openFooterSettings = useCallback(() => {
     setPanel('settings');
     globalThis.setTimeout(() => {
       const target = globalThis.document.getElementById('footer-settings');
       target?.scrollIntoView({ block: 'start' });
       target?.focus();
     });
-  };
+  }, []);
   return (
     <div className="editor-workspace">
       <a className="skip-link" href="#main-content">
@@ -109,7 +137,7 @@ function Workspace({
         </p>
       </section>
       <header className="editor-header">
-        <button className="button" type="button" onClick={onClose}>
+        <button className="button" type="button" onClick={requestClose}>
           ← All drafts
         </button>
         <div>
@@ -119,21 +147,11 @@ function Workspace({
         <div className="save-cluster">
           {themeToggle}
           <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">
-            {saveState === 'saved' ? 'All changes saved' : saveState}
+            {autosave.message}
           </span>
-          {saveState === 'conflict' ? (
-            <button className="button" type="button" onClick={() => void reloadLatest()}>
-              Load latest
-            </button>
-          ) : null}
-          {editable ? (
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={saveState === 'saved' || saveState === 'saving'}
-              onClick={() => void saveNow()}
-            >
-              Save
+          {saveState === 'error' || saveState === 'validation' ? (
+            <button className="button" type="button" onClick={retryAutosave}>
+              Retry autosave
             </button>
           ) : null}
           {canPublish && panel === 'layout' ? (
@@ -148,6 +166,38 @@ function Workspace({
           ) : null}
         </div>
       </header>
+      <div className="autosave-recovery-slot">
+        {autosave.alert || recoveryStatus ? (
+          <section className="autosave-recovery" role="alert" aria-label="Autosave recovery">
+            <p>{recoveryStatus || autosave.alert}</p>
+            {!autosave.canLeave ? (
+              <button className="button" type="button" onClick={() => void copyPendingDraft()}>
+                Copy pending draft
+              </button>
+            ) : null}
+            {saveState === 'conflict' ? (
+              <button
+                className="button"
+                type="button"
+                disabled={!recoveryCopied}
+                onClick={() => void reloadLatest()}
+              >
+                Load latest version
+              </button>
+            ) : null}
+            {!autosave.canLeave ? (
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={!recoveryCopied}
+                onClick={onClose}
+              >
+                Discard pending changes and leave
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+      </div>
       <nav className="editor-tabs" aria-label="Editor sections">
         {(
           [
@@ -210,7 +260,9 @@ function Workspace({
                   ),
                 )
               }
-              onChange={(forms) => updateDocument((next) => ({ ...next, forms }))}
+              onChange={(forms) =>
+                updateDocument((next) => ({ ...next, forms }), mutationForContext('forms'))
+              }
             />
           ) : (
             <p>Viewer access is read only.</p>
@@ -231,22 +283,27 @@ function Workspace({
         <main id="main-content" className="single-panel">
           <MediaLibrary
             document={document}
-            onDocumentChange={(next) => updateDocument(() => next)}
+            onDocumentChange={(next) =>
+              updateDocument(() => next, mutationForContext('linked-media'))
+            }
             onSelect={(item) => {
               const extension =
                 item.contentType === 'image/jpeg' ? 'jpg' : item.contentType.replace('image/', '');
-              updateDocument((next) => {
-                if (!next.media.some((media) => media.id === item.id)) {
-                  next.media.push({
-                    id: item.id,
-                    sourcePath: `/assets/builder/${item.id}.${extension}`,
-                    alt: item.altText,
-                    displayName: item.displayName,
-                    tags: item.tags,
-                  });
-                }
-                return next;
-              });
+              updateDocument(
+                (next) => {
+                  if (!next.media.some((media) => media.id === item.id)) {
+                    next.media.push({
+                      id: item.id,
+                      sourcePath: `/assets/builder/${item.id}.${extension}`,
+                      alt: item.altText,
+                      displayName: item.displayName,
+                      tags: item.tags,
+                    });
+                  }
+                  return next;
+                },
+                mutationForContext('library-attachment', 'add'),
+              );
               setPanel('layout');
             }}
           />

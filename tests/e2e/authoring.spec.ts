@@ -23,6 +23,8 @@ const original = (): DraftRecord => {
       rendererVersion: document.rendererVersion,
       createdBy: 'admin@pointatx.org',
       createdAt: '2026-09-05T00:00:00Z',
+      actionCategory: 'text-edit',
+      actionContext: 'page-content',
     },
     createdBy: 'admin@pointatx.org',
     createdAt: '2026-09-05T00:00:00Z',
@@ -64,6 +66,13 @@ async function installApi(
     },
   ];
   let conflictNextSave = false;
+  let nextSaveGate: Promise<void> | null = null;
+  let releaseNextSave: (() => void) | null = null;
+  const saveRequests: Array<{
+    action: { category: string; context: string };
+    idempotencyKey: string | null;
+    document: DraftRecord['document'];
+  }> = [];
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -95,13 +104,29 @@ async function installApi(
         status = 412;
         body = { code: 'REVISION_CONFLICT', message: 'Newer revision', requestId: 'request' };
       } else {
-        const input = request.postDataJSON() as { document: DraftRecord['document'] };
+        const input = request.postDataJSON() as {
+          document: DraftRecord['document'];
+          action: {
+            category: RevisionRecord['actionCategory'];
+            context: RevisionRecord['actionContext'];
+          };
+        };
+        saveRequests.push({
+          action: input.action as { category: string; context: string },
+          idempotencyKey: request.headers()['idempotency-key'] ?? null,
+          document: input.document,
+        });
+        const gate = nextSaveGate;
+        nextSaveGate = null;
+        if (gate) await gate;
         draft.document = input.document;
         draft.revision = {
           ...draft.revision,
           sequence: draft.revision.sequence + 1,
           checksum: 'c'.repeat(64),
           document: input.document,
+          actionCategory: input.action.category,
+          actionContext: input.action.context,
         };
         draft.latestRevisionId = draft.revision.id;
         body = draft;
@@ -193,7 +218,11 @@ async function installApi(
             targetId: draft.id,
             outcome: 'succeeded',
             requestId: 'request-1',
-            metadata: { sequence: 2 },
+            metadata: {
+              sequence: 2,
+              actionCategory: 'text-edit',
+              actionContext: 'page-details',
+            },
           },
         ],
         nextCursor: null,
@@ -209,7 +238,19 @@ async function installApi(
     else body = draft;
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   });
-  return { setConflictNextSave: () => (conflictNextSave = true) };
+  return {
+    saveRequests,
+    setConflictNextSave: () => (conflictNextSave = true),
+    holdNextSave: () => {
+      nextSaveGate = new Promise<void>((resolve) => {
+        releaseNextSave = resolve;
+      });
+      return () => {
+        releaseNextSave?.();
+        releaseNextSave = null;
+      };
+    },
+  };
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
@@ -296,6 +337,61 @@ test('operates page modules by keyboard and announces the result', async ({ page
   await expect(canvas.locator('.home-hero')).toHaveCount(2);
 });
 
+test('autosaves completed page actions in order without a global Save button', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'The ordered request contract needs one browser proof.');
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
+  const baseline = controls.saveRequests.length;
+
+  const releaseFirstSave = controls.holdNextSave();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect.poll(() => controls.saveRequests.length).toBe(baseline + 1);
+  await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
+  await expect(page.getByLabel('Choose page').locator('option:checked')).toHaveText(
+    'New page copy',
+  );
+  expect(controls.saveRequests).toHaveLength(baseline + 1);
+  releaseFirstSave();
+  await expect.poll(() => controls.saveRequests.length).toBe(baseline + 2);
+
+  const completed = controls.saveRequests.slice(baseline);
+  expect(completed.map(({ action }) => action)).toEqual([
+    { category: 'add', context: 'page-structure' },
+    { category: 'duplicate', context: 'page-structure' },
+  ]);
+  expect(new Set(completed.map(({ idempotencyKey }) => idempotencyKey)).size).toBe(2);
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await expect(page.getByText('All changes saved')).toBeVisible();
+});
+
+test('coalesces text until blur and sends only content-free attribution', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'The text completion boundary needs one browser proof.');
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByText('Page details', { exact: true }).click();
+  const baseline = controls.saveRequests.length;
+  const name = page.getByLabel('Page name');
+  await name.fill('A private working title');
+  expect(controls.saveRequests).toHaveLength(baseline);
+  await name.press('Tab');
+  await expect.poll(() => controls.saveRequests.length).toBe(baseline + 1);
+
+  const request = controls.saveRequests.at(-1);
+  expect(request?.action).toEqual({ category: 'text-edit', context: 'page-details' });
+  expect(JSON.stringify(request?.action)).not.toContain('private working title');
+});
+
 test('edits, rearranges, replaces, and persists a non-home Hero as a normal element', async ({
   page,
   browserName,
@@ -361,7 +457,6 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
     canvas.getByRole('heading', { level: 1, name: 'Replacement page hero' }),
   ).toBeVisible();
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -609,6 +704,8 @@ test('builds a standardized section by dragging an element from the toybox', asy
     browserName === 'webkit',
     'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; schema and renderer coverage still run in WebKit.',
   );
+  await page.unroute('**/api/**');
+  const autosave = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
@@ -654,6 +751,21 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(sectionSlot).toHaveCount(1);
   await expect(section).toHaveClass(/point-layout-section--grid/);
   await expect(sectionSlot).toHaveCSS('grid-template-columns', /repeat|px/);
+  await section
+    .locator('xpath=ancestor-or-self::*[@data-puck-component][1]')
+    .click({ position: { x: 8, y: 8 } });
+  await expect(page.getByLabel('Section name').filter({ visible: true })).toBeVisible();
+  await page
+    .locator('.block-inspector.inspector-grid label')
+    .filter({ has: page.getByText('Background', { exact: true }) })
+    .locator('select')
+    .last()
+    .selectOption('canvas');
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(autosave.saveRequests.at(-1)?.action).toEqual({
+    category: 'control-change',
+    context: 'section-settings',
+  });
   const gridTracks = await sectionSlot.evaluate((element) => {
     const style = getComputedStyle(element);
     const parentStyle = getComputedStyle(element.parentElement!);
@@ -683,8 +795,31 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   const moveHandle = canvas.getByRole('button', { name: 'Move heading on desktop grid' });
   const initialRow = Number(await page.getByLabel('desktop row').last().inputValue());
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const moveBaseline = autosave.saveRequests.length;
   await moveHandle.press('ArrowRight');
   await moveHandle.press('ArrowDown');
+  await expect.poll(() => autosave.saveRequests.length).toBe(moveBaseline + 2);
+  const moveEvidence = autosave.saveRequests.slice(moveBaseline).map((request) => ({
+    action: request.action,
+    grid: request.document.pages
+      .flatMap((candidate) => candidate.blocks)
+      .flatMap((candidate) => candidate.items)
+      .find(
+        (candidate) =>
+          candidate.element.type === 'heading' && candidate.element.text === 'Section heading',
+      )?.grid.desktop,
+  }));
+  expect(moveEvidence).toEqual([
+    expect.objectContaining({
+      action: { category: 'move', context: 'element-layout' },
+      grid: expect.objectContaining({ column: 5, row: initialRow }),
+    }),
+    expect.objectContaining({
+      action: { category: 'move', context: 'element-layout' },
+      grid: expect.objectContaining({ column: 5, row: initialRow + 1 }),
+    }),
+  ]);
   await expect(placement).toHaveCSS('grid-column-start', '5');
   await expect(placement).toHaveCSS('grid-row-start', String(initialRow + 1));
 
@@ -806,8 +941,27 @@ test('builds a standardized section by dragging an element from the toybox', asy
   ).toBeVisible();
   await expect(buttonRow).toHaveValue(previousButtonRow);
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(autosave.saveRequests.map(({ action }) => action.context)).toEqual(
+    expect.arrayContaining(['page-content', 'element-settings', 'element-layout']),
+  );
+  if (browserName === 'chromium') {
+    const historyBaseline = autosave.saveRequests.length;
+    await page.getByRole('button', { name: 'undo' }).click();
+    await expect.poll(() => autosave.saveRequests.length).toBe(historyBaseline + 1);
+    expect(autosave.saveRequests.at(-1)?.action).toEqual({
+      category: 'undo',
+      context: 'page-content',
+    });
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    await page.getByRole('button', { name: 'redo' }).click();
+    await expect.poll(() => autosave.saveRequests.length).toBe(historyBaseline + 2);
+    expect(autosave.saveRequests.at(-1)?.action).toEqual({
+      category: 'redo',
+      context: 'page-content',
+    });
+    await expect(page.getByText('All changes saved')).toBeVisible();
+  }
   await page.reload();
   await page.getByRole('button', { name: 'Open editor' }).click();
   const reloadedCanvas = page.locator('.visual-editor iframe').contentFrame();
@@ -842,7 +996,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
   await expect(page.getByRole('button', { name: 'Split feature', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save now', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(1);
   await expect(page.locator('.visual-editor')).toHaveCSS('--puck-line-placeholder-width', '6px');
@@ -1075,6 +1229,7 @@ test('retains focus while typing across every editable workspace', async ({ page
     .filter({ hasText: 'Austin skyline over the Colorado River' })
     .getByText('Edit details')
     .click();
+  await expect(page.getByRole('button', { name: 'Save details' })).toBeVisible();
   await replaceSequentially(
     page.getByLabel('Display name for Austin skyline over the Colorado River'),
     'Austin skyline hero',
@@ -1092,6 +1247,74 @@ test('retains focus while typing across every editable workspace', async ({ page
 
   await page.getByRole('button', { name: 'Admin' }).click();
   await replaceSequentially(page.getByLabel('GitHub username'), 'point-editor');
+});
+
+test('attributes completed actions across Forms, Library, and whole-site settings', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Finite action attribution needs one browser proof.');
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  const expectAction = async (
+    run: () => Promise<unknown>,
+    action: { category: string; context: string },
+  ) => {
+    const index = controls.saveRequests.length;
+    await run();
+    await expect.poll(() => controls.saveRequests.length).toBe(index + 1);
+    expect(controls.saveRequests[index]?.action).toEqual(action);
+    await expect(page.getByText('All changes saved')).toBeVisible();
+  };
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+
+  await page.getByRole('button', { name: 'Forms' }).click();
+  await expectAction(() => page.getByRole('button', { name: 'New form' }).click(), {
+    category: 'add',
+    context: 'forms',
+  });
+
+  await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByLabel('Media type').selectOption('youtube');
+  await page.getByLabel('Display name', { exact: true }).fill('Attribution video');
+  await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  await expectAction(() => page.getByRole('button', { name: 'Add linked media' }).click(), {
+    category: 'add',
+    context: 'linked-media',
+  });
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expectAction(
+    async () => {
+      await page.getByLabel('Church name').fill('Point Community Church Austin');
+      await page.getByLabel('Church name').press('Tab');
+    },
+    { category: 'text-edit', context: 'site-settings' },
+  );
+
+  const navigationLabel = page
+    .getByRole('group', { name: 'About' })
+    .getByLabel('Label', { exact: true })
+    .first();
+  await expectAction(
+    async () => {
+      await navigationLabel.fill('About Point');
+      await navigationLabel.press('Tab');
+    },
+    { category: 'text-edit', context: 'navigation' },
+  );
+
+  await expectAction(() => page.getByRole('button', { name: 'Add person' }).click(), {
+    category: 'add',
+    context: 'collections',
+  });
+
+  await expectAction(() => page.getByLabel('Heading typeface').selectOption('serif'), {
+    category: 'control-change',
+    context: 'theme',
+  });
 });
 
 test('labels history and restores only after confirmation', async ({ page }) => {
@@ -1113,6 +1336,8 @@ test('labels history and restores only after confirmation', async ({ page }) => 
 test('uploads private media with alternative text and attaches it to the draft library', async ({
   page,
 }) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Library' }).click();
@@ -1124,7 +1349,13 @@ test('uploads private media with alternative text and attaches it to the draft l
   await page.getByLabel('Alternative text').fill('People gathering');
   await page.getByRole('button', { name: 'Upload image' }).click();
   await expect(page.getByText('Image uploaded privately.')).toBeVisible();
+  const baseline = controls.saveRequests.length;
   await page.getByRole('button', { name: 'Use in Layout' }).click();
+  await expect.poll(() => controls.saveRequests.length).toBe(baseline + 1);
+  expect(controls.saveRequests.at(-1)?.action).toEqual({
+    category: 'add',
+    context: 'library-attachment',
+  });
   await expect(page.getByRole('heading', { name: 'Page structure' })).toBeVisible();
 });
 
@@ -1137,6 +1368,8 @@ test('builds a form and places linked YouTube media without code', async ({
     browserName === 'webkit',
     'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
   );
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Forms' }).click();
@@ -1152,6 +1385,7 @@ test('builds a form and places linked YouTube media without code', async ({
   await page.getByRole('button', { name: 'Add linked media' }).click();
   await expect(page.getByText('Linked media added to this draft.')).toBeVisible();
   await page.getByRole('button', { name: 'Layout' }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
 
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   const drag = async (
@@ -1176,13 +1410,14 @@ test('builds a form and places linked YouTube media without code', async ({
     await page.waitForTimeout(250);
     await page.mouse.up();
   };
+  const sectionBaseline = controls.saveRequests.length;
   await drag(
     page.getByRole('button', { name: 'Blank', exact: true }),
     canvas.locator('.home-hero'),
     true,
   );
   const section = canvas.locator('.point-layout-section').last();
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => controls.saveRequests.length).toBe(sectionBaseline + 1);
   await expect(page.getByText('All changes saved')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeEnabled();
@@ -1208,6 +1443,7 @@ test('manages roles and exposes capacity warnings to administrators', async ({ p
   await expect(page.getByRole('cell', { name: '@point-publisher' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '@brimdor' }).last()).toBeVisible();
   await expect(page.getByText('Saved draft changes')).toBeVisible();
+  await expect(page.getByText(/Action: Edited text · Area: Page details/)).toBeVisible();
 });
 
 test('recovers from a server-side revision conflict without overwriting', async ({
@@ -1222,9 +1458,10 @@ test('recovers from a server-side revision conflict without overwriting', async 
   await page.getByRole('button', { name: 'Open editor' }).click();
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Load latest' })).toBeVisible();
-  await page.getByRole('button', { name: 'Load latest' }).click();
+  await expect(page.getByRole('button', { name: 'Copy pending draft' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy pending draft' }).click();
+  await expect(page.getByRole('button', { name: 'Load latest version' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Load latest version' }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
 });
 
@@ -1236,10 +1473,9 @@ test('keeps an unsaved change offline and retries when connectivity returns', as
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
-  await page.getByRole('button', { name: 'New', exact: true }).click();
   await context.setOffline(true);
-  await page.waitForTimeout(5_100);
-  await expect(page.getByText('offline', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect(page.getByText('Offline—changes are waiting to save.')).toBeVisible();
   await context.setOffline(false);
   await expect(page.getByText('All changes saved')).toBeVisible();
 });

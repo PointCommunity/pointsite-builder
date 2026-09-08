@@ -1,4 +1,9 @@
 import type { SiteDocument } from '../../site-kit/types';
+import type {
+  DraftAction,
+  DraftActionCategory,
+  DraftActionContext,
+} from '../../shared/draft-actions';
 
 export type Role = 'viewer' | 'editor' | 'publisher' | 'administrator';
 export type DraftStatus = 'active' | 'archived' | 'deleted';
@@ -15,6 +20,8 @@ export interface RevisionRecord {
   rendererVersion: string;
   createdBy: string;
   createdAt: string;
+  actionCategory: DraftActionCategory | null;
+  actionContext: DraftActionContext | null;
 }
 
 export interface DraftRecord {
@@ -58,6 +65,7 @@ export interface SaveDraftInput {
   actor: string;
   idempotencyKey: string;
   requestId: string;
+  action: DraftAction;
   label?: string;
 }
 

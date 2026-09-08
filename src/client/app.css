@@ -252,7 +252,7 @@ textarea {
   height: 100dvh;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--canvas);
 }
@@ -282,9 +282,25 @@ textarea {
   gap: 0.75rem;
 }
 .save-state--conflict,
+.save-state--validation,
 .save-state--error {
   color: var(--danger) !important;
   font-weight: 800;
+}
+.autosave-recovery-slot:empty {
+  min-height: 0;
+}
+.autosave-recovery {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.autosave-recovery p {
+  flex: 1;
+  margin: 0;
 }
 .editor-tabs {
   display: flex;

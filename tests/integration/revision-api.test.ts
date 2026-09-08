@@ -46,7 +46,10 @@ describe('revision and lifecycle API', () => {
           ...mutationHeaders('save-revisions-0001'),
           'if-match': `"${created.revision.checksum}"`,
         },
-        body: JSON.stringify({ document: changed }),
+        body: JSON.stringify({
+          document: changed,
+          action: { category: 'text-edit', context: 'page-details' },
+        }),
       }),
     );
 
@@ -76,11 +79,16 @@ describe('revision and lifecycle API', () => {
       }),
     });
     expect(restoredResponse.status).toBe(200);
-    const restored = await json<{ document: SiteDocument; revision: { sequence: number } }>(
-      restoredResponse,
-    );
+    const restored = await json<{
+      document: SiteDocument;
+      revision: { sequence: number; actionCategory: string; actionContext: string };
+    }>(restoredResponse);
     expect(restored.document.site.shortName).toBe('Point ATX');
     expect(restored.revision.sequence).toBe(3);
+    expect(restored.revision).toMatchObject({
+      actionCategory: 'restore',
+      actionContext: 'revision-history',
+    });
   });
 
   it('archives, recovers, and soft deletes without making deleted drafts active', async () => {
