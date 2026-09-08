@@ -18,7 +18,7 @@ const projectFields = [
   { name: 'Effort', options: ['XS', 'S', 'M', 'L', 'XL'].map((name) => ({ name })) },
 ];
 
-const projectViews = ['Backlog Priorities', 'Kanban'].map((name) => ({
+const projectViews = ['Backlog', 'Kanban'].map((name) => ({
   name,
   layout: 'BOARD_LAYOUT',
   verticalGroupBy: 'Status',
@@ -35,7 +35,7 @@ const projectWorkflows = [
 
 function baseSnapshot(overrides = {}) {
   return {
-    project: { title: 'PointSite Builder Development', public: false, closed: false },
+    project: { title: 'PointSite Builder', public: false, closed: false },
     fields: projectFields,
     repositories: ['PointCommunity/pointsite-builder'],
     views: projectViews,
@@ -108,6 +108,23 @@ test('accepts a complete unassigned Backlog card and reports the branch-rule lim
   assert.deepEqual(result.errors, []);
   assert.ok(result.warnings.some((warning) => warning.includes('branch rules are unavailable')));
   assert.equal(result.activeItems.length, 0);
+});
+
+test('rejects the former Project and Backlog view names', () => {
+  const result = auditPipelineSnapshot(
+    baseSnapshot({
+      project: { title: 'PointSite Builder Development', public: false, closed: false },
+      views: ['Backlog Priorities', 'Kanban'].map((name) => ({
+        name,
+        layout: 'BOARD_LAYOUT',
+        verticalGroupBy: 'Status',
+      })),
+    }),
+  );
+
+  assert.ok(result.errors.some((error) => error.includes('Project must be')));
+  assert.ok(result.errors.some((error) => error.includes('Backlog must be a board view')));
+  assert.ok(result.errors.some((error) => error.includes('unexpected Project views')));
 });
 
 test('accepts one In Review Issue, an exact linked PR, and ignores Dependabot PRs', () => {

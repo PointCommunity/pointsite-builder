@@ -51,7 +51,7 @@ if (claude !== '@AGENTS.md') errors.push('CLAUDE.md must contain only @AGENTS.md
 if (gemini !== '@./AGENTS.md') errors.push('GEMINI.md must contain only @./AGENTS.md');
 requireText(policy, 'color-scheme: dark', policyPath);
 requireText(policy, 'Approved to create this exact GitHub Issue', policyPath);
-requireText(policy, 'PointSite Builder Development', policyPath);
+requireText(policy, 'Private PointCommunity Project <code>PointSite Builder</code>', policyPath);
 requireText(policy, 'Backlog, On Hold, In Progress, In Review, Done', policyPath);
 requireText(policy, 'Agent-owned Project movement', policyPath);
 requireText(policy, 'Pull request merged', policyPath);

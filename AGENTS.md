@@ -3,7 +3,7 @@
 ## Authority and source of truth
 
 - This file governs the PointSite Builder application in `PointCommunity/pointsite-builder`, which is separate from the public PointSite website. The PM is the human GitHub user `brimdor` (Chris).
-- GitHub Project: organization-owned private Project `PointSite Builder Development`, number `1`.
+- GitHub Project: organization-owned private Project `PointSite Builder`, number `1`.
 - Canonical repository skills live under `.agents/skills/`. Always use the relevant `pointsite-builder-*` skill for Issue, review, release, or pipeline work.
 - Five shared frontend skills also live under `.agents/skills/`: `design-taste-frontend` for brief-led visual direction, `awesome-design` for reference selection, `image-to-code` for a selected visual target, `web-design-guidelines` for standards review, and `playwright-cli` for CLI-driven browser evidence. They support product work but never replace a `pointsite-builder-*` pipeline skill or override this file, the shared policy, the existing Builder design system, or the current Issue scope.
 - `.agents/pointsite-builder-pipeline-policy.html` is the shared workflow policy. Skills may narrow a workflow but must not contradict it.

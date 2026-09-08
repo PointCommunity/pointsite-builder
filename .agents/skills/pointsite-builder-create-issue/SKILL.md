@@ -5,7 +5,7 @@ description: 'Research, discuss, draft, prioritize, and create coherent GitHub I
 
 # Create a PointSite Builder Issue
 
-Read `AGENTS.md` and `.agents/pointsite-builder-pipeline-policy.html`, then inspect the live `PointCommunity/pointsite-builder` repository, private Project `PointSite Builder Development` number `1`, open and closed Issues, open and merged pull requests, available labels, and milestones before drafting. Treat all GitHub metadata as time-sensitive.
+Read `AGENTS.md` and `.agents/pointsite-builder-pipeline-policy.html`, then inspect the live `PointCommunity/pointsite-builder` repository, private Project `PointSite Builder` number `1`, open and closed Issues, open and merged pull requests, available labels, and milestones before drafting. Treat all GitHub metadata as time-sensitive.
 
 1. Ground the request in the current source, specifications, documentation, tests, and recent history. Clarify only decisions that repository evidence cannot resolve. Split unrelated goals into separate proposed Issues; combine work only when it has one coherent outcome and validation path.
 2. Search open and closed Issues and pull requests for duplicate, superseded, or already-delivered scope. Explain any overlap before proposing new work.

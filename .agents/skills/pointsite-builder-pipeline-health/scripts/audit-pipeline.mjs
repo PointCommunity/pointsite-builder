@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 const OWNER = 'PointCommunity';
 const REPO = `${OWNER}/pointsite-builder`;
 const PROJECT_NUMBER = '1';
-const PROJECT_TITLE = 'PointSite Builder Development';
+const PROJECT_TITLE = 'PointSite Builder';
 const ACTIVE = new Set(['In Progress', 'In Review']);
 const REQUIRED_STATUS = ['Backlog', 'On Hold', 'In Progress', 'In Review', 'Done'];
 const REQUIRED_FIELDS = {
@@ -14,7 +14,7 @@ const REQUIRED_FIELDS = {
   Impact: ['High', 'Medium', 'Low'],
   Effort: ['XS', 'S', 'M', 'L', 'XL'],
 };
-const REQUIRED_VIEWS = ['Backlog Priorities', 'Kanban'];
+const REQUIRED_VIEWS = ['Backlog', 'Kanban'];
 const REQUIRED_WORKFLOWS = {
   'Auto-add sub-issues to project': true,
   'Auto-close issue': true,
