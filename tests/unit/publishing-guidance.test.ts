@@ -54,7 +54,7 @@ describe('non-technical publishing guidance', () => {
 
   it.each([
     ['verify', 'Website safety checks', /could not prove/i],
-    ['deploy', 'Staging update', /did not finish updating/i],
+    ['deploy', 'Staging update', /Automatic recovery could not confirm/i],
     ['custom-check', 'Required check: custom-check', /site maintainer/i],
   ])('translates the %s check without hiding its meaning', (check, label, explanation) => {
     const description = describeFailedCheck(check);
