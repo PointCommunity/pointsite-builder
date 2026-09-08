@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tasks: Action-based autosave</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(1040px, calc(100% - 40px));
+        margin: auto;
+        padding: 54px 0 84px;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+      }
+      p,
+      li {
+        line-height: 1.62;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      .task {
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+        padding: 20px;
+        margin: 16px 0;
+      }
+      .task h2 {
+        margin-top: 0;
+        color: #d9ebd0;
+      }
+      code {
+        color: #d8f4ca;
+        background: #202a21;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Spec 016 · ordered implementation tasks</p>
+      <h1>Action-based autosave</h1>
+      <section class="task">
+        <h2>☑ T016-1 [US1] — Complete specification and contracts</h2>
+        <p>
+          Finalize Issue traceability, current primary-source research, dark-mode spec/plan/data
+          model, core governing documents, and OpenAPI action metadata.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>specs/016-action-autosave/*</code>,
+          <code>specs/001-pointsite-builder/*</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-2 [US2] — Write RED queue and provider tests</h2>
+        <p>
+          Prove text coalescing/blur, discrete actions, ordering, in-flight edits, no stale response
+          overwrite, stable retry identity, backoff, offline resume, validation/conflict stops,
+          no-op acknowledgement, queue bound, and departure protection.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>tests/unit/action-autosave.test.ts</code>,
+          <code>tests/unit/autosave.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-3 [US3] — Write RED persistence and attribution tests</h2>
+        <p>
+          Prove strict enum and 1.5 MB document-size validation, atomic
+          revision/pointer/audit/idempotency writes, legacy-null reads, no-op suppression, restore
+          metadata, and content-free audit details.
+        </p>
+        <p><strong>Files:</strong> draft/repository/revision/audit integration and unit tests.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-4 [US2] — Implement the serialized autosave foundation</h2>
+        <p>
+          Add shared action contracts, queue engine, provider integration, bounded recovery,
+          pending-work protection, and accessible state messages; remove the global Save button.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>src/shared/draft-actions.ts</code>,
+          <code>src/client/editor/action-autosave.ts</code>, <code>EditorProvider.tsx</code>,
+          <code>EditorRoute.tsx</code>, CSS.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-5 [US1] — Adapt every authoring surface</h2>
+        <p>
+          Attach finite contexts to Layout/Puck, custom grid handles, pages, structure, Forms,
+          Library attachment/linked media, Navigation, Theme, Site settings, Collections, undo, and
+          redo. Stage pointer frames and commit only final actions.
+        </p>
+        <p><strong>Files:</strong> editor, settings, and media client components.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-6 [US3] — Persist and present action attribution</h2>
+        <p>
+          Add migration 0008, repository fields, server validation, client contract, History labels,
+          and safe administrative audit language while preserving legacy revisions and specialized
+          save controls.
+        </p>
+        <p>
+          <strong>Files:</strong> <code>migrations/0008_revision_actions.sql</code>,
+          repositories/routes/API, History/Admin helpers.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-7 [US1] — Prove complete browser behavior</h2>
+        <p>
+          Cover every named workspace, rapid consecutive actions, in-flight edits, undo/redo,
+          offline/retry/conflict, reload, focus stability, restrained live regions, absent global
+          Save, and unchanged Save details/Save label controls.
+        </p>
+        <p><strong>Files:</strong> <code>tests/e2e/authoring.spec.ts</code> and fixtures.</p>
+      </section>
+      <section class="task">
+        <h2>☑ T016-8 [US2] — Measure capacity and create acceptance evidence</h2>
+        <p>
+          Measure action request counts, D1 batch/write model, revision growth, latency, retry
+          volume, and queue overhead. Create a rendered dark-mode acceptance report mapping every
+          Issue criterion to evidence.
+        </p>
+        <p>
+          <strong>Files:</strong> performance tests/scripts, core research/threat model/runbooks as
+          needed, <code>tests/reports/action-autosave.html</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☐ T016-9 [US1] — Full review, migration, release, and live verification</h2>
+        <p>
+          Run complete gates, review the exact tree, push the Issue branch and PR, require
+          exact-head Quality, merge with tree identity, rehearse/apply the additive migration,
+          deploy exact clean main, and verify production behavior without changing public PointSite
+          or protected Staging.
+        </p>
+        <p><strong>Files:</strong> no source changes after the final reviewed candidate.</p>
+      </section>
+    </main>
+  </body>
+</html>

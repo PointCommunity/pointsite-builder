@@ -16,6 +16,7 @@ import { useGridBreakpoint } from './GridBreakpointContext';
 import { usePointPuck } from './puck-store';
 import { setActiveGridSection } from './grid-interaction-store';
 import { childComponents, siblingComponents } from './puck-grid-data';
+import { setPuckActionIntent } from './puck-action-intent';
 
 function isGrid(value: unknown): value is ElementPlacement['grid'] {
   return Boolean(
@@ -70,6 +71,11 @@ export function GridOverlay({
       breakpoint,
     );
     const nextRows = Math.max(required, Math.min(100, Math.round(minRows)));
+    setPuckActionIntent({
+      category: 'resize',
+      context: 'element-layout',
+      transient: !recordHistory,
+    });
     dispatch({
       type: 'replace',
       destinationIndex: selector.index,
@@ -156,7 +162,7 @@ export function GridOverlay({
 
   if (!isSelected || !isGrid(grid) || settings?.layout !== 'grid') return <>{children}</>;
 
-  const commit = (nextArea: GridArea, recordHistory = true) => {
+  const commit = (nextArea: GridArea, category: 'move' | 'resize', recordHistory = true) => {
     const selector = getSelectorForId(componentId);
     const current = getItemById(componentId) as unknown as ComponentData | null;
     const currentProps = current?.props as unknown as Record<string, unknown> | undefined;
@@ -182,6 +188,7 @@ export function GridOverlay({
       return;
     }
     setStatus('');
+    setPuckActionIntent({ category, context: 'element-layout', transient: !recordHistory });
     dispatch({
       type: 'replace',
       destinationIndex: selector.index,
@@ -231,7 +238,7 @@ export function GridOverlay({
         mode === 'move'
           ? moveGridArea(startArea, columns, rows)
           : resizeGridArea(startArea, mode, columns, rows);
-      commit(latest, false);
+      commit(latest, mode === 'move' ? 'move' : 'resize', false);
     };
     const finish = () => {
       ownerDocument.removeEventListener('pointermove', move);
@@ -239,7 +246,7 @@ export function GridOverlay({
       ownerDocument.removeEventListener('pointercancel', finish);
       delete surface.dataset.gridActive;
       setActiveGridSection(null);
-      commit(latest, true);
+      commit(latest, mode === 'move' ? 'move' : 'resize', true);
     };
     ownerDocument.addEventListener('pointermove', move);
     ownerDocument.addEventListener('pointerup', finish, { once: true });
@@ -256,11 +263,15 @@ export function GridOverlay({
     if (!columns && !rows) return;
     event.preventDefault();
     event.stopPropagation();
-    const current = areaForBreakpoint(grid, breakpoint);
+    const currentItem = getItemById(componentId) as unknown as ComponentData | null;
+    const currentGrid = (currentItem?.props as unknown as Record<string, unknown> | undefined)
+      ?.grid;
+    const current = areaForBreakpoint(isGrid(currentGrid) ? currentGrid : grid, breakpoint);
     commit(
       mode === 'move'
         ? moveGridArea(current, columns, rows)
         : resizeGridArea(current, mode, columns, rows),
+      mode === 'move' ? 'move' : 'resize',
     );
   };
 

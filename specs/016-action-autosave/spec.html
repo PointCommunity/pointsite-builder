@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spec 016: Action-based autosave</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #0b100c;
+        color: #edf3ea;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1c2d20, #0b100c 36rem);
+      }
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: auto;
+        padding: 56px 0 88px;
+      }
+      h1 {
+        margin: 0.2rem 0 0.7rem;
+        font-size: clamp(2.1rem, 5vw, 3.8rem);
+      }
+      h2 {
+        margin-top: 2.4rem;
+        color: #d9ebd0;
+      }
+      p,
+      li,
+      th,
+      td {
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #9dca89;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+      }
+      .lede {
+        max-width: 850px;
+        color: #c0cbbd;
+        font-size: 1.1rem;
+      }
+      .card {
+        margin: 18px 0;
+        padding: 20px;
+        border: 1px solid #2d3d30;
+        border-radius: 14px;
+        background: #141b15;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px;
+        border: 1px solid #2d3d30;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: #d9ebd0;
+        background: #182019;
+      }
+      code {
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        color: #d8f4ca;
+        background: #202a21;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">PointSite Builder · Spec 016 · GitHub Issue #22</p>
+      <h1>Action-based autosave</h1>
+      <p class="lede">
+        Persist every completed authoring action as one attributable immutable revision without a
+        global Save button, while preserving meaningful undo, redo, conflict protection, offline
+        recovery, and quiet accessible feedback.
+      </p>
+
+      <h2>Objective</h2>
+      <p>
+        An Editor changes any part of an active draft and can trust that each completed logical
+        action is queued, saved in order, acknowledged by the server, and represented in History and
+        administrative audit activity. The interface never calls pending work saved and never
+        requires a routine manual draft save.
+      </p>
+
+      <h2>User stories and acceptance scenarios</h2>
+      <div class="card">
+        <h3>P1 · Edit without a Save button</h3>
+        <ol>
+          <li>
+            <strong>Given</strong> an editable active draft, <strong>when</strong> the user
+            completes a discrete add, remove, duplicate, reorder, move, resize, drop, control, undo,
+            or redo action, <strong>then</strong> that changed document is queued immediately and
+            eventually becomes one server-acknowledged revision and audit event.
+          </li>
+          <li>
+            <strong>Given</strong> a text field, <strong>when</strong> typing pauses for one second
+            or focus leaves the field, <strong>then</strong> the complete edit becomes one logical
+            action instead of one revision per keystroke.
+          </li>
+          <li>
+            <strong>Given</strong> any editable workspace, <strong>then</strong> the upper-right
+            global Save button is absent and specialized media-detail and revision-label save
+            controls remain unchanged.
+          </li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>P1 · Preserve rapid and interrupted work</h3>
+        <ol>
+          <li>
+            <strong>Given</strong> one save in flight, <strong>when</strong> later actions complete,
+            <strong>then</strong> they remain locally visible, retain order, and save after the
+            acknowledgement without being replaced by the older response.
+          </li>
+          <li>
+            <strong>Given</strong> a transient failure, <strong>when</strong> connectivity remains
+            available, <strong>then</strong> the same idempotent action retries after bounded delays
+            of one, two, and four seconds before waiting for a deliberate retry.
+          </li>
+          <li>
+            <strong>Given</strong> an offline client, <strong>when</strong> connectivity returns,
+            <strong>then</strong> pending actions resume in order without a retry loop while
+            offline.
+          </li>
+          <li>
+            <strong>Given</strong> a revision conflict or validation failure, <strong>then</strong>
+            pending local work remains visible and unsaved, automatic retries stop, and safe
+            recovery actions are explained.
+          </li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>P2 · Understand saved history</h3>
+        <ol>
+          <li>
+            <strong>Given</strong> a successful action save, <strong>then</strong> History
+            identifies the actor, time, revision number, action category, and safe editing surface.
+          </li>
+          <li>
+            <strong>Given</strong> an Administrator viewing audit activity,
+            <strong>then</strong> the same category, safe context, and completed result are visible
+            without content values or technical identifiers.
+          </li>
+          <li>
+            <strong>Given</strong> an unchanged document checksum, <strong>then</strong> the action
+            is acknowledged without creating a revision or audit event.
+          </li>
+        </ol>
+      </div>
+
+      <h2>Logical-action contract</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Interaction</th>
+            <th>Completion boundary</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Text, textarea, URL, email, telephone, and numeric entry</td>
+            <td>One second without another change in that action, or field blur</td>
+            <td><code>text-edit</code></td>
+          </tr>
+          <tr>
+            <td>Select, checkbox, color, preset, and other discrete controls</td>
+            <td>Accepted control change</td>
+            <td><code>control-change</code></td>
+          </tr>
+          <tr>
+            <td>Add, remove, duplicate, and ordered-list controls</td>
+            <td>Completed button or keyboard operation</td>
+            <td>
+              <code>add</code>, <code>remove</code>, <code>duplicate</code>, or <code>reorder</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Canvas insert, drop, move, reorder, and replacement</td>
+            <td>One recorded editor action after the final drop</td>
+            <td>
+              <code>add</code>, <code>move</code>, <code>reorder</code>, or <code>replace</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Pointer or keyboard grid movement and resizing</td>
+            <td>Final recorded move/resize; transient pointer frames never persist</td>
+            <td><code>move</code> or <code>resize</code></td>
+          </tr>
+          <tr>
+            <td>Undo and redo</td>
+            <td>Completed history navigation</td>
+            <td><code>undo</code> or <code>redo</code></td>
+          </tr>
+          <tr>
+            <td>Revision restoration</td>
+            <td>Server-confirmed restore as a new immutable revision</td>
+            <td><code>restore</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Context is selected from the content-free set: page content, page details, page structure,
+        forms, library attachment, linked media, navigation, theme, site settings, collections,
+        section settings, element settings, element layout, and revision history. Edited values,
+        field contents, page or element identifiers, checksums, tokens, and raw documents are never
+        action metadata.
+      </p>
+
+      <h2>Functional requirements</h2>
+      <ul>
+        <li>
+          <strong>FR-016-001:</strong> Remove the global draft Save button from every editable
+          workspace.
+        </li>
+        <li>
+          <strong>FR-016-002:</strong> Require every draft-document mutation to supply a finite
+          action category and safe context and to follow the defined completion boundary.
+        </li>
+        <li>
+          <strong>FR-016-003:</strong> Coalesce only continuing text entry within one pending
+          action; a blur, different action, or elapsed one-second pause closes that action.
+        </li>
+        <li>
+          <strong>FR-016-004:</strong> Serialize persistence so at most one save request is in
+          flight for the client and later snapshots retain order.
+        </li>
+        <li>
+          <strong>FR-016-005:</strong> Never apply an older acknowledgement over newer local state;
+          use it only to advance the authoritative revision base for the next queued action.
+        </li>
+        <li>
+          <strong>FR-016-006:</strong> Give every logical action one stable idempotency key across
+          retries and preserve compare-and-swap checksum protection.
+        </li>
+        <li>
+          <strong>FR-016-007:</strong> Retry transient failures at most three times with bounded
+          backoff; pause offline; stop on conflict or validation failure; retain a manual
+          <em>Retry autosave</em> recovery action.
+        </li>
+        <li>
+          <strong>FR-016-008:</strong> Bound the in-memory queue to 250 completed actions. When
+          full, preserve queued and acknowledged work, reject further document mutation, and
+          instruct the user to reconnect or resolve the save failure.
+        </li>
+        <li>
+          <strong>FR-016-009:</strong> Prevent navigation back to All drafts while actions are
+          pending, saving, offline, conflicted, invalid, or failed; allow departure after the queue
+          is acknowledged or explicitly discarded after copying recovery data.
+        </li>
+        <li>
+          <strong>FR-016-010:</strong> Validate category and context server-side; atomically advance
+          the draft, insert one immutable revision, append one audit event, and retain idempotency.
+        </li>
+        <li>
+          <strong>FR-016-011:</strong> Store category and safe context on new revisions; existing
+          revisions remain readable with a neutral legacy fallback.
+        </li>
+        <li>
+          <strong>FR-016-012:</strong> Suppress revision and audit creation when the canonical
+          document checksum matches the current revision.
+        </li>
+        <li>
+          <strong>FR-016-013:</strong> Preserve the editor's undo and redo controls and save their
+          resulting documents as new <code>undo</code> and <code>redo</code> revisions.
+        </li>
+        <li>
+          <strong>FR-016-014:</strong> Keep visible pending, saving, saved, offline, retrying,
+          conflict, validation, and terminal error states without relying on color.
+        </li>
+        <li>
+          <strong>FR-016-015:</strong> Use polite status announcements only for logical-action and
+          persistence transitions; use an alert for conflict, validation, queue-limit, and terminal
+          failures; never announce individual keystrokes or pointer frames.
+        </li>
+        <li>
+          <strong>FR-016-016:</strong> Keep specialized media-detail and revision-label save
+          operations unchanged because they do not mutate the draft document.
+        </li>
+        <li>
+          <strong>FR-016-017:</strong> Reject a canonical serialized document larger than 1,500,000
+          bytes before D1 persistence, retain the pending action, and explain that the draft must be
+          reduced before retrying.
+        </li>
+      </ul>
+
+      <h2>Security and privacy</h2>
+      <ul>
+        <li>
+          Authorization, schema validation, rate limiting, idempotency, and compare-and-swap remain
+          server-side.
+        </li>
+        <li>Action metadata uses server-validated enums and contains no user-authored values.</li>
+        <li>
+          Automatic retries reuse one key, stop after the bounded schedule, and never retry
+          conflicts.
+        </li>
+        <li>
+          Client logs and audit events contain no draft payloads, private media, credentials, or
+          tokens.
+        </li>
+      </ul>
+
+      <h2>Capacity and performance success criteria</h2>
+      <ul>
+        <li>
+          <strong>SC-016-001:</strong> One logical action creates at most one Worker mutation
+          request and one four-statement transactional D1 batch unless a bounded retry is required.
+        </li>
+        <li>
+          <strong>SC-016-002:</strong> The modeled expected workload of 50 completed actions per day
+          uses no more than 0.05% of the 100,000 daily Worker request allowance and remains below 1%
+          even if every action consumes all three retries.
+        </li>
+        <li>
+          <strong>SC-016-003:</strong> At the measured 65.9 KiB reference document size, 50 daily
+          revisions retain about 289.6 MiB over 90 days, below the 350 MiB warning threshold and 500
+          MiB per-database free limit; the live capacity meter continues warning at 70%.
+        </li>
+        <li>
+          <strong>SC-016-004:</strong> Queue processing adds less than 100 ms of client interaction
+          overhead and the repository's 1,000-request API performance test remains below 100 ms p95.
+        </li>
+        <li>
+          <strong>SC-016-005:</strong> Automated tests prove zero lost or reordered actions during
+          rapid input, in-flight edits, offline recovery, retry, conflict, validation, undo, and
+          redo.
+        </li>
+      </ul>
+
+      <h2>Out of scope</h2>
+      <ul>
+        <li>
+          Draft checkout, inactivity expiry, cross-device editor restoration, or durable offline
+          storage.
+        </li>
+        <li>
+          Removing or redesigning Save details for media metadata or Save label for revisions.
+        </li>
+        <li>
+          Publishing public content, changing protected Staging, or enabling Production promotion.
+        </li>
+      </ul>
+    </main>
+  </body>
+</html>

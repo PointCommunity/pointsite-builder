@@ -5,24 +5,43 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
 import type { DraftRecord } from '../../server/repositories/contracts';
-import { api, ClientApiError } from '../api';
-
-type SaveState = 'saved' | 'unsaved' | 'saving' | 'offline' | 'conflict' | 'error';
+import { api } from '../api';
+import {
+  ActionAutosaveController,
+  type AutosaveMutation,
+  type AutosaveSnapshot,
+  type AutosaveState,
+} from './action-autosave';
 
 interface EditorValue {
   draft: DraftRecord;
   document: SiteDocument;
-  saveState: SaveState;
-  updateDocument: (update: (document: SiteDocument) => SiteDocument) => void;
-  saveNow: () => Promise<void>;
+  saveState: AutosaveState;
+  autosave: AutosaveSnapshot;
+  updateDocument: (
+    update: (document: SiteDocument) => SiteDocument,
+    mutation: AutosaveMutation,
+  ) => boolean;
+  stageDocument: (document: SiteDocument) => void;
+  completeDocument: (document: SiteDocument, mutation: AutosaveMutation) => boolean;
+  flushTextAction: () => void;
+  retryAutosave: () => void;
+  copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
 }
 
+type EditorDocumentValue = Pick<
+  EditorValue,
+  'document' | 'updateDocument' | 'stageDocument' | 'completeDocument'
+>;
+
 const EditorContext = createContext<EditorValue | null>(null);
+const EditorDocumentContext = createContext<EditorDocumentValue | null>(null);
 
 export function EditorProvider({
   initialDraft,
@@ -31,80 +50,105 @@ export function EditorProvider({
   initialDraft: DraftRecord;
   children: ReactNode;
 }) {
-  const [draft, setDraft] = useState(initialDraft);
-  const [document, setDocument] = useState(initialDraft.document);
-  const [saveState, setSaveState] = useState<SaveState>('saved');
-  const saveNow = useCallback(async () => {
-    if (saveState === 'saved' || saveState === 'saving') return;
-    if (!navigator.onLine) {
-      setSaveState('offline');
-      return;
-    }
-    setSaveState('saving');
-    try {
-      const saved = await api.saveDraft(draft.id, draft.revision.checksum, document);
-      setDraft(saved);
-      setDocument(saved.document);
-      setSaveState('saved');
-    } catch (error) {
-      if (error instanceof ClientApiError && error.status === 412) setSaveState('conflict');
-      else if (!navigator.onLine) setSaveState('offline');
-      else setSaveState('error');
-    }
-  }, [document, draft.id, draft.revision.checksum, saveState]);
+  const [controller] = useState(
+    () =>
+      new ActionAutosaveController({
+        initialDraft,
+        persist: ({ document, action, expectedChecksum, idempotencyKey }) =>
+          api.saveDraft(initialDraft.id, expectedChecksum, document, action, idempotencyKey),
+      }),
+  );
+  const autosave = useSyncExternalStore(
+    controller.subscribe,
+    () => controller.snapshot,
+    () => controller.snapshot,
+  );
 
   useEffect(() => {
-    if (saveState !== 'unsaved') return;
-    const timer = window.setTimeout(() => void saveNow(), 5_000);
-    return () => window.clearTimeout(timer);
-  }, [saveNow, saveState, document]);
+    controller.activate();
+    return () => controller.dispose();
+  }, [controller]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (saveState !== 'saved') event.preventDefault();
+      if (!controller.snapshot.canLeave) event.preventDefault();
     };
+    const markOffline = () => controller.setOnline(false);
+    const resumeOnline = () => controller.setOnline(true);
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [saveState]);
+    window.addEventListener('offline', markOffline);
+    window.addEventListener('online', resumeOnline);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      window.removeEventListener('offline', markOffline);
+      window.removeEventListener('online', resumeOnline);
+    };
+  }, [controller]);
 
   useEffect(() => {
-    const markOffline = () => {
-      if (saveState !== 'saved') setSaveState('offline');
-    };
-    const retry = () => {
-      if (saveState === 'offline' || saveState === 'error') void saveNow();
-    };
-    window.addEventListener('offline', markOffline);
-    window.addEventListener('online', retry);
-    return () => {
-      window.removeEventListener('offline', markOffline);
-      window.removeEventListener('online', retry);
-    };
-  }, [saveNow, saveState]);
+    const closeTextAction = () => controller.flushTextAction();
+    globalThis.document.addEventListener('focusout', closeTextAction);
+    return () => globalThis.document.removeEventListener('focusout', closeTextAction);
+  }, [controller]);
 
   const reloadLatest = useCallback(async () => {
-    const latest = await api.getDraft(draft.id);
-    setDraft(latest);
-    setDocument(latest.document);
-    setSaveState('saved');
-  }, [draft.id]);
+    const latest = await api.getDraft(initialDraft.id);
+    controller.replaceWithLatest(latest);
+  }, [controller, initialDraft.id]);
+
+  const copyRecoveryData = useCallback(async () => {
+    const recovery = controller.recoveryJson();
+    try {
+      await navigator.clipboard.writeText(recovery);
+      return;
+    } catch {
+      const textarea = globalThis.document.createElement('textarea');
+      textarea.value = recovery;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      globalThis.document.body.appendChild(textarea);
+      textarea.select();
+      const copied = globalThis.document.execCommand('copy');
+      globalThis.document.body.removeChild(textarea);
+      if (!copied) throw new Error('Clipboard access is unavailable');
+    }
+  }, [controller]);
 
   const value = useMemo<EditorValue>(
     () => ({
-      draft,
-      document,
-      saveState,
-      updateDocument: (update) => {
-        setDocument((current) => update(structuredClone(current)));
-        setSaveState('unsaved');
-      },
-      saveNow,
+      draft: autosave.draft,
+      document: autosave.document,
+      saveState: autosave.state,
+      autosave,
+      updateDocument: (update, mutation) => controller.mutate(update, mutation),
+      stageDocument: (document) => controller.stage(document),
+      completeDocument: (document, mutation) => controller.complete(document, mutation),
+      flushTextAction: controller.flushTextAction,
+      retryAutosave: controller.retry,
+      copyRecoveryData,
       reloadLatest,
     }),
-    [document, draft, reloadLatest, saveNow, saveState],
+    [autosave, controller, copyRecoveryData, reloadLatest],
   );
 
-  return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
+  const documentValue = useMemo<EditorDocumentValue>(
+    () => ({
+      document: autosave.document,
+      updateDocument: (update, mutation) => controller.mutate(update, mutation),
+      stageDocument: (document) => controller.stage(document),
+      completeDocument: (document, mutation) => controller.complete(document, mutation),
+    }),
+    [autosave.document, controller],
+  );
+
+  return (
+    <EditorContext.Provider value={value}>
+      <EditorDocumentContext.Provider value={documentValue}>
+        {children}
+      </EditorDocumentContext.Provider>
+    </EditorContext.Provider>
+  );
 }
 
 // The provider and its colocated hook intentionally form one context module.
@@ -112,5 +156,13 @@ export function EditorProvider({
 export function useEditor(): EditorValue {
   const value = useContext(EditorContext);
   if (!value) throw new Error('useEditor must be used inside EditorProvider');
+  return value;
+}
+
+// The visual editor consumes only document state so save acknowledgements do not reset Puck UI.
+// eslint-disable-next-line react-refresh/only-export-components
+export function useEditorDocument(): EditorDocumentValue {
+  const value = useContext(EditorDocumentContext);
+  if (!value) throw new Error('useEditorDocument must be used inside EditorProvider');
   return value;
 }

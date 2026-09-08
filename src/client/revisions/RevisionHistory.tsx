@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RevisionRecord } from '../../server/repositories/contracts';
+import { draftActionCategoryLabel, draftActionContextLabel } from '../../shared/draft-actions';
 import { api } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 
@@ -73,6 +74,10 @@ export function RevisionHistory() {
               <strong>{revision.label || `Revision ${revision.sequence}`}</strong>
               <span>
                 {new Date(revision.createdAt).toLocaleString()} · {revision.createdBy}
+              </span>
+              <span>
+                {draftActionCategoryLabel(revision.actionCategory)} ·{' '}
+                {draftActionContextLabel(revision.actionContext)}
               </span>
               <span>
                 Revision {revision.sequence} · renderer {revision.rendererVersion} ·{' '}

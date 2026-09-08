@@ -56,6 +56,7 @@ describe('repository contract', () => {
     expect(created.name).toBe('Fall refresh');
     expect(created.revision.sequence).toBe(1);
     expect(created.revision.createdBy).toBe(actor);
+    expect(created.revision).toMatchObject({ actionCategory: 'add', actionContext: 'draft' });
     expect(await repository.listRevisions(created.id)).toHaveLength(1);
     expect(repository.auditEvents).toMatchObject([
       { actor, action: 'draft.create', targetId: created.id, outcome: 'succeeded' },
@@ -100,6 +101,11 @@ describe('repository contract', () => {
       actor,
       idempotencyKey: 'save-concurrent-0001',
       requestId: 'request-4',
+      action: { category: 'text-edit', context: 'page-details' },
+    });
+    expect(saved.revision).toMatchObject({
+      actionCategory: 'text-edit',
+      actionContext: 'page-details',
     });
     await expect(
       repository.saveDraft({
@@ -109,6 +115,7 @@ describe('repository contract', () => {
         actor,
         idempotencyKey: 'save-concurrent-stale',
         requestId: 'request-5',
+        action: { category: 'undo', context: 'page-content' },
       }),
     ).rejects.toBeInstanceOf(ConflictError);
 
@@ -134,6 +141,7 @@ describe('repository contract', () => {
       actor,
       idempotencyKey: 'save-restore-0001',
       requestId: 'request-7',
+      action: { category: 'control-change', context: 'site-settings' },
     });
 
     const restored = await repository.restoreRevision({
@@ -147,6 +155,15 @@ describe('repository contract', () => {
     expect(restored.document.site.shortName).toBe('Point ATX');
     expect(restored.revision.sequence).toBe(3);
     expect(restored.revision.parentRevisionId).toBe(saved.revision.id);
+    expect(restored.revision).toMatchObject({
+      actionCategory: 'restore',
+      actionContext: 'revision-history',
+    });
+    expect(repository.auditEvents.at(-1)?.metadata).toEqual({
+      actionCategory: 'restore',
+      actionContext: 'revision-history',
+      sequence: 3,
+    });
   });
 
   it('enforces archive, recovery, and soft-delete transitions', async () => {

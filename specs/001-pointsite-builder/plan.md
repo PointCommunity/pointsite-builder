@@ -21,8 +21,8 @@ repository, then only after separate gates opens a production pull request.
 **Target Platform**: Cloudflare Workers Free; evergreen Chromium, Firefox, WebKit  
 **Project Type**: Full-stack web application plus shared site-kit package  
 **Performance Goals**: API p95 below 500 ms at 10 admin sessions; editor feedback below 100 ms  
-**Constraints**: 100,000 Worker requests/day; 5 million D1 rows read/day; 100,000 D1 rows written/day; private media warning at 250 MB; five-second autosave; one publish job/environment  
-**Scale/Scope**: One church site, up to 50 pages, 5,000 revisions/year, 1,000 media assets, 10 simultaneous administrators
+**Constraints**: 100,000 Worker requests/day; 5 million D1 rows read/day; 100,000 D1 rows written/day; 500 MB per D1 database; private media warning at 250 MB; one-second text-action completion; serialized action autosave; one publish job/environment
+**Scale/Scope**: One church site, up to 50 pages, 18,250 expected action revisions/year (50/day), 1,000 media assets, 10 simultaneous administrators
 
 ## Constitution Check
 

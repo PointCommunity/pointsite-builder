@@ -67,18 +67,20 @@ Deleted drafts remain recoverable for 30 days before purge.
 
 ## Revision
 
-| Field                   | Type          | Rule                             |
-| ----------------------- | ------------- | -------------------------------- |
-| id                      | UUID          | Primary key                      |
-| draft_id                | UUID          | Parent draft                     |
-| sequence                | integer       | Monotonic per draft              |
-| parent_revision_id      | UUID/null     | Optimistic concurrency base      |
-| checksum                | SHA-256       | Canonical document checksum      |
-| document_json           | JSON text     | Validated immutable SiteDocument |
-| label                   | string/null   | Optional human name              |
-| schema_version          | integer       | Copied from document             |
-| renderer_version        | string        | Copied from document             |
-| created_by / created_at | identity/time | Immutable                        |
+| Field                   | Type          | Rule                              |
+| ----------------------- | ------------- | --------------------------------- |
+| id                      | UUID          | Primary key                       |
+| draft_id                | UUID          | Parent draft                      |
+| sequence                | integer       | Monotonic per draft               |
+| parent_revision_id      | UUID/null     | Optimistic concurrency base       |
+| checksum                | SHA-256       | Canonical document checksum       |
+| document_json           | JSON text     | Validated immutable SiteDocument  |
+| label                   | string/null   | Optional human name               |
+| schema_version          | integer       | Copied from document              |
+| renderer_version        | string        | Copied from document              |
+| action_category         | enum/null     | Content-free action; legacy null  |
+| action_context          | enum/null     | Content-free surface; legacy null |
+| created_by / created_at | identity/time | Immutable                         |
 
 Unique constraints: `(draft_id, sequence)`, `(draft_id, checksum)`.
 

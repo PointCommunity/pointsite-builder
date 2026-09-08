@@ -1,6 +1,7 @@
 import type { SiteDocument } from '../site-kit/types';
 import type { DraftRecord, RevisionRecord, Role } from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
+import type { DraftAction } from '../shared/draft-actions';
 import type { StagingWorkflowSnapshot } from './publish/workflow';
 
 export interface ActorResponse {
@@ -137,11 +138,17 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ name, ...(fromRevisionId ? { fromRevisionId } : {}) }),
     }),
-  saveDraft: (id: string, checksum: string, document: SiteDocument) =>
+  saveDraft: (
+    id: string,
+    checksum: string,
+    document: SiteDocument,
+    action: DraftAction,
+    idempotencyKey: string,
+  ) =>
     request<DraftRecord>(`/drafts/${id}`, {
       method: 'PUT',
-      headers: mutationHeaders(crypto.randomUUID(), { 'if-match': `"${checksum}"` }),
-      body: JSON.stringify({ document }),
+      headers: mutationHeaders(idempotencyKey, { 'if-match': `"${checksum}"` }),
+      body: JSON.stringify({ document, action }),
     }),
   renameDraft: (id: string, name: string) =>
     request<DraftRecord>(`/drafts/${id}`, {

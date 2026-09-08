@@ -81,7 +81,10 @@ describe('draft API', () => {
     const savedResponse = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PUT',
       headers: saveHeaders,
-      body: JSON.stringify({ document: changed }),
+      body: JSON.stringify({
+        document: changed,
+        action: { category: 'text-edit', context: 'site-settings' },
+      }),
     });
     expect(savedResponse.status).toBe(200);
     const saved = await responseJson<{ revision: { id: string; checksum: string } }>(savedResponse);
@@ -89,7 +92,10 @@ describe('draft API', () => {
     const retry = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PUT',
       headers: saveHeaders,
-      body: JSON.stringify({ document: changed }),
+      body: JSON.stringify({
+        document: changed,
+        action: { category: 'text-edit', context: 'site-settings' },
+      }),
     });
     expect(retry.status).toBe(200);
     await expect(retry.json()).resolves.toMatchObject({ revision: { id: saved.revision.id } });
@@ -138,7 +144,10 @@ describe('draft API', () => {
         'idempotency-key': 'first-save-00001',
         'if-match': `"${created.revision.checksum}"`,
       },
-      body: JSON.stringify({ document: first }),
+      body: JSON.stringify({
+        document: first,
+        action: { category: 'text-edit', context: 'page-details' },
+      }),
     });
 
     const stale = await app.request(`${origin}/api/drafts/${created.id}`, {
@@ -148,7 +157,10 @@ describe('draft API', () => {
         'idempotency-key': 'stale-save-00001',
         'if-match': `"${created.revision.checksum}"`,
       },
-      body: JSON.stringify({ document: created.document }),
+      body: JSON.stringify({
+        document: created.document,
+        action: { category: 'undo', context: 'page-content' },
+      }),
     });
     expect(stale.status).toBe(412);
     await expect(stale.json()).resolves.toMatchObject({ code: 'REVISION_CONFLICT' });
@@ -174,11 +186,78 @@ describe('draft API', () => {
         'idempotency-key': 'invalid-save-0001',
         'if-match': `"${created.revision.checksum}"`,
       },
-      body: JSON.stringify({ document: created.document }),
+      body: JSON.stringify({
+        document: created.document,
+        action: { category: 'text-edit', context: 'page-content' },
+      }),
     });
     expect(response.status).toBe(422);
     const error = await responseJson<{ code: string; fieldErrors: unknown }>(response);
     expect(error.code).toBe('VALIDATION_FAILED');
     expect(Array.isArray(error.fieldErrors)).toBe(true);
+  });
+
+  it('requires finite content-free action attribution for every draft save', async () => {
+    const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
+    const created = await responseJson<{
+      id: string;
+      revision: { checksum: string };
+      document: SiteDocument;
+    }>(
+      await app.request(`${origin}/api/drafts`, {
+        method: 'POST',
+        headers: { ...requestHeaders, 'idempotency-key': 'create-action-contract' },
+        body: JSON.stringify({ name: 'Action contract' }),
+      }),
+    );
+    const changed = structuredClone(created.document);
+    changed.site.shortName = 'Action metadata';
+    const headers = {
+      ...requestHeaders,
+      'idempotency-key': 'save-action-contract',
+      'if-match': `"${created.revision.checksum}"`,
+    };
+
+    const missing = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ document: changed }),
+    });
+    expect(missing.status).toBe(422);
+
+    const contentBearing = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'PUT',
+      headers: { ...headers, 'idempotency-key': 'save-action-invalid' },
+      body: JSON.stringify({
+        document: changed,
+        action: { category: 'changed-heading-to-secret', context: 'page-content' },
+      }),
+    });
+    expect(contentBearing.status).toBe(422);
+  });
+
+  it('rejects documents above the canonical D1 safety ceiling before persistence', async () => {
+    const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
+    const created = await responseJson<{ id: string; revision: { checksum: string } }>(
+      await app.request(`${origin}/api/drafts`, {
+        method: 'POST',
+        headers: { ...requestHeaders, 'idempotency-key': 'create-size-contract' },
+        body: JSON.stringify({ name: 'Size contract' }),
+      }),
+    );
+    const oversized = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'PUT',
+      headers: {
+        ...requestHeaders,
+        'idempotency-key': 'save-size-contract',
+        'if-match': `"${created.revision.checksum}"`,
+      },
+      body: JSON.stringify({
+        document: { oversized: 'x'.repeat(1_500_001) },
+        action: { category: 'text-edit', context: 'page-content' },
+      }),
+    });
+    expect(oversized.status).toBe(413);
+    await expect(oversized.json()).resolves.toMatchObject({ code: 'DOCUMENT_TOO_LARGE' });
   });
 });

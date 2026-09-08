@@ -118,7 +118,7 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
   expect(mutations).toContain('POST /api/drafts');
   expect(mutations.some((item) => item.startsWith('PUT /api/drafts/'))).toBe(true);
   expect(mutations.some((item) => item.includes('/api/publish'))).toBe(false);

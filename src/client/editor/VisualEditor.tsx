@@ -1,9 +1,18 @@
-import { Puck, type ComponentData, type Config, type Data, type Viewports } from '@puckeditor/core';
+import {
+  Puck,
+  type ComponentData,
+  type Config,
+  type Data,
+  type PuckAction,
+  type Viewports,
+} from '@puckeditor/core';
 import '@puckeditor/core/puck.css';
 import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  memo,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -30,9 +39,11 @@ import { setGridBreakpoint } from './GridBreakpointContext';
 import { breakpointForWidth } from './grid-breakpoint';
 import { GridPlacementInspector } from './GridPlacementInspector';
 import { SectionInspector, type SectionSettings } from './SectionInspector';
-import { useEditor } from './EditorProvider';
+import { useEditorDocument, type useEditor } from './EditorProvider';
 import { usePointPuck } from './puck-store';
 import { useGridInteraction } from './grid-interaction-store';
+import { mutationForContext } from './action-attribution';
+import { consumePuckActionIntent, setPuckActionIntent } from './puck-action-intent';
 import {
   getDraggedElementType,
   setDraggedElementType,
@@ -568,7 +579,7 @@ function rootElementToSection(item: ComponentData): SectionBlock {
   };
 }
 
-export function VisualEditor({
+function VisualEditorImpl({
   pageId,
   structureRevision,
   onEditFooter,
@@ -577,8 +588,14 @@ export function VisualEditor({
   structureRevision: number;
   onEditFooter: () => void;
 }) {
-  const { document, updateDocument } = useEditor();
+  const { document, updateDocument, stageDocument, completeDocument } = useEditorDocument();
   const page = document.pages.find((candidate) => candidate.id === pageId);
+  const data = useMemo<Data>(
+    () => ({ content: (page?.blocks ?? []).map(sectionToData), root: { props: {} } }),
+    // Puck owns page-content state until an explicit structure reset changes its instance key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pageId, structureRevision],
+  );
   if (!page) return <p>Choose a page to edit.</p>;
 
   const components: Record<string, unknown> = {};
@@ -628,7 +645,7 @@ export function VisualEditor({
               updateDocument((next) => {
                 next.navigation = navigation;
                 return next;
-              })
+              }, mutationForContext('navigation'))
             }
           />
         ),
@@ -797,10 +814,27 @@ export function VisualEditor({
       ),
     },
   } as unknown as Config<ComposerProps>;
-  const data: Data = { content: page.blocks.map(sectionToData), root: { props: {} } };
-
   return (
-    <div className="visual-editor" aria-label={`Visual canvas for ${page.title}`}>
+    <div
+      className="visual-editor"
+      aria-label={`Visual canvas for ${page.title}`}
+      onClickCapture={(event) => {
+        const button = (event.target as Element).closest('button');
+        const cue =
+          `${button?.getAttribute('aria-label') ?? ''} ${button?.getAttribute('title') ?? ''}`.toLowerCase();
+        if (cue.includes('undo'))
+          setPuckActionIntent({ category: 'undo', context: 'page-content' });
+        else if (cue.includes('redo'))
+          setPuckActionIntent({ category: 'redo', context: 'page-content' });
+      }}
+      onKeyDownCapture={(event) => {
+        if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+        setPuckActionIntent({
+          category: event.shiftKey ? 'redo' : 'undo',
+          context: 'page-content',
+        });
+      }}
+    >
       <DrawerDragReporter />
       <Puck
         key={`${page.id}:${structureRevision}`}
@@ -808,16 +842,48 @@ export function VisualEditor({
         data={data}
         dnd={editorDnd}
         overrides={editorOverrides}
-        onChange={(next) => {
-          const sections = next.content.map((item) =>
+        onAction={(action: PuckAction, nextState) => {
+          if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
+          const explicit = consumePuckActionIntent();
+          if (action.type === 'setData' || (action.type === 'set' && !explicit)) return;
+          let mutation: ReturnType<typeof mutationForContext> & { transient?: boolean };
+          if (explicit) {
+            mutation = explicit;
+          } else if (action.recordHistory === false) {
+            mutation = {
+              category: 'control-change',
+              context: 'page-content',
+              transient: true,
+            };
+          } else if (action.type === 'insert')
+            mutation = { category: 'add', context: 'page-content' };
+          else if (action.type === 'duplicate')
+            mutation = { category: 'duplicate', context: 'page-content' };
+          else if (action.type === 'remove')
+            mutation = { category: 'remove', context: 'page-content' };
+          else if (action.type === 'reorder')
+            mutation = { category: 'reorder', context: 'page-content' };
+          else if (action.type === 'move') mutation = { category: 'move', context: 'page-content' };
+          else if (action.type === 'replace') {
+            const context = sectionTypes.includes(action.data.type as (typeof sectionTypes)[number])
+              ? 'section-settings'
+              : 'element-settings';
+            mutation = mutationForContext(context, undefined);
+          } else {
+            mutation = mutationForContext('page-content');
+          }
+
+          const sections = nextState.data.content.map((item) =>
             sectionTypes.includes(item.type as (typeof sectionTypes)[number])
               ? dataToSection(item)
               : rootElementToSection(item),
           );
-          updateDocument((draft) => {
-            const target = draft.pages.find((candidate) => candidate.id === pageId);
-            if (target) target.blocks = sections;
-            return draft;
+          const changed = structuredClone(document);
+          const target = changed.pages.find((candidate) => candidate.id === pageId);
+          if (target) target.blocks = sections;
+          queueMicrotask(() => {
+            if (mutation.transient) stageDocument(changed);
+            else completeDocument(changed, mutation);
           });
         }}
         onPublish={undefined}
@@ -828,3 +894,5 @@ export function VisualEditor({
     </div>
   );
 }
+
+export const VisualEditor = memo(VisualEditorImpl);

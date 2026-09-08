@@ -41,6 +41,11 @@
       "id": "0007_media_metadata",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0008_revision_actions",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
     }
   ]
 }

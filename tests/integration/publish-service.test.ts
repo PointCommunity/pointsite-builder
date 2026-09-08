@@ -179,6 +179,7 @@ describe('staging publish coordinator', () => {
       actor: input.actor,
       idempotencyKey: 'save-before-retry',
       requestId: 'request-save',
+      action: { category: 'control-change', context: 'site-settings' },
     });
     await expect(publisher.publish(input)).rejects.toThrow('DRAFT_REVISION_DRIFT');
   });

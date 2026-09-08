@@ -1,3 +1,10 @@
+import {
+  DraftActionCategorySchema,
+  DraftActionContextSchema,
+  draftActionCategoryLabel,
+  draftActionContextLabel,
+} from '../../shared/draft-actions';
+
 const actions: Record<string, string> = {
   'draft.create': 'Created a draft',
   'draft.save': 'Saved draft changes',
@@ -56,10 +63,19 @@ export function auditDetails(metadata: Record<string, string | number | boolean 
     )
     .map(([key, value]) => {
       if (key === 'sequence') return `Revision ${String(value)}`;
+      if (key === 'actionCategory') {
+        const category = DraftActionCategorySchema.safeParse(value);
+        return category.success ? `Action: ${draftActionCategoryLabel(category.data)}` : '';
+      }
+      if (key === 'actionContext') {
+        const context = DraftActionContextSchema.safeParse(value);
+        return context.success ? `Area: ${draftActionContextLabel(context.data)}` : '';
+      }
       const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase());
       const friendlyValue =
         typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value).replaceAll('_', ' ');
       return `${label}: ${friendlyValue}`;
     })
+    .filter(Boolean)
     .join(' · ');
 }
