@@ -226,7 +226,7 @@ describe('guided Staging publishing', () => {
     renderPublish('administrator');
 
     expect(
-      await screen.findByRole('heading', { name: 'Resolve 2 failed Staging checks' }),
+      await screen.findByRole('heading', { name: 'Review 2 failed Staging checks' }),
     ).toBeVisible();
     expect(screen.getByText('Website safety checks')).toBeVisible();
     expect(screen.getByText('Staging update')).toBeVisible();
@@ -238,10 +238,12 @@ describe('guided Staging publishing', () => {
       'href',
       verificationFailed.job!.evidence.failedCheckUrls!.deploy,
     );
-    expect(screen.getByText(/Re-run jobs.*Re-run failed jobs/i)).toBeVisible();
-    expect(screen.getByText(/do not change the draft just to clear this message/i)).toBeVisible();
+    expect(screen.getByText(/Automatic recovery has already checked/i)).toBeVisible();
+    expect(
+      screen.getByText(/do not publish the draft again just to clear this message/i),
+    ).toBeVisible();
     expect(screen.getByText(/site maintainer/i)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'I reran the checks — check again' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Check Staging status again' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Check verification again' })).toBeNull();
   });
 
@@ -252,9 +254,7 @@ describe('guided Staging publishing', () => {
     );
     renderPublish('publisher');
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'I reran the checks — check again' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Check Staging status again' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Your access changed');

@@ -84,10 +84,10 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
   const failedChecks = snapshot?.job?.evidence.failedChecks ?? [];
   const failedChecksTitle =
     failedChecks.length === 1
-      ? 'Resolve the failed Staging check'
+      ? 'Review the failed Staging check'
       : failedChecks.length > 1
-        ? `Resolve ${failedChecks.length} failed Staging checks`
-        : 'Resolve the failed Staging checks';
+        ? `Review ${failedChecks.length} failed Staging checks`
+        : 'Review the failed Staging checks';
   const fallbackChecksUrl = snapshot?.job?.commitUrl
     ? `${snapshot.job.commitUrl}/checks`
     : undefined;
@@ -256,16 +256,15 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
 
             <h4>How to resolve this</h4>
             <ol className="publish-recovery-steps">
+              <li>Automatic recovery has already checked whether Staging finished successfully.</li>
               <li>Open each failed check above and read its latest result.</li>
-              <li>If GitHub shows “Re-run jobs,” choose “Re-run failed jobs” once.</li>
               <li>
-                If the same check fails again—or no re-run option appears—do not change the draft
-                just to clear this message.{' '}
+                Do not publish the draft again just to clear this message.{' '}
                 {role === 'administrator'
                   ? 'Send the failed-check link to the site maintainer so they can fix the website system.'
                   : 'Ask a Builder Administrator or site maintainer to use the failed-check link to fix the website system.'}
               </li>
-              <li>Return here after the check was rerun or repaired, then check its result.</li>
+              <li>Return here after it is repaired, then check Staging status again.</li>
             </ol>
             <button
               className="button button--primary"
@@ -273,7 +272,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               disabled={busy}
               onClick={() => void refresh()}
             >
-              {busy ? 'Checking…' : 'I reran the checks — check again'}
+              {busy ? 'Checking…' : 'Check Staging status again'}
             </button>
           </div>
         ) : lifecycle.phase === 'review-ready' ? (

@@ -92,9 +92,9 @@ export function getPublishingNextStep(
             primaryAction: 'Try publishing again',
           }
         : {
-            title: 'Resolve the failed Staging checks',
+            title: 'Review the failed Staging checks',
             guidance:
-              'At least one required check needs attention before this version can be accepted.',
+              'Automatic recovery could not confirm that every required check passed. Review the remaining failure before accepting this version.',
             effect:
               'Checking here only reads the latest result. It does not rerun a failed check or change Production.',
             primaryAction: 'Open failed checks',
@@ -118,7 +118,8 @@ export function describeFailedCheck(check: string): { label: string; explanation
   if (check === 'deploy')
     return {
       label: 'Staging update',
-      explanation: 'The protected Staging website did not finish updating.',
+      explanation:
+        'Automatic recovery could not confirm that the protected Staging website finished updating.',
     };
   const safeName = check.trim().slice(0, 80) || 'unknown';
   return {

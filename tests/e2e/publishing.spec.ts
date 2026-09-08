@@ -165,17 +165,17 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
   await page.clock.runFor(10_000);
   await expect(page.getByText('Staging verification failed')).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Resolve 2 failed Staging checks' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review 2 failed Staging checks' })).toBeVisible();
   await expect(page.getByText('Website safety checks')).toBeVisible();
   await expect(page.getByText('Staging update', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open website safety check' })).toHaveAttribute(
     'href',
     'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
   );
-  await expect(page.getByText(/Re-run jobs.*Re-run failed jobs/i)).toBeVisible();
-  await expect(page.getByText(/do not change the draft just to clear this message/i)).toBeVisible();
+  await expect(page.getByText(/Automatic recovery has already checked/i)).toBeVisible();
+  await expect(
+    page.getByText(/do not publish the draft again just to clear this message/i),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
   await page.setViewportSize({ width: 760, height: 900 });
   const dialog = page.getByRole('dialog', { name: 'Publish and accept on Staging' });
@@ -186,7 +186,7 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   expect(
     results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
   ).toEqual([]);
-  await page.getByRole('button', { name: 'I reran the checks — check again' }).click();
+  await page.getByRole('button', { name: 'Check Staging status again' }).click();
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
 });
 
