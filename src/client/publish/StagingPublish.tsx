@@ -13,7 +13,7 @@ import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow'
 const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
 const steps = [
-  ['Saved revision', 'Choose one exact saved version.'],
+  ['Private preflight', 'Check one exact saved version without changing Staging.'],
   ['Publish', 'Create one protected Staging candidate.'],
   ['Verify', 'Follow required quality and deployment checks.'],
   ['Review', 'Open the protected Staging website.'],
@@ -97,7 +97,11 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     setActionError(null);
     try {
       const currentJob = snapshot?.job;
-      if (currentJob?.status === 'succeeded' && currentJob.evidence.verificationStatus !== 'passed')
+      if (
+        lifecycle.phase !== 'waiting' &&
+        currentJob?.status === 'succeeded' &&
+        currentJob.evidence.verificationStatus !== 'passed'
+      )
         await api.refreshStagingVerification(currentJob.id);
       await loadWorkflow();
     } catch (error) {
@@ -106,11 +110,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     } finally {
       setBusy(false);
     }
-  }, [loadWorkflow, snapshot?.job]);
+  }, [lifecycle.phase, loadWorkflow, snapshot?.job]);
 
   useEffect(() => {
-    if (!lifecycle.shouldPoll || !snapshot?.job || busy) return;
-    const recordedAt = Date.parse(snapshot.job.completedAt ?? snapshot.job.requestedAt);
+    if (!lifecycle.shouldPoll || busy) return;
+    const recordedAt = snapshot?.job
+      ? Date.parse(snapshot.job.completedAt ?? snapshot.job.requestedAt)
+      : Date.now();
     const startedAt =
       monitoringStartedAt ?? (Number.isFinite(recordedAt) ? recordedAt : Date.now());
     if (monitoringStartedAt === null) setMonitoringStartedAt(startedAt);
@@ -128,11 +134,19 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     setBusy(true);
     setActionError(null);
     try {
+      let current = snapshot;
+      if (current.preflight.state !== 'passed') {
+        await api.preflightStaging(draft.id, draft.revision.id, draft.revision.checksum);
+        const refreshed = await loadWorkflow();
+        if (!refreshed) return;
+        current = refreshed;
+      }
+      if (current.availability.state === 'busy') return;
       await api.publishStaging(
         draft.id,
         draft.revision.id,
         draft.revision.checksum,
-        snapshot.currentStagingSha,
+        current.currentStagingSha,
       );
       setMonitoringStartedAt(Date.now());
       setMonitoringPaused(false);
@@ -313,11 +327,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               >
                 {busy
                   ? 'Starting publication…'
-                  : lifecycle.phase === 'ready'
-                    ? `Publish revision ${draft.revision.sequence} to Staging`
-                    : lifecycle.phase === 'stale'
-                      ? `Publish current revision ${draft.revision.sequence}`
-                      : 'Try publishing again'}
+                  : (nextStep.primaryAction ?? `Publish revision ${draft.revision.sequence}`)}
               </button>
             ) : null}
             {lifecycle.canRefresh && lifecycle.phase !== 'accepted' ? (
@@ -338,7 +348,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
                     ? 'Continue verification'
                     : lifecycle.phase === 'unavailable'
                       ? 'Try loading again'
-                      : 'Check now'}
+                      : lifecycle.phase === 'waiting'
+                        ? 'Check availability'
+                        : 'Check now'}
               </button>
             ) : null}
           </div>
@@ -363,10 +375,22 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       >
         <strong>{lifecycle.title}</strong>
         <p>{lifecycle.guidance}</p>
+        {lifecycle.phase === 'waiting' && snapshot?.availability.state === 'busy' ? (
+          <p>
+            Another publication is currently{' '}
+            {snapshot.availability.phase === 'queued' ? 'preparing' : 'publishing'}. If it does not
+            finish, Builder can safely recover the slot after{' '}
+            <time dateTime={snapshot.availability.retryAt}>
+              {new Date(snapshot.availability.retryAt).toLocaleString()}
+            </time>
+            .
+          </p>
+        ) : null}
       </div>
       {lifecycle.shouldPoll && monitoringStartedAt !== null ? (
         <p className="publish-monitoring-note">
-          Automatic updates are on. Builder checks every 10 seconds for up to 15 minutes.
+          Automatic updates are on. Builder checks this workflow every 10 seconds for up to 15
+          minutes.
         </p>
       ) : null}
       {actionError ? (
@@ -400,6 +424,14 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <div>
             <dt>Current Staging version</dt>
             <dd>{snapshot?.currentStagingSha ?? 'Unavailable'}</dd>
+          </div>
+          <div>
+            <dt>Private preflight</dt>
+            <dd>
+              {snapshot?.preflight.state === 'passed'
+                ? `Passed ${new Date(snapshot.preflight.validatedAt).toLocaleString()}`
+                : 'Required'}
+            </dd>
           </div>
           {snapshot?.job ? (
             <>

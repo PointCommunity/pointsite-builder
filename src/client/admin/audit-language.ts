@@ -22,6 +22,10 @@ const actions: Record<string, string> = {
   'publish.running': 'Staging publish began',
   'publish.succeeded': 'Published to staging',
   'publish.failed': 'Staging publish failed',
+  'publish.preflight-passed': 'Private staging check passed',
+  'publish.preflight-failed': 'Private staging check failed',
+  'publish.denied': 'Staging was already in use',
+  'publish.lease-recovered': 'Recovered an expired staging publish',
   'publish.verification-recorded': 'Recorded staging checks',
   'approval.approved': 'Accepted a staging candidate',
 };
@@ -31,6 +35,7 @@ const targets: Record<string, string> = {
   media: 'Library item',
   role: 'GitHub account',
   'publish-job': 'Staging publish',
+  'publish-preflight': 'Private staging check',
   approval: 'Acceptance',
   'audit-event': 'Audit entry',
 };

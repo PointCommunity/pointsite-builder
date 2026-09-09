@@ -223,11 +223,24 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
           'Your draft is safe. Ask a Builder Administrator or site maintainer to restore the publishing connection, then try again.',
       };
     case 'PUBLISH_IN_PROGRESS':
+    case 'PUBLISH_SLOT_BUSY':
     case 'PUBLISH_JOB_NOT_VERIFIABLE':
       return {
-        title: 'This workflow is still catching up',
+        title:
+          code === 'PUBLISH_SLOT_BUSY'
+            ? 'Staging is currently in use'
+            : 'This workflow is still catching up',
         guidance:
-          'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
+          code === 'PUBLISH_SLOT_BUSY'
+            ? 'Your draft and private preflight remain safe. Wait for Builder to show that Staging is available, then continue without queuing a duplicate.'
+            : 'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
+      };
+    case 'PREFLIGHT_REQUIRED':
+    case 'PREFLIGHT_CANDIDATE_DRIFT':
+      return {
+        title: 'The private preflight must run again',
+        guidance:
+          'Your draft and Staging are unchanged. Use Check and publish again so Builder can validate the exact saved revision.',
       };
     case 'INTERNAL_ERROR':
       return {

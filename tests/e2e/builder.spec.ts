@@ -34,6 +34,7 @@ const draft: DraftRecord = {
 
 test.beforeEach(async ({ page }) => {
   let publishedToStaging = false;
+  let preflightPassed = false;
   let verificationPassed = false;
   let acceptedOnStaging = false;
   const publishTime = new Date().toISOString();
@@ -118,6 +119,8 @@ test.beforeEach(async ({ page }) => {
           : {}),
       },
     };
+    if (path.endsWith('/publish/staging/preflight') && request.method() === 'POST')
+      preflightPassed = true;
     if (path.endsWith('/publish/staging') && request.method() === 'POST') publishedToStaging = true;
     if (path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`))
       verificationPassed = true;
@@ -134,6 +137,16 @@ test.beforeEach(async ({ page }) => {
                   ? publishResult.commitSha
                   : publishResult.stagingBaseSha,
                 reviewUrl: 'https://staging.pointatx.org',
+                preflight: preflightPassed
+                  ? {
+                      state: 'passed',
+                      revisionId: draft.revision.id,
+                      revisionChecksum: draft.revision.checksum,
+                      candidateChecksum: publishResult.candidateChecksum,
+                      validatedAt: publishTime,
+                    }
+                  : { state: 'required', reason: 'not-validated' },
+                availability: { state: 'available' },
                 job: publishedToStaging ? workflowJob : null,
                 approval: acceptedOnStaging
                   ? {
@@ -146,78 +159,86 @@ test.beforeEach(async ({ page }) => {
               }
             : path.endsWith('/staging/base')
               ? { sha: 'b'.repeat(40) }
-              : path.endsWith('/publish/staging')
-                ? publishResult
-                : path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`)
-                  ? {
-                      id: publishResult.jobId,
-                      status: 'succeeded',
-                      candidateChecksum: publishResult.candidateChecksum,
-                      resultSha: publishResult.commitSha,
-                      evidence: {
-                        verificationStatus: 'passed',
-                        workflowUrl:
-                          'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
-                        deploymentUrl:
-                          'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
-                        checks: {
-                          build: true,
-                          schema: true,
-                          renderer: true,
-                          routes: true,
-                          assets: true,
-                          accessibility: true,
-                          responsive: true,
-                          security: true,
-                          primaryFlow: true,
-                          live: true,
-                        },
-                      },
-                    }
-                  : path.endsWith('/approvals/production-base')
-                    ? { sha: 'e'.repeat(40) }
-                    : path.endsWith('/approvals')
-                      ? {
-                          id: 'approval-1',
-                          decision: 'approved',
-                          tuple: {
-                            ...publishResult,
-                            stagingCommitSha: publishResult.commitSha,
-                            productionBaseSha: 'e'.repeat(40),
+              : path.endsWith('/publish/staging/preflight')
+                ? {
+                    state: 'passed',
+                    revisionId: draft.revision.id,
+                    revisionChecksum: draft.revision.checksum,
+                    candidateChecksum: publishResult.candidateChecksum,
+                    validatedAt: publishTime,
+                  }
+                : path.endsWith('/publish/staging')
+                  ? publishResult
+                  : path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`)
+                    ? {
+                        id: publishResult.jobId,
+                        status: 'succeeded',
+                        candidateChecksum: publishResult.candidateChecksum,
+                        resultSha: publishResult.commitSha,
+                        evidence: {
+                          verificationStatus: 'passed',
+                          workflowUrl:
+                            'https://github.com/PointCommunity/pointsite-staging/actions/runs/1',
+                          deploymentUrl:
+                            'https://github.com/PointCommunity/pointsite-staging/actions/runs/2',
+                          checks: {
+                            build: true,
+                            schema: true,
+                            renderer: true,
+                            routes: true,
+                            assets: true,
+                            accessibility: true,
+                            responsive: true,
+                            security: true,
+                            primaryFlow: true,
+                            live: true,
                           },
-                        }
-                      : path.endsWith('/media')
-                        ? { items: [] }
-                        : path.endsWith('/admin/roles')
+                        },
+                      }
+                    : path.endsWith('/approvals/production-base')
+                      ? { sha: 'e'.repeat(40) }
+                      : path.endsWith('/approvals')
+                        ? {
+                            id: 'approval-1',
+                            decision: 'approved',
+                            tuple: {
+                              ...publishResult,
+                              stagingCommitSha: publishResult.commitSha,
+                              productionBaseSha: 'e'.repeat(40),
+                            },
+                          }
+                        : path.endsWith('/media')
                           ? { items: [] }
-                          : path.endsWith('/admin/audit')
+                          : path.endsWith('/admin/roles')
                             ? { items: [] }
-                            : path.endsWith('/admin/capacity')
-                              ? {
-                                  privateMedia: {
-                                    used: 0,
-                                    limit: 1,
-                                    percent: 0,
-                                    warning: false,
-                                    unit: 'bytes',
-                                  },
-                                  revisionData: {
-                                    used: 0,
-                                    limit: 1,
-                                    percent: 0,
-                                    warning: false,
-                                    unit: 'bytes',
-                                  },
-                                  writesToday: {
-                                    used: 0,
-                                    limit: 100000,
-                                    percent: 0,
-                                    warning: false,
-                                    unit: 'operations',
-                                  },
-                                  measuredAt: '2026-09-05T00:00:00Z',
-                                }
-                              : draft;
+                            : path.endsWith('/admin/audit')
+                              ? { items: [] }
+                              : path.endsWith('/admin/capacity')
+                                ? {
+                                    privateMedia: {
+                                      used: 0,
+                                      limit: 1,
+                                      percent: 0,
+                                      warning: false,
+                                      unit: 'bytes',
+                                    },
+                                    revisionData: {
+                                      used: 0,
+                                      limit: 1,
+                                      percent: 0,
+                                      warning: false,
+                                      unit: 'bytes',
+                                    },
+                                    writesToday: {
+                                      used: 0,
+                                      limit: 100000,
+                                      percent: 0,
+                                      warning: false,
+                                      unit: 'operations',
+                                    },
+                                    measuredAt: '2026-09-05T00:00:00Z',
+                                  }
+                                : draft;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -349,8 +370,8 @@ test('publishes and accepts only exact verified staging while production stays l
   await expect(
     page.getByRole('list', { name: 'Staging publishing progress' }).getByRole('listitem'),
   ).toHaveCount(5);
-  await expect(page.getByText('Ready to publish')).toBeVisible();
-  await page.getByRole('button', { name: /Publish revision \d+ to Staging/ }).click();
+  await expect(page.getByText('Private preflight required')).toBeVisible();
+  await page.getByRole('button', { name: /Check and publish revision \d+/ }).click();
   await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
   await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
 

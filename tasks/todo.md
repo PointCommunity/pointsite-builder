@@ -5,10 +5,10 @@
 - [x] T019-0 Audit the live pipeline, claim Issue #27, and record the approved contract and plan.
 - [x] T019-1 Write failing lifecycle, preflight persistence, concurrency, recovery, and privacy tests.
 - [x] T019-2 Add the backward-compatible preflight and publication-lease migration.
-- [ ] T019-3 Implement durable exact-revision preflight and atomic recoverable Staging claims.
-- [ ] T019-4 Expose sanitized availability and enforce server-side preflight/base/candidate rechecks.
-- [ ] T019-5 Implement the accessible one-click preflight, waiting, recovery, and republication flow.
-- [ ] T019-6 Prove multiple-draft isolation and slot coordination in browser and integration tests.
+- [x] T019-3 Implement durable exact-revision preflight and atomic recoverable Staging claims.
+- [x] T019-4 Expose sanitized availability and enforce server-side preflight/base/candidate rechecks.
+- [x] T019-5 Implement the accessible one-click preflight, waiting, recovery, and republication flow.
+- [x] T019-6 Prove multiple-draft isolation and slot coordination in browser and integration tests.
 - [ ] T019-7 Run the full repository gates and local hands-on browser QA.
 - [ ] T019-8 Push the PR, pass exact-head review and CI, merge identical tree, migrate, deploy, verify production, and present the PM Showcase.
 

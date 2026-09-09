@@ -222,6 +222,16 @@ export const api = {
     request<StagingWorkflowSnapshot>(
       `/publish/staging/workflow?draftId=${encodeURIComponent(draftId)}`,
     ),
+  preflightStaging: (
+    draftId: string,
+    expectedRevisionId: string,
+    expectedRevisionChecksum: string,
+  ) =>
+    request<StagingWorkflowSnapshot['preflight']>('/publish/staging/preflight', {
+      method: 'POST',
+      headers: mutationHeaders(`preflight-${expectedRevisionId}-${crypto.randomUUID()}`),
+      body: JSON.stringify({ draftId, expectedRevisionId, expectedRevisionChecksum }),
+    }),
   publishStaging: (
     draftId: string,
     expectedRevisionId: string,
