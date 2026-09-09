@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Plan 019</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h1,
+      h2 {
+        color: #d9ebd0;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #314035;
+        border-radius: 14px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+      }
+      code {
+        color: #d8f4ca;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Plan: isolated draft Staging coordination</h1>
+    <div class="card">
+      <h2>Dependency order</h2>
+      <ol>
+        <li>Specify snapshot, preflight, lease, privacy, and migration contracts.</li>
+        <li>Write failing pure lifecycle and Miniflare concurrency/recovery tests.</li>
+        <li>Add the backward-compatible schema and D1 preflight/claim persistence.</li>
+        <li>
+          Implement server preflight, sanitized availability, exact rechecks, and safe route errors.
+        </li>
+        <li>
+          Implement one-click preflight-to-publish, busy polling, replacement language, and
+          accessible status.
+        </li>
+        <li>
+          Add browser coverage for independent drafts, occupied/recovered slots, and republication.
+        </li>
+        <li>
+          Run migration rehearsal, full gates, agent review, exact-head CI, merge, exact-main CI,
+          production migration/deploy, and Showcase.
+        </li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Risk controls</h2>
+      <ul>
+        <li>
+          <strong>Concurrent claim:</strong> transactional expiry plus a unique active index;
+          contention maps to a stable busy error.
+        </li>
+        <li>
+          <strong>Stale validation:</strong> compare exact revision, candidate checksum, and
+          renderer-contract fingerprint on the server immediately before claim.
+        </li>
+        <li>
+          <strong>Permanent blockage:</strong> 15-minute lease with safe recovery and audit
+          evidence.
+        </li>
+        <li>
+          <strong>Privacy:</strong> sanitized availability contains only state, phase, and retry
+          time.
+        </li>
+        <li>
+          <strong>Rollback:</strong> additive columns/table; old code ignores them; no destructive
+          schema rollback.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

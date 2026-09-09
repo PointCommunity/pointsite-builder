@@ -11,6 +11,14 @@ const stagingCommitSha = 'c'.repeat(40);
 const snapshot = (overrides: Partial<StagingWorkflowSnapshot> = {}): StagingWorkflowSnapshot => ({
   currentStagingSha: stagingCommitSha,
   reviewUrl: 'https://staging.pointatx.org',
+  preflight: {
+    state: 'passed',
+    revisionId,
+    revisionChecksum,
+    candidateChecksum: 'b'.repeat(64),
+    validatedAt: '2026-09-07T11:59:00Z',
+  },
+  availability: { state: 'available' },
   job: {
     id: '30000000-0000-4000-8000-000000000001',
     status: 'succeeded',
@@ -40,7 +48,7 @@ const derive = (current: StagingWorkflowSnapshot | null | undefined, monitoringP
   });
 
 describe('Staging workflow lifecycle', () => {
-  it('distinguishes loading, unavailable, and ready before publication', () => {
+  it('distinguishes loading, unavailable, private preflight, and ready publication', () => {
     expect(derive(undefined)).toMatchObject({ phase: 'loading', step: 1 });
     expect(derive(null)).toMatchObject({
       phase: 'unavailable',
@@ -48,11 +56,47 @@ describe('Staging workflow lifecycle', () => {
       canRefresh: true,
       canPublish: false,
     });
-    expect(derive(snapshot({ job: null }))).toMatchObject({
+    expect(
+      derive(
+        snapshot({
+          job: null,
+          preflight: { state: 'required', reason: 'not-validated' },
+        }),
+      ),
+    ).toMatchObject({
       phase: 'ready',
       step: 1,
       canPublish: true,
       shouldPoll: false,
+      title: 'Private preflight required',
+    });
+    expect(derive(snapshot({ job: null }))).toMatchObject({
+      phase: 'ready',
+      step: 2,
+      canPublish: true,
+      title: 'Ready to publish',
+    });
+  });
+
+  it('waits safely when another draft owns the shared Staging slot', () => {
+    expect(
+      derive(
+        snapshot({
+          job: null,
+          availability: {
+            state: 'busy',
+            phase: 'running',
+            retryAt: '2026-09-07T12:15:00Z',
+          },
+        }),
+      ),
+    ).toMatchObject({
+      phase: 'waiting',
+      step: 2,
+      canPublish: false,
+      canRefresh: true,
+      shouldPoll: true,
+      title: 'Staging is currently in use',
     });
   });
 
@@ -143,15 +187,24 @@ describe('Staging workflow lifecycle', () => {
     ).toMatchObject({ phase: 'failed', step: 3, canPublish: false, canRefresh: true });
   });
 
-  it('invalidates incompatible jobs and approvals after revision or Staging drift', () => {
+  it('requires a new private preflight after revision drift', () => {
     expect(
       derive(
         snapshot({
           job: { ...snapshot().job!, revisionId: '20000000-0000-4000-8000-000000000099' },
+          preflight: { state: 'required', reason: 'revision-changed' },
         }),
       ),
-    ).toMatchObject({ phase: 'stale', step: 1, canPublish: true, canAccept: false });
+    ).toMatchObject({
+      phase: 'ready',
+      step: 1,
+      title: 'Private preflight required',
+      canPublish: true,
+      canAccept: false,
+    });
+  });
 
+  it('describes a replaced candidate without invalidating its source draft', () => {
     const accepted = snapshot({
       currentStagingSha: 'f'.repeat(40),
       approval: {
@@ -163,9 +216,11 @@ describe('Staging workflow lifecycle', () => {
     });
     expect(derive(accepted)).toMatchObject({
       phase: 'stale',
-      step: 1,
+      step: 2,
       canPublish: true,
       canAccept: false,
+      title: 'No longer current on Staging',
     });
+    expect(derive(accepted).guidance).toContain('draft and its history remain safe');
   });
 });

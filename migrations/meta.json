@@ -51,6 +51,11 @@
       "id": "0009_draft_checkouts",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0010_publish_preflight_leases",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
     }
   ]
 }

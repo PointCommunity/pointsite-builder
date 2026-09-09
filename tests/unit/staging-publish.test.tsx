@@ -56,12 +56,22 @@ const job = {
 const ready: StagingWorkflowSnapshot = {
   currentStagingSha: 'c'.repeat(40),
   reviewUrl: 'https://staging.pointatx.org',
+  preflight: {
+    state: 'passed',
+    revisionId: draft.revision.id,
+    revisionChecksum: draft.revision.checksum,
+    candidateChecksum: job.candidateChecksum,
+    validatedAt: '2026-09-07T12:00:00Z',
+  },
+  availability: { state: 'available' },
   job: null,
   approval: null,
 };
 const verifying: StagingWorkflowSnapshot = {
   currentStagingSha: job.stagingCommitSha,
   reviewUrl: ready.reviewUrl,
+  preflight: ready.preflight,
+  availability: ready.availability,
   job,
   approval: null,
 };

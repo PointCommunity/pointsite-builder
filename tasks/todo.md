@@ -1,17 +1,18 @@
 # Tasks: PointSite Builder
 
-## Active: Spec 013 editable page elements
+## Active: Spec 019 isolated draft Staging coordination
 
-- [x] T013-0 Verify and commit pending Spec 012 changes as a separate increment.
-- [x] T013-1 Write failing schema-v8, migration, renderer-ownership, and default-document tests.
-- [x] T013-2 Implement deterministic v7-to-v8 page Hero migration and strict schema.
-- [x] T013-3 Render each non-home Hero only from a registered element while preserving the centralized Footer.
-- [x] T013-4 Integrate Page Manager, the existing Hero catalog/inspector, and media use.
-- [x] T013-5 Prove Hero edit/move/duplicate/remove/replace/save/reload behavior and Footer continuity in the browser.
-- [x] T013-6 Run the complete local verification and requirement checklist.
-- [x] T013-7 Commit, push, pass CI, deploy exact Builder head, and verify production.
+- [x] T019-0 Audit the live pipeline, claim Issue #27, and record the approved contract and plan.
+- [x] T019-1 Write failing lifecycle, preflight persistence, concurrency, recovery, and privacy tests.
+- [x] T019-2 Add the backward-compatible preflight and publication-lease migration.
+- [ ] T019-3 Implement durable exact-revision preflight and atomic recoverable Staging claims.
+- [ ] T019-4 Expose sanitized availability and enforce server-side preflight/base/candidate rechecks.
+- [ ] T019-5 Implement the accessible one-click preflight, waiting, recovery, and republication flow.
+- [ ] T019-6 Prove multiple-draft isolation and slot coordination in browser and integration tests.
+- [ ] T019-7 Run the full repository gates and local hands-on browser QA.
+- [ ] T019-8 Push the PR, pass exact-head review and CI, merge identical tree, migrate, deploy, verify production, and present the PM Showcase.
 
-**Review gate:** approved by the user on 2026-09-07.
+**Review gate:** Issue #27 selected by the PM on 2026-09-08; final completion requires PM testing of the production Showcase.
 
 ## Foundation tasks (historical)
 

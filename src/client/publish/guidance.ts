@@ -36,10 +36,31 @@ export function getPublishingNextStep(
       };
     case 'ready':
       return {
-        title: `Publish revision ${revision} to Staging`,
-        guidance: 'This saved revision is ready for the protected Staging website.',
-        effect: 'Publishing creates one Staging candidate. It does not change Production.',
-        primaryAction: `Publish revision ${revision} to Staging`,
+        title:
+          lifecycle.step === 1
+            ? `Check and publish revision ${revision}`
+            : `Publish revision ${revision} to Staging`,
+        guidance:
+          lifecycle.step === 1
+            ? 'Builder will privately check this exact saved revision before it can use Staging.'
+            : 'This exact saved revision passed its private check and is ready for Staging.',
+        effect:
+          lifecycle.step === 1
+            ? 'The private check changes nothing. If it passes and Staging is free, Builder continues with one protected candidate; Production remains unchanged.'
+            : 'Publishing creates one Staging candidate. It does not change Production.',
+        primaryAction:
+          lifecycle.step === 1
+            ? `Check and publish revision ${revision}`
+            : `Publish revision ${revision} to Staging`,
+      };
+    case 'waiting':
+      return {
+        title: 'Wait for Staging to become available',
+        guidance:
+          'Another publication is using the shared Staging site. Builder will check again automatically.',
+        effect:
+          'Checking availability does not queue, interrupt, identify, or change the other publication. Your draft and private preflight remain safe.',
+        primaryAction: 'Check availability',
       };
     case 'publishing':
       return {

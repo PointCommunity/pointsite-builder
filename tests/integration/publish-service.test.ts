@@ -27,9 +27,12 @@ async function setup() {
     d1Databases: { DB: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
-  await database.exec(
-    (await readFile('migrations/0001_initial.sql', 'utf8')).replace(/\s+/g, ' ').trim(),
-  );
+  for (const migration of [
+    'migrations/0001_initial.sql',
+    'migrations/0010_publish_preflight_leases.sql',
+  ]) {
+    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+  }
   const repository = new InMemoryRepository();
   const draft = await repository.createDraft({
     name: 'Publish test',

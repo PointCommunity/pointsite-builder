@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Data Model 019</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h1,
+      h2 {
+        color: #d9ebd0;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #314035;
+        border-radius: 14px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+      }
+      code {
+        color: #d8f4ca;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Data model: draft preflight and publication lease</h1>
+    <div class="card">
+      <h2>publish_preflights</h2>
+      <p>
+        Append-only attempts contain an ID and idempotency key; draft and revision foreign keys;
+        exact revision, candidate, schema, renderer, and renderer-contract identity; observed
+        validation base; status and bounded safe failure code; actor; and timestamps. The latest
+        passed record is current only when revision and renderer-contract identity still match.
+      </p>
+    </div>
+    <div class="card">
+      <h2>publish_jobs additions</h2>
+      <p>
+        <code>lease_expires_at</code> is nullable for historical/completed jobs and required by
+        application logic for active jobs. The active uniqueness index covers both queued and
+        running Staging jobs. A claim transaction expires an overdue active job before inserting or
+        reclaiming exactly one running job.
+      </p>
+    </div>
+    <div class="card">
+      <h2>Compatibility and recovery</h2>
+      <p>
+        The migration is additive except for replacing the partial active-job index. Existing
+        completed jobs and approvals remain unchanged. Existing active rows receive a bounded expiry
+        at migration time. Application rollback remains compatible because the old code ignores
+        added columns and its running-only invariant is stricter than no invariant; remote migration
+        is not destructively reversed.
+      </p>
+    </div>
+  </body>
+</html>

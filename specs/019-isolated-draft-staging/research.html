@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Research 019</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h1,
+      h2 {
+        color: #d9ebd0;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #314035;
+        border-radius: 14px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+      }
+      code {
+        color: #d8f4ca;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Research: isolated draft Staging coordination</h1>
+    <div class="card">
+      <h2>Existing evidence</h2>
+      <ul>
+        <li>
+          <code>publish_jobs.candidate_json</code> already binds jobs to draft and revision, and
+          approvals bind to the exact job and candidate tuple.
+        </li>
+        <li>
+          The current workflow restores only the selected draft's latest job, but readiness exists
+          only transiently inside a publish request.
+        </li>
+        <li>
+          The current partial unique index covers only <code>running</code>; queued work and crashed
+          running rows have no bounded recovery contract.
+        </li>
+        <li>
+          The GitHub client already checks the current main SHA, validates the pinned renderer
+          blobs, restricts candidate paths, and uses a non-force compare-and-swap ref update.
+        </li>
+        <li>
+          The client already polls only while needed, stops after 15 minutes, keeps manual refresh,
+          and derives presentation from a pure lifecycle function.
+        </li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Decisions</h2>
+      <ol>
+        <li>
+          Add append-only draft-scoped preflight records rather than attaching readiness to a
+          mutable draft row.
+        </li>
+        <li>
+          Fingerprint the pinned renderer contract; do not bind preflight validity to mutable
+          Staging content head.
+        </li>
+        <li>
+          Retain the existing publish-job evidence and add a bounded lease to the active job instead
+          of creating a separate lock table.
+        </li>
+        <li>
+          Make claiming atomic in D1 and map uniqueness contention to an expected busy result.
+        </li>
+        <li>
+          Expose a sanitized availability summary through the existing workflow snapshot; reveal no
+          competing draft identity.
+        </li>
+        <li>
+          Keep the existing one-click publishing intent: preflight is an internal first stage, not
+          another confirmation gate.
+        </li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Rejected alternatives</h2>
+      <ul>
+        <li>One Staging site per draft: conflicts with the approved shared-site boundary.</li>
+        <li>A FIFO publication queue: hides future mutations and is explicitly out of scope.</li>
+        <li>Client-only availability: races and cannot authorize a protected write.</li>
+        <li>
+          Invalidating preflight on every Staging change: unnecessarily couples otherwise
+          independent drafts.
+        </li>
+        <li>
+          An indefinite lock: a Worker or GitHub interruption could permanently block publication.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>
