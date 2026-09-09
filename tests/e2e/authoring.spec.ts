@@ -730,6 +730,37 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
   await expect(page.getByText('All changes saved')).toBeVisible();
   expect(controls.saveRequests).toHaveLength(cancelBaseline);
 
+  const panelSwitchBaseline = controls.saveRequests.length;
+  const abandonedHandleBox = await handle.boundingBox();
+  expect(abandonedHandleBox).not.toBeNull();
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 9,
+    clientX: abandonedHandleBox!.x,
+    clientY: abandonedHandleBox!.y,
+  });
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 9,
+    clientX: abandonedHandleBox!.x + 60,
+    clientY: abandonedHandleBox!.y,
+  });
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await expect(page.getByRole('heading', { name: 'Live preview' })).toBeVisible();
+  expect(controls.saveRequests).toHaveLength(panelSwitchBaseline);
+  await page.getByRole('button', { name: 'Layout' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator('.visual-editor iframe')
+        .contentFrame()
+        .locator('.point-hero-text-box--body')
+        .evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
+        ),
+    )
+    .toBe(requestedDragWidth);
+
   await page.reload();
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });

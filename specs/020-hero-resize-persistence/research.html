@@ -110,7 +110,9 @@
         Keep drag frames visual-only by updating the rendered box style during movement. Dispatch
         one history-recorded Puck replacement on <code>pointerup</code>. On
         <code>pointercancel</code>, restore the original inline style and dispatch nothing. This
-        makes the completed action the only document and autosave boundary.
+        makes the completed action the only document and autosave boundary. Keep an explicit
+        cancellation callback for component unmount so panel and view transitions also remove
+        document listeners, restore the durable style, and create no save.
       </p>
     </section>
   </body>

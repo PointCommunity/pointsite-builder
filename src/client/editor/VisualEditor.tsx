@@ -89,8 +89,11 @@ function HeroTextResizeHandle({
   const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
   const dispatch = usePointPuck((state) => state.dispatch);
   const [status, setStatus] = useState('');
+  const cancelActiveResize = useRef<(() => void) | null>(null);
   const widthKey = kind === 'heading' ? 'headingWidth' : 'bodyWidth';
   const label = kind === 'heading' ? 'heading' : 'body';
+
+  useEffect(() => () => cancelActiveResize.current?.(), []);
 
   const renderedWidth = (button: HTMLButtonElement): number => {
     const box = button.closest<HTMLElement>('.point-hero-text-box');
@@ -142,6 +145,7 @@ function HeroTextResizeHandle({
   const beginResize = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    cancelActiveResize.current?.();
     const button = event.currentTarget;
     const box = button.closest<HTMLElement>('.point-hero-text-box');
     const container = box?.parentElement;
@@ -161,18 +165,27 @@ function HeroTextResizeHandle({
       );
       box.style.setProperty('--point-hero-text-width', `${latest}%`);
     };
-    const finish = (nextEvent: globalThis.PointerEvent) => {
+    const cleanup = () => {
       ownerDocument.removeEventListener('pointermove', move);
       ownerDocument.removeEventListener('pointerup', finish);
       ownerDocument.removeEventListener('pointercancel', finish);
-      if (nextEvent.type === 'pointercancel') {
-        if (originalInlineWidth)
-          box.style.setProperty('--point-hero-text-width', originalInlineWidth);
-        else box.style.removeProperty('--point-hero-text-width');
-        return;
-      }
+      cancelActiveResize.current = null;
+    };
+    const restore = () => {
+      if (originalInlineWidth)
+        box.style.setProperty('--point-hero-text-width', originalInlineWidth);
+      else box.style.removeProperty('--point-hero-text-width');
+    };
+    const cancel = () => {
+      cleanup();
+      restore();
+    };
+    const finish = (nextEvent: globalThis.PointerEvent) => {
+      cleanup();
+      if (nextEvent.type === 'pointercancel') return restore();
       commit(latest);
     };
+    cancelActiveResize.current = cancel;
     ownerDocument.addEventListener('pointermove', move);
     ownerDocument.addEventListener('pointerup', finish, { once: true });
     ownerDocument.addEventListener('pointercancel', finish, { once: true });
