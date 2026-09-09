@@ -7,6 +7,7 @@ import { StagingPublisher } from '../src/server/publish/service';
 import { D1MediaRepository, D1PrivateBucket, MediaService } from '../src/server/media/service';
 import { D1AdminService } from '../src/server/admin/service';
 import { D1PublishJobStore } from '../src/server/publish/jobs';
+import { D1PublishPreflightStore } from '../src/server/publish/preflights';
 import { D1ApprovalService } from '../src/server/approvals/service';
 import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
@@ -42,6 +43,7 @@ export default {
               config.github,
               media,
               new D1PublishJobStore(env.DB),
+              new D1PublishPreflightStore(env.DB),
             ),
           }
         : {}),

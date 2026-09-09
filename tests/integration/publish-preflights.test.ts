@@ -63,6 +63,22 @@ it('retains exact passed and failed preflight attempts without draft content', a
     now: '2026-09-08T12:01:00Z',
   });
   expect(passed).toMatchObject({ status: 'passed', candidateChecksum: 'b'.repeat(64) });
+  await expect(
+    store.recordPassed({
+      idempotencyKey: 'preflight-pass-0001',
+      draftId: passed.draftId,
+      revisionId: passed.revisionId,
+      revisionChecksum: passed.revisionChecksum,
+      candidateChecksum: 'f'.repeat(64),
+      schemaVersion: 8,
+      rendererVersion: '8.0.0',
+      rendererContractChecksum: passed.rendererContractChecksum,
+      validatedBaseSha: 'd'.repeat(40),
+      fileCount: 2,
+      actor: 'publisher@pointatx.org',
+      requestId: 'request-conflict',
+    }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
   expect(
     await store.getLatestCurrent(
       passed.draftId,
@@ -100,12 +116,40 @@ it('retains exact passed and failed preflight attempts without draft content', a
   ]);
   const audits = await database
     .prepare(
-      "SELECT action,metadata_json FROM audit_events WHERE target_type='publish-preflight' ORDER BY occurred_at",
+      "SELECT action,outcome,metadata_json FROM audit_events WHERE target_type='publish-preflight' ORDER BY occurred_at",
     )
-    .all<{ action: string; metadata_json: string }>();
+    .all<{ action: string; outcome: string; metadata_json: string }>();
   expect(audits.results.map((row) => row.action)).toEqual([
     'publish.preflight-passed',
     'publish.preflight-failed',
   ]);
+  expect(audits.results.map((row) => row.outcome)).toEqual(['succeeded', 'failed']);
   expect(audits.results.every((row) => !row.metadata_json.includes('document'))).toBe(true);
+});
+
+it('deduplicates simultaneous exact preflight retries', async () => {
+  const { database, store } = await setup();
+  const input = {
+    idempotencyKey: 'preflight-race-0001',
+    draftId: '10000000-0000-4000-8000-000000000001',
+    revisionId: '20000000-0000-4000-8000-000000000001',
+    revisionChecksum: 'a'.repeat(64),
+    candidateChecksum: 'b'.repeat(64),
+    schemaVersion: 8,
+    rendererVersion: '8.0.0',
+    rendererContractChecksum: 'c'.repeat(64),
+    validatedBaseSha: 'd'.repeat(40),
+    fileCount: 2,
+    actor: 'publisher@pointatx.org',
+    requestId: 'request-race',
+    now: '2026-09-08T12:01:00Z',
+  };
+
+  const [first, second] = await Promise.all([store.recordPassed(input), store.recordPassed(input)]);
+  expect(second).toEqual(first);
+  const count = await database
+    .prepare('SELECT COUNT(*) AS count FROM publish_preflights WHERE idempotency_key=?')
+    .bind(input.idempotencyKey)
+    .first<{ count: number }>();
+  expect(count?.count).toBe(1);
 });

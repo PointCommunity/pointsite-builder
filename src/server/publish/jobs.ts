@@ -179,9 +179,16 @@ export class D1PublishJobStore {
     } catch (error) {
       const active = await this.active(now);
       if (!active) throw error;
-      await this.audit(input.actor, 'publish.denied', 'staging', input.requestId, {
-        phase: active.status,
-      }).run();
+      await this.audit(
+        input.actor,
+        'publish.denied',
+        'staging',
+        input.requestId,
+        {
+          phase: active.status,
+        },
+        'denied',
+      ).run();
       throw new Error('PUBLISH_SLOT_BUSY');
     }
   }
@@ -246,7 +253,7 @@ export class D1PublishJobStore {
           "UPDATE publish_jobs SET status='failed',evidence_json=?,completed_at=?,lease_expires_at=NULL WHERE id=? AND status='running'",
         )
         .bind(JSON.stringify({ failureCode: code }), new Date().toISOString(), id),
-      this.audit(actor, 'publish.failed', id, requestId, { failureCode: code }),
+      this.audit(actor, 'publish.failed', id, requestId, { failureCode: code }, 'failed'),
     ]);
   }
 
@@ -310,10 +317,11 @@ export class D1PublishJobStore {
     id: string,
     requestId: string,
     metadata: Record<string, string>,
+    outcome: 'succeeded' | 'failed' | 'denied' = 'succeeded',
   ) {
     return this.database
       .prepare(
-        "INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,'succeeded',?,?)",
+        'INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,?,?,?)',
       )
       .bind(
         crypto.randomUUID(),
@@ -322,6 +330,7 @@ export class D1PublishJobStore {
         action,
         'publish-job',
         id,
+        outcome,
         requestId,
         JSON.stringify(metadata),
       );

@@ -71,6 +71,36 @@ interface BaseInput {
   now?: string;
 }
 
+type PassedInput = BaseInput & {
+  candidateChecksum: string;
+  schemaVersion: number;
+  rendererVersion: string;
+  validatedBaseSha: string;
+  fileCount: number;
+};
+
+const matchesPassed = (existing: PublishPreflightRecord, input: PassedInput) =>
+  existing.status === 'passed' &&
+  existing.draftId === input.draftId &&
+  existing.revisionId === input.revisionId &&
+  existing.revisionChecksum === input.revisionChecksum &&
+  existing.candidateChecksum === input.candidateChecksum &&
+  existing.schemaVersion === input.schemaVersion &&
+  existing.rendererVersion === input.rendererVersion &&
+  existing.rendererContractChecksum === input.rendererContractChecksum &&
+  existing.validatedBaseSha === input.validatedBaseSha &&
+  existing.fileCount === input.fileCount &&
+  existing.requestedBy === input.actor;
+
+const matchesFailed = (existing: PublishPreflightRecord, input: BaseInput, failureCode: string) =>
+  existing.status === 'failed' &&
+  existing.draftId === input.draftId &&
+  existing.revisionId === input.revisionId &&
+  existing.revisionChecksum === input.revisionChecksum &&
+  existing.rendererContractChecksum === input.rendererContractChecksum &&
+  existing.failureCode === failureCode &&
+  existing.requestedBy === input.actor;
+
 export class D1PublishPreflightStore {
   constructor(private readonly database: D1Database) {}
 
@@ -85,7 +115,7 @@ export class D1PublishPreflightStore {
   async getLatestForDraft(draftId: string): Promise<PublishPreflightRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_preflights WHERE draft_id=? ORDER BY completed_at DESC,id DESC LIMIT 1`,
+        `SELECT ${selection} FROM publish_preflights WHERE draft_id=? ORDER BY completed_at DESC,rowid DESC LIMIT 1`,
       )
       .bind(draftId)
       .first<PreflightRow>();
@@ -107,47 +137,48 @@ export class D1PublishPreflightStore {
       : null;
   }
 
-  async recordPassed(
-    input: BaseInput & {
-      candidateChecksum: string;
-      schemaVersion: number;
-      rendererVersion: string;
-      validatedBaseSha: string;
-      fileCount: number;
-    },
-  ): Promise<PublishPreflightRecord> {
+  async recordPassed(input: PassedInput): Promise<PublishPreflightRecord> {
     const existing = await this.getByKey(input.idempotencyKey);
-    if (existing) return existing;
+    if (existing) {
+      if (matchesPassed(existing, input)) return existing;
+      throw new Error('IDEMPOTENCY_CONFLICT');
+    }
     const id = crypto.randomUUID();
     const now = input.now ?? new Date().toISOString();
-    await this.database.batch([
-      this.database
-        .prepare(
-          `INSERT INTO publish_preflights (${selection}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        )
-        .bind(
-          id,
-          input.idempotencyKey,
-          input.draftId,
-          input.revisionId,
-          input.revisionChecksum,
-          input.candidateChecksum,
-          input.schemaVersion,
-          input.rendererVersion,
-          input.rendererContractChecksum,
-          input.validatedBaseSha,
-          input.fileCount,
-          'passed',
-          null,
-          input.actor,
-          now,
-          now,
-        ),
-      this.audit(input, id, now, 'publish.preflight-passed', {
-        revisionId: input.revisionId,
-        candidateChecksum: input.candidateChecksum,
-      }),
-    ]);
+    try {
+      await this.database.batch([
+        this.database
+          .prepare(
+            `INSERT INTO publish_preflights (${selection}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          )
+          .bind(
+            id,
+            input.idempotencyKey,
+            input.draftId,
+            input.revisionId,
+            input.revisionChecksum,
+            input.candidateChecksum,
+            input.schemaVersion,
+            input.rendererVersion,
+            input.rendererContractChecksum,
+            input.validatedBaseSha,
+            input.fileCount,
+            'passed',
+            null,
+            input.actor,
+            now,
+            now,
+          ),
+        this.audit(input, id, now, 'publish.preflight-passed', {
+          revisionId: input.revisionId,
+          candidateChecksum: input.candidateChecksum,
+        }),
+      ]);
+    } catch (error) {
+      const raced = await this.getByKey(input.idempotencyKey);
+      if (raced && matchesPassed(raced, input)) return raced;
+      throw error;
+    }
     const created = await this.getByKey(input.idempotencyKey);
     if (!created) throw new Error('PREFLIGHT_CREATE_FAILED');
     return created;
@@ -155,31 +186,48 @@ export class D1PublishPreflightStore {
 
   async recordFailed(input: BaseInput & { failureCode: string }): Promise<PublishPreflightRecord> {
     const existing = await this.getByKey(input.idempotencyKey);
-    if (existing) return existing;
+    const failureCode = input.failureCode.slice(0, 100);
+    if (existing) {
+      if (matchesFailed(existing, input, failureCode)) return existing;
+      throw new Error('IDEMPOTENCY_CONFLICT');
+    }
     const id = crypto.randomUUID();
     const now = input.now ?? new Date().toISOString();
-    await this.database.batch([
-      this.database
-        .prepare(
-          `INSERT INTO publish_preflights (${selection}) VALUES (?,?,?,?,?,NULL,NULL,NULL,?,NULL,NULL,'failed',?,?,?,?)`,
-        )
-        .bind(
+    try {
+      await this.database.batch([
+        this.database
+          .prepare(
+            `INSERT INTO publish_preflights (${selection}) VALUES (?,?,?,?,?,NULL,NULL,NULL,?,NULL,NULL,'failed',?,?,?,?)`,
+          )
+          .bind(
+            id,
+            input.idempotencyKey,
+            input.draftId,
+            input.revisionId,
+            input.revisionChecksum,
+            input.rendererContractChecksum,
+            failureCode,
+            input.actor,
+            now,
+            now,
+          ),
+        this.audit(
+          input,
           id,
-          input.idempotencyKey,
-          input.draftId,
-          input.revisionId,
-          input.revisionChecksum,
-          input.rendererContractChecksum,
-          input.failureCode.slice(0, 100),
-          input.actor,
           now,
-          now,
+          'publish.preflight-failed',
+          {
+            revisionId: input.revisionId,
+            failureCode,
+          },
+          'failed',
         ),
-      this.audit(input, id, now, 'publish.preflight-failed', {
-        revisionId: input.revisionId,
-        failureCode: input.failureCode.slice(0, 100),
-      }),
-    ]);
+      ]);
+    } catch (error) {
+      const raced = await this.getByKey(input.idempotencyKey);
+      if (raced && matchesFailed(raced, input, failureCode)) return raced;
+      throw error;
+    }
     const created = await this.getByKey(input.idempotencyKey);
     if (!created) throw new Error('PREFLIGHT_CREATE_FAILED');
     return created;
@@ -191,10 +239,11 @@ export class D1PublishPreflightStore {
     now: string,
     action: string,
     metadata: Record<string, string>,
+    outcome: 'succeeded' | 'failed' = 'succeeded',
   ) {
     return this.database
       .prepare(
-        "INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,'succeeded',?,?)",
+        'INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,?,?,?)',
       )
       .bind(
         crypto.randomUUID(),
@@ -203,6 +252,7 @@ export class D1PublishPreflightStore {
         action,
         'publish-preflight',
         id,
+        outcome,
         input.requestId,
         JSON.stringify(metadata),
       );
