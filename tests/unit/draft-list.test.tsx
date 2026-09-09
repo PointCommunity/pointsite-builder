@@ -51,6 +51,42 @@ function renderList(overrides: Partial<React.ComponentProps<typeof DraftList>> =
 }
 
 describe('archived draft lifecycle controls', () => {
+  it('shows owner resume and disables another editor with a readable explanation', () => {
+    const active = { ...archivedDraft(), status: 'active' as const };
+    const { unmount } = render(
+      <DraftList
+        drafts={[active]}
+        role="editor"
+        checkouts={[{ draftId: active.id, state: 'owned', expiresAt: '2026-09-08T12:30:00Z' }]}
+        onOpen={vi.fn()}
+        onCreate={vi.fn()}
+        onDuplicate={vi.fn()}
+        onArchive={vi.fn()}
+        onUnarchive={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Resume editing' })).toBeEnabled();
+    unmount();
+    render(
+      <DraftList
+        drafts={[active]}
+        role="editor"
+        checkouts={[
+          { draftId: active.id, state: 'unavailable', expiresAt: '2026-09-08T12:30:00Z' },
+        ]}
+        onOpen={vi.fn()}
+        onCreate={vi.fn()}
+        onDuplicate={vi.fn()}
+        onArchive={vi.fn()}
+        onUnarchive={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const unavailable = screen.getByRole('button', { name: 'Open editor' });
+    expect(unavailable).toBeDisabled();
+    expect(unavailable).toHaveAccessibleDescription(/Currently being edited/);
+  });
   it('keeps open and duplicate while replacing Archive with Unarchive and adding Delete', () => {
     const { draft, props } = renderList();
     const card = screen.getByRole('listitem');

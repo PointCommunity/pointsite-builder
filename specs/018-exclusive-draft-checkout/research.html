@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Research 018</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: auto;
+        padding: 3rem;
+        background: #0b0d0e;
+        color: #eee;
+        font: 16px/1.6 system-ui;
+      }
+      h1,
+      h2 {
+        color: #e4c77d;
+      }
+      code {
+        color: #9dd9ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Exclusive checkout research</h1>
+    <h2>Existing evidence</h2>
+    <ul>
+      <li>
+        D1 is authoritative; drafts already use immutable revisions, optimistic checksums,
+        idempotency, roles, and append-only audit history.
+      </li>
+      <li>
+        Action autosave serializes acknowledged mutations and exposes whether navigation is safe.
+      </li>
+      <li>
+        App selection and editor panel/page state are currently mounted React state and disappear on
+        reload.
+      </li>
+      <li>
+        Authenticated email is the stable internal actor identifier; availability must not disclose
+        it.
+      </li>
+    </ul>
+    <h2>Decision</h2>
+    <p>
+      Use one additive <code>draft_checkouts</code> row per draft and one
+      <code>editor_view_states</code> row per actor. A random token is returned once and only its
+      SHA-256 hash is stored. A conditional update/insert makes acquisition atomic. Same-owner
+      acquisition rotates the token and client id. All comparisons use Worker-generated server time.
+    </p>
+    <h2>Alternatives rejected</h2>
+    <ul>
+      <li>
+        Durable Objects add cost and operational surface unnecessary for the expected collaborator
+        count.
+      </li>
+      <li>Browser-only locks cannot protect direct API mutations or cross-device access.</li>
+      <li>
+        WebSockets are unnecessary for a five-second SLA; foreground polling is predictable and fits
+        free-plan capacity.
+      </li>
+      <li>
+        Releasing on unload destroys crash/reconnect recovery and unload requests are unreliable.
+      </li>
+    </ul>
+    <h2>Capacity</h2>
+    <p>
+      At five-second foreground polling, ten simultaneous list clients consume about 7,200 requests
+      and modest indexed reads per hour. Activity writes are throttled and piggyback on meaningful
+      events. Both remain below documented repository planning ceilings for the expected small
+      collaborator pool.
+    </p>
+  </body>
+</html>

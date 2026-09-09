@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Plan 018</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: auto;
+        padding: 3rem;
+        background: #0b0d0e;
+        color: #eee;
+        font: 16px/1.6 system-ui;
+      }
+      h1,
+      h2 {
+        color: #e4c77d;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Implementation plan</h1>
+    <ol>
+      <li>Add lease/view-state types, pure expiry/restoration logic, and failing unit tests.</li>
+      <li>
+        Add additive migration, in-memory/D1 atomic repository operations, audit behavior, and
+        integration tests.
+      </li>
+      <li>Add bounded API contracts and require current lease authority on mutations.</li>
+      <li>
+        Add list availability polling, acquire/denial dialog, automatic owned-session restoration,
+        activity renewal, warning/read-only transitions, view-state persistence, and intentional
+        release after autosave settlement.
+      </li>
+      <li>
+        Add multi-context browser coverage, accessibility checks, capacity evidence, migration
+        rehearsal, and dark-mode acceptance evidence.
+      </li>
+      <li>
+        Run complete gates, PR review, exact-head CI, merge-tree proof, direct production release,
+        live multi-session verification, and closeout.
+      </li>
+    </ol>
+    <h2>Risks</h2>
+    <ul>
+      <li>Race safety: use conditional D1 changes and verify affected-row count.</li>
+      <li>
+        Old-client writes: rotate token on transfer and check it in the same server operation as
+        every mutation.
+      </li>
+      <li>Write amplification: persist activity at a bounded cadence and do not audit polling.</li>
+      <li>
+        Rollback: additive nullable tables/headers allow the prior Worker to run unchanged while new
+        rows remain inert.
+      </li>
+    </ul>
+  </body>
+</html>

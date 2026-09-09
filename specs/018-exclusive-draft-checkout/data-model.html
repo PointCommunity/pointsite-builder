@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Data model 018</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: auto;
+        padding: 3rem;
+        background: #0b0d0e;
+        color: #eee;
+        font: 16px/1.6 system-ui;
+      }
+      h1,
+      h2 {
+        color: #e4c77d;
+      }
+      code {
+        color: #9dd9ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Checkout data model</h1>
+    <h2>draft_checkouts</h2>
+    <p>
+      Primary key <code>draft_id</code>; owner actor; active client id; SHA-256 token hash;
+      acquired, last genuine activity, expiry, and update timestamps. Foreign key cascades with
+      draft deletion. Conditional updates provide compare-and-swap semantics.
+    </p>
+    <h2>editor_view_states</h2>
+    <p>
+      Primary key actor; optional active draft; panel; page and element ids; preview viewport and
+      zoom; bounded JSON scroll positions; update timestamp. No document content, dialog state,
+      pending actions, or credentials.
+    </p>
+    <h2>Lifecycle</h2>
+    <p>
+      Expired rows are treated as available and replaced atomically. Archive/delete/revocation makes
+      mutation authority invalid immediately. View state survives checkout expiry but automatic
+      reopening occurs only while the actor still owns a current lease.
+    </p>
+  </body>
+</html>

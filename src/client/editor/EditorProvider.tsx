@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
-import type { DraftRecord } from '../../server/repositories/contracts';
+import type { DraftCheckout, DraftRecord } from '../../server/repositories/contracts';
 import { api } from '../api';
 import {
   ActionAutosaveController,
@@ -46,8 +46,10 @@ const EditorDocumentContext = createContext<EditorDocumentValue | null>(null);
 export function EditorProvider({
   initialDraft,
   children,
+  checkout = null,
 }: {
   initialDraft: DraftRecord;
+  checkout?: DraftCheckout | null;
   children: ReactNode;
 }) {
   const [controller] = useState(
@@ -55,7 +57,14 @@ export function EditorProvider({
       new ActionAutosaveController({
         initialDraft,
         persist: ({ document, action, expectedChecksum, idempotencyKey }) =>
-          api.saveDraft(initialDraft.id, expectedChecksum, document, action, idempotencyKey),
+          api.saveDraft(
+            initialDraft.id,
+            expectedChecksum,
+            document,
+            action,
+            idempotencyKey,
+            checkout?.token ?? '',
+          ),
       }),
   );
   const autosave = useSyncExternalStore(

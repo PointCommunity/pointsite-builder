@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Exclusive draft checkout acceptance</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: auto;
+        padding: 3rem;
+        background: #0b0d0e;
+        color: #eee;
+        font: 16px/1.6 system-ui;
+      }
+      h1,
+      h2 {
+        color: #e4c77d;
+      }
+      .pass {
+        color: #9ee6b8;
+      }
+      .pending {
+        color: #ffd37a;
+      }
+      code {
+        color: #9dd9ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #23 acceptance evidence</h1>
+    <p>Spec 018 traces the exclusive checkout and per-user restoration release.</p>
+    <h2 class="pass">Verified locally</h2>
+    <ul>
+      <li>
+        Atomic D1 acquisition, other-user denial, owner transfer, token rotation, inactivity expiry,
+        audit creation, and bounded view-state persistence.
+      </li>
+      <li>
+        Old tokens cannot mutate after transfer; current lease validation participates in the same
+        D1 batch as the immutable revision write.
+      </li>
+      <li>
+        Thirty-minute expiry, five-minute warning boundary, genuine-activity classification, safe
+        restoration clamps, live foreground polling, accessible unavailable controls, and
+        stale-acquisition dialog.
+      </li>
+      <li>
+        All 303 Vitest cases pass; repository check, contract lint, build, coverage, and performance
+        budgets pass. The complete Playwright matrix passed 99 cases with 15 platform skips; one
+        unrelated redo interaction timed out once and passed immediately in isolated rerun.
+      </li>
+      <li>No public PointSite or protected Staging content was mutated by local verification.</li>
+    </ul>
+    <h2 class="pending">Release evidence pending</h2>
+    <p>
+      Exact-head GitHub Quality, merge-tree equality, D1 production migration rehearsal/application,
+      Cloudflare version capture, direct Builder production deployment, multi-session authenticated
+      live validation, and final Issue/Project closure are recorded only after those gates complete.
+    </p>
+  </body>
+</html>

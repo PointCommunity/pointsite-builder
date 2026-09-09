@@ -1,9 +1,14 @@
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
+import { checkoutExpiry } from '../../shared/draft-checkout';
 import type {
   AuditEventRecord,
+  CheckoutCommand,
   CreateDraftInput,
   DraftRecord,
+  DraftCheckout,
+  DraftCheckoutAvailability,
+  EditorViewState,
   DraftRepository,
   DraftStatus,
   RestoreRevisionInput,
@@ -234,6 +239,8 @@ export class D1DraftRepository implements DraftRepository {
   }
 
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
+    if (input.checkoutToken)
+      await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
     const prior = await this.readIdempotent('draft.save', input.actor, input.idempotencyKey);
     if (prior) return prior;
     const current = await this.getDraft(input.draftId);
@@ -274,32 +281,80 @@ export class D1DraftRepository implements DraftRepository {
       document,
       action: input.action,
     });
+    const checkoutHash = input.checkoutToken ? await hashToken(input.checkoutToken) : null;
+    const revisionInsert = checkoutHash
+      ? this.database
+          .prepare(
+            `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context)
+             SELECT ?, d.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts d
+             JOIN draft_checkouts c ON c.draft_id=d.id
+             WHERE d.id=? AND d.latest_revision_id=? AND d.status='active' AND lower(c.actor)=lower(?)
+               AND c.token_hash=? AND c.expires_at>?`,
+          )
+          .bind(
+            revisionId,
+            revision.sequence,
+            revision.parentRevisionId,
+            checksum,
+            JSON.stringify(document),
+            revision.label,
+            document.schemaVersion,
+            document.rendererVersion,
+            input.actor,
+            now,
+            revision.actionCategory,
+            revision.actionContext,
+            current.id,
+            current.revision.id,
+            input.actor,
+            checkoutHash,
+            now,
+          )
+      : this.database
+          .prepare(
+            `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id = ? AND latest_revision_id = ?`,
+          )
+          .bind(
+            revisionId,
+            revision.sequence,
+            revision.parentRevisionId,
+            checksum,
+            JSON.stringify(document),
+            revision.label,
+            document.schemaVersion,
+            document.rendererVersion,
+            input.actor,
+            now,
+            revision.actionCategory,
+            revision.actionContext,
+            current.id,
+            current.revision.id,
+          );
     const [revisionWrite] = await this.database.batch([
+      revisionInsert,
       this.database
         .prepare(
-          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id = ? AND latest_revision_id = ?`,
+          `UPDATE drafts SET latest_revision_id = ?, updated_at = ? WHERE id = ? AND latest_revision_id = ? AND EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
         )
-        .bind(
-          revisionId,
-          revision.sequence,
-          revision.parentRevisionId,
-          checksum,
-          JSON.stringify(document),
-          revision.label,
-          document.schemaVersion,
-          document.rendererVersion,
-          input.actor,
-          now,
-          revision.actionCategory,
-          revision.actionContext,
-          current.id,
-          current.revision.id,
-        ),
-      this.database
-        .prepare(
-          `UPDATE drafts SET latest_revision_id = ?, updated_at = ? WHERE id = ? AND latest_revision_id = ?`,
-        )
-        .bind(revisionId, now, current.id, current.revision.id),
+        .bind(revisionId, now, current.id, current.revision.id, revisionId),
+      ...(checkoutHash
+        ? [
+            this.database
+              .prepare(
+                `UPDATE draft_checkouts SET last_activity_at=?,expires_at=?,updated_at=?
+                 WHERE draft_id=? AND lower(actor)=lower(?) AND token_hash=? AND EXISTS (SELECT 1 FROM revisions WHERE id=?)`,
+              )
+              .bind(
+                now,
+                checkoutExpiry(now),
+                now,
+                current.id,
+                input.actor,
+                checkoutHash,
+                revisionId,
+              ),
+          ]
+        : []),
       this.guardedAuditStatement(
         input.actor,
         'draft.save',
@@ -324,6 +379,8 @@ export class D1DraftRepository implements DraftRepository {
       ),
     ]);
     if ((revisionWrite?.meta.changes ?? 0) !== 1) {
+      if (input.checkoutToken)
+        await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
       throw new ConflictError('The draft has a newer revision');
     }
     return record;
@@ -426,6 +483,251 @@ export class D1DraftRepository implements DraftRepository {
     return { ...current, status, updatedAt: now, deletedAt };
   }
 
+  async listCheckoutAvailability(
+    actor: string,
+    now = new Date().toISOString(),
+  ): Promise<DraftCheckoutAvailability[]> {
+    const result = await this.database
+      .prepare(
+        `SELECT d.id AS draft_id, c.actor, c.expires_at
+         FROM drafts d LEFT JOIN draft_checkouts c ON c.draft_id = d.id AND c.expires_at > ?
+         WHERE d.status != 'deleted' ORDER BY d.updated_at DESC LIMIT 100`,
+      )
+      .bind(now)
+      .all<{ draft_id: string; actor: string | null; expires_at: string | null }>();
+    return result.results.map((row) => ({
+      draftId: row.draft_id,
+      state: !row.actor
+        ? 'available'
+        : row.actor.toLowerCase() === actor.toLowerCase()
+          ? 'owned'
+          : 'unavailable',
+      expiresAt: row.expires_at,
+    }));
+  }
+
+  async acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout> {
+    const draft = await this.getDraft(input.draftId);
+    if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
+    const now = input.now ?? new Date().toISOString();
+    const prior = await this.checkoutRow(input.draftId);
+    const token = crypto.randomUUID();
+    const tokenHash = await hashToken(token);
+    const expiresAt = checkoutExpiry(now);
+    const event =
+      !prior || prior.expires_at <= now
+        ? 'acquired'
+        : prior.client_id === input.clientId
+          ? 'resumed'
+          : 'transferred';
+    const acquiredAt = event === 'acquired' ? now : prior!.acquired_at;
+    const result = await this.database
+      .prepare(
+        `INSERT INTO draft_checkouts (draft_id,actor,client_id,token_hash,acquired_at,last_activity_at,expires_at,updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(draft_id) DO UPDATE SET actor=excluded.actor, client_id=excluded.client_id,
+           token_hash=excluded.token_hash, acquired_at=excluded.acquired_at,
+           last_activity_at=excluded.last_activity_at, expires_at=excluded.expires_at, updated_at=excluded.updated_at
+         WHERE draft_checkouts.expires_at <= ? OR lower(draft_checkouts.actor) = lower(?)`,
+      )
+      .bind(
+        input.draftId,
+        input.actor,
+        input.clientId,
+        tokenHash,
+        acquiredAt,
+        now,
+        expiresAt,
+        now,
+        now,
+        input.actor,
+      )
+      .run();
+    if ((result.meta.changes ?? 0) !== 1) {
+      await this.auditStatement(
+        input.actor,
+        'draft.checkout.denied',
+        input.draftId,
+        input.requestId,
+        {},
+      ).run();
+      throw new ConflictError('This draft is already checked out');
+    }
+    if (prior && prior.expires_at <= now)
+      await this.auditStatement(
+        prior.actor,
+        'draft.checkout.expired',
+        input.draftId,
+        input.requestId,
+        {},
+      ).run();
+    await this.auditStatement(
+      input.actor,
+      `draft.checkout.${event}`,
+      input.draftId,
+      input.requestId,
+      {},
+    ).run();
+    return {
+      draftId: input.draftId,
+      actor: input.actor,
+      clientId: input.clientId,
+      token,
+      acquiredAt,
+      lastActivityAt: now,
+      expiresAt,
+      event,
+      viewState: await this.readViewState(input.actor),
+    };
+  }
+
+  async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
+    const now = input.now ?? new Date().toISOString();
+    const tokenHash = await hashToken(input.token);
+    const expiresAt = checkoutExpiry(now);
+    const result = await this.database
+      .prepare(
+        `UPDATE draft_checkouts SET last_activity_at = ?, expires_at = ?, updated_at = ?
+         WHERE draft_id = ? AND lower(actor) = lower(?) AND client_id = ? AND token_hash = ? AND expires_at > ?
+           AND EXISTS (SELECT 1 FROM drafts WHERE id = ? AND status = 'active')`,
+      )
+      .bind(
+        now,
+        expiresAt,
+        now,
+        input.draftId,
+        input.actor,
+        input.clientId,
+        tokenHash,
+        now,
+        input.draftId,
+      )
+      .run();
+    if ((result.meta.changes ?? 0) !== 1)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
+    if (viewState) {
+      await this.database
+        .prepare(
+          `INSERT INTO editor_view_states (actor,draft_id,panel,page_id,selected_element_id,preview_viewport,preview_zoom,scroll_positions_json,updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(actor) DO UPDATE SET draft_id=excluded.draft_id,panel=excluded.panel,page_id=excluded.page_id,
+             selected_element_id=excluded.selected_element_id,preview_viewport=excluded.preview_viewport,
+             preview_zoom=excluded.preview_zoom,scroll_positions_json=excluded.scroll_positions_json,updated_at=excluded.updated_at`,
+        )
+        .bind(
+          input.actor,
+          input.draftId,
+          viewState.panel,
+          viewState.pageId,
+          viewState.selectedElementId,
+          viewState.previewViewport,
+          viewState.previewZoom,
+          JSON.stringify(viewState.scrollPositions),
+          now,
+        )
+        .run();
+    }
+    const row = (await this.checkoutRow(input.draftId))!;
+    return {
+      draftId: input.draftId,
+      actor: input.actor,
+      clientId: input.clientId,
+      token: input.token,
+      acquiredAt: row.acquired_at,
+      lastActivityAt: now,
+      expiresAt,
+      event: 'resumed',
+      viewState: viewState ?? (await this.readViewState(input.actor)),
+    };
+  }
+
+  async releaseCheckout(input: CheckoutCommand): Promise<void> {
+    const tokenHash = await hashToken(input.token);
+    const result = await this.database
+      .prepare(
+        `DELETE FROM draft_checkouts WHERE draft_id = ? AND lower(actor) = lower(?) AND client_id = ? AND token_hash = ?`,
+      )
+      .bind(input.draftId, input.actor, input.clientId, tokenHash)
+      .run();
+    if ((result.meta.changes ?? 0) === 1)
+      await this.auditStatement(
+        input.actor,
+        'draft.checkout.released',
+        input.draftId,
+        input.requestId,
+        {},
+      ).run();
+  }
+
+  async assertCheckout(
+    draftId: string,
+    actor: string,
+    token: string,
+    now = new Date().toISOString(),
+  ): Promise<void> {
+    const tokenHash = await hashToken(token);
+    const row = await this.database
+      .prepare(
+        `SELECT 1 AS valid FROM draft_checkouts c JOIN drafts d ON d.id = c.draft_id
+       WHERE c.draft_id = ? AND lower(c.actor) = lower(?) AND c.token_hash = ? AND c.expires_at > ? AND d.status = 'active'`,
+      )
+      .bind(draftId, actor, tokenHash, now)
+      .first<{ valid: number }>();
+    if (!row) throw new ConflictError('This editing client no longer owns the draft checkout');
+  }
+
+  async ownedCheckout(
+    actor: string,
+    now = new Date().toISOString(),
+  ): Promise<DraftCheckout | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT c.* FROM draft_checkouts c JOIN drafts d ON d.id=c.draft_id
+       WHERE lower(c.actor)=lower(?) AND c.expires_at > ? AND d.status='active' ORDER BY c.updated_at DESC LIMIT 1`,
+      )
+      .bind(actor, now)
+      .first<CheckoutRow>();
+    return row
+      ? {
+          draftId: row.draft_id,
+          actor: row.actor,
+          clientId: row.client_id,
+          token: '',
+          acquiredAt: row.acquired_at,
+          lastActivityAt: row.last_activity_at,
+          expiresAt: row.expires_at,
+          event: 'resumed',
+          viewState: await this.readViewState(actor),
+        }
+      : null;
+  }
+
+  private checkoutRow(draftId: string): Promise<CheckoutRow | null> {
+    return this.database
+      .prepare('SELECT * FROM draft_checkouts WHERE draft_id = ?')
+      .bind(draftId)
+      .first<CheckoutRow>();
+  }
+
+  private async readViewState(actor: string): Promise<EditorViewState | null> {
+    const row = await this.database
+      .prepare('SELECT * FROM editor_view_states WHERE lower(actor)=lower(?)')
+      .bind(actor)
+      .first<ViewStateRow>();
+    return row
+      ? {
+          draftId: row.draft_id,
+          panel: row.panel,
+          pageId: row.page_id,
+          selectedElementId: row.selected_element_id,
+          previewViewport: row.preview_viewport,
+          previewZoom: row.preview_zoom,
+          scrollPositions: JSON.parse(row.scroll_positions_json) as Record<string, number>,
+          updatedAt: row.updated_at,
+        }
+      : null;
+  }
+
   private async readIdempotent(
     scope: string,
     actor: string,
@@ -522,4 +824,30 @@ export class D1DraftRepository implements DraftRepository {
         revisionId,
       );
   }
+}
+
+interface CheckoutRow {
+  draft_id: string;
+  actor: string;
+  client_id: string;
+  token_hash: string;
+  acquired_at: string;
+  last_activity_at: string;
+  expires_at: string;
+  updated_at: string;
+}
+interface ViewStateRow {
+  actor: string;
+  draft_id: string;
+  panel: EditorViewState['panel'];
+  page_id: string | null;
+  selected_element_id: string | null;
+  preview_viewport: EditorViewState['previewViewport'];
+  preview_zoom: number;
+  scroll_positions_json: string;
+  updated_at: string;
+}
+async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }

@@ -44,6 +44,36 @@ async function mockPublishing(
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === '/api/drafts/checkouts')
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [{ draftId: draft.id, state: 'available', expiresAt: null }],
+        }),
+      });
+    if (path === '/api/drafts/checkout/owned')
+      return route.fulfill({ contentType: 'application/json', body: 'null' });
+    if (path.endsWith('/checkout') && request.method() === 'GET')
+      return route.fulfill({ contentType: 'application/json', body: '{"active":true}' });
+    if (path.endsWith('/checkout'))
+      return route.fulfill({
+        status: request.method() === 'DELETE' ? 204 : 200,
+        contentType: 'application/json',
+        body:
+          request.method() === 'DELETE'
+            ? ''
+            : JSON.stringify({
+                draftId: draft.id,
+                actor: `${role}@pointatx.org`,
+                clientId: 'browser-client-0001',
+                token: '30000000-0000-4000-8000-000000000001',
+                acquiredAt: new Date().toISOString(),
+                lastActivityAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+                event: 'acquired',
+                viewState: null,
+              }),
+      });
     if (path.endsWith('/verification')) verificationRequests += 1;
     const passed =
       scenario === 'accepted'

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Spec 018: Exclusive draft checkout</title>
+    <style>
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem;
+        background: #0b0d0e;
+        color: #eee;
+        font: 16px/1.6 system-ui;
+      }
+      h1,
+      h2 {
+        color: #e4c77d;
+      }
+      code {
+        color: #9dd9ff;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #39413e;
+        padding: 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Exclusive draft checkout and editor restoration</h1>
+    <p>
+      <strong>Issue:</strong> #23. <strong>Objective:</strong> prevent concurrent draft mutation
+      while preserving safe recovery across refreshes, reconnects, and devices.
+    </p>
+    <h2>Requirements</h2>
+    <ul>
+      <li>
+        A server-authoritative lease belongs to one authenticated user and one active client.
+        Acquisition is atomic; reacquisition by the owner rotates the client token and supersedes
+        the older client.
+      </li>
+      <li>
+        The lease expires after 30 minutes without genuine activity. The UI warns at five minutes
+        remaining. Polling, rendering, timers, and hidden tabs do not renew it.
+      </li>
+      <li>
+        Every document mutation revalidates actor, active-client token, draft status, and
+        server-time expiry. Preview and viewer access never acquire a lease.
+      </li>
+      <li>
+        Connected foreground draft lists refresh availability within five seconds. Responses
+        identify only available, owned by the caller, or held by another editor, plus an expiry time
+        and a non-sensitive display label when safe.
+      </li>
+      <li>
+        All drafts waits for autosave settlement, persists safe view state, releases the lease, and
+        returns to the list. Closing or losing connectivity does not release it.
+      </li>
+      <li>
+        Per-user state stores draft, panel, page, selected element identifier, preview
+        viewport/zoom, and bounded pane scroll positions. Restoration clamps missing pages/elements
+        and never restores dialogs, destructive actions, or unsynchronized content.
+      </li>
+      <li>
+        Acquisition, resume, transfer, release, expiry, denial, and forced read-only transitions are
+        append-only audit events.
+      </li>
+    </ul>
+    <h2>API success criteria</h2>
+    <table>
+      <tr>
+        <th>Operation</th>
+        <th>Contract</th>
+      </tr>
+      <tr>
+        <td><code>GET /api/drafts/checkouts</code></td>
+        <td>Content-free availability snapshot for all visible drafts.</td>
+      </tr>
+      <tr>
+        <td><code>POST /api/drafts/:id/checkout</code></td>
+        <td>
+          Atomic acquire/resume/transfer; returns a bounded opaque token and restored safe view
+          state.
+        </td>
+      </tr>
+      <tr>
+        <td><code>PATCH /api/drafts/:id/checkout</code></td>
+        <td>Genuine activity and/or bounded view-state persistence; requires current token.</td>
+      </tr>
+      <tr>
+        <td><code>DELETE /api/drafts/:id/checkout</code></td>
+        <td>Intentional release; current owner/client only; idempotent for a repeated release.</td>
+      </tr>
+      <tr>
+        <td>Draft mutations</td>
+        <td>
+          Require <code>x-draft-checkout</code>; stale, expired, transferred, revoked, archived, or
+          deleted authority is rejected.
+        </td>
+      </tr>
+    </table>
+    <h2>Commands and structure</h2>
+    <p>
+      Source: <code>src/server/checkouts</code>, repository contracts/implementations, draft routes,
+      and client editor/list modules. Tests: Vitest unit/integration and Playwright E2E. Gates:
+      <code>npm run check</code>, <code>npm run test:performance</code>,
+      <code>npm run test:e2e</code>.
+    </p>
+    <h2>Boundaries</h2>
+    <ul>
+      <li>
+        Always use server time, atomic D1 writes, bounded schemas, authorization, and accessible
+        status/focus.
+      </li>
+      <li>Schema migration must be additive and rollback-compatible with the prior Worker.</li>
+      <li>
+        Never expose raw identity, tokens, content, IP addresses, or pending offline actions through
+        availability or audit metadata.
+      </li>
+      <li>
+        Never change public PointSite content or introduce a Builder staging/canary environment.
+      </li>
+    </ul>
+    <h2>Acceptance</h2>
+    <p>
+      All Issue #23 acceptance criteria are traced by Spec 018 tasks, contract checks,
+      unit/integration/browser tests, capacity evidence, migration rehearsal, exact-head Quality,
+      and production multi-session verification.
+    </p>
+  </body>
+</html>

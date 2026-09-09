@@ -35,6 +35,13 @@ test('viewer receives a read-only preview with no authoring or publish controls'
     const request = route.request();
     if (request.method() !== 'GET') mutations.push(`${request.method()} ${request.url()}`);
     const path = new URL(request.url()).pathname;
+    if (path === '/api/drafts/checkouts')
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [{ draftId: draft.id, state: 'available', expiresAt: null }],
+        }),
+      });
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -90,6 +97,36 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === '/api/drafts/checkouts')
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [{ draftId: draft.id, state: 'available', expiresAt: null }],
+        }),
+      });
+    if (path === '/api/drafts/checkout/owned')
+      return route.fulfill({ contentType: 'application/json', body: 'null' });
+    if (path.endsWith('/checkout') && request.method() === 'GET')
+      return route.fulfill({ contentType: 'application/json', body: '{"active":true}' });
+    if (path.endsWith('/checkout'))
+      return route.fulfill({
+        status: request.method() === 'DELETE' ? 204 : 200,
+        contentType: 'application/json',
+        body:
+          request.method() === 'DELETE'
+            ? ''
+            : JSON.stringify({
+                draftId: draft.id,
+                actor: 'github:22',
+                clientId: 'browser-client-0001',
+                token: '30000000-0000-4000-8000-000000000001',
+                acquiredAt: new Date().toISOString(),
+                lastActivityAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+                event: 'acquired',
+                viewState: null,
+              }),
+      });
     if (request.method() !== 'GET') mutations.push(`${request.method()} ${path}`);
     const body = path.endsWith('/me')
       ? {

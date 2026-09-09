@@ -2,15 +2,20 @@
 
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
+import { checkoutExpiry } from '../../shared/draft-checkout';
 import type {
   AuditEventRecord,
+  CheckoutCommand,
   CreateDraftInput,
   DraftRecord,
+  DraftCheckout,
+  DraftCheckoutAvailability,
   DraftRepository,
   DraftStatus,
   RestoreRevisionInput,
   RevisionRecord,
   SaveDraftInput,
+  EditorViewState,
 } from './contracts';
 
 export class NotFoundError extends Error {
@@ -36,6 +41,11 @@ export class InMemoryRepository implements DraftRepository {
   readonly #revisions = new Map<string, RevisionRecord[]>();
   readonly #idempotency = new Map<string, DraftRecord>();
   readonly #audit: AuditEventRecord[] = [];
+  readonly #checkouts = new Map<
+    string,
+    Omit<DraftCheckout, 'token' | 'event' | 'viewState'> & { tokenHash: string }
+  >();
+  readonly #viewStates = new Map<string, EditorViewState>();
 
   get auditEvents(): AuditEventRecord[] {
     return clone(this.#audit);
@@ -109,6 +119,8 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
+    if (input.checkoutToken)
+      await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
     if (prior) return clone(prior);
@@ -154,6 +166,14 @@ export class InMemoryRepository implements DraftRepository {
     revisions.push(clone(revision));
     this.#revisions.set(input.draftId, revisions);
     this.#drafts.set(input.draftId, clone(updated));
+    if (input.checkoutToken) {
+      const checkout = this.#checkouts.get(input.draftId)!;
+      this.#checkouts.set(input.draftId, {
+        ...checkout,
+        lastActivityAt: now,
+        expiresAt: checkoutExpiry(now),
+      });
+    }
     this.#idempotency.set(operationKey, clone(updated));
     this.#recordAudit(input.actor, 'draft.save', input.draftId, input.requestId, {
       sequence: revision.sequence,
@@ -249,6 +269,128 @@ export class InMemoryRepository implements DraftRepository {
     return clone(updated);
   }
 
+  async listCheckoutAvailability(
+    actor: string,
+    now = new Date().toISOString(),
+  ): Promise<DraftCheckoutAvailability[]> {
+    return [...this.#drafts.values()]
+      .filter((draft) => draft.status !== 'deleted')
+      .map((draft) => {
+        const lease = this.#checkouts.get(draft.id);
+        if (!lease || lease.expiresAt <= now)
+          return { draftId: draft.id, state: 'available' as const, expiresAt: null };
+        return {
+          draftId: draft.id,
+          state:
+            lease.actor.toLowerCase() === actor.toLowerCase()
+              ? ('owned' as const)
+              : ('unavailable' as const),
+          expiresAt: lease.expiresAt,
+        };
+      });
+  }
+
+  async acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout> {
+    const draft = this.#drafts.get(input.draftId);
+    if (!draft) throw new NotFoundError(`Draft ${input.draftId} was not found`);
+    if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
+    const now = input.now ?? new Date().toISOString();
+    const current = this.#checkouts.get(input.draftId);
+    if (
+      current &&
+      current.expiresAt > now &&
+      current.actor.toLowerCase() !== input.actor.toLowerCase()
+    ) {
+      this.#recordAudit(input.actor, 'draft.checkout.denied', input.draftId, input.requestId, {});
+      throw new ConflictError('This draft is already checked out');
+    }
+    if (current && current.expiresAt <= now)
+      this.#recordAudit(
+        current.actor,
+        'draft.checkout.expired',
+        input.draftId,
+        input.requestId,
+        {},
+      );
+    const token = crypto.randomUUID();
+    const tokenHash = await hashToken(token);
+    const event =
+      !current || current.expiresAt <= now
+        ? 'acquired'
+        : current.clientId === input.clientId
+          ? 'resumed'
+          : 'transferred';
+    const acquiredAt = event === 'acquired' ? now : current!.acquiredAt;
+    const record = {
+      draftId: input.draftId,
+      actor: input.actor,
+      clientId: input.clientId,
+      tokenHash,
+      acquiredAt,
+      lastActivityAt: now,
+      expiresAt: checkoutExpiry(now),
+    };
+    this.#checkouts.set(input.draftId, record);
+    this.#recordAudit(input.actor, `draft.checkout.${event}`, input.draftId, input.requestId, {});
+    return { ...record, token, event, viewState: clone(this.#viewStates.get(input.actor) ?? null) };
+  }
+
+  async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
+    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
+    const current = this.#checkouts.get(input.draftId)!;
+    const now = input.now ?? new Date().toISOString();
+    const updated = { ...current, lastActivityAt: now, expiresAt: checkoutExpiry(now) };
+    this.#checkouts.set(input.draftId, updated);
+    if (viewState) this.#viewStates.set(input.actor, clone({ ...viewState, updatedAt: now }));
+    return {
+      ...updated,
+      token: input.token,
+      event: 'resumed',
+      viewState: clone(viewState ?? this.#viewStates.get(input.actor) ?? null),
+    };
+  }
+
+  async releaseCheckout(input: CheckoutCommand): Promise<void> {
+    const current = this.#checkouts.get(input.draftId);
+    if (!current) return;
+    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
+    this.#checkouts.delete(input.draftId);
+    this.#recordAudit(input.actor, 'draft.checkout.released', input.draftId, input.requestId, {});
+  }
+
+  async assertCheckout(
+    draftId: string,
+    actor: string,
+    token: string,
+    now = new Date().toISOString(),
+  ): Promise<void> {
+    const current = this.#checkouts.get(draftId);
+    if (!current || current.expiresAt <= now || this.#drafts.get(draftId)?.status !== 'active')
+      throw new ConflictError('The draft checkout expired');
+    if (
+      current.actor.toLowerCase() !== actor.toLowerCase() ||
+      current.tokenHash !== (await hashToken(token))
+    )
+      throw new ConflictError('This editing client no longer owns the draft checkout');
+  }
+
+  async ownedCheckout(
+    actor: string,
+    now = new Date().toISOString(),
+  ): Promise<DraftCheckout | null> {
+    const current = [...this.#checkouts.values()].find(
+      (lease) => lease.actor.toLowerCase() === actor.toLowerCase() && lease.expiresAt > now,
+    );
+    return current
+      ? {
+          ...current,
+          token: '',
+          event: 'resumed',
+          viewState: clone(this.#viewStates.get(actor) ?? null),
+        }
+      : null;
+  }
+
   #recordAudit(
     actor: string,
     action: string,
@@ -268,4 +410,9 @@ export class InMemoryRepository implements DraftRepository {
       metadata,
     });
   }
+}
+
+async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }

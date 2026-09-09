@@ -21,6 +21,7 @@ async function repositoryFixture() {
     'migrations/0002_integrity_triggers.sql',
     'migrations/0003_revision_labels.sql',
     'migrations/0008_revision_actions.sql',
+    'migrations/0009_draft_checkouts.sql',
   ]) {
     // D1's exec helper executes one statement per physical line, so collapse
     // formatted migration SQL while preserving statement delimiters.
@@ -34,6 +35,77 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('atomically acquires, transfers, expires, persists view state, and rejects stale tokens', async () => {
+    const { repository } = await repositoryFixture();
+    const created = await repository.createDraft({
+      name: 'Checked out',
+      document: defaultSiteDocument,
+      actor: 'owner@pointatx.org',
+      idempotencyKey: 'create-checkout-draft',
+      requestId: 'create-checkout',
+    });
+    const now = '2026-09-08T12:00:00.000Z';
+    const first = await repository.acquireCheckout({
+      draftId: created.id,
+      actor: 'owner@pointatx.org',
+      clientId: 'owner-browser-0001',
+      requestId: 'acquire-1',
+      now,
+    });
+    await expect(
+      repository.acquireCheckout({
+        draftId: created.id,
+        actor: 'other@pointatx.org',
+        clientId: 'other-browser-0001',
+        requestId: 'denied-1',
+        now,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    const transferred = await repository.acquireCheckout({
+      draftId: created.id,
+      actor: 'owner@pointatx.org',
+      clientId: 'owner-browser-0002',
+      requestId: 'transfer-1',
+      now,
+    });
+    expect(transferred.event).toBe('transferred');
+    await expect(
+      repository.assertCheckout(created.id, 'owner@pointatx.org', first.token, now),
+    ).rejects.toBeInstanceOf(ConflictError);
+    const viewState = {
+      draftId: created.id,
+      panel: 'library' as const,
+      pageId: created.document.pages[0]?.id ?? null,
+      selectedElementId: null,
+      previewViewport: 'tablet' as const,
+      previewZoom: 1,
+      scrollPositions: { library: 120 },
+      updatedAt: now,
+    };
+    const touched = await repository.touchCheckout(
+      {
+        draftId: created.id,
+        actor: 'owner@pointatx.org',
+        clientId: 'owner-browser-0002',
+        token: transferred.token,
+        requestId: 'touch-1',
+        now,
+      },
+      viewState,
+    );
+    expect(touched.viewState).toMatchObject({
+      panel: 'library',
+      scrollPositions: { library: 120 },
+    });
+    const expired = await repository.acquireCheckout({
+      draftId: created.id,
+      actor: 'other@pointatx.org',
+      clientId: 'other-browser-0001',
+      requestId: 'after-expiry',
+      now: '2026-09-08T12:31:00.000Z',
+    });
+    expect(expired.event).toBe('acquired');
+  });
   it('persists create, list, read, save, label, restore, rename, and lifecycle operations', async () => {
     const { database, repository } = await repositoryFixture();
     const created = await repository.createDraft({

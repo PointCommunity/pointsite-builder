@@ -39,12 +39,19 @@ describe('revision and lifecycle API', () => {
     );
     const changed = structuredClone(created.document);
     changed.site.shortName = 'Revision two';
+    const checkoutResponse = await app.request(`${origin}/api/drafts/${created.id}/checkout`, {
+      method: 'POST',
+      headers: mutationHeaders('checkout-revisions-01'),
+      body: JSON.stringify({ clientId: 'revision-browser-01' }),
+    });
+    const checkout = await json<{ token: string }>(checkoutResponse);
     const saved = await json<{ revision: { id: string; checksum: string } }>(
       await app.request(`${origin}/api/drafts/${created.id}`, {
         method: 'PUT',
         headers: {
           ...mutationHeaders('save-revisions-0001'),
           'if-match': `"${created.revision.checksum}"`,
+          'x-draft-checkout': checkout.token,
         },
         body: JSON.stringify({
           document: changed,
