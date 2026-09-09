@@ -560,6 +560,136 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
   }
 });
 
+test('keeps every page Hero inside the phone canvas and resizes Hero text by drag or keyboard', async ({
+  page,
+}) => {
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const pageSelector = page.getByLabel('Choose page');
+  for (const currentPage of defaultSiteDocument.pages.filter(
+    (candidate) => candidate.route !== '/',
+  )) {
+    await pageSelector.selectOption(currentPage.id);
+    await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+    await expect(canvas.getByRole('heading', { level: 1, name: currentPage.title })).toBeVisible();
+    await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
+    const bounds = await canvas.locator('.page-hero').evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const textBoxes = Array.from(
+        element.querySelectorAll<HTMLElement>('.point-hero-text-box'),
+      ).map((textBox) => {
+        const textBoxBounds = textBox.getBoundingClientRect();
+        return { left: textBoxBounds.left, right: textBoxBounds.right };
+      });
+      return {
+        documentOverflow:
+          document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        heroLeft: box.left,
+        heroRight: box.right,
+        textBoxes,
+      };
+    });
+    expect(bounds.documentOverflow, `${currentPage.title} canvas overflow`).toBe(0);
+    for (const textBox of bounds.textBoxes) {
+      expect(textBox.left, `${currentPage.title} text left edge`).toBeGreaterThanOrEqual(
+        bounds.heroLeft,
+      );
+      expect(textBox.right, `${currentPage.title} text right edge`).toBeLessThanOrEqual(
+        bounds.heroRight,
+      );
+    }
+  }
+
+  await pageSelector.selectOption({ label: 'Home' });
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
+  const homeHeading = canvas.getByRole('heading', {
+    level: 1,
+    name: /We are a family of Jesus-followers/,
+  });
+  await expect(homeHeading).toBeVisible();
+  await homeHeading.click();
+  await expect(
+    canvas.getByRole('button', { name: 'Resize Hero heading width', exact: true }),
+  ).toBeVisible();
+
+  await pageSelector.selectOption({ label: 'Our Beliefs' });
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
+  const hero = canvas.locator('.page-hero');
+  const body = hero.locator('.point-hero-text-box--body');
+
+  await expect(canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' })).toBeVisible();
+  await canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+  await expect(
+    canvas.getByRole('button', { name: 'Resize Hero heading width', exact: true }),
+  ).toBeVisible();
+  const handle = canvas.getByRole('button', { name: 'Resize Hero body width', exact: true });
+  await expect(handle).toBeVisible();
+  const originalWidth = (await body.boundingBox())?.width ?? 0;
+  const keyboardBaseline = controls.saveRequests.length;
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(keyboardBaseline + 1);
+  await expect.poll(async () => (await body.boundingBox())?.width ?? 0).toBeLessThan(originalWidth);
+  expect(controls.saveRequests.at(-1)?.action).toEqual({
+    category: 'resize',
+    context: 'element-layout',
+  });
+
+  const beforeDrag = (await body.boundingBox())?.width ?? 0;
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 7,
+    clientX: handleBox!.x + handleBox!.width / 2,
+    clientY: handleBox!.y + handleBox!.height / 2,
+  });
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 7,
+    clientX: handleBox!.x - 45,
+    clientY: handleBox!.y + handleBox!.height / 2,
+  });
+  await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 7 });
+  await expect.poll(async () => (await body.boundingBox())?.width ?? 0).toBeLessThan(beforeDrag);
+
+  const beforeCancel = (await body.boundingBox())?.width ?? 0;
+  const cancelHandleBox = await handle.boundingBox();
+  expect(cancelHandleBox).not.toBeNull();
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 8,
+    clientX: cancelHandleBox!.x,
+    clientY: cancelHandleBox!.y,
+  });
+  await canvas.locator('body').dispatchEvent('pointermove', {
+    pointerId: 8,
+    clientX: cancelHandleBox!.x + 60,
+    clientY: cancelHandleBox!.y,
+  });
+  await canvas.locator('body').dispatchEvent('pointercancel', { pointerId: 8 });
+  await expect
+    .poll(async () => (await body.boundingBox())?.width ?? 0)
+    .toBeCloseTo(beforeCancel, 0);
+
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Preview at phone width' }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  const previewPageSelector = page.getByLabel('Page').first();
+  for (const currentPage of defaultSiteDocument.pages.filter(
+    (candidate) => candidate.route !== '/',
+  )) {
+    await previewPageSelector.selectOption(currentPage.id);
+    await expect(preview.getByRole('heading', { level: 1, name: currentPage.title })).toBeVisible();
+    expect(
+      await preview.locator('body').evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      })),
+    ).toEqual({ clientWidth: 360, scrollWidth: 360 });
+  }
+});
+
 test('isolates Point Classic colors from Builder and Puck styles', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');

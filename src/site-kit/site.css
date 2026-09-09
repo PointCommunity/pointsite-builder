@@ -79,6 +79,7 @@
   }
   .shell {
     width: var(--shell);
+    max-width: 100%;
     margin-inline: auto;
   }
   .sr-only {
@@ -279,9 +280,12 @@
     z-index: 2;
     padding-top: 75px;
   }
-  .home-hero h1 {
+  .home-hero .point-hero-text-box--heading {
     max-width: 1080px;
     margin: 0 auto;
+  }
+  .home-hero h1 {
+    margin: 0;
     font-size: clamp(2.7rem, 5.5vw, 5.25rem);
     font-weight: 700;
     letter-spacing: -0.055em;
@@ -289,18 +293,20 @@
     text-wrap: balance;
   }
   .home-hero--left .home-hero-copy,
-  .home-hero--left h1 {
+  .home-hero--left .point-hero-text-box {
     margin-left: 0;
     text-align: left;
   }
-  .home-hero-body {
+  .home-hero .point-hero-text-box--body {
     max-width: 720px;
     margin: 1.5rem auto 0;
+  }
+  .home-hero-body {
+    margin: 0;
     font-size: 1.15rem;
     text-align: center;
   }
   .home-hero--left .home-hero-body {
-    margin-left: 0;
     text-align: left;
   }
   .home-hero .point-actions {
@@ -437,18 +443,24 @@
   .page-hero-copy .eyebrow {
     color: #dce5d1;
   }
-  .page-hero h1 {
+  .page-hero .point-hero-text-box--heading {
     max-width: 900px;
     margin-bottom: 18px;
+  }
+  .page-hero h1 {
+    margin-bottom: 0;
     font-size: clamp(3rem, 7vw, 6.4rem);
   }
-  .page-hero-copy > p:last-child:not(.eyebrow) {
+  .page-hero .point-hero-text-box--body {
     max-width: 760px;
+    margin: 0;
+  }
+  .page-hero .point-hero-text-box--body > p {
     margin: 0;
     font-family: var(--font-serif), Georgia, serif;
     font-size: clamp(1rem, 2vw, 1.3rem);
   }
-  .page-hero.point-align--center .page-hero-copy > :is(h1, p) {
+  .page-hero.point-align--center .point-hero-text-box {
     margin-inline: auto;
     text-align: center;
   }
@@ -462,7 +474,7 @@
   .page-body {
     padding-block: 0 110px;
   }
-  .page-body .page-hero {
+  .page-body > .page-hero {
     width: 100vw;
     margin-inline: calc(50% - 50vw);
     margin-bottom: 55px;
@@ -1112,6 +1124,56 @@
   justify-content: center;
   padding-block: var(--point-space-large);
 }
+.point-site .point-hero-text-box {
+  position: relative;
+  width: min(var(--point-hero-text-width, 100%), 100%);
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.point-hero-text-resize {
+  position: absolute;
+  top: 50%;
+  right: -0.75rem;
+  z-index: 120;
+  display: none;
+  width: 2rem;
+  min-height: 2rem;
+  place-items: center;
+  border: 2px solid #162012;
+  border-radius: 999px;
+  background: #b8de95;
+  color: #162012;
+  cursor: ew-resize;
+  font: 800 0.85rem/1 sans-serif;
+  touch-action: none;
+  transform: translateY(-50%);
+}
+[data-puck-component][data-point-selected='true'] .point-hero-text-box {
+  outline: 2px dashed #b8de95;
+  outline-offset: 0.25rem;
+}
+[data-puck-component][data-point-selected='true'] .point-hero-text-resize {
+  display: grid;
+  pointer-events: auto !important;
+}
+.point-hero-text-resize:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 2px;
+}
+.point-hero-selection-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.point-site .point-hero__content > .point-hero-text-box {
+  margin-right: auto;
+}
+.point-site .point-hero__content.point-align--center > .point-hero-text-box,
+.point-site .point-align--center .point-hero-text-box {
+  margin-inline: auto;
+}
 .point-site .point-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1574,7 +1636,9 @@
   max-width: 100%;
 }
 .point-site .point-layout-item--grid > .page-hero {
+  width: 100vw;
   max-width: none;
+  margin-inline: calc(50% - 50vw);
 }
 .point-site .point-layout-item--grid > .point-image,
 .point-site .point-layout-item--grid > .wide-photo,
@@ -1834,6 +1898,11 @@
   .point-site .point-layout-item--grid {
     grid-column: var(--point-grid-tablet-column) / span var(--point-grid-tablet-column-span);
     grid-row: var(--point-grid-tablet-row) / span var(--point-grid-tablet-row-span);
+  }
+  .point-site .point-layout-item--grid > .page-hero {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
   }
 }
 @media (max-width: 760px) {

@@ -103,5 +103,24 @@
         </li>
       </ul>
     </div>
+    <div class="card">
+      <h2>PM review finding: phone Hero overflow</h2>
+      <ul>
+        <li>
+          The page Hero retained a full-viewport escape rule after becoming an editable element,
+          while the editor placed it inside a clipped Puck item. Its copy therefore laid out wider
+          than the visible phone canvas.
+        </li>
+        <li>
+          The shared Hero renderer covers standard, homepage, and page variants, making one optional
+          percentage-width contract the smallest consistent solution for canvas, Preview, and
+          protected Staging.
+        </li>
+        <li>
+          Existing grid resize controls change the whole element placement; they do not resize the
+          heading and body boxes inside a Hero, so dedicated text-box controls are required.
+        </li>
+      </ul>
+    </div>
   </body>
 </html>

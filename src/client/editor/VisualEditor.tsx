@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
   type Ref,
@@ -58,6 +59,7 @@ import {
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
+import { adjustHeroTextWidth, clampHeroTextWidth, heroTextWidthFromDrag } from './hero-text-resize';
 
 type ElementProps = {
   block: SiteElement;
@@ -71,6 +73,140 @@ type SectionProps = {
 };
 type ComposerProps = Record<SiteElement['type'], ElementProps> &
   Record<'Section' | 'TwoColumnSection' | 'ThreeColumnSection' | 'FullWidthSection', SectionProps>;
+
+type HeroTextKind = 'heading' | 'body';
+
+function HeroTextResizeHandle({
+  componentId,
+  kind,
+  align,
+}: {
+  componentId: string;
+  kind: HeroTextKind;
+  align: Extract<SiteElement, { type: 'hero' }>['align'];
+}) {
+  const getItemById = usePointPuck((state) => state.getItemById);
+  const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  const [status, setStatus] = useState('');
+  const widthKey = kind === 'heading' ? 'headingWidth' : 'bodyWidth';
+  const label = kind === 'heading' ? 'heading' : 'body';
+
+  const renderedWidth = (button: HTMLButtonElement): number => {
+    const box = button.closest<HTMLElement>('.point-hero-text-box');
+    const container = box?.parentElement;
+    if (!box || !container) return 100;
+    const containerWidth = container.getBoundingClientRect().width;
+    if (containerWidth <= 0) return 100;
+    return clampHeroTextWidth((box.getBoundingClientRect().width / containerWidth) * 100);
+  };
+
+  const commit = (width: number, recordHistory = true) => {
+    const selector = getSelectorForId(componentId);
+    const current = getItemById(componentId) as unknown as ComponentData | null;
+    const currentProps = current?.props as unknown as Record<string, unknown> | undefined;
+    const parsed = SiteElementSchema.safeParse(currentProps?.block);
+    if (
+      !selector?.zone ||
+      !current ||
+      !currentProps ||
+      !parsed.success ||
+      parsed.data.type !== 'hero'
+    )
+      return;
+    const nextWidth = clampHeroTextWidth(width);
+    setPuckActionIntent({
+      category: 'resize',
+      context: 'element-layout',
+      transient: !recordHistory,
+    });
+    dispatch({
+      type: 'replace',
+      destinationIndex: selector.index,
+      destinationZone: selector.zone,
+      data: {
+        ...current,
+        props: {
+          ...currentProps,
+          id:
+            typeof currentProps.id === 'string' || typeof currentProps.id === 'number'
+              ? String(currentProps.id)
+              : componentId,
+          block: { ...parsed.data, [widthKey]: nextWidth },
+        },
+      },
+      recordHistory,
+    });
+    if (recordHistory) setStatus(`Hero ${label} width set to ${nextWidth} percent.`);
+  };
+
+  const beginResize = (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.currentTarget;
+    const box = button.closest<HTMLElement>('.point-hero-text-box');
+    const container = box?.parentElement;
+    if (!box || !container) return;
+    const ownerDocument = button.ownerDocument;
+    const startX = event.clientX;
+    const startWidth = renderedWidth(button);
+    const containerWidth = container.getBoundingClientRect().width;
+    let latest = startWidth;
+    const move = (nextEvent: globalThis.PointerEvent) => {
+      latest = heroTextWidthFromDrag(
+        startWidth,
+        nextEvent.clientX - startX,
+        containerWidth,
+        align === 'center',
+      );
+      commit(latest, false);
+    };
+    const finish = (nextEvent: globalThis.PointerEvent) => {
+      ownerDocument.removeEventListener('pointermove', move);
+      ownerDocument.removeEventListener('pointerup', finish);
+      ownerDocument.removeEventListener('pointercancel', finish);
+      commit(nextEvent.type === 'pointercancel' ? startWidth : latest, true);
+    };
+    ownerDocument.addEventListener('pointermove', move);
+    ownerDocument.addEventListener('pointerup', finish, { once: true });
+    ownerDocument.addEventListener('pointercancel', finish, { once: true });
+  };
+
+  const resizeWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = getItemById(componentId) as unknown as ComponentData | null;
+    const parsed = SiteElementSchema.safeParse(current?.props.block);
+    const storedWidth =
+      parsed.success && parsed.data.type === 'hero' ? parsed.data[widthKey] : undefined;
+    commit(
+      adjustHeroTextWidth(
+        storedWidth ?? renderedWidth(event.currentTarget),
+        event.key,
+        event.shiftKey,
+      ),
+    );
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="point-hero-text-resize"
+        aria-label={`Resize Hero ${label} width`}
+        title="Drag horizontally or use Left and Right arrow keys. Hold Shift for a larger keyboard step."
+        onPointerDown={beginResize}
+        onKeyDown={resizeWithKeyboard}
+      >
+        <span aria-hidden="true">↔</span>
+      </button>
+      <span className="sr-only" role="status" aria-live="polite">
+        {status}
+      </span>
+    </>
+  );
+}
 
 const sectionTypes = [
   'Section',
@@ -792,12 +928,14 @@ function VisualEditorImpl({
         };
       },
       render: ({
+        id,
         block,
         align,
         grid,
         puck,
-      }: ElementProps & { puck: { dragRef: Ref<HTMLDivElement> } }) => {
+      }: ElementProps & { id: string; puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
+        const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
         const desktop = grid.desktop;
         const tablet = grid.tablet ?? desktop;
         const mobile = grid.mobile ?? desktop;
@@ -821,7 +959,20 @@ function VisualEditorImpl({
             className={`point-layout-item point-layout-item--grid point-layout-item--${align}`}
             style={style}
           >
-            {parsed.success ? renderBlock(parsed.data, document) : <p>Configure this element.</p>}
+            {parsed.success ? (
+              renderBlock(
+                parsed.data,
+                document,
+                undefined,
+                hero
+                  ? (kind) => (
+                      <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
+                    )
+                  : undefined,
+              )
+            ) : (
+              <p>Configure this element.</p>
+            )}
           </div>
         );
       },

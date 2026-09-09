@@ -43,6 +43,8 @@ const HeroBlockSchema = z.strictObject({
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
   variant: z.enum(['standard', 'homeHero', 'pageHero']).optional(),
+  headingWidth: z.number().int().min(30).max(100).optional(),
+  bodyWidth: z.number().int().min(30).max(100).optional(),
 });
 
 const HeadingBlockSchema = z.strictObject({
