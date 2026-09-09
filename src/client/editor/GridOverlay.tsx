@@ -1,5 +1,12 @@
 import type { ComponentData } from '@puckeditor/core';
-import { useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import {
   areaForBreakpoint,
   moveGridArea,
@@ -52,6 +59,26 @@ export function GridOverlay({
   const grid = itemProps?.grid;
   const breakpoint = useGridBreakpoint();
   const [status, setStatus] = useState('');
+  const selectionMarker = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (componentType !== 'hero') return;
+    const ownerDocument = selectionMarker.current?.ownerDocument;
+    const source = ownerDocument?.querySelector<HTMLElement>(
+      `[data-puck-component="${CSS.escape(componentId)}"]`,
+    );
+    if (!source) return;
+    if (isSelected) source.dataset.pointSelected = 'true';
+    else delete source.dataset.pointSelected;
+    return () => {
+      delete source.dataset.pointSelected;
+    };
+  }, [componentId, componentType, isSelected]);
+
+  const heroSelectionMarker =
+    componentType === 'hero' ? (
+      <span ref={selectionMarker} className="point-hero-selection-marker" aria-hidden="true" />
+    ) : null;
 
   const commitSectionRows = (minRows: number, recordHistory = true) => {
     const selector = getSelectorForId(componentId);
@@ -160,7 +187,13 @@ export function GridOverlay({
     );
   }
 
-  if (!isSelected || !isGrid(grid) || settings?.layout !== 'grid') return <>{children}</>;
+  if (!isSelected || !isGrid(grid) || settings?.layout !== 'grid')
+    return (
+      <>
+        {children}
+        {heroSelectionMarker}
+      </>
+    );
 
   const commit = (nextArea: GridArea, category: 'move' | 'resize', recordHistory = true) => {
     const selector = getSelectorForId(componentId);
@@ -290,6 +323,7 @@ export function GridOverlay({
   return (
     <>
       {children}
+      {heroSelectionMarker}
       <div className="point-grid-controls" data-grid-controls={componentType}>
         <button
           type="button"

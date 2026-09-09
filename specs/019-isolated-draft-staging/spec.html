@@ -162,6 +162,38 @@
       </p>
     </div>
 
+    <h2>PM review remediation: responsive, resizable Hero text</h2>
+    <div class="card">
+      <p>
+        PM review of the released candidate found that a page-Hero body could extend beyond the
+        visible phone canvas. The shared Hero element must now keep its heading and body inside the
+        selected viewport and let authors resize each text box directly on the canvas.
+      </p>
+      <ol>
+        <li>
+          <strong>FR-019-016:</strong> Standard, homepage, and page Hero headings and bodies never
+          create horizontal overflow at the supported phone, tablet, or desktop widths.
+        </li>
+        <li>
+          <strong>FR-019-017:</strong> Selecting any Hero exposes separately named heading-width and
+          body-width controls that support pointer drag and keyboard arrow operation.
+        </li>
+        <li>
+          <strong>FR-019-018:</strong> Width changes are clamped to a usable 30–100 percent range,
+          persist with the exact draft revision, and render identically in canvas, Preview, and
+          protected Staging.
+        </li>
+        <li>
+          <strong>FR-019-019:</strong> Pointer cancellation, focus visibility, non-color control
+          affordance, and status announcements preserve the WCAG 2.2 AA target.
+        </li>
+        <li>
+          <strong>FR-019-020:</strong> Existing documents remain valid without migration and retain
+          their current default text widths until an author resizes a Hero text box.
+        </li>
+      </ol>
+    </div>
+
     <h2>Code and testing conventions</h2>
     <div class="card">
       <p>

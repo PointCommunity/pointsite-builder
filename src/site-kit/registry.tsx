@@ -142,6 +142,28 @@ function TextLines({ text }: { text: string }) {
   ));
 }
 
+type HeroTextKind = 'heading' | 'body';
+
+function HeroTextBox({
+  kind,
+  width,
+  resizeHandle,
+  children,
+}: {
+  kind: HeroTextKind;
+  width?: number;
+  resizeHandle?: (kind: HeroTextKind) => ReactNode;
+  children: ReactNode;
+}) {
+  const style = width ? ({ '--point-hero-text-width': `${width}%` } as CSSProperties) : undefined;
+  return (
+    <div className={`point-hero-text-box point-hero-text-box--${kind}`} style={style}>
+      {children}
+      {resizeHandle?.(kind)}
+    </div>
+  );
+}
+
 type CardItem = Extract<SiteElement, { type: 'cards' }>['items'][number];
 
 function CardMedia({ item, document }: { item: CardItem; document: SiteDocument }) {
@@ -364,6 +386,7 @@ export function renderBlock(
   block: SiteElement,
   document: SiteDocument,
   onNavigate?: (route: string) => void,
+  heroResizeHandle?: (kind: HeroTextKind) => ReactNode,
 ): ReactNode {
   switch (block.type) {
     case 'hero': {
@@ -378,8 +401,18 @@ export function renderBlock(
             {hasImage ? <div className="hero-shade" aria-hidden="true" /> : null}
             <div className="shell page-hero-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h1>{block.heading}</h1>
-              {block.body ? <p>{block.body}</p> : null}
+              <HeroTextBox
+                kind="heading"
+                width={block.headingWidth}
+                resizeHandle={heroResizeHandle}
+              >
+                <h1>{block.heading}</h1>
+              </HeroTextBox>
+              {block.body ? (
+                <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
+                  <p>{block.body}</p>
+                </HeroTextBox>
+              ) : null}
               {block.actions.length ? (
                 <div className="point-actions">
                   {block.actions.map((action, index) => (
@@ -400,8 +433,18 @@ export function renderBlock(
             {block.surface === 'image' ? <div className="hero-shade" /> : null}
             <div className="home-hero-copy shell">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h1>{block.heading}</h1>
-              {block.body ? <p className="home-hero-body">{block.body}</p> : null}
+              <HeroTextBox
+                kind="heading"
+                width={block.headingWidth}
+                resizeHandle={heroResizeHandle}
+              >
+                <h1>{block.heading}</h1>
+              </HeroTextBox>
+              {block.body ? (
+                <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
+                  <p className="home-hero-body">{block.body}</p>
+                </HeroTextBox>
+              ) : null}
               {block.actions.length ? (
                 <div className="point-actions">
                   {block.actions.map((action, index) => (
@@ -422,8 +465,14 @@ export function renderBlock(
           {block.surface === 'image' ? <div className="point-overlay" aria-hidden="true" /> : null}
           <div className="shell point-hero__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <h1>{block.heading}</h1>
-            {block.body ? <p>{block.body}</p> : null}
+            <HeroTextBox kind="heading" width={block.headingWidth} resizeHandle={heroResizeHandle}>
+              <h1>{block.heading}</h1>
+            </HeroTextBox>
+            {block.body ? (
+              <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
+                <p>{block.body}</p>
+              </HeroTextBox>
+            ) : null}
             <div className="point-actions">
               {block.actions.map((action, index) => (
                 <ActionLink action={action} key={index} />

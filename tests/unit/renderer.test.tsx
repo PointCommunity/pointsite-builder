@@ -4,6 +4,7 @@ import { allBlocks, allBlocksDocument } from '../fixtures/block-data';
 import { blockDefinitions, renderBlock, renderSection } from '../../src/site-kit/registry';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
 
 describe('controlled public renderer', () => {
@@ -39,6 +40,25 @@ describe('controlled public renderer', () => {
     expect(screen.getByText('About Point')).toHaveClass('eyebrow');
     expect(screen.getByRole('heading', { level: 1, name: 'Who We Are' })).toBeVisible();
     expect(screen.getByText('We are a family of disciples on mission.')).toBeVisible();
+  });
+
+  it('renders independently sized Hero heading and body boxes', () => {
+    const source = defaultSiteDocument.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero' && element.variant === 'pageHero');
+    if (!source) throw new Error('Expected a page Hero fixture');
+    const hero = SiteElementSchema.parse({ ...source, headingWidth: 70, bodyWidth: 55 });
+
+    const { container } = render(<>{renderBlock(hero, defaultSiteDocument)}</>);
+
+    expect(container.querySelector('.point-hero-text-box--heading')).toHaveStyle(
+      '--point-hero-text-width: 70%',
+    );
+    expect(container.querySelector('.point-hero-text-box--body')).toHaveStyle(
+      '--point-hero-text-width: 55%',
+    );
   });
 
   it('does not inject a non-home hero after its Hero element is removed', () => {
