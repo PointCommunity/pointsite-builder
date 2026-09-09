@@ -133,7 +133,7 @@ export function DraftList({
 }: {
   drafts: DraftRecord[];
   role: Role;
-  onOpen: (draft: DraftRecord) => void | Promise<void>;
+  onOpen: (draft: DraftRecord, trigger?: HTMLButtonElement) => void | Promise<void>;
   onCreate: (name: string) => Promise<void>;
   onDuplicate: (draft: DraftRecord) => Promise<void>;
   onArchive: (draft: DraftRecord) => Promise<void>;
@@ -205,7 +205,7 @@ export function DraftList({
                     className="button button--primary"
                     disabled={unavailable}
                     aria-describedby={unavailable ? descriptionId : undefined}
-                    onClick={() => void onOpen(draft)}
+                    onClick={(event) => void onOpen(draft, event.currentTarget)}
                   >
                     {owned ? 'Resume editing' : `Open ${canEdit ? 'editor' : 'preview'}`}
                   </button>

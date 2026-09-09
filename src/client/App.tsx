@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import type {
   DraftCheckout,
   DraftCheckoutAvailability,
@@ -47,6 +47,7 @@ export function App() {
   const [checkout, setCheckout] = useState<DraftCheckout | null>(null);
   const [checkouts, setCheckouts] = useState<DraftCheckoutAvailability[]>([]);
   const [checkoutConflict, setCheckoutConflict] = useState(false);
+  const checkoutTrigger = useRef<HTMLButtonElement | null>(null);
   const [clientId] = useState(() => {
     const key = 'pointsite-builder:editing-client:v1';
     const existing = globalThis.sessionStorage?.getItem(key);
@@ -225,7 +226,8 @@ export function App() {
           drafts={drafts}
           role={actor.role}
           checkouts={checkouts}
-          onOpen={async (draft) => {
+          onOpen={async (draft, trigger) => {
+            checkoutTrigger.current = trigger ?? null;
             if (actor.role === 'viewer' || draft.status !== 'active') {
               setSelected(draft);
               return;
@@ -283,7 +285,10 @@ export function App() {
                 autoFocus
                 className="button button--primary"
                 type="button"
-                onClick={() => setCheckoutConflict(false)}
+                onClick={() => {
+                  setCheckoutConflict(false);
+                  window.queueMicrotask(() => checkoutTrigger.current?.focus());
+                }}
               >
                 Continue
               </button>
