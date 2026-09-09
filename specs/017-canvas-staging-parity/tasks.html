@@ -93,11 +93,40 @@
         </p>
       </section>
       <section class="task">
-        <h2>☐ T017-7 — Full review and release</h2>
+        <h2>☑ T017-7 — Original full review and release</h2>
         <p>
-          Run focused and complete gates, review, PR, exact-head Quality, merge-tree proof,
-          exact-main Quality, direct Builder production deployment, live verification, Issue/Project
-          closure, and public PointSite unchanged proof.
+          The original Issue #25 candidate completed review, release, protected-Staging acceptance,
+          and PM closure on 2026-09-08. The Issue was reopened for the later regression below.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-8 — Reproduce and isolate desktop grid drift</h2>
+        <p>
+          Compare Builder revision 227 data, canvas evidence, shared renderer bytes, exact Staging
+          source, and computed browser geometry. Confirm the span-only class overrides the explicit
+          desktop grid start only in non-editing rendering.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-9 — RED/GREEN renderer geometry test</h2>
+        <p>
+          Add a failing browser regression using a non-auto desktop placement, then make canvas and
+          Preview bounds match at an equal 1280 px viewport without changing flow behavior.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☑ T017-10 — Responsive and cross-surface verification</h2>
+        <p>
+          Verify desktop, tablet, and phone geometry and overflow across representative pages;
+          synchronize the reviewed site-kit into protected Staging and run both repositories' full
+          gates.
+        </p>
+      </section>
+      <section class="task">
+        <h2>☐ T017-11 — Regression review, release, and PM Showcase</h2>
+        <p>
+          Complete PR review, exact-head and exact-main Quality, direct Builder production release,
+          fresh protected-Staging publication, live verification, and a linked PM testing handoff.
         </p>
       </section>
     </main>

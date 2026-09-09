@@ -90,13 +90,38 @@
         </li>
         <li>Authoring-only overlays exist only in the editing root.</li>
       </ul>
-      <h2>Decision</h2>
+      <h2>Original 2026-09-08 decision</h2>
       <p>
         Keep the canonical site-kit unchanged in this Issue. Introduce authoring-only drop intent
         state and styles in the editor, reject invalid insertion by restoring the controlled Puck
         document, and add a server-side exact renderer preflight pinned to the expected Staging base
         SHA. This avoids touching the dirty local Staging checkout and makes publication fail before
         mutation.
+      </p>
+      <h2>2026-09-09 regression finding</h2>
+      <div class="card">
+        <p>
+          Builder revision 227 exposed a desktop-only parity defect after an author moved the
+          Navigation element away from its default auto-placement cells. The saved document places
+          Navigation in columns 9–12 and the editing canvas honors those coordinates. Standalone
+          Preview and the exact protected-Staging source instead render it beginning in column 5.
+        </p>
+        <p>
+          The non-editing renderer emits both responsive grid custom properties and a legacy
+          <code>.point-layout-item--span-N</code> class. At desktop width, the later span rule
+          overwrites the complete <code>grid-column</code> declaration, discarding its explicit
+          starting line. Tablet and mobile declarations happen later inside media queries, which is
+          why the defect can escape responsive checks and appear limited to desktop.
+        </p>
+      </div>
+      <h2>Regression decision</h2>
+      <p>
+        Grid sections must derive both start and span only from their responsive placement custom
+        properties. Retain legacy span classes only for non-grid flow layout. Add browser geometry
+        coverage that deliberately creates a gap before an item, then compares canvas and Preview at
+        the same measured 1280 px viewport; retain explicit 768 px and 360 px containment checks.
+        Synchronize the reviewed canonical site-kit to protected Staging before publishing a fresh
+        exact revision.
       </p>
     </main>
   </body>

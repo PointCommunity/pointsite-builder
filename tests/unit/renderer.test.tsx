@@ -249,10 +249,10 @@ describe('controlled public renderer', () => {
         '.point-layout-section--narrow.point-layout-section--primary.point-layout-section--pad-large',
       ),
     ).not.toBeNull();
-    expect(
-      container.querySelector('.point-layout-item--end.point-layout-item--span-6'),
-    ).not.toBeNull();
-    expect(container.querySelector('.point-layout-item--grid')).toHaveStyle({
+    const gridItem = container.querySelector('.point-layout-item--end.point-layout-item--grid');
+    expect(gridItem).not.toBeNull();
+    expect(gridItem).not.toHaveClass('point-layout-item--span-6');
+    expect(gridItem).toHaveStyle({
       '--point-grid-desktop-column': '4',
       '--point-grid-desktop-row': '2',
       '--point-grid-desktop-column-span': '6',
@@ -263,6 +263,24 @@ describe('controlled public renderer', () => {
     );
     expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
       '--point-section-min-rows: 8',
+    );
+  });
+
+  it('retains legacy span sizing for flow sections', () => {
+    const sourceSection = defaultSiteDocument.pages[0]?.blocks[0];
+    const sourceItem = sourceSection?.items[0];
+    if (!sourceSection || !sourceItem) throw new Error('Expected a section fixture');
+    const flowSection: SectionBlock = {
+      ...structuredClone(sourceSection),
+      layout: 'flow',
+      columns: 1,
+      items: [{ ...structuredClone(sourceItem), span: 1 }],
+    };
+
+    const { container } = render(<>{renderSection(flowSection, defaultSiteDocument)}</>);
+
+    expect(container.querySelector('.point-layout-item--flow')).toHaveClass(
+      'point-layout-item--span-1',
     );
   });
 

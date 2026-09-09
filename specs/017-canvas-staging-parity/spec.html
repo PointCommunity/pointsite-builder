@@ -192,6 +192,27 @@
           exact candidate; public Production PointSite is unchanged.
         </li>
       </ul>
+      <h2>Regression amendment: explicit desktop grid starts</h2>
+      <ul>
+        <li>
+          A grid element with a non-default desktop starting column renders on that exact line in
+          the editing canvas, standalone Preview, static Staging output, and protected Staging.
+        </li>
+        <li>
+          Grid placement classes must not override the responsive custom-property contract with
+          span-only auto-placement. Flow layout may retain its legacy span behavior.
+        </li>
+        <li>
+          Browser verification compares geometry only at equal measured viewport widths: 1280 px
+          desktop, 768 px tablet, and 360 px phone. Preview scaling is presentation-only and cannot
+          change the iframe's layout viewport.
+        </li>
+        <li>
+          Representative Header, Hero, and ordinary section elements retain saved coordinates,
+          sizes, content wrapping, and overflow behavior without authoring chrome in Preview or
+          Staging.
+        </li>
+      </ul>
       <h2>Open questions</h2>
       <p>
         None. Issue #25 defines the product boundaries, the repository supplies the canonical
