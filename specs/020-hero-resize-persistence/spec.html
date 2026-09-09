@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 37 - Hero resize persistence</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --panel: #151918;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #b8de95;
+        --line: #343a37;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px 80px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h2 {
+        margin-top: 32px;
+        color: var(--accent);
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      code {
+        color: #d8b76f;
+      }
+      section {
+        border-top: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 37: Hero resize persistence</h1>
+    <p>
+      Source of truth: GitHub Issue #37, “Persist Hero text resizing and remove the canvas Move
+      badge.”
+    </p>
+
+    <section>
+      <h2>Objective</h2>
+      <p>
+        Make each completed Hero Heading or Body width resize one durable, ordered autosave action
+        whose exact clamped value survives navigation, refresh, draft reopen, repository validation,
+        revision storage, Preview, and protected Staging rendering. Remove only the visible Move
+        pill while preserving the full move control and all pointer, keyboard, focus, announcement,
+        collision, resize, and selection behavior.
+      </p>
+    </section>
+
+    <section>
+      <h2>Assumptions confirmed by repository evidence</h2>
+      <ul>
+        <li>
+          The existing integer range of 30 through 100 and keyboard step sizes remain authoritative.
+        </li>
+        <li>
+          <code>SiteDocument</code>, immutable revisions, checksums, and compare-and-swap remain the
+          persistence source of truth; no schema migration or browser-only storage is needed.
+        </li>
+        <li>
+          Pointer-move frames stay transient. Pointer release or keyboard input creates the durable
+          resize action.
+        </li>
+        <li>
+          The semantic move button remains present and focusable; only its visible child label is
+          removed.
+        </li>
+        <li>
+          The approved Issue body resolves product behavior, so implementation may proceed without
+          another specification approval.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Technology and structure</h2>
+      <ul>
+        <li>
+          React, TypeScript, Puck, Vite, Vitest, Playwright, Hono, D1, and the in-memory repository.
+        </li>
+        <li>
+          Resize interaction and Puck conversion: <code>src/client/editor/VisualEditor.tsx</code>.
+        </li>
+        <li>
+          Move and whole-element resize overlay: <code>src/client/editor/GridOverlay.tsx</code> and
+          <code>src/site-kit/site.css</code>.
+        </li>
+        <li>Autosave ordering: <code>src/client/editor/action-autosave.ts</code>.</li>
+        <li>
+          Schema and rendering: <code>src/site-kit/schema.ts</code> and
+          <code>src/site-kit/registry.tsx</code>.
+        </li>
+        <li>
+          Behavior evidence: focused unit, integration, and
+          <code>tests/e2e/authoring.spec.ts</code> coverage.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Commands</h2>
+      <ul>
+        <li>
+          Focused tests: <code>npx vitest run &lt;test files&gt;</code> and
+          <code>npx playwright test tests/e2e/authoring.spec.ts --grep &lt;scenario&gt;</code>.
+        </li>
+        <li>
+          Repository gates: <code>npm run check</code>, <code>npm run test:performance</code>,
+          <code>npm run test:e2e</code>, <code>npm run skills:check</code>,
+          <code>npm run pipeline:health</code>, and <code>git diff --check</code>.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Testing strategy</h2>
+      <ul>
+        <li>
+          RED: browser coverage must fail on the current branch by asserting the exact width in the
+          save request and after a real API-backed reload.
+        </li>
+        <li>
+          GREEN: focused interaction coverage proves pointer, keyboard, cancel, delayed
+          acknowledgement, consecutive actions, view switching, and checkout close/reopen behavior.
+        </li>
+        <li>
+          Repository tests prove both width fields survive schema parsing, checksum calculation,
+          memory and D1 revision insertion, and retrieval.
+        </li>
+        <li>
+          Accessibility coverage proves the visible Move text is absent while the named button,
+          focus indication, keyboard movement, handles, and status region remain.
+        </li>
+        <li>Hands-on local browser checks cover phone, tablet, and desktop before release.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Boundaries</h2>
+      <ul>
+        <li>
+          Always preserve action ordering, idempotency, validation, checkout ownership, responsive
+          containment, independent Heading and Body values, and renderer parity.
+        </li>
+        <li>
+          Ask before changing the Issue body, data schema, width limits, keyboard steps, or
+          deployment model.
+        </li>
+        <li>
+          Never expose draft content or internal identifiers, create revisions for transient pointer
+          frames, publish the public Production PointSite, or weaken accessibility to hide the Move
+          pill.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Success criteria</h2>
+      <ul>
+        <li>
+          Every applicable acceptance criterion and verification item in Issue #37 has traceable
+          automated or hands-on evidence.
+        </li>
+        <li>
+          The exact final Heading or Body width is the value saved, checksummed, reloaded,
+          previewed, and published by the existing renderer contract.
+        </li>
+        <li>
+          A cancelled pointer resize restores the starting value and creates no durable revision.
+        </li>
+        <li>
+          No selected grid element displays a Move pill; the move button remains semantically and
+          behaviorally intact.
+        </li>
+        <li>All repository gates and exact-head GitHub Quality pass before release.</li>
+      </ul>
+      <p>
+        <strong>Open questions:</strong> none. Root cause evidence may refine implementation details
+        without changing product scope.
+      </p>
+    </section>
+  </body>
+</html>

@@ -89,8 +89,11 @@ function HeroTextResizeHandle({
   const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
   const dispatch = usePointPuck((state) => state.dispatch);
   const [status, setStatus] = useState('');
+  const cancelActiveResize = useRef<(() => void) | null>(null);
   const widthKey = kind === 'heading' ? 'headingWidth' : 'bodyWidth';
   const label = kind === 'heading' ? 'heading' : 'body';
+
+  useEffect(() => () => cancelActiveResize.current?.(), []);
 
   const renderedWidth = (button: HTMLButtonElement): number => {
     const box = button.closest<HTMLElement>('.point-hero-text-box');
@@ -101,7 +104,7 @@ function HeroTextResizeHandle({
     return clampHeroTextWidth((box.getBoundingClientRect().width / containerWidth) * 100);
   };
 
-  const commit = (width: number, recordHistory = true) => {
+  const commit = (width: number) => {
     const selector = getSelectorForId(componentId);
     const current = getItemById(componentId) as unknown as ComponentData | null;
     const currentProps = current?.props as unknown as Record<string, unknown> | undefined;
@@ -118,7 +121,6 @@ function HeroTextResizeHandle({
     setPuckActionIntent({
       category: 'resize',
       context: 'element-layout',
-      transient: !recordHistory,
     });
     dispatch({
       type: 'replace',
@@ -135,14 +137,15 @@ function HeroTextResizeHandle({
           block: { ...parsed.data, [widthKey]: nextWidth },
         },
       },
-      recordHistory,
+      recordHistory: true,
     });
-    if (recordHistory) setStatus(`Hero ${label} width set to ${nextWidth} percent.`);
+    setStatus(`Hero ${label} width set to ${nextWidth} percent.`);
   };
 
   const beginResize = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    cancelActiveResize.current?.();
     const button = event.currentTarget;
     const box = button.closest<HTMLElement>('.point-hero-text-box');
     const container = box?.parentElement;
@@ -151,6 +154,7 @@ function HeroTextResizeHandle({
     const startX = event.clientX;
     const startWidth = renderedWidth(button);
     const containerWidth = container.getBoundingClientRect().width;
+    const originalInlineWidth = box.style.getPropertyValue('--point-hero-text-width');
     let latest = startWidth;
     const move = (nextEvent: globalThis.PointerEvent) => {
       latest = heroTextWidthFromDrag(
@@ -159,14 +163,29 @@ function HeroTextResizeHandle({
         containerWidth,
         align === 'center',
       );
-      commit(latest, false);
+      box.style.setProperty('--point-hero-text-width', `${latest}%`);
     };
-    const finish = (nextEvent: globalThis.PointerEvent) => {
+    const cleanup = () => {
       ownerDocument.removeEventListener('pointermove', move);
       ownerDocument.removeEventListener('pointerup', finish);
       ownerDocument.removeEventListener('pointercancel', finish);
-      commit(nextEvent.type === 'pointercancel' ? startWidth : latest, true);
+      cancelActiveResize.current = null;
     };
+    const restore = () => {
+      if (originalInlineWidth)
+        box.style.setProperty('--point-hero-text-width', originalInlineWidth);
+      else box.style.removeProperty('--point-hero-text-width');
+    };
+    const cancel = () => {
+      cleanup();
+      restore();
+    };
+    const finish = (nextEvent: globalThis.PointerEvent) => {
+      cleanup();
+      if (nextEvent.type === 'pointercancel') return restore();
+      commit(latest);
+    };
+    cancelActiveResize.current = cancel;
     ownerDocument.addEventListener('pointermove', move);
     ownerDocument.addEventListener('pointerup', finish, { once: true });
     ownerDocument.addEventListener('pointercancel', finish, { once: true });

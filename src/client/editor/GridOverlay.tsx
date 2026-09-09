@@ -332,9 +332,7 @@ export function GridOverlay({
           title="Drag anywhere inside the selected box. Arrow keys move one grid square."
           onPointerDown={(event) => begin(event, 'move')}
           onKeyDown={(event) => keyMove(event, 'move')}
-        >
-          <span>Move</span>
-        </button>
+        ></button>
         {resizeHandles.map((edge) => (
           <button
             type="button"

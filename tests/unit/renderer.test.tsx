@@ -42,14 +42,25 @@ describe('controlled public renderer', () => {
     expect(screen.getByText('We are a family of disciples on mission.')).toBeVisible();
   });
 
-  it('renders independently sized Hero heading and body boxes', () => {
+  it.each([
+    ['homeHero', 'left'],
+    ['pageHero', 'center'],
+    ['standard', 'left'],
+  ] as const)('renders independent Hero widths for %s with %s alignment', (variant, align) => {
     const source = defaultSiteDocument.pages
       .flatMap((page) => page.blocks)
       .flatMap((section) => section.items)
       .map((placement) => placement.element)
-      .find((element) => element.type === 'hero' && element.variant === 'pageHero');
-    if (!source) throw new Error('Expected a page Hero fixture');
-    const hero = SiteElementSchema.parse({ ...source, headingWidth: 70, bodyWidth: 55 });
+      .find((element) => element.type === 'hero');
+    if (!source) throw new Error('Expected a Hero fixture');
+    const hero = SiteElementSchema.parse({
+      ...source,
+      variant,
+      align,
+      body: 'Independent body copy',
+      headingWidth: 70,
+      bodyWidth: 55,
+    });
 
     const { container } = render(<>{renderBlock(hero, defaultSiteDocument)}</>);
 
