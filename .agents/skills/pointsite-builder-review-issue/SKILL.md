@@ -1,6 +1,6 @@
 ---
 name: pointsite-builder-review-issue
-description: 'Perform complete agent QA for the active PointSite Builder Issue, remediate findings, and hand the exact verified pull request to direct production closure.'
+description: 'Perform complete agent QA for the active PointSite Builder Issue, remediate findings, deploy the exact candidate, and prepare the production Showcase for PM testing.'
 ---
 
 # Review a PointSite Builder Issue
@@ -13,8 +13,10 @@ Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole act
 4. Remediate every finding on the same Issue branch. Repeat the affected review surface until there are zero unresolved findings.
 5. Ensure the PR is current with `main`, ready for review, and the exact committed head passes every GitHub Quality job. Record the Issue, PR URL, head commit, head tree, test evidence, and Quality run.
 6. As the agent-owned Project transition, move the Issue to In Review and immediately read back the card, assignment, metadata, and sole-active count.
-7. If the PM requested a review-only or pre-deployment stop, report the verified candidate and stop. Otherwise invoke `pointsite-builder-close-issue`; there is no Builder Canary, Builder Staging deployment, or separate routine production-approval gate.
+7. If the PM requested a pre-deployment stop, report the verified candidate and stop. Otherwise invoke `pointsite-builder-close-issue` to merge and deploy the exact candidate; there is no Builder Canary or Builder Staging deployment and no separate pre-production approval gate.
+8. After verified production, present a `Production Showcase` that links directly to `https://builder.pointatx.org`. Include the exact released source/tree and Worker identity plus numbered `PM testing steps` derived from the actual diff: prerequisites, exact actions, expected results, and relevant baseline/regression checks.
+9. End the Showcase with `Approved to complete Issue #<number>` in its own standalone fenced code block for direct copying. Wait for that exact approval for the unchanged released candidate; agent testing, CI, deployment, silence, or an earlier approval is not PM acceptance.
 
 Use the PR or Issue and concise chat updates for review evidence. Do not create or open a standalone acceptance report or duplicate QA summary unless the PM explicitly requested that artifact.
 
-PM findings before release are blocking: move the card back to In Progress before remediation and create a new reviewed candidate. Never deploy a changed or failing head.
+PM findings are blocking even after production deployment: move the card back to In Progress before remediation, create and deploy a new reviewed candidate, and present a replacement Showcase. Never reuse approval after the released candidate changes.

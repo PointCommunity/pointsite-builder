@@ -175,6 +175,47 @@ test('accepts one In Review Issue, an exact linked PR, and ignores Dependabot PR
   assert.equal(result.dependabotPrs.length, 1);
 });
 
+test('accepts one deployed In Review Issue with its merged Showcase PR', () => {
+  const result = auditPipelineSnapshot(
+    baseSnapshot({
+      branch: 'main',
+      head: 'abc123',
+      remoteMain: 'abc123',
+      issues: [
+        {
+          number: 42,
+          labels: [{ name: 'type:feature' }, { name: 'area:ui' }],
+          assignees: [{ login: 'brimdor' }],
+        },
+      ],
+      items: [
+        {
+          content: { type: 'Issue', number: 42 },
+          status: 'In Review',
+          priority: 'P1',
+          impact: 'High',
+          effort: 'S',
+        },
+      ],
+      prs: [
+        {
+          number: 9,
+          body: 'Refs #42',
+          state: 'MERGED',
+          headRefName: 'issue/42-editor-fix',
+          baseRefName: 'main',
+          isDraft: false,
+          statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }],
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.activeItems.length, 1);
+  assert.equal(result.pipelinePrs.length, 0);
+});
+
 test('rejects multiple active cards, incomplete metadata, and auto-closing PRs', () => {
   const result = auditPipelineSnapshot(
     baseSnapshot({

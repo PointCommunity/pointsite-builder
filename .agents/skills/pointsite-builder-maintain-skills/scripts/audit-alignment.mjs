@@ -59,14 +59,21 @@ requireText(policy, 'is disabled', policyPath);
 requireText(policy, 'Production only at', policyPath);
 requireText(
   policy,
-  'There is no routine second approval and no staging or Canary promotion.',
+  'PM approval is instead the mandatory post-deployment completion gate.',
   policyPath,
 );
-requireText(policy, 'Never close an Issue after merge alone', policyPath);
+requireText(policy, 'Production Showcase and PM acceptance', policyPath);
+requireText(policy, 'Approved to complete Issue #&lt;number&gt;', policyPath);
 requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
 requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
 requireText(agents, 'It has no Builder staging or Canary environment', 'AGENTS.md');
 requireText(agents, 'deploy the exact clean `origin/main` revision', 'AGENTS.md');
+requireText(
+  agents,
+  'Agent QA and live verification never substitute for PM review and testing',
+  'AGENTS.md',
+);
+requireText(agents, 'Approved to complete Issue #<number>', 'AGENTS.md');
 requireText(agents, 'Do not create or open a standalone acceptance report', 'AGENTS.md');
 requireText(policy, 'Lean completion evidence', policyPath);
 requireText(policy, 'Do not create or open a standalone acceptance', policyPath);
@@ -89,10 +96,23 @@ const leanCloseoutContracts = {
   'pointsite-builder-create-issue': 'Do not require a standalone acceptance report',
   'pointsite-builder-work-issue': 'Do not create or open a standalone acceptance report',
   'pointsite-builder-review-issue': 'Do not create or open a standalone acceptance report',
-  'pointsite-builder-close-issue': 'do not create or open a standalone acceptance report',
+  'pointsite-builder-close-issue': 'Do not create or open a standalone acceptance report',
   'pointsite-builder-release-production': 'Do not duplicate this evidence into a standalone report',
 };
 for (const [skillName, contract] of Object.entries(leanCloseoutContracts)) {
+  requireText(
+    read(`.agents/skills/${skillName}/SKILL.md`),
+    contract,
+    `.agents/skills/${skillName}/SKILL.md`,
+  );
+}
+
+const showcaseContracts = {
+  'pointsite-builder-review-issue': 'Production Showcase',
+  'pointsite-builder-close-issue': 'Approved to complete Issue #<number>',
+  'pointsite-builder-release-production': 'production health does not replace PM testing',
+};
+for (const [skillName, contract] of Object.entries(showcaseContracts)) {
   requireText(
     read(`.agents/skills/${skillName}/SKILL.md`),
     contract,

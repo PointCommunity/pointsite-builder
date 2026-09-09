@@ -125,7 +125,8 @@
         <td>Completion automation</td>
         <td>
           Pull request merged → Done is disabled. Item closed → Done and Done → close Issue remain
-          enabled; the agent sets Done only after verified production.
+          enabled; the agent sets Done only after verified production plus PM testing and exact
+          approval of the current Showcase candidate.
         </td>
       </tr>
     </table>
@@ -203,8 +204,16 @@
       </li>
       <li>
         The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
-        relevant live behavior. Only then does it record evidence, move the card to Done, verify the
-        resulting Issue closure, unassign it, and confirm the active slot is empty.
+        relevant live behavior, records release evidence, and presents a linked production Showcase
+        with numbered, change-specific PM testing steps. The Issue remains open, assigned, and In
+        Review.
+      </li>
+      <li>
+        The PM tests the production Showcase. Findings return the Issue to In Progress and require a
+        new remediation, QA, merge, deployment, and Showcase cycle. Only
+        <code>Approved to complete Issue #&lt;number&gt;</code> for the unchanged released candidate
+        authorizes the agent to move the card to Done, verify closure, unassign it, and confirm the
+        active slot is empty.
       </li>
     </ol>
 
@@ -248,8 +257,20 @@
       </tr>
       <tr>
         <td>Production verifies healthy</td>
+        <td>Keep open, assigned, and In Review; present the linked production Showcase.</td>
+        <td>Released identity, live evidence, PM steps, and sole active card.</td>
+      </tr>
+      <tr>
+        <td>PM reports a Showcase finding</td>
+        <td>Set In Progress before remediation.</td>
+        <td>Earlier approval and Showcase invalidated; new candidate required.</td>
+      </tr>
+      <tr>
+        <td>PM approves the unchanged Showcase candidate</td>
         <td>Close, unassign, and set Done.</td>
-        <td>Release evidence, closed state, Done metadata, and zero active cards.</td>
+        <td>
+          Exact PM approval, released identity, closed state, Done metadata, and zero active cards.
+        </td>
       </tr>
     </table>
 
@@ -309,7 +330,21 @@
       evidence, and GitHub Quality run. A released candidate adds the main merge commit and tree,
       exact-main Quality run, previous and new Cloudflare version IDs, migration evidence,
       deployment result, and live-verification result. The merge tree must equal the reviewed tree.
+      PM completion approval applies only to this full released tuple and is invalid after any
+      source, tree, dependency, migration, Worker version, or behavior change.
     </p>
+
+    <h2>Production Showcase and PM acceptance</h2>
+    <p>
+      Production at <a href="https://builder.pointatx.org">https://builder.pointatx.org</a> is the
+      Builder Showcase because the application has no staging or Canary environment. After agent QA,
+      exact-head and exact-main Quality, deployment, and live verification, the agent presents that
+      hyperlink with prerequisites, numbered actions, expected results, and focused regression
+      checks derived from the actual change. Agent QA and production health do not substitute for PM
+      review and testing. The Issue remains In Review until the PM states
+      <code>Approved to complete Issue #&lt;number&gt;</code> for the current candidate.
+    </p>
+    <p>PM approval is instead the mandatory post-deployment completion gate.</p>
 
     <h2>Lean completion evidence</h2>
     <p>
@@ -323,11 +358,12 @@
     <h2>Direct production and recovery</h2>
     <p>
       Builder application work goes directly to its sole production environment after agent QA and
-      exact-main CI. There is no routine second approval and no staging or Canary promotion. Before
-      deployment, record the current 100% Cloudflare version. On runtime failure, roll back to that
-      version and verify recovery. Keep the Issue open and assigned, then make the durable source
-      fix through a reviewable revert or same-Issue remediation. Destructive schema or data recovery
-      always requires PM authorization.
+      exact-main CI. There is no pre-production approval and no staging or Canary promotion; PM
+      approval is instead the mandatory post-deployment completion gate. Before deployment, record
+      the current 100% Cloudflare version. On runtime failure, roll back to that version and verify
+      recovery. Keep the Issue open and assigned, then make the durable source fix through a
+      reviewable revert or same-Issue remediation. Destructive schema or data recovery always
+      requires PM authorization.
     </p>
 
     <h2>GitHub enforcement limitation</h2>
@@ -345,7 +381,10 @@
       <li>Always verify the exact remote main commit and GitHub Quality before deployment.</li>
       <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
       <li>Never deploy or publish the public PointSite from this pipeline.</li>
-      <li>Never close an Issue after merge alone; verified production is completion.</li>
+      <li>
+        Never close an Issue after merge or verified production alone; PM Showcase approval is
+        completion.
+      </li>
       <li>Never generate or open a redundant closeout report for routine Issue completion.</li>
     </ul>
   </body>

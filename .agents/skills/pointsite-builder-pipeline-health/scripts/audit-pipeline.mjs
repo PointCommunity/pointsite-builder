@@ -53,7 +53,8 @@ export function auditPipelineSnapshot(snapshot) {
   const issueByNumber = new Map(issues.map((issue) => [issue.number, issue]));
   const activeItems = issueItems.filter((item) => ACTIVE.has(item.status));
   const dependabotPrs = prs.filter(isDependabot);
-  const pipelinePrs = prs.filter((pr) => !isDependabot(pr));
+  const allPipelinePrs = prs.filter((pr) => !isDependabot(pr));
+  const pipelinePrs = allPipelinePrs.filter((pr) => !pr.state || pr.state === 'OPEN');
 
   if (
     snapshot.project?.title !== PROJECT_TITLE ||
@@ -184,14 +185,17 @@ export function auditPipelineSnapshot(snapshot) {
   }
 
   for (const item of activeItems.filter((candidate) => candidate.status === 'In Review')) {
-    const matching = pipelinePrs.filter((pr) => refsFrom(pr.body).includes(item.content.number));
-    if (matching.length !== 1) {
-      errors.push(
-        `In Review Issue #${item.content.number} must have exactly one open referenced PR`,
-      );
+    const matching = allPipelinePrs
+      .filter((pr) => refsFrom(pr.body).includes(item.content.number))
+      .sort((left, right) => right.number - left.number);
+    if (matching.length < 1) {
+      errors.push(`In Review Issue #${item.content.number} must have a referenced PR`);
       continue;
     }
     const pr = matching[0];
+    if (pr.state && !['OPEN', 'MERGED'].includes(pr.state)) {
+      errors.push(`In Review PR #${pr.number} must be open or merged for the production Showcase`);
+    }
     if (pr.isDraft) errors.push(`In Review PR #${pr.number} must be ready for review`);
     const checks = pr.statusCheckRollup ?? [];
     if (checks.length === 0)
@@ -326,11 +330,11 @@ export function readLiveSnapshot() {
       '--repo',
       REPO,
       '--state',
-      'open',
+      'all',
       '--limit',
       '100',
       '--json',
-      'number,title,body,isDraft,headRefName,baseRefName,statusCheckRollup,url',
+      'number,title,body,state,mergedAt,isDraft,headRefName,baseRefName,statusCheckRollup,url',
     ]),
   };
 }
