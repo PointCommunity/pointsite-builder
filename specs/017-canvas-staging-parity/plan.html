@@ -107,6 +107,26 @@
           flow, and zero public PointSite mutation.
         </li>
       </ul>
+      <h2>Regression remediation slice</h2>
+      <ol>
+        <li>
+          RED: configure a desktop grid element with an intentional leading gap and prove Preview
+          does not match the editing canvas at the same 1280 px layout viewport.
+        </li>
+        <li>
+          GREEN: prevent grid-rendered items from receiving the legacy span-only class while
+          retaining that class for flow-rendered items.
+        </li>
+        <li>
+          RESPONSIVE: compare canvas and Preview desktop geometry and retain 768 px and 360 px
+          overflow and placement checks for all published pages.
+        </li>
+        <li>
+          RELEASE: review and synchronize the exact site-kit change into the protected Staging
+          repository, verify both repositories, deploy Builder production, publish a fresh saved
+          revision, and present the protected-Staging Showcase for PM testing.
+        </li>
+      </ol>
     </main>
   </body>
 </html>

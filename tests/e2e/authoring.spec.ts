@@ -560,6 +560,42 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
   }
 });
 
+test('keeps a non-auto desktop grid position identical in canvas and Preview', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
+
+  const placement = page.locator('.grid-placement-inspector').filter({ visible: true });
+  await placement.getByLabel('desktop width in columns').fill('4');
+  await placement.getByLabel('desktop column').fill('9');
+  await expect(page.getByText('All changes saved')).toBeVisible();
+
+  const canvasGeometry = await canvas
+    .locator('section[aria-label="Site header"] .point-layout-item--grid')
+    .filter({ has: canvas.getByRole('navigation', { name: 'Church navigation' }) })
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width, viewport: window.innerWidth };
+    });
+
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Preview at desktop width' }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  const previewGeometry = await preview
+    .locator('section[aria-label="Site header"] .point-layout-item--grid')
+    .filter({ has: preview.getByRole('navigation', { name: 'Church navigation' }) })
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width, viewport: window.innerWidth };
+    });
+
+  expect(canvasGeometry.viewport).toBe(1280);
+  expect(previewGeometry.viewport).toBe(1280);
+  expect(previewGeometry.left).toBeCloseTo(canvasGeometry.left, 0);
+  expect(previewGeometry.width).toBeCloseTo(canvasGeometry.width, 0);
+});
+
 test('keeps every page Hero inside the phone canvas and resizes Hero text by drag or keyboard', async ({
   page,
 }) => {

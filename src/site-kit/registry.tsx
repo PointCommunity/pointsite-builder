@@ -1099,6 +1099,10 @@ export function renderSection(
           const desktop = placement.grid.desktop;
           const tablet = placement.grid.tablet ?? desktop;
           const mobile = placement.grid.mobile ?? desktop;
+          const spanClass =
+            section.layout === 'flow'
+              ? ` point-layout-item--span-${Math.min(placement.span, sectionColumns)}`
+              : '';
           const placementStyle =
             section.layout === 'grid'
               ? ({
@@ -1118,7 +1122,7 @@ export function renderSection(
               : undefined;
           return (
             <div
-              className={`point-layout-item point-layout-item--${section.layout} point-layout-item--${placement.align} point-layout-item--span-${Math.min(placement.span, sectionColumns)}`}
+              className={`point-layout-item point-layout-item--${section.layout} point-layout-item--${placement.align}${spanClass}`}
               key={placement.id}
               style={placementStyle}
             >
