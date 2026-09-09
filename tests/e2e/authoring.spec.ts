@@ -669,12 +669,20 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
   await handle.press('ArrowLeft');
   await expect.poll(() => controls.saveRequests.length).toBe(keyboardBaseline + 1);
   await expect.poll(async () => (await body.boundingBox())?.width ?? 0).toBeLessThan(originalWidth);
-  expect(controls.saveRequests.at(-1)?.action).toEqual({
+  const keyboardRequest = controls.saveRequests.at(-1);
+  expect(keyboardRequest?.action).toEqual({
     category: 'resize',
     context: 'element-layout',
   });
+  const requestedKeyboardWidth = keyboardRequest?.document.pages
+    .find((candidate) => candidate.title === 'Our Beliefs')
+    ?.blocks.flatMap((section) => section.items)
+    .map((placement) => placement.element)
+    .find((element) => element.type === 'hero')?.bodyWidth;
+  expect(requestedKeyboardWidth).toBe(95);
 
   const beforeDrag = (await body.boundingBox())?.width ?? 0;
+  const dragBaseline = controls.saveRequests.length;
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
   await handle.dispatchEvent('pointerdown', {
@@ -688,9 +696,21 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     clientY: handleBox!.y + handleBox!.height / 2,
   });
   await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 7 });
+  await expect.poll(() => controls.saveRequests.length).toBe(dragBaseline + 1);
   await expect.poll(async () => (await body.boundingBox())?.width ?? 0).toBeLessThan(beforeDrag);
+  const requestedDragWidth = controls.saveRequests
+    .at(-1)
+    ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+    ?.blocks.flatMap((section) => section.items)
+    .map((placement) => placement.element)
+    .find((element) => element.type === 'hero')?.bodyWidth;
+  const renderedDragWidth = await body.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
+  );
+  expect(requestedDragWidth).toBe(renderedDragWidth);
 
   const beforeCancel = (await body.boundingBox())?.width ?? 0;
+  const cancelBaseline = controls.saveRequests.length;
   const cancelHandleBox = await handle.boundingBox();
   expect(cancelHandleBox).not.toBeNull();
   await handle.dispatchEvent('pointerdown', {
@@ -707,11 +727,91 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
   await expect
     .poll(async () => (await body.boundingBox())?.width ?? 0)
     .toBeCloseTo(beforeCancel, 0);
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(controls.saveRequests).toHaveLength(cancelBaseline);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  const reloadedCanvas = page.locator('.visual-editor iframe').contentFrame();
+  const reloadedBody = reloadedCanvas.locator('.point-hero-text-box--body');
+  await expect(reloadedBody).toBeVisible();
+  await expect
+    .poll(() =>
+      reloadedBody.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
+      ),
+    )
+    .toBe(requestedDragWidth);
+
+  await reloadedCanvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+  const reloadedHeadingHandle = reloadedCanvas.getByRole('button', {
+    name: 'Resize Hero heading width',
+    exact: true,
+  });
+  const orderedBaseline = controls.saveRequests.length;
+  const releaseFirstResize = controls.holdNextSave();
+  await reloadedHeadingHandle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(orderedBaseline + 1);
+  await reloadedHeadingHandle.press('ArrowLeft');
+  expect(controls.saveRequests).toHaveLength(orderedBaseline + 1);
+  releaseFirstResize();
+  await expect.poll(() => controls.saveRequests.length).toBe(orderedBaseline + 2);
+  const orderedWidths = controls.saveRequests.slice(orderedBaseline).map(
+    (request) =>
+      request.document.pages
+        .find((candidate) => candidate.title === 'Our Beliefs')
+        ?.blocks.flatMap((section) => section.items)
+        .map((placement) => placement.element)
+        .find((element) => element.type === 'hero')?.headingWidth,
+  );
+  expect(orderedWidths).toEqual([95, 90]);
+  expect(
+    controls.saveRequests
+      .at(-1)
+      ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+      ?.blocks.flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero'),
+  ).toMatchObject({ headingWidth: 90, bodyWidth: requestedDragWidth });
+
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const undoBaseline = controls.saveRequests.length;
+  await page.getByRole('button', { name: 'undo' }).click();
+  await expect.poll(() => controls.saveRequests.length).toBe(undoBaseline + 1);
+  expect(
+    controls.saveRequests
+      .at(-1)
+      ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+      ?.blocks.flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero')?.headingWidth,
+  ).toBeUndefined();
+  await page.getByRole('button', { name: 'redo' }).click();
+  await expect.poll(() => controls.saveRequests.length).toBe(undoBaseline + 2);
+  expect(
+    controls.saveRequests
+      .at(-1)
+      ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+      ?.blocks.flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero')?.headingWidth,
+  ).toBe(90);
 
   await page.getByRole('button', { name: 'Preview' }).click();
   await page.getByRole('button', { name: 'Preview at phone width' }).click();
   const preview = page.locator('iframe.preview-frame').contentFrame();
   const previewPageSelector = page.getByLabel('Page').first();
+  await previewPageSelector.selectOption({ label: 'Our Beliefs' });
+  await expect(preview.locator('.point-hero-text-box--heading')).toHaveCSS(
+    '--point-hero-text-width',
+    '90%',
+  );
+  await expect(preview.locator('.point-hero-text-box--body')).toHaveCSS(
+    '--point-hero-text-width',
+    `${requestedDragWidth}%`,
+  );
   for (const currentPage of defaultSiteDocument.pages.filter(
     (candidate) => candidate.route !== '/',
   )) {
@@ -1022,6 +1122,8 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await expect(placement).toHaveCSS('align-self', 'end');
 
   const moveHandle = canvas.getByRole('button', { name: 'Move heading on desktop grid' });
+  await expect(moveHandle).toHaveText('');
+  await expect(moveHandle).toHaveAccessibleName('Move heading on desktop grid');
   const initialRow = Number(await page.getByLabel('desktop row').last().inputValue());
   await expect(page.getByText('All changes saved')).toBeVisible();
   const moveBaseline = autosave.saveRequests.length;

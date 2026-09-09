@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 37 tasks</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #b8de95;
+        --line: #343a37;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px 80px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      h1 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      li {
+        margin: 0.75rem 0;
+        color: var(--muted);
+      }
+      code {
+        color: #d8b76f;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 37 tasks</h1>
+    <ol>
+      <li>
+        <strong>Reproduce the lost final width.</strong> Acceptance: a focused browser test fails on
+        current code and identifies the first boundary whose document is stale. Verify with a
+        grep-filtered Playwright run.
+      </li>
+      <li>
+        <strong>Persist one exact completed resize.</strong> Acceptance: pointer and keyboard
+        actions save the final clamped value, cancelled pointer input creates no save, and Heading
+        and Body remain independent. Verify with focused unit/browser tests.
+      </li>
+      <li>
+        <strong>Protect ordering and editor transitions.</strong> Acceptance: delayed
+        acknowledgements, consecutive resize actions, undo/redo, page/panel/viewport switching,
+        refresh, and checkout close/reopen retain the newest values. Verify with autosave and
+        browser tests.
+      </li>
+      <li>
+        <strong>Prove server persistence.</strong> Acceptance: schema validation, checksums, memory
+        repository, D1 repository, revision retrieval, and returned draft retain exact width fields.
+        Verify with focused unit/integration tests.
+      </li>
+      <li>
+        <strong>Remove only the visual Move pill.</strong> Acceptance: the label is absent while the
+        accessible button, focus styling, pointer/keyboard move, collision handling, resize handles,
+        and announcements work. Verify with browser assertions.
+      </li>
+      <li>
+        <strong>Complete governed QA and release.</strong> Acceptance: local focused and full gates,
+        hands-on responsive testing, PR exact-head Quality, reviewed-tree equality, exact-main
+        Quality, clean production deploy, health/assets/behavior verification, and an In Review
+        Showcase for Issue #37.
+      </li>
+    </ol>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { ConflictError, InMemoryRepository } from '../../src/server/repositories/memory';
 
 const actor = 'editor@pointatx.org';
@@ -121,6 +122,51 @@ describe('repository contract', () => {
 
     expect((await repository.getDraft(created.id)).revision.id).toBe(saved.revision.id);
     expect(await repository.listRevisions(created.id)).toHaveLength(2);
+  });
+
+  it('preserves independent Hero widths in the saved revision, checksum, and latest draft', async () => {
+    const repository = new InMemoryRepository();
+    const created = await repository.createDraft({
+      name: 'Hero widths',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: 'create-hero-widths-01',
+      requestId: 'hero-widths-create',
+    });
+    const document = structuredClone(created.document);
+    const hero = document.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero');
+    if (!hero || hero.type !== 'hero') throw new Error('Expected a Hero fixture');
+    hero.headingWidth = 71;
+    hero.bodyWidth = 53;
+
+    const saved = await repository.saveDraft({
+      draftId: created.id,
+      expectedChecksum: created.revision.checksum,
+      document,
+      actor,
+      idempotencyKey: 'save-hero-widths-01',
+      requestId: 'hero-widths-save',
+      action: { category: 'resize', context: 'element-layout' },
+    });
+    const latest = await repository.getDraft(created.id);
+    const revision = await repository.getRevision(saved.revision.id);
+    const persistedHero = revision.document.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.id === hero.id);
+
+    expect(persistedHero).toMatchObject({ headingWidth: 71, bodyWidth: 53 });
+    expect(latest.document).toEqual(revision.document);
+    expect(revision.checksum).toBe(await checksumDocument(revision.document));
+    expect(revision).toMatchObject({
+      actionCategory: 'resize',
+      actionContext: 'element-layout',
+    });
   });
 
   it('restores old content as a new immutable revision', async () => {

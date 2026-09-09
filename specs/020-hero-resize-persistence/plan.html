@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 37 implementation plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #b8de95;
+        --line: #343a37;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px 80px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h2 {
+        color: var(--accent);
+        margin-top: 32px;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      code {
+        color: #d8b76f;
+      }
+      section {
+        border-top: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 37 implementation plan</h1>
+    <section>
+      <h2>1. Reproduce and isolate</h2>
+      <p>
+        Trace width data from the resize handle through Puck action state, document conversion, the
+        autosave request, repository revision, API response, and reload. Add the smallest failing
+        browser assertion before changing production logic.
+      </p>
+    </section>
+    <section>
+      <h2>2. Make completed resize state authoritative</h2>
+      <p>
+        Change only the boundary that loses or overwrites the final value. Keep transient pointer
+        frames visual-only and submit one final durable action. Verify keyboard and pointer paths
+        independently, then verify delayed acknowledgements and consecutive resizes.
+      </p>
+    </section>
+    <section>
+      <h2>3. Prove persistence</h2>
+      <p>
+        Add schema/checksum plus memory and D1 repository coverage using both
+        <code>headingWidth</code> and <code>bodyWidth</code>. Extend browser coverage across
+        refresh, view changes, checkout release/reacquisition, undo/redo, cancel, Preview, variants,
+        and alignment.
+      </p>
+    </section>
+    <section>
+      <h2>4. Remove the visible Move pill</h2>
+      <p>
+        Remove the visible label node and obsolete styling without removing the semantic
+        full-element move button. Verify pointer movement, keyboard movement, focus-visible styling,
+        resize-handle precedence, editable content, and announcements.
+      </p>
+    </section>
+    <section>
+      <h2>5. Review and release</h2>
+      <p>
+        Run focused checks after each slice, then the complete repository gates and hands-on browser
+        QA. Push a task-owned PR with <code>Refs #37</code>, require exact-head Quality, review,
+        merge, require exact-main Quality, record the prior Cloudflare version, deploy the clean
+        exact main tree, and verify production. Keep Issue #37 open and In Review for PM Showcase
+        testing.
+      </p>
+    </section>
+    <section>
+      <h2>Risks and controls</h2>
+      <ul>
+        <li>
+          Stale Puck state may overwrite transient or committed width values; regression tests must
+          delay acknowledgements and inspect exact request documents.
+        </li>
+        <li>
+          A full-surface move button can obscure Hero width handles or editable children; stacking,
+          pointer targeting, and keyboard focus receive explicit browser assertions.
+        </li>
+        <li>
+          Repository persistence tests can pass while the client sends the wrong document; evidence
+          is required at both boundaries.
+        </li>
+        <li>
+          No schema migration is expected; stop and obtain PM direction if diagnosis proves one is
+          necessary.
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>

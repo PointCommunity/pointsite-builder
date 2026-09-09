@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 37 root-cause research</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0e;
+        --ink: #f4f0e7;
+        --muted: #b7b0a4;
+        --accent: #b8de95;
+        --line: #343a37;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px 80px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 500;
+      }
+      h2 {
+        color: var(--accent);
+        margin-top: 32px;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      code {
+        color: #d8b76f;
+      }
+      section {
+        border-top: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 37 root-cause research</h1>
+    <section>
+      <h2>Observed architecture</h2>
+      <ul>
+        <li>
+          <code>HeroTextResizeHandle</code> dispatches transient Puck <code>replace</code> actions
+          during pointer movement and a history-recorded replacement on completion.
+        </li>
+        <li>
+          <code>VisualEditor</code> converts <code>nextState.data</code> into a cloned
+          <code>SiteDocument</code>; transient actions call <code>stageDocument</code> and completed
+          actions call <code>completeDocument</code>.
+        </li>
+        <li>
+          <code>ActionAutosaveController</code> snapshots each completed document, serializes
+          requests, advances compare-and-swap checksums, and keeps newer local queue entries after
+          older acknowledgements.
+        </li>
+        <li>
+          The schema, renderer, and existing tests accept optional integer
+          <code>headingWidth</code> and <code>bodyWidth</code> values.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Confirmed root cause</h2>
+      <p>
+        The resize handle dispatched every pointer-move frame into Puck with
+        <code>recordHistory: false</code>, and <code>VisualEditor</code> then staged each frame as
+        editor document state. Its shared finish handler treated <code>pointercancel</code> as a
+        completed action: it dispatched the starting width with history enabled and queued that
+        restored value for durable autosave. A browser or overlay cancellation could therefore
+        produce an immutable resize revision that restored the old width after the adjusted frame
+        had appeared saved. The RED browser test also proved the cancellation created an extra save
+        request.
+      </p>
+    </section>
+    <section>
+      <h2>Boundary evidence</h2>
+      <ul>
+        <li>
+          A normal keyboard completion sent <code>bodyWidth: 95</code> in the autosave request.
+        </li>
+        <li>A normal pointer completion sent the same final width that the canvas rendered.</li>
+        <li>
+          A cancelled pointer interaction sent an additional resize request even though it restored
+          its starting geometry.
+        </li>
+        <li>
+          The schema and both repositories already preserve optional Hero width fields; they require
+          explicit regression coverage, not a migration.
+        </li>
+        <li>
+          The current Hero schema supports left and center alignment only. The Issue's reference to
+          right alignment is not an existing supported state, so this bug preserves and tests the
+          two supported values rather than introducing a new alignment feature.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Decision</h2>
+      <p>
+        Keep drag frames visual-only by updating the rendered box style during movement. Dispatch
+        one history-recorded Puck replacement on <code>pointerup</code>. On
+        <code>pointercancel</code>, restore the original inline style and dispatch nothing. This
+        makes the completed action the only document and autosave boundary.
+      </p>
+    </section>
+  </body>
+</html>

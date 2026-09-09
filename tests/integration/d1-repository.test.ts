@@ -133,6 +133,14 @@ describe('D1 draft repository', () => {
 
     const document = structuredClone(created.document);
     document.site.shortName = 'D1 changed';
+    const hero = document.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.type === 'hero');
+    if (!hero || hero.type !== 'hero') throw new Error('Expected a Hero fixture');
+    hero.headingWidth = 73;
+    hero.bodyWidth = 57;
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
@@ -140,13 +148,25 @@ describe('D1 draft repository', () => {
       actor: 'editor@pointatx.org',
       idempotencyKey: 'save-d1-draft-0001',
       requestId: 'd1-request-2',
-      action: { category: 'text-edit', context: 'page-details' },
+      action: { category: 'resize', context: 'element-layout' },
     });
     expect(saved.revision.sequence).toBe(2);
     expect(saved.revision).toMatchObject({
-      actionCategory: 'text-edit',
-      actionContext: 'page-details',
+      actionCategory: 'resize',
+      actionContext: 'element-layout',
     });
+    const savedHero = saved.revision.document.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.id === hero.id);
+    const reloadedHero = (await repository.getDraft(created.id)).document.pages
+      .flatMap((page) => page.blocks)
+      .flatMap((section) => section.items)
+      .map((placement) => placement.element)
+      .find((element) => element.id === hero.id);
+    expect(savedHero).toMatchObject({ headingWidth: 73, bodyWidth: 57 });
+    expect(reloadedHero).toEqual(savedHero);
     await expect(
       database
         .prepare('UPDATE revisions SET action_context = ? WHERE id = ?')
