@@ -9,7 +9,7 @@
 - [x] T019-4 Expose sanitized availability and enforce server-side preflight/base/candidate rechecks.
 - [x] T019-5 Implement the accessible one-click preflight, waiting, recovery, and republication flow.
 - [x] T019-6 Prove multiple-draft isolation and slot coordination in browser and integration tests.
-- [ ] T019-7 Run the full repository gates and local hands-on browser QA.
+- [x] T019-7 Run the full repository gates and local hands-on browser QA.
 - [ ] T019-8 Push the PR, pass exact-head review and CI, merge identical tree, migrate, deploy, verify production, and present the PM Showcase.
 
 **Review gate:** Issue #27 selected by the PM on 2026-09-08; final completion requires PM testing of the production Showcase.
