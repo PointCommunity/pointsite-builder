@@ -172,6 +172,10 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ clientId }),
     }),
+  validateCheckout: (id: string, token: string) =>
+    request<{ active: true }>(`/drafts/${id}/checkout`, {
+      headers: { 'x-draft-checkout': token },
+    }),
   touchCheckout: (id: string, clientId: string, token: string, viewState?: EditorViewState) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'PATCH',

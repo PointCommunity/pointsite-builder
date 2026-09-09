@@ -85,6 +85,7 @@ async function installApi(
         items: drafts.map(({ id }) => ({ draftId: id, state: 'available', expiresAt: null })),
       };
     else if (path === '/api/drafts/checkout/owned') body = null;
+    else if (path.endsWith('/checkout') && method === 'GET') body = { active: true };
     else if (path.endsWith('/checkout') && method === 'DELETE') {
       status = 204;
       body = undefined;

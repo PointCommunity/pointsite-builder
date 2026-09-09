@@ -188,6 +188,14 @@ paths:
   /drafts/{draftId}/checkout:
     parameters:
       - $ref: '#/components/parameters/DraftId'
+    get:
+      operationId: validateDraftCheckout
+      parameters:
+        - $ref: '#/components/parameters/CheckoutToken'
+      responses:
+        '200': { description: Current editing client still owns the checkout }
+        '409': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
     post:
       operationId: acquireDraftCheckout
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]

@@ -76,6 +76,15 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
     );
   });
 
+  routes.get('/:draftId/checkout', async (context) => {
+    const actor = requireRole(context.get('actor'), 'editor');
+    const token = context.req.header('x-draft-checkout');
+    if (!token)
+      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'A current draft checkout is required');
+    await repository.assertCheckout(context.req.param('draftId'), actor.email, token);
+    return context.json({ active: true });
+  });
+
   routes.post('/:draftId/checkout', async (context) => {
     const actor = requireRole(context.get('actor'), 'editor');
     if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');

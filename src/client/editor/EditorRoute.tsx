@@ -150,6 +150,23 @@ function Workspace({
   }, [checkout, draft.id, viewState]);
   useEffect(() => {
     if (!checkout || checkoutUnavailable) return;
+    let active = true;
+    const validate = () => {
+      if (globalThis.document.visibilityState !== 'visible') return;
+      void api.validateCheckout(draft.id, checkout.token).catch((error) => {
+        if (active && error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+      });
+    };
+    const timer = window.setInterval(validate, 4_000);
+    globalThis.document.addEventListener('visibilitychange', validate);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      globalThis.document.removeEventListener('visibilitychange', validate);
+    };
+  }, [checkout, checkoutUnavailable, draft.id]);
+  useEffect(() => {
+    if (!checkout || checkoutUnavailable) return;
     const persist = window.setTimeout(() => {
       void api
         .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())

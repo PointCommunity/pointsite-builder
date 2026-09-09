@@ -106,6 +106,8 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
       });
     if (path === '/api/drafts/checkout/owned')
       return route.fulfill({ contentType: 'application/json', body: 'null' });
+    if (path.endsWith('/checkout') && request.method() === 'GET')
+      return route.fulfill({ contentType: 'application/json', body: '{"active":true}' });
     if (path.endsWith('/checkout'))
       return route.fulfill({
         status: request.method() === 'DELETE' ? 204 : 200,

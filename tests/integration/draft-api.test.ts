@@ -311,6 +311,15 @@ describe('draft API', () => {
     actor = { email: 'first@pointatx.org', role: 'editor' };
     const transferred = await checkout(app, created.id, 'first-browser-0002');
     expect(transferred.token).not.toBe(first.token);
+    const staleValidation = await app.request(`${origin}/api/drafts/${created.id}/checkout`, {
+      headers: { 'x-draft-checkout': first.token },
+    });
+    expect(staleValidation.status).toBe(409);
+    const currentValidation = await app.request(`${origin}/api/drafts/${created.id}/checkout`, {
+      headers: { 'x-draft-checkout': transferred.token },
+    });
+    expect(currentValidation.status).toBe(200);
+    await expect(currentValidation.json()).resolves.toEqual({ active: true });
     const changed = structuredClone(created.document);
     changed.site.shortName = 'Blocked old client';
     const stale = await app.request(`${origin}/api/drafts/${created.id}`, {
