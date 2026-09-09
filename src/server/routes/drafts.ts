@@ -25,6 +25,18 @@ const SaveDraftSchema = z.strictObject({
   action: DraftActionSchema,
   label: z.string().trim().max(100).optional(),
 });
+const ClientSchema = z.strictObject({ clientId: z.string().min(16).max(100) });
+const ViewStateSchema = z.strictObject({
+  draftId: z.uuid(),
+  panel: z.enum(['layout', 'forms', 'library', 'preview', 'history', 'settings', 'admin']),
+  pageId: z.string().max(100).nullable(),
+  selectedElementId: z.string().max(100).nullable(),
+  previewViewport: z.enum(['phone', 'tablet', 'desktop']),
+  previewZoom: z.number().min(0.25).max(2),
+  scrollPositions: z.record(z.string().max(40), z.number().min(0).max(1_000_000)),
+  updatedAt: z.string(),
+});
+const TouchCheckoutSchema = ClientSchema.extend({ viewState: ViewStateSchema.optional() });
 
 export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;
 
@@ -50,6 +62,76 @@ function preconditionChecksum(value: string | undefined): string {
 
 export function createDraftRoutes(repository: DraftRepository, limiter: SlidingWindowRateLimiter) {
   const routes = new Hono<{ Variables: ApiVariables }>();
+
+  routes.get('/checkouts', async (context) => {
+    const actor = requireRole(context.get('actor'), 'viewer');
+    return context.json({ items: await repository.listCheckoutAvailability(actor.email) });
+  });
+
+  routes.get('/checkout/owned', async (context) => {
+    const actor = requireRole(context.get('actor'), 'editor');
+    const checkout = await repository.ownedCheckout(actor.email);
+    return context.json(
+      checkout ? { draftId: checkout.draftId, expiresAt: checkout.expiresAt } : null,
+    );
+  });
+
+  routes.post('/:draftId/checkout', async (context) => {
+    const actor = requireRole(context.get('actor'), 'editor');
+    if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
+    const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    const parsed = ClientSchema.safeParse(raw);
+    if (!parsed.success) throw validationError(parsed.error);
+    return context.json(
+      await repository.acquireCheckout({
+        draftId: context.req.param('draftId'),
+        actor: actor.email,
+        clientId: parsed.data.clientId,
+        requestId: context.get('requestId'),
+      }),
+    );
+  });
+
+  routes.patch('/:draftId/checkout', async (context) => {
+    const actor = requireRole(context.get('actor'), 'editor');
+    if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
+    const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    const parsed = TouchCheckoutSchema.safeParse(raw);
+    if (!parsed.success) throw validationError(parsed.error);
+    const token = context.req.header('x-draft-checkout');
+    if (!token)
+      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'A current draft checkout is required');
+    return context.json(
+      await repository.touchCheckout(
+        {
+          draftId: context.req.param('draftId'),
+          actor: actor.email,
+          clientId: parsed.data.clientId,
+          token,
+          requestId: context.get('requestId'),
+        },
+        parsed.data.viewState,
+      ),
+    );
+  });
+
+  routes.delete('/:draftId/checkout', async (context) => {
+    const actor = requireRole(context.get('actor'), 'editor');
+    const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    const parsed = ClientSchema.safeParse(raw);
+    if (!parsed.success) throw validationError(parsed.error);
+    const token = context.req.header('x-draft-checkout');
+    if (!token)
+      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'A current draft checkout is required');
+    await repository.releaseCheckout({
+      draftId: context.req.param('draftId'),
+      actor: actor.email,
+      clientId: parsed.data.clientId,
+      token,
+      requestId: context.get('requestId'),
+    });
+    return context.body(null, 204);
+  });
 
   routes.get('/', async (context) => {
     requireRole(context.get('actor'), 'viewer');
@@ -99,6 +181,9 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
     }
     const document = SiteDocumentSchema.safeParse(parsed.data.document);
     if (!document.success) throw validationError(document.error);
+    const checkoutToken = context.req.header('x-draft-checkout');
+    if (!checkoutToken)
+      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
     try {
       const draft = await repository.saveDraft({
         draftId: context.req.param('draftId'),
@@ -108,6 +193,7 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
         action: parsed.data.action,
+        checkoutToken,
         label: parsed.data.label,
       });
       return context.json(draft);

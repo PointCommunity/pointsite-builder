@@ -83,6 +83,7 @@ paths:
           required: true
           schema: { type: string }
           description: Current revision checksum in quotes
+        - $ref: '#/components/parameters/CheckoutToken'
       requestBody:
         required: true
         content:
@@ -164,6 +165,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RevisionList'
+  /drafts/checkouts:
+    get:
+      operationId: listDraftCheckouts
+      responses:
+        '200':
+          description: Content-free checkout availability for visible drafts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    { type: array, items: { $ref: '#/components/schemas/CheckoutAvailability' } }
+  /drafts/checkout/owned:
+    get:
+      operationId: getOwnedDraftCheckout
+      responses:
+        '200':
+          description: Current actor-owned checkout locator, or null
+  /drafts/{draftId}/checkout:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    post:
+      operationId: acquireDraftCheckout
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutClient' }
+      responses:
+        '200': { description: 'Acquired, resumed, or transferred checkout' }
+        '409': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: renewDraftCheckout
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutClient' }
+      responses:
+        '200': { description: Renewed checkout and persisted safe view state }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: releaseDraftCheckout
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutClient' }
+      responses:
+        '204': { description: Released or already absent }
   /drafts/{draftId}/revisions/{revisionId}:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -488,6 +548,12 @@ components:
       in: cookie
       name: __Secure-pointsite_builder_session
   parameters:
+    CheckoutToken:
+      name: X-Draft-Checkout
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Opaque current editing-client token
     DraftId:
       name: draftId
       in: path
@@ -505,6 +571,20 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    CheckoutClient:
+      type: object
+      additionalProperties: false
+      required: [clientId]
+      properties:
+        clientId: { type: string, minLength: 16, maxLength: 100 }
+    CheckoutAvailability:
+      type: object
+      additionalProperties: false
+      required: [draftId, state, expiresAt]
+      properties:
+        draftId: { type: string, format: uuid }
+        state: { type: string, enum: [available, owned, unavailable] }
+        expiresAt: { type: [string, 'null'], format: date-time }
     Health:
       type: object
       required: [ok, environment, version]

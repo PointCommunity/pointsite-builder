@@ -1,5 +1,9 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
-import type { DraftRecord } from '../server/repositories/contracts';
+import type {
+  DraftCheckout,
+  DraftCheckoutAvailability,
+  DraftRecord,
+} from '../server/repositories/contracts';
 import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
 import { EditorRoute } from './editor/EditorRoute';
@@ -40,6 +44,17 @@ export function App() {
   const [actor, setActor] = useState<ActorResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [selected, setSelected] = useState<DraftRecord | null>(null);
+  const [checkout, setCheckout] = useState<DraftCheckout | null>(null);
+  const [checkouts, setCheckouts] = useState<DraftCheckoutAvailability[]>([]);
+  const [checkoutConflict, setCheckoutConflict] = useState(false);
+  const [clientId] = useState(() => {
+    const key = 'pointsite-builder:editing-client:v1';
+    const existing = globalThis.sessionStorage?.getItem(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    globalThis.sessionStorage?.setItem(key, created);
+    return created;
+  });
   const [state, setState] = useState<'loading' | 'ready' | 'signed-out' | 'denied' | 'error'>(
     'loading',
   );
@@ -66,6 +81,20 @@ export function App() {
         setActor(identity);
         setDrafts(items);
         setState('ready');
+        if (identity.role !== 'viewer') {
+          void api
+            .ownedCheckout()
+            .then(async (owned) => {
+              if (!active || !owned) return;
+              const draft = items.find((item) => item.id === owned.draftId);
+              if (!draft) return;
+              const acquired = await api.acquireCheckout(draft.id, clientId);
+              if (!active) return;
+              setCheckout(acquired);
+              setSelected(await api.getDraft(draft.id));
+            })
+            .catch(() => undefined);
+        }
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -74,7 +103,28 @@ export function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [clientId]);
+  useEffect(() => {
+    if (state !== 'ready' || selected) return;
+    let active = true;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void api
+        .listCheckouts()
+        .then((items) => {
+          if (active) setCheckouts(items);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 4_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [selected, state]);
   useEffect(() => {
     document.documentElement.setAttribute('data-builder-theme', builderTheme);
     document.querySelector('.builder-app')?.setAttribute('data-builder-theme', builderTheme);
@@ -130,6 +180,7 @@ export function App() {
     return (
       <EditorRoute
         draft={selected}
+        checkout={checkout}
         role={actor.role}
         canPublish={
           (actor.role === 'publisher' || actor.role === 'administrator') &&
@@ -140,6 +191,7 @@ export function App() {
         }
         onClose={() => {
           setSelected(null);
+          setCheckout(null);
           void load();
         }}
         themeToggle={themeToggle}
@@ -172,15 +224,32 @@ export function App() {
         <DraftList
           drafts={drafts}
           role={actor.role}
-          onOpen={setSelected}
+          checkouts={checkouts}
+          onOpen={async (draft) => {
+            if (actor.role === 'viewer' || draft.status !== 'active') {
+              setSelected(draft);
+              return;
+            }
+            try {
+              const acquired = await api.acquireCheckout(draft.id, clientId);
+              setCheckout(acquired);
+              setSelected(await api.getDraft(draft.id));
+            } catch (error) {
+              if (error instanceof ClientApiError && error.status === 409)
+                setCheckoutConflict(true);
+              else throw error;
+            }
+          }}
           onCreate={async (name) => {
             const draft = await api.createDraft(name);
             setDrafts((current) => [draft, ...current]);
+            setCheckout(await api.acquireCheckout(draft.id, clientId));
             setSelected(draft);
           }}
           onDuplicate={async (source) => {
             const draft = await api.createDraft(`${source.name} copy`, source.revision.id);
             setDrafts((current) => [draft, ...current]);
+            setCheckout(await api.acquireCheckout(draft.id, clientId));
             setSelected(draft);
           }}
           onArchive={async (draft) => {
@@ -200,6 +269,27 @@ export function App() {
             setDrafts((current) => current.filter((item) => item.id !== draft.id));
           }}
         />
+        {checkoutConflict ? (
+          <div className="dialog-backdrop">
+            <section
+              className="confirmation-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="checkout-conflict-title"
+            >
+              <h2 id="checkout-conflict-title">Draft already checked out</h2>
+              <p>Another editor acquired this draft first. No changes were made.</p>
+              <button
+                autoFocus
+                className="button button--primary"
+                type="button"
+                onClick={() => setCheckoutConflict(false)}
+              >
+                Continue
+              </button>
+            </section>
+          </div>
+        ) : null}
       </main>
     </div>
   );

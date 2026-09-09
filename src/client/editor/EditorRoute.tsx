@@ -2,13 +2,22 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useEffect,
   useRef,
   useState,
   type FocusEvent,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import type { DraftRecord, Role } from '../../server/repositories/contracts';
+import type {
+  DraftCheckout,
+  DraftRecord,
+  EditorPanel,
+  EditorViewState,
+  Role,
+} from '../../server/repositories/contracts';
+import { checkoutPhase, checkoutRemaining, isGenuineActivity } from '../../shared/draft-checkout';
+import { api, ClientApiError } from '../api';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
@@ -24,7 +33,7 @@ import { mutationForContext } from './action-attribution';
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
 );
-type Panel = 'layout' | 'forms' | 'library' | 'preview' | 'history' | 'settings' | 'admin';
+type Panel = EditorPanel;
 const panelLabels: Record<Panel, string> = {
   layout: 'Layout',
   forms: 'Forms',
@@ -40,11 +49,13 @@ function Workspace({
   canPublish,
   onClose,
   themeToggle,
+  checkout,
 }: {
   role: Role;
   canPublish: boolean;
   onClose: () => void;
   themeToggle: ReactNode;
+  checkout: DraftCheckout | null;
 }) {
   const {
     draft,
@@ -56,18 +67,99 @@ function Workspace({
     retryAutosave,
     copyRecoveryData,
   } = useEditor();
-  const [panel, setPanel] = useState<Panel>(role === 'viewer' ? 'preview' : 'layout');
+  const [panel, setPanel] = useState<Panel>(
+    role === 'viewer' ? 'preview' : (checkout?.viewState?.panel ?? 'layout'),
+  );
   const [publishOpen, setPublishOpen] = useState(false);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
-  const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
+  const [pageId, setPageId] = useState(
+    document.pages.some((page) => page.id === checkout?.viewState?.pageId)
+      ? (checkout?.viewState?.pageId ?? '')
+      : (document.pages[0]?.id ?? ''),
+  );
+  const [leaseExpiresAt, setLeaseExpiresAt] = useState(checkout?.expiresAt ?? null);
+  const [leaseNow, setLeaseNow] = useState(0);
+  const [leaseLost, setLeaseLost] = useState(false);
   const [structureRevision, setStructureRevision] = useState(0);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
   const [recoveryStatus, setRecoveryStatus] = useState('');
-  const editable = role !== 'viewer' && draft.status === 'active';
+  const leaseExpired = Boolean(
+    leaseExpiresAt && checkoutPhase(leaseExpiresAt, leaseNow) === 'expired',
+  );
+  const checkoutUnavailable = leaseLost || leaseExpired;
+  const editable =
+    role !== 'viewer' && draft.status === 'active' && Boolean(checkout) && !checkoutUnavailable;
+  const viewState = useCallback(
+    (): EditorViewState => ({
+      draftId: draft.id,
+      panel,
+      pageId: pageId || null,
+      selectedElementId: null,
+      previewViewport: checkout?.viewState?.previewViewport ?? 'desktop',
+      previewZoom: checkout?.viewState?.previewZoom ?? 1,
+      scrollPositions: { window: Math.max(0, window.scrollY) },
+      updatedAt: new Date().toISOString(),
+    }),
+    [
+      checkout?.viewState?.previewViewport,
+      checkout?.viewState?.previewZoom,
+      draft.id,
+      pageId,
+      panel,
+    ],
+  );
   const requestClose = () => {
-    if (autosave.canLeave) onClose();
-    else setRecoveryStatus('Copy the pending draft before discarding changes and leaving.');
+    if (autosave.canLeave) {
+      if (checkout)
+        void api
+          .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
+          .then(() => api.releaseCheckout(draft.id, checkout.clientId, checkout.token))
+          .then(onClose)
+          .catch(() => setLeaseLost(true));
+      else onClose();
+    } else setRecoveryStatus('Copy the pending draft before discarding changes and leaving.');
   };
+  useEffect(() => {
+    if (!checkout) return;
+    const clock = window.setInterval(() => setLeaseNow(Date.now()), 1_000);
+    let lastTouch = 0;
+    const activity = (event: Event) => {
+      if (
+        !isGenuineActivity(event, globalThis.document.visibilityState === 'visible') ||
+        Date.now() - lastTouch < 15_000
+      )
+        return;
+      lastTouch = Date.now();
+      void api
+        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
+        .then((next) => {
+          setLeaseExpiresAt(next.expiresAt);
+          setLeaseLost(false);
+        })
+        .catch((error) => {
+          if (error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+        });
+    };
+    for (const name of ['pointerdown', 'keydown', 'touchstart', 'focus', 'online'])
+      window.addEventListener(name, activity, true);
+    return () => {
+      window.clearInterval(clock);
+      for (const name of ['pointerdown', 'keydown', 'touchstart', 'focus', 'online'])
+        window.removeEventListener(name, activity, true);
+    };
+  }, [checkout, draft.id, viewState]);
+  useEffect(() => {
+    if (!checkout || checkoutUnavailable) return;
+    const persist = window.setTimeout(() => {
+      void api
+        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
+        .then((next) => setLeaseExpiresAt(next.expiresAt))
+        .catch((error) => {
+          if (error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+        });
+    }, 250);
+    return () => window.clearTimeout(persist);
+  }, [checkout, checkoutUnavailable, draft.id, pageId, panel, viewState]);
   const copyPendingDraft = async () => {
     try {
       await copyRecoveryData();
@@ -167,6 +259,25 @@ function Workspace({
         </div>
       </header>
       <div className="autosave-recovery-slot">
+        {leaseExpiresAt &&
+        checkoutPhase(leaseExpiresAt, leaseNow) === 'warning' &&
+        !checkoutUnavailable ? (
+          <section className="autosave-recovery" role="alert">
+            <p>
+              Your editing checkout expires in{' '}
+              {Math.ceil(checkoutRemaining(leaseExpiresAt, leaseNow) / 60_000)} minutes without
+              activity.
+            </p>
+          </section>
+        ) : null}
+        {checkoutUnavailable ? (
+          <section className="autosave-recovery" role="alert">
+            <p>
+              This editing session is now read only because its checkout expired or moved to another
+              device. Copy pending changes before leaving.
+            </p>
+          </section>
+        ) : null}
         {autosave.alert || recoveryStatus ? (
           <section className="autosave-recovery" role="alert" aria-label="Autosave recovery">
             <p>{recoveryStatus || autosave.alert}</p>
@@ -354,20 +465,28 @@ function Workspace({
 
 export function EditorRoute({
   draft,
+  checkout,
   role,
   canPublish,
   onClose,
   themeToggle,
 }: {
   draft: DraftRecord;
+  checkout: DraftCheckout | null;
   role: Role;
   canPublish: boolean;
   onClose: () => void;
   themeToggle: ReactNode;
 }) {
   return (
-    <EditorProvider initialDraft={draft}>
-      <Workspace role={role} canPublish={canPublish} onClose={onClose} themeToggle={themeToggle} />
+    <EditorProvider initialDraft={draft} checkout={checkout}>
+      <Workspace
+        role={role}
+        canPublish={canPublish}
+        onClose={onClose}
+        themeToggle={themeToggle}
+        checkout={checkout}
+      />
     </EditorProvider>
   );
 }

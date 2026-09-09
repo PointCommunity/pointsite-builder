@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DraftRecord, Role } from '../../server/repositories/contracts';
+import type {
+  DraftCheckoutAvailability,
+  DraftRecord,
+  Role,
+} from '../../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../../shared/draft-lifecycle';
 
 function DeleteDraftDialog({
@@ -125,15 +129,17 @@ export function DraftList({
   onArchive,
   onUnarchive,
   onDelete,
+  checkouts = [],
 }: {
   drafts: DraftRecord[];
   role: Role;
-  onOpen: (draft: DraftRecord) => void;
+  onOpen: (draft: DraftRecord) => void | Promise<void>;
   onCreate: (name: string) => Promise<void>;
   onDuplicate: (draft: DraftRecord) => Promise<void>;
   onArchive: (draft: DraftRecord) => Promise<void>;
   onUnarchive: (draft: DraftRecord) => Promise<void>;
   onDelete: (draft: DraftRecord) => Promise<void>;
+  checkouts?: DraftCheckoutAvailability[];
 }) {
   const [name, setName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<DraftRecord | null>(null);
@@ -181,50 +187,67 @@ export function DraftList({
         </div>
       ) : (
         <ul className="draft-grid">
-          {drafts.map((draft) => (
-            <li className="draft-card" key={draft.id}>
-              <p className="status-badge">{draft.status}</p>
-              <h2>{draft.name}</h2>
-              <p>
-                Revision {draft.revision.sequence} · {new Date(draft.updatedAt).toLocaleString()}
-              </p>
-              <div className="button-row">
-                <button className="button button--primary" onClick={() => onOpen(draft)}>
-                  Open {canEdit ? 'editor' : 'preview'}
-                </button>
-                {canEdit ? (
-                  <>
-                    <button className="button" onClick={() => void onDuplicate(draft)}>
-                      Duplicate
-                    </button>
-                    {draft.status === 'active' ? (
-                      <button className="button" onClick={() => void onArchive(draft)}>
-                        Archive
+          {drafts.map((draft) => {
+            const checkout = checkouts.find((item) => item.draftId === draft.id);
+            const unavailable =
+              canEdit && draft.status === 'active' && checkout?.state === 'unavailable';
+            const owned = canEdit && checkout?.state === 'owned';
+            const descriptionId = `checkout-${draft.id}`;
+            return (
+              <li className="draft-card" key={draft.id}>
+                <p className="status-badge">{draft.status}</p>
+                <h2>{draft.name}</h2>
+                <p>
+                  Revision {draft.revision.sequence} · {new Date(draft.updatedAt).toLocaleString()}
+                </p>
+                <div className="button-row">
+                  <button
+                    className="button button--primary"
+                    disabled={unavailable}
+                    aria-describedby={unavailable ? descriptionId : undefined}
+                    onClick={() => void onOpen(draft)}
+                  >
+                    {owned ? 'Resume editing' : `Open ${canEdit ? 'editor' : 'preview'}`}
+                  </button>
+                  {unavailable ? (
+                    <span id={descriptionId}>
+                      Currently being edited. It becomes available automatically after inactivity.
+                    </span>
+                  ) : null}
+                  {canEdit ? (
+                    <>
+                      <button className="button" onClick={() => void onDuplicate(draft)}>
+                        Duplicate
                       </button>
-                    ) : draft.status === 'archived' ? (
-                      <>
-                        <button className="button" onClick={() => void onUnarchive(draft)}>
-                          Unarchive
+                      {draft.status === 'active' ? (
+                        <button className="button" onClick={() => void onArchive(draft)}>
+                          Archive
                         </button>
-                        <button
-                          ref={(element) => {
-                            if (deleteTarget?.id === draft.id) deleteTrigger.current = element;
-                          }}
-                          className="button button--danger"
-                          onClick={(event) => {
-                            deleteTrigger.current = event.currentTarget;
-                            setDeleteTarget(draft);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            </li>
-          ))}
+                      ) : draft.status === 'archived' ? (
+                        <>
+                          <button className="button" onClick={() => void onUnarchive(draft)}>
+                            Unarchive
+                          </button>
+                          <button
+                            ref={(element) => {
+                              if (deleteTarget?.id === draft.id) deleteTrigger.current = element;
+                            }}
+                            className="button button--danger"
+                            onClick={(event) => {
+                              deleteTrigger.current = event.currentTarget;
+                              setDeleteTarget(draft);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {deleteTarget ? (

@@ -31,6 +31,20 @@ function appFor(actor: Actor) {
   };
 }
 
+async function checkout(
+  app: ReturnType<typeof createApp>,
+  draftId: string,
+  clientId = 'browser-client-0001',
+) {
+  const response = await app.request(`${origin}/api/drafts/${draftId}/checkout`, {
+    method: 'POST',
+    headers: requestHeaders,
+    body: JSON.stringify({ clientId }),
+  });
+  expect(response.status).toBe(200);
+  return responseJson<{ token: string; expiresAt: string }>(response);
+}
+
 describe('draft API', () => {
   it('exposes public process health without private state', async () => {
     const { app } = appFor({ email: 'viewer@pointatx.org', role: 'viewer' });
@@ -73,10 +87,12 @@ describe('draft API', () => {
     expect(read.status).toBe(200);
     const changed = structuredClone(created.document);
     changed.site.shortName = 'Point South Austin';
+    const lease = await checkout(app, created.id);
     const saveHeaders = {
       ...requestHeaders,
       'idempotency-key': 'save-website-0001',
       'if-match': `"${created.revision.checksum}"`,
+      'x-draft-checkout': lease.token,
     };
     const savedResponse = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PUT',
@@ -137,12 +153,14 @@ describe('draft API', () => {
     }>(createdResponse);
     const first = structuredClone(created.document);
     first.site.shortName = 'First save';
+    const lease = await checkout(app, created.id);
     await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PUT',
       headers: {
         ...requestHeaders,
         'idempotency-key': 'first-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
         document: first,
@@ -156,6 +174,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'stale-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
         document: created.document,
@@ -259,5 +278,54 @@ describe('draft API', () => {
     });
     expect(oversized.status).toBe(413);
     await expect(oversized.json()).resolves.toMatchObject({ code: 'DOCUMENT_TOO_LARGE' });
+  });
+
+  it('atomically denies another user and supersedes an older client for the owner', async () => {
+    const repository = new InMemoryRepository();
+    let actor: Actor = { email: 'first@pointatx.org', role: 'editor' };
+    const app = createApp({
+      repository,
+      authenticate: () => Promise.resolve(actor),
+      environment: 'test',
+      version: 'test',
+    });
+    const created = await responseJson<{
+      id: string;
+      document: SiteDocument;
+      revision: { checksum: string };
+    }>(
+      await app.request(`${origin}/api/drafts`, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({ name: 'Lease race' }),
+      }),
+    );
+    const first = await checkout(app, created.id, 'first-browser-0001');
+    actor = { email: 'second@pointatx.org', role: 'editor' };
+    const denied = await app.request(`${origin}/api/drafts/${created.id}/checkout`, {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({ clientId: 'second-browser-001' }),
+    });
+    expect(denied.status).toBe(409);
+    actor = { email: 'first@pointatx.org', role: 'editor' };
+    const transferred = await checkout(app, created.id, 'first-browser-0002');
+    expect(transferred.token).not.toBe(first.token);
+    const changed = structuredClone(created.document);
+    changed.site.shortName = 'Blocked old client';
+    const stale = await app.request(`${origin}/api/drafts/${created.id}`, {
+      method: 'PUT',
+      headers: {
+        ...requestHeaders,
+        'idempotency-key': 'stale-client-save',
+        'if-match': `"${created.revision.checksum}"`,
+        'x-draft-checkout': first.token,
+      },
+      body: JSON.stringify({
+        document: changed,
+        action: { category: 'text-edit', context: 'site-settings' },
+      }),
+    });
+    expect(stale.status).toBe(409);
   });
 });

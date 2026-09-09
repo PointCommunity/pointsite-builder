@@ -7,6 +7,46 @@ import type {
 
 export type Role = 'viewer' | 'editor' | 'publisher' | 'administrator';
 export type DraftStatus = 'active' | 'archived' | 'deleted';
+export type EditorPanel =
+  'layout' | 'forms' | 'library' | 'preview' | 'history' | 'settings' | 'admin';
+
+export interface EditorViewState {
+  draftId: string;
+  panel: EditorPanel;
+  pageId: string | null;
+  selectedElementId: string | null;
+  previewViewport: 'phone' | 'tablet' | 'desktop';
+  previewZoom: number;
+  scrollPositions: Record<string, number>;
+  updatedAt: string;
+}
+
+export interface DraftCheckoutAvailability {
+  draftId: string;
+  state: 'available' | 'owned' | 'unavailable';
+  expiresAt: string | null;
+}
+
+export interface DraftCheckout {
+  draftId: string;
+  actor: string;
+  clientId: string;
+  token: string;
+  acquiredAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+  event: 'acquired' | 'resumed' | 'transferred';
+  viewState: EditorViewState | null;
+}
+
+export interface CheckoutCommand {
+  draftId: string;
+  actor: string;
+  clientId: string;
+  token: string;
+  requestId: string;
+  now?: string;
+}
 
 export interface RevisionRecord {
   id: string;
@@ -66,6 +106,7 @@ export interface SaveDraftInput {
   idempotencyKey: string;
   requestId: string;
   action: DraftAction;
+  checkoutToken?: string;
   label?: string;
 }
 
@@ -105,4 +146,10 @@ export interface DraftRepository {
     actor: string,
     requestId: string,
   ): Promise<DraftRecord>;
+  listCheckoutAvailability(actor: string, now?: string): Promise<DraftCheckoutAvailability[]>;
+  acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout>;
+  touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout>;
+  releaseCheckout(input: CheckoutCommand): Promise<void>;
+  assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void>;
+  ownedCheckout(actor: string, now?: string): Promise<DraftCheckout | null>;
 }

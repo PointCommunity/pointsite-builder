@@ -80,6 +80,26 @@ async function installApi(
     let body: unknown = {};
     let status = 200;
     if (path.endsWith('/me')) body = { email: `${role}@pointatx.org`, role, repositoryPermission };
+    else if (path === '/api/drafts/checkouts')
+      body = {
+        items: drafts.map(({ id }) => ({ draftId: id, state: 'available', expiresAt: null })),
+      };
+    else if (path === '/api/drafts/checkout/owned') body = null;
+    else if (path.endsWith('/checkout') && method === 'DELETE') {
+      status = 204;
+      body = undefined;
+    } else if (path.endsWith('/checkout'))
+      body = {
+        draftId: path.split('/').at(-2),
+        actor: `${role}@pointatx.org`,
+        clientId: (request.postDataJSON() as { clientId: string }).clientId,
+        token: '30000000-0000-4000-8000-000000000001',
+        acquiredAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+        event: 'acquired',
+        viewState: null,
+      };
     else if (path === '/api/drafts' && method === 'GET') body = { items: drafts, nextCursor: null };
     else if (path === '/api/drafts' && method === 'POST') {
       const input = request.postDataJSON() as { name: string };

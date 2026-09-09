@@ -1,5 +1,12 @@
 import type { SiteDocument } from '../site-kit/types';
-import type { DraftRecord, RevisionRecord, Role } from '../server/repositories/contracts';
+import type {
+  DraftCheckout,
+  DraftCheckoutAvailability,
+  DraftRecord,
+  EditorViewState,
+  RevisionRecord,
+  Role,
+} from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
 import type { StagingWorkflowSnapshot } from './publish/workflow';
@@ -121,6 +128,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body.requestId,
     );
   }
+  if (response.status === 204) return undefined as T;
   return await response.json();
 }
 
@@ -144,11 +152,37 @@ export const api = {
     document: SiteDocument,
     action: DraftAction,
     idempotencyKey: string,
+    checkoutToken: string,
   ) =>
     request<DraftRecord>(`/drafts/${id}`, {
       method: 'PUT',
-      headers: mutationHeaders(idempotencyKey, { 'if-match': `"${checksum}"` }),
+      headers: mutationHeaders(idempotencyKey, {
+        'if-match': `"${checksum}"`,
+        'x-draft-checkout': checkoutToken,
+      }),
       body: JSON.stringify({ document, action }),
+    }),
+  listCheckouts: async () =>
+    (await request<{ items: DraftCheckoutAvailability[] }>('/drafts/checkouts')).items,
+  ownedCheckout: () =>
+    request<{ draftId: string; expiresAt: string } | null>('/drafts/checkout/owned'),
+  acquireCheckout: (id: string, clientId: string) =>
+    request<DraftCheckout>(`/drafts/${id}/checkout`, {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ clientId }),
+    }),
+  touchCheckout: (id: string, clientId: string, token: string, viewState?: EditorViewState) =>
+    request<DraftCheckout>(`/drafts/${id}/checkout`, {
+      method: 'PATCH',
+      headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
+      body: JSON.stringify({ clientId, ...(viewState ? { viewState } : {}) }),
+    }),
+  releaseCheckout: (id: string, clientId: string, token: string) =>
+    request<void>(`/drafts/${id}/checkout`, {
+      method: 'DELETE',
+      headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
+      body: JSON.stringify({ clientId }),
     }),
   renameDraft: (id: string, name: string) =>
     request<DraftRecord>(`/drafts/${id}`, {
