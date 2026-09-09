@@ -138,7 +138,9 @@
         <dt>Expected result</dt>
         <dd class="expected">
           The exact candidate run identifies a deterministic failure or completes both
-          <code>verify</code> and <code>deploy</code>.
+          <code>verify</code> and <code>deploy</code>. An occupied shared slot reports only its
+          queued/running phase and bounded recovery time; it never identifies another private draft
+          or operator.
         </dd>
         <dt>Stop condition</dt>
         <dd class="stop">
@@ -147,8 +149,10 @@
         </dd>
         <dt>Recovery</dt>
         <dd class="recovery">
-          Refresh the base; fix the cause; retry the stored job. A repeated idempotency key must
-          return the same outcome.
+          Use Builder's <em>Check availability</em> action first. A queued or running job has a
+          15-minute lease; an expired lease is safely cancelled and audited before the exact draft
+          retries. Refresh the base, fix deterministic failures, and retry the stored job. A
+          repeated idempotency key must return the same outcome.
         </dd>
       </dl>
     </section>

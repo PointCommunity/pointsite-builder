@@ -1,20 +1,20 @@
 # PointSite Builder Delivery Plan
 
-## Active plan: Spec 013 editable page elements
+## Active plan: Spec 019 isolated draft Staging coordination
 
-The approved plan is recorded in dark-mode HTML at
-[`specs/013-editable-page-elements/plan.html`](../specs/013-editable-page-elements/plan.html).
-The user approved the assumptions and scope in
-[`spec.html`](../specs/013-editable-page-elements/spec.html) on 2026-09-07. The dependency order is:
+The PM-selected Issue #27 plan is recorded in dark-mode HTML at
+[`specs/019-isolated-draft-staging/plan.html`](../specs/019-isolated-draft-staging/plan.html).
+The approved Issue requirements are specified in
+[`spec.html`](../specs/019-isolated-draft-staging/spec.html). The dependency order is:
 
-1. Verify and commit the pending Spec 012 Builder increment separately.
-2. Write failing version-8 migration and page-ownership tests.
-3. Implement deterministic page Hero migration and element rendering while preserving the centralized Footer.
-4. Integrate Page Manager and the existing Hero catalog/inspector workflow.
-5. Run full local and cross-browser verification.
-6. Commit, push exact head, wait for GitHub Quality, deploy Builder production, and verify live.
+1. Lock the preflight, availability, lease, privacy, and migration contracts.
+2. Prove the absent lifecycle and concurrency behavior with failing tests.
+3. Add append-only preflight evidence and a recoverable atomic Staging claim.
+4. Expose sanitized server state and require exact preflight before publication.
+5. Implement one-click private preflight, busy-slot recovery, and replacement language.
+6. Complete browser, migration, full-gate, review, and release verification.
 
-The public PointSite repository and content-publishing workflow are out of scope.
+The public PointSite repository and Production publication remain out of scope.
 
 ## Foundation plan (historical)
 

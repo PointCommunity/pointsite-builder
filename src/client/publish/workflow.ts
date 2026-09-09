@@ -36,6 +36,20 @@ export interface StagingAcceptanceSummary {
 export interface StagingWorkflowSnapshot {
   currentStagingSha: string;
   reviewUrl: string;
+  preflight:
+    | {
+        state: 'passed';
+        revisionId: string;
+        revisionChecksum: string;
+        candidateChecksum: string;
+        validatedAt: string;
+      }
+    | {
+        state: 'required';
+        reason: 'not-validated' | 'revision-changed' | 'renderer-contract-changed' | 'failed';
+      };
+  availability:
+    { state: 'available' } | { state: 'busy'; phase: 'queued' | 'running'; retryAt: string };
   job: StagingWorkflowJob | null;
   approval: StagingAcceptanceSummary | null;
 }
@@ -44,6 +58,7 @@ export type StagingWorkflowPhase =
   | 'loading'
   | 'unavailable'
   | 'ready'
+  | 'waiting'
   | 'publishing'
   | 'verifying'
   | 'paused'
@@ -100,39 +115,66 @@ export function deriveStagingWorkflow(input: {
       { canRefresh: true },
     );
 
-  const { job, approval, currentStagingSha } = input.snapshot;
-  if (!job)
-    return state(
-      'ready',
-      1,
-      'Ready to publish',
-      'Publish this exact saved revision to begin the protected Staging workflow.',
-      { canPublish: true },
-    );
+  const { job, approval, currentStagingSha, preflight, availability } = input.snapshot;
 
   const revisionChanged =
-    job.revisionId !== input.revisionId || job.revisionChecksum !== input.revisionChecksum;
+    Boolean(job) &&
+    (job!.revisionId !== input.revisionId || job!.revisionChecksum !== input.revisionChecksum);
   const stagingChanged = Boolean(
-    job.stagingCommitSha && currentStagingSha !== job.stagingCommitSha,
+    job && job.stagingCommitSha && currentStagingSha !== job.stagingCommitSha,
   );
-  if (revisionChanged || stagingChanged)
-    return state(
-      'stale',
-      1,
-      'A new Staging candidate is required',
-      revisionChanged
-        ? 'The draft changed after this workflow began. Publish the current saved revision.'
-        : 'Protected Staging changed after this candidate was created. Publish again from the current Staging version.',
-      { canPublish: true, canRefresh: true },
-    );
 
-  if (job.status === 'queued' || job.status === 'running')
+  if (!revisionChanged && job && (job.status === 'queued' || job.status === 'running'))
     return state(
       'publishing',
       2,
       'Publishing to protected Staging',
       'The exact candidate is being created. This workflow will continue automatically.',
       { canRefresh: true, shouldPoll: true },
+    );
+
+  const completedCurrentJob = !revisionChanged && !stagingChanged && job?.status === 'succeeded';
+  const preflightPassed =
+    preflight.state === 'passed' &&
+    preflight.revisionId === input.revisionId &&
+    preflight.revisionChecksum === input.revisionChecksum;
+
+  if (!completedCurrentJob && !preflightPassed)
+    return state(
+      'ready',
+      1,
+      'Private preflight required',
+      preflight.state === 'required' && preflight.reason === 'failed'
+        ? 'The last private check did not pass. Check this exact saved revision again before publishing.'
+        : 'Check this exact saved revision privately before anything changes on Staging.',
+      { canPublish: true },
+    );
+
+  if (!completedCurrentJob && availability.state === 'busy')
+    return state(
+      'waiting',
+      2,
+      'Staging is currently in use',
+      'Your selected draft and private preflight remain safe. Builder will check availability without queuing or interrupting the active publication.',
+      { canRefresh: true, shouldPoll: true },
+    );
+
+  if (!job || revisionChanged)
+    return state(
+      'ready',
+      2,
+      'Ready to publish',
+      'Private preflight passed for this exact saved revision. Publishing can now claim the shared Staging slot.',
+      { canPublish: true, canRefresh: true },
+    );
+
+  if (stagingChanged)
+    return state(
+      'stale',
+      2,
+      'No longer current on Staging',
+      'Another accepted or published candidate is now current. This draft and its history remain safe and can be published again.',
+      { canPublish: true, canRefresh: true },
     );
 
   if (job.status === 'failed' || job.status === 'cancelled')

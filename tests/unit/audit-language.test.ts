@@ -27,6 +27,13 @@ describe('friendly audit language', () => {
 
   it('turns internal action and outcome codes into plain language', () => {
     expect(auditActionLabel('draft.save')).toBe('Saved draft changes');
+    expect(auditActionLabel('publish.preflight-passed')).toBe('Private staging check passed');
+    expect(auditActionLabel('publish.lease-recovered')).toBe(
+      'Recovered an expired staging publish',
+    );
+    expect(auditTargetLabel('publish-preflight', crypto.randomUUID())).toBe(
+      'Private staging check',
+    );
     expect(auditOutcomeLabel('denied')).toBe('Blocked');
   });
 });

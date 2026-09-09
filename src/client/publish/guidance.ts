@@ -36,10 +36,31 @@ export function getPublishingNextStep(
       };
     case 'ready':
       return {
-        title: `Publish revision ${revision} to Staging`,
-        guidance: 'This saved revision is ready for the protected Staging website.',
-        effect: 'Publishing creates one Staging candidate. It does not change Production.',
-        primaryAction: `Publish revision ${revision} to Staging`,
+        title:
+          lifecycle.step === 1
+            ? `Check and publish revision ${revision}`
+            : `Publish revision ${revision} to Staging`,
+        guidance:
+          lifecycle.step === 1
+            ? 'Builder will privately check this exact saved revision before it can use Staging.'
+            : 'This exact saved revision passed its private check and is ready for Staging.',
+        effect:
+          lifecycle.step === 1
+            ? 'The private check changes nothing. If it passes and Staging is free, Builder continues with one protected candidate; Production remains unchanged.'
+            : 'Publishing creates one Staging candidate. It does not change Production.',
+        primaryAction:
+          lifecycle.step === 1
+            ? `Check and publish revision ${revision}`
+            : `Publish revision ${revision} to Staging`,
+      };
+    case 'waiting':
+      return {
+        title: 'Wait for Staging to become available',
+        guidance:
+          'Another publication is using the shared Staging site. Builder will check again automatically.',
+        effect:
+          'Checking availability does not queue, interrupt, identify, or change the other publication. Your draft and private preflight remain safe.',
+        primaryAction: 'Check availability',
       };
     case 'publishing':
       return {
@@ -202,11 +223,24 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
           'Your draft is safe. Ask a Builder Administrator or site maintainer to restore the publishing connection, then try again.',
       };
     case 'PUBLISH_IN_PROGRESS':
+    case 'PUBLISH_SLOT_BUSY':
     case 'PUBLISH_JOB_NOT_VERIFIABLE':
       return {
-        title: 'This workflow is still catching up',
+        title:
+          code === 'PUBLISH_SLOT_BUSY'
+            ? 'Staging is currently in use'
+            : 'This workflow is still catching up',
         guidance:
-          'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
+          code === 'PUBLISH_SLOT_BUSY'
+            ? 'Your draft and private preflight remain safe. Wait for Builder to show that Staging is available, then continue without queuing a duplicate.'
+            : 'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
+      };
+    case 'PREFLIGHT_REQUIRED':
+    case 'PREFLIGHT_CANDIDATE_DRIFT':
+      return {
+        title: 'The private preflight must run again',
+        guidance:
+          'Your draft and Staging are unchanged. Use Check and publish again so Builder can validate the exact saved revision.',
       };
     case 'INTERNAL_ERROR':
       return {

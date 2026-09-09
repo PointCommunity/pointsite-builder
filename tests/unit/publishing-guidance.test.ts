@@ -24,7 +24,9 @@ describe('non-technical publishing guidance', () => {
   it.each([
     ['loading', 1, null],
     ['unavailable', 1, 'Try loading again'],
-    ['ready', 1, 'Publish revision 76 to Staging'],
+    ['ready', 1, 'Check and publish revision 76'],
+    ['ready', 2, 'Publish revision 76 to Staging'],
+    ['waiting', 2, 'Check availability'],
     ['publishing', 2, null],
     ['verifying', 3, null],
     ['paused', 3, 'Continue verification'],

@@ -852,6 +852,10 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   border-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
+.publish-status--waiting {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
 .publish-status p {
   margin: 0;
 }

@@ -4,7 +4,7 @@ import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
 type Scenario =
-  'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out' | 'accepted';
+  'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out' | 'accepted' | 'busy';
 
 const document = structuredClone(defaultSiteDocument);
 const draft: DraftRecord = {
@@ -35,10 +35,26 @@ const draft: DraftRecord = {
   deletedAt: null,
 };
 
+const alternativeDraft: DraftRecord = {
+  ...draft,
+  id: '10000000-0000-4000-8000-000000000012',
+  name: 'Christmas site',
+  latestRevisionId: '20000000-0000-4000-8000-000000000012',
+  document: structuredClone(document),
+  revision: {
+    ...draft.revision,
+    id: '20000000-0000-4000-8000-000000000012',
+    draftId: '10000000-0000-4000-8000-000000000012',
+    checksum: 'f'.repeat(64),
+    document: structuredClone(document),
+  },
+};
+
 async function mockPublishing(
   page: Page,
   scenario: Scenario,
   role: 'publisher' | 'administrator' = 'publisher',
+  selectedDraft: DraftRecord = draft,
 ) {
   let verificationRequests = 0;
   await page.route('**/api/**', async (route) => {
@@ -48,7 +64,7 @@ async function mockPublishing(
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          items: [{ draftId: draft.id, state: 'available', expiresAt: null }],
+          items: [{ draftId: selectedDraft.id, state: 'available', expiresAt: null }],
         }),
       });
     if (path === '/api/drafts/checkout/owned')
@@ -63,7 +79,7 @@ async function mockPublishing(
           request.method() === 'DELETE'
             ? ''
             : JSON.stringify({
-                draftId: draft.id,
+                draftId: selectedDraft.id,
                 actor: `${role}@pointatx.org`,
                 clientId: 'browser-client-0001',
                 token: '30000000-0000-4000-8000-000000000001',
@@ -94,9 +110,9 @@ async function mockPublishing(
       id: '30000000-0000-4000-8000-000000000011',
       status: 'succeeded',
       candidateChecksum: 'b'.repeat(64),
-      draftId: draft.id,
-      revisionId: scenario === 'stale' ? '20000000-0000-4000-8000-000000000099' : draft.revision.id,
-      revisionChecksum: draft.revision.checksum,
+      draftId: selectedDraft.id,
+      revisionId: selectedDraft.revision.id,
+      revisionChecksum: selectedDraft.revision.checksum,
       schemaVersion: document.schemaVersion,
       rendererVersion: document.rendererVersion,
       stagingBaseSha: 'c'.repeat(40),
@@ -124,14 +140,29 @@ async function mockPublishing(
           repositoryPermission: 'write',
         }
       : path.endsWith('/drafts')
-        ? { items: [draft] }
+        ? { items: [selectedDraft] }
         : path.includes('/revisions')
-          ? { items: [draft.revision] }
+          ? { items: [selectedDraft.revision] }
           : path.endsWith('/publish/staging/workflow')
             ? {
-                currentStagingSha: job.stagingCommitSha,
+                currentStagingSha: scenario === 'stale' ? 'e'.repeat(40) : job.stagingCommitSha,
                 reviewUrl: 'https://staging.pointatx.org',
-                job,
+                preflight: {
+                  state: 'passed',
+                  revisionId: selectedDraft.revision.id,
+                  revisionChecksum: selectedDraft.revision.checksum,
+                  candidateChecksum: job.candidateChecksum,
+                  validatedAt: requestedAt,
+                },
+                availability:
+                  scenario === 'busy'
+                    ? {
+                        state: 'busy',
+                        phase: 'running',
+                        retryAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+                      }
+                    : { state: 'available' },
+                job: scenario === 'busy' ? null : job,
                 approval:
                   scenario === 'accepted'
                     ? {
@@ -146,7 +177,7 @@ async function mockPublishing(
               ? job
               : path.endsWith('/media')
                 ? { items: [] }
-                : draft;
+                : selectedDraft;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -220,13 +251,61 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
 });
 
-test('marks a changed draft candidate stale and offers safe republication', async ({ page }) => {
+test('marks a replaced Staging candidate stale and offers safe republication', async ({ page }) => {
   await mockPublishing(page, 'stale');
   await openPublishing(page);
-  await expect(page.getByText('A new Staging candidate is required')).toBeVisible();
-  await expect(page.getByText(/draft changed/i)).toBeVisible();
+  await expect(page.getByText('No longer current on Staging')).toBeVisible();
+  await expect(page.getByText(/another accepted or published candidate/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Publish current revision 7' })).toBeVisible();
   await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
+});
+
+test('keeps replaced and current candidates associated with separate drafts across sessions', async ({
+  browser,
+}, testInfo) => {
+  const baseURL = String(testInfo.project.use.baseURL);
+  const earlierContext = await browser.newContext({ baseURL });
+  const currentContext = await browser.newContext({ baseURL });
+  try {
+    const earlierPage = await earlierContext.newPage();
+    const currentPage = await currentContext.newPage();
+    await mockPublishing(earlierPage, 'stale', 'publisher', draft);
+    await mockPublishing(currentPage, 'accepted', 'administrator', alternativeDraft);
+
+    await Promise.all([openPublishing(earlierPage), openPublishing(currentPage)]);
+    await expect(
+      earlierPage.getByRole('heading', { level: 1, name: 'Guided publishing' }),
+    ).toBeVisible();
+    await expect(earlierPage.getByText('No longer current on Staging')).toBeVisible();
+    await expect(
+      earlierPage.getByRole('button', { name: 'Publish current revision 7' }),
+    ).toBeVisible();
+    await expect(
+      currentPage.getByRole('heading', { level: 1, name: 'Christmas site' }),
+    ).toBeVisible();
+    await expect(currentPage.getByText('Official Staging candidate accepted')).toBeVisible();
+  } finally {
+    await Promise.all([earlierContext.close(), currentContext.close()]);
+  }
+});
+
+test('waits for an occupied shared Staging slot without publishing or exposing another draft', async ({
+  page,
+}) => {
+  await page.clock.install();
+  let publicationRequests = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/publish/staging')
+      publicationRequests += 1;
+  });
+  await mockPublishing(page, 'busy');
+  await openPublishing(page);
+  await expect(page.getByText('Staging is currently in use')).toBeVisible();
+  await expect(page.getByText(/without queuing or interrupting/i)).toBeVisible();
+  await expect(page.getByText(/another publication is currently publishing/i)).toBeVisible();
+  await expect(page.getByText(/safely recover the slot after/i)).toBeVisible();
+  await page.clock.runFor(10_000);
+  expect(publicationRequests).toBe(0);
 });
 
 test('pauses old pending monitoring with a manual fallback and accessible responsive status', async ({

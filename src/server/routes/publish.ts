@@ -15,6 +15,7 @@ const PublishSchema = z.strictObject({
 });
 
 const WorkflowQuerySchema = z.strictObject({ draftId: z.uuid() });
+const PreflightSchema = PublishSchema.omit({ expectedBaseSha: true });
 
 export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1ApprovalService) {
   const routes = new Hono<{ Variables: ApiVariables }>();
@@ -84,11 +85,67 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
           'DRAFT_REVISION_DRIFT',
           'The draft changed; reopen publishing for the latest saved revision',
         );
-      if (error instanceof Error && error.message === 'PUBLISH_JOB_NOT_CLAIMABLE')
+      if (
+        error instanceof Error &&
+        (error.message === 'PUBLISH_JOB_NOT_CLAIMABLE' || error.message === 'PUBLISH_SLOT_BUSY')
+      )
         throw new ApiError(
           409,
-          'PUBLISH_IN_PROGRESS',
-          'Another staging publish is already running',
+          'PUBLISH_SLOT_BUSY',
+          'Staging is currently in use; your draft remains safe and no publication was queued',
+        );
+      if (error instanceof Error && error.message === 'PREFLIGHT_REQUIRED')
+        throw new ApiError(
+          409,
+          'PREFLIGHT_REQUIRED',
+          'Run the private preflight for this exact saved revision before publishing',
+        );
+      if (error instanceof Error && error.message === 'PREFLIGHT_CANDIDATE_DRIFT')
+        throw new ApiError(
+          409,
+          'PREFLIGHT_CANDIDATE_DRIFT',
+          'The private candidate check is no longer current; run it again',
+        );
+      throw error;
+    }
+  });
+  routes.post('/staging/preflight', async (context) => {
+    const actor = requirePublishAccess(context.get('actor'));
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
+    const body = PreflightSchema.safeParse(
+      await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
+    );
+    if (!body.success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Review the private preflight candidate');
+    try {
+      return context.json(
+        await publisher.preflight({
+          ...body.data,
+          actor: actor.email,
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+          requestId: context.get('requestId'),
+        }),
+        201,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
+        throw new ApiError(
+          409,
+          'STAGING_RENDERER_MISMATCH',
+          'Staging renderer differs from Builder; ask a site maintainer to sync it before publishing',
+        );
+      if (error instanceof Error && error.message === 'DRAFT_REVISION_DRIFT')
+        throw new ApiError(
+          409,
+          'DRAFT_REVISION_DRIFT',
+          'The draft changed; reopen publishing for the latest saved revision',
+        );
+      if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT')
+        throw new ApiError(
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'This private preflight retry belongs to a different candidate',
         );
       throw error;
     }

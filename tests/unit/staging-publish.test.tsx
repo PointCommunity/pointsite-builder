@@ -56,14 +56,36 @@ const job = {
 const ready: StagingWorkflowSnapshot = {
   currentStagingSha: 'c'.repeat(40),
   reviewUrl: 'https://staging.pointatx.org',
+  preflight: {
+    state: 'passed',
+    revisionId: draft.revision.id,
+    revisionChecksum: draft.revision.checksum,
+    candidateChecksum: job.candidateChecksum,
+    validatedAt: '2026-09-07T12:00:00Z',
+  },
+  availability: { state: 'available' },
   job: null,
   approval: null,
 };
 const verifying: StagingWorkflowSnapshot = {
   currentStagingSha: job.stagingCommitSha,
   reviewUrl: ready.reviewUrl,
+  preflight: ready.preflight,
+  availability: ready.availability,
   job,
   approval: null,
+};
+const needsPreflight: StagingWorkflowSnapshot = {
+  ...ready,
+  preflight: { state: 'required', reason: 'not-validated' },
+};
+const waiting: StagingWorkflowSnapshot = {
+  ...ready,
+  availability: {
+    state: 'busy',
+    phase: 'running',
+    retryAt: '2026-09-07T12:15:00Z',
+  },
 };
 const reviewReady: StagingWorkflowSnapshot = {
   ...verifying,
@@ -119,6 +141,52 @@ describe('guided Staging publishing', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('runs private preflight and publication from one intentional action', async () => {
+    const load = vi
+      .spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(needsPreflight)
+      .mockResolvedValueOnce(ready)
+      .mockResolvedValueOnce(verifying);
+    const preflight = vi.spyOn(api, 'preflightStaging').mockResolvedValue(ready.preflight);
+    const publish = vi.spyOn(api, 'publishStaging').mockResolvedValue(published);
+
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Check and publish revision 3' }));
+
+    await waitFor(() =>
+      expect(preflight).toHaveBeenCalledWith(draft.id, draft.revision.id, draft.revision.checksum),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      draft.id,
+      draft.revision.id,
+      draft.revision.checksum,
+      ready.currentStagingSha,
+    );
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
+  });
+
+  it('checks an occupied slot without queuing or publishing another draft', async () => {
+    const load = vi
+      .spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(waiting)
+      .mockResolvedValueOnce(ready);
+    const publish = vi.spyOn(api, 'publishStaging');
+    const preflight = vi.spyOn(api, 'preflightStaging');
+
+    renderPublish();
+    expect(await screen.findByText('Staging is currently in use')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Check availability' })).toBeEnabled();
+    expect(screen.getByText(/selected draft and private preflight remain safe/i)).toBeVisible();
+    expect(screen.getByText(/another publication is currently publishing/i)).toBeVisible();
+    expect(screen.getByText(/safely recover the slot after/i)).toBeVisible();
+
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(publish).not.toHaveBeenCalled();
+    expect(preflight).not.toHaveBeenCalled();
   });
 
   it('shows the complete path, publishes the exact revision, and advances automatically', async () => {

@@ -34,6 +34,14 @@ it('restores a sanitized workflow and rejects acceptance after Staging drift', a
       Promise.resolve({
         currentStagingSha: stagingCommitSha,
         reviewUrl: 'https://staging.pointatx.org',
+        preflight: {
+          state: 'passed',
+          revisionId: '20000000-0000-4000-8000-000000000001',
+          revisionChecksum: 'a'.repeat(64),
+          candidateChecksum: 'b'.repeat(64),
+          validatedAt: '2026-09-07T11:59:00Z',
+        },
+        availability: { state: 'available' },
         job: {
           id: '30000000-0000-4000-8000-000000000001',
           status: 'succeeded',
@@ -160,6 +168,21 @@ it('allows a read collaborator to author drafts while denying every staging publ
   );
   expect(workflow.status).toBe(403);
   await expect(workflow.json()).resolves.toMatchObject({ code: 'FORBIDDEN' });
+
+  const preflight = await app.request(
+    'https://builder.pointatx.org/api/publish/staging/preflight',
+    {
+      method: 'POST',
+      headers: { ...mutationHeaders, 'idempotency-key': crypto.randomUUID() },
+      body: JSON.stringify({
+        draftId: '10000000-0000-4000-8000-000000000001',
+        expectedRevisionId: '20000000-0000-4000-8000-000000000001',
+        expectedRevisionChecksum: 'b'.repeat(64),
+      }),
+    },
+  );
+  expect(preflight.status).toBe(403);
+  await expect(preflight.json()).resolves.toMatchObject({ code: 'FORBIDDEN' });
 
   const publish = await app.request('https://builder.pointatx.org/api/publish/staging', {
     method: 'POST',

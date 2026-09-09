@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tasks 019</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h1,
+      h2 {
+        color: #d9ebd0;
+      }
+      .task {
+        background: #141b15;
+        border: 1px solid #314035;
+        border-radius: 14px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+      }
+      code {
+        color: #d8f4ca;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tasks: isolated draft Staging coordination</h1>
+    <section class="task">
+      <h2>T019-1 — Contract and RED lifecycle</h2>
+      <p>
+        Define preflight/availability snapshot states and prove missing private-preflight, waiting,
+        and replacement behavior with failing unit tests.
+      </p>
+      <p><strong>Verify:</strong> focused lifecycle test fails only for Issue #27 behavior.</p>
+    </section>
+    <section class="task">
+      <h2>T019-2 — Durable preflight</h2>
+      <p>
+        Add append-only D1 records and server validation for exact revisions and renderer contracts,
+        including safe pass/fail audit.
+      </p>
+      <p><strong>Verify:</strong> migration rehearsal and focused Miniflare tests.</p>
+    </section>
+    <section class="task">
+      <h2>T019-3 — Recoverable atomic claim</h2>
+      <p>
+        Atomically grant one bounded Staging lease, recover expiry, reject contention, and preserve
+        idempotent retries.
+      </p>
+      <p>
+        <strong>Verify:</strong> simultaneous-claim, stale-client, failure-release, and expiry
+        tests.
+      </p>
+    </section>
+    <section class="task">
+      <h2>T019-4 — Server workflow slice</h2>
+      <p>
+        Expose sanitized draft-scoped preflight and global availability; require exact preflight and
+        current base before publication.
+      </p>
+      <p><strong>Verify:</strong> service/route/authorization and OpenAPI tests.</p>
+    </section>
+    <section class="task">
+      <h2>T019-5 — Accessible Builder flow</h2>
+      <p>
+        Run preflight and publication from one action, show occupied-slot recovery, poll safely, and
+        describe replaced candidates without invalidating drafts.
+      </p>
+      <p>
+        <strong>Verify:</strong> component and browser tests at desktop, tablet, mobile, keyboard,
+        and zoom.
+      </p>
+    </section>
+    <section class="task">
+      <h2>T019-6 — Full review and release</h2>
+      <p>
+        Complete all repository gates, local hands-on QA, exact-head and exact-main Quality,
+        compatible production migration, deployment, live verification, and PM Showcase.
+      </p>
+      <p><strong>Verify:</strong> repository pipeline commands and live identities.</p>
+    </section>
+  </body>
+</html>

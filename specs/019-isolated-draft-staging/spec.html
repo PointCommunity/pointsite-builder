@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Spec 019: Isolated Draft Staging</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font:
+          16px/1.65 Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        margin: auto;
+        max-width: 1040px;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4rem);
+        line-height: 1.05;
+      }
+      h2 {
+        color: #d9ebd0;
+        margin-top: 2.5rem;
+      }
+      .eyebrow {
+        color: #9dca89;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+      .card {
+        background: #141b15;
+        border: 1px solid #314035;
+        border-radius: 14px;
+        margin: 1rem 0;
+        padding: 1.25rem;
+      }
+      code {
+        background: #202a21;
+        color: #d8f4ca;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+      a {
+        color: #a9da95;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="eyebrow">PointSite Builder · Spec 019 · GitHub Issue #27</p>
+    <h1>Independent drafts and safe Staging coordination</h1>
+    <p>
+      Make every draft a durable, independent publication workspace while coordinating the one
+      shared protected Staging destination through private preflight evidence and a recoverable,
+      server-authoritative publication lease.
+    </p>
+
+    <h2>Objective</h2>
+    <div class="card">
+      <p>
+        A Publisher or Administrator can prepare multiple drafts over time, privately validate one
+        exact saved revision, and publish it when the shared Staging slot is available. Replacing
+        the version displayed on Staging never changes another draft or deletes its revisions,
+        validation evidence, publish history, or acceptance history.
+      </p>
+    </div>
+
+    <h2>Lifecycle and requirements</h2>
+    <ol>
+      <li>
+        <strong>FR-019-001:</strong> Persist each preflight attempt against one draft, revision ID,
+        revision checksum, candidate checksum, schema version, renderer version, and
+        renderer-contract checksum.
+      </li>
+      <li>
+        <strong>FR-019-002:</strong> Preflight builds and validates the exact candidate privately
+        and performs no protected Staging or Production write.
+      </li>
+      <li>
+        <strong>FR-019-003:</strong> A passed preflight remains current across unrelated draft edits
+        and Staging publications; only selected-revision or renderer-contract drift invalidates it.
+      </li>
+      <li>
+        <strong>FR-019-004:</strong> One user action runs a required preflight and proceeds directly
+        to publication when the slot and expected Staging base remain current.
+      </li>
+      <li>
+        <strong>FR-019-005:</strong> The server atomically grants at most one queued or running
+        Staging publication lease, regardless of client state or concurrent requests.
+      </li>
+      <li>
+        <strong>FR-019-006:</strong> Publication leases expire after 15 minutes and are recovered
+        during the next claim without creating an unbounded queue.
+      </li>
+      <li>
+        <strong>FR-019-007:</strong> A busy response performs no Staging write and exposes only
+        phase and safe retry timing—not another draft, revision, content, or operator.
+      </li>
+      <li>
+        <strong>FR-019-008:</strong> The Builder automatically checks busy availability at a bounded
+        interval and retains an explicit <em>Check availability</em> action.
+      </li>
+      <li>
+        <strong>FR-019-009:</strong> The server rechecks authorization, exact revision, valid
+        preflight, candidate checksum, renderer compatibility, current base, and the publication
+        lease immediately before committing.
+      </li>
+      <li>
+        <strong>FR-019-010:</strong> A replaced candidate is described as
+        <em>no longer current on Staging</em>; its source draft and immutable evidence remain valid
+        and eligible for later republication.
+      </li>
+      <li>
+        <strong>FR-019-011:</strong> Failures and interruptions release or expire the shared lease
+        and preserve draft-scoped state.
+      </li>
+      <li>
+        <strong>FR-019-012:</strong> Every preflight, denied claim, recovered lease, publication,
+        replacement, verification, and acceptance is attributable without logging draft content.
+      </li>
+      <li>
+        <strong>FR-019-013:</strong> Publisher and Administrator authorization remains
+        server-enforced; Viewer and Editor access remains unchanged.
+      </li>
+      <li>
+        <strong>FR-019-014:</strong> Status, warning, recovery, focus, keyboard, responsive,
+        reduced-motion, and non-color communication meet the existing WCAG 2.2 AA target.
+      </li>
+      <li>
+        <strong>FR-019-015:</strong> Builder deployment and testing do not publish or promote the
+        public PointSite.
+      </li>
+    </ol>
+
+    <h2>Commands and project structure</h2>
+    <div class="card">
+      <p>
+        <strong>Focused:</strong>
+        <code
+          >npx vitest run tests/unit/staging-workflow.test.ts tests/integration/publish-jobs.test.ts
+          tests/integration/publish-service.test.ts</code
+        >
+      </p>
+      <p>
+        <strong>Full:</strong> <code>npm run check</code>, <code>npm run test:performance</code>,
+        <code>npm run test:e2e</code>, <code>git diff --check</code>
+      </p>
+      <p>
+        <strong>Schema:</strong> <code>npm run db:migrate:local</code> before the reviewed migration
+        is applied remotely.
+      </p>
+      <p>
+        Server coordination lives under <code>src/server/publish</code>; API contracts under
+        <code>src/server/routes</code> and OpenAPI; UI state under <code>src/client/publish</code>;
+        integration, unit, and browser evidence under <code>tests</code>.
+      </p>
+    </div>
+
+    <h2>Code and testing conventions</h2>
+    <div class="card">
+      <p>
+        Use strict TypeScript, Zod validation at trust boundaries, prepared D1 statements,
+        append-only evidence, pure lifecycle derivation, plain-language UI copy, and repository
+        formatting. Tests cover state-machine logic first, then real Miniflare D1 coordination,
+        route authorization, and critical browser journeys with multiple drafts.
+      </p>
+    </div>
+
+    <h2>Boundaries</h2>
+    <ul>
+      <li>
+        <strong>Always:</strong> preserve exact revision identity, immutable evidence, idempotency,
+        authorization, safe recovery, and the single shared Staging slot.
+      </li>
+      <li>
+        <strong>Ask first:</strong> destructive data recovery, changed roles, a new environment, or
+        public PointSite publication.
+      </li>
+      <li>
+        <strong>Never:</strong> expose private draft data, trust client availability, queue
+        publications silently, write to Production PointSite, or make a preflight mutate Staging.
+      </li>
+    </ul>
+
+    <h2>Success</h2>
+    <p>
+      Automated and hands-on tests prove two independent drafts retain their own exact evidence,
+      concurrent publication attempts yield one lease holder, a busy draft recovers automatically,
+      replaced candidates can be republished, expired leases recover, and public Production remains
+      unchanged.
+    </p>
+  </body>
+</html>

@@ -15,9 +15,12 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
     d1Databases: { DB: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
-  await database.exec(
-    (await readFile('migrations/0001_initial.sql', 'utf8')).replace(/\s+/g, ' ').trim(),
-  );
+  for (const migration of [
+    'migrations/0001_initial.sql',
+    'migrations/0010_publish_preflight_leases.sql',
+  ]) {
+    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+  }
   const store = new D1PublishJobStore(database);
   const created = await store.create({
     idempotencyKey: 'publish-test-key-0001',
@@ -80,4 +83,144 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
     'publish.succeeded',
     'publish.verification-recorded',
   ]);
+});
+
+it('grants one recoverable Staging lease and rejects a competing draft without leaking it', async () => {
+  miniflare = new Miniflare({
+    compatibilityDate: '2026-09-05',
+    modules: true,
+    script: 'export default { fetch() { return new Response("ok") } }',
+    d1Databases: { DB: crypto.randomUUID() },
+  });
+  const database = await miniflare.getD1Database('DB');
+  for (const migration of [
+    'migrations/0001_initial.sql',
+    'migrations/0010_publish_preflight_leases.sql',
+  ]) {
+    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+  }
+  const store = new D1PublishJobStore(database);
+  const candidate = (draftId: string) => ({
+    siteId: 'pointsite',
+    draftId,
+    revisionId: crypto.randomUUID(),
+    revisionChecksum: 'd'.repeat(64),
+    schemaVersion: 8,
+    rendererVersion: '8.0.0',
+    fileCount: 2,
+  });
+  const first = await store.claim({
+    idempotencyKey: 'publish-lease-first',
+    candidateChecksum: 'a'.repeat(64),
+    candidate: candidate('10000000-0000-4000-8000-000000000001'),
+    baseSha: 'b'.repeat(40),
+    actor: 'publisher@pointatx.org',
+    requestId: 'request-first',
+    now: '2026-09-08T12:00:00Z',
+  });
+  expect(first).toMatchObject({ status: 'running', leaseExpiresAt: '2026-09-08T12:15:00.000Z' });
+  await expect(
+    store.claim({
+      idempotencyKey: 'publish-lease-second',
+      candidateChecksum: 'e'.repeat(64),
+      candidate: candidate('10000000-0000-4000-8000-000000000002'),
+      baseSha: 'b'.repeat(40),
+      actor: 'publisher@pointatx.org',
+      requestId: 'request-second',
+      now: '2026-09-08T12:01:00Z',
+    }),
+  ).rejects.toThrow('PUBLISH_SLOT_BUSY');
+  await expect(store.availability('2026-09-08T12:01:00Z')).resolves.toEqual({
+    state: 'busy',
+    phase: 'running',
+    retryAt: '2026-09-08T12:15:00.000Z',
+  });
+
+  const recovered = await store.claim({
+    idempotencyKey: 'publish-lease-recovered',
+    candidateChecksum: 'f'.repeat(64),
+    candidate: candidate('10000000-0000-4000-8000-000000000002'),
+    baseSha: 'b'.repeat(40),
+    actor: 'publisher@pointatx.org',
+    requestId: 'request-recovered',
+    now: '2026-09-08T12:16:00Z',
+  });
+  expect(recovered).toMatchObject({ status: 'running' });
+  expect(await store.getById(first.id)).toMatchObject({
+    status: 'cancelled',
+    leaseExpiresAt: null,
+  });
+  const denied = await database
+    .prepare(
+      "SELECT action,target_type,outcome,metadata_json FROM audit_events WHERE action IN ('publish.denied','publish.lease-recovered') ORDER BY occurred_at",
+    )
+    .all<{ action: string; target_type: string; outcome: string; metadata_json: string }>();
+  expect(denied.results.map((row) => row.action)).toEqual([
+    'publish.denied',
+    'publish.lease-recovered',
+  ]);
+  expect(denied.results.map((row) => row.outcome)).toEqual(['denied', 'succeeded']);
+  expect(
+    denied.results.every(
+      (row) => !row.metadata_json.includes('10000000-0000-4000-8000-000000000001'),
+    ),
+  ).toBe(true);
+
+  await store.fail(
+    recovered.id,
+    'publisher@pointatx.org',
+    'request-recovered-failure',
+    'STAGING_BASE_DRIFT',
+  );
+  await expect(store.availability('2026-09-08T12:17:00Z')).resolves.toEqual({
+    state: 'available',
+  });
+});
+
+it('atomically grants exactly one lease to simultaneous competing drafts', async () => {
+  miniflare = new Miniflare({
+    compatibilityDate: '2026-09-05',
+    modules: true,
+    script: 'export default { fetch() { return new Response("ok") } }',
+    d1Databases: { DB: crypto.randomUUID() },
+  });
+  const database = await miniflare.getD1Database('DB');
+  for (const migration of [
+    'migrations/0001_initial.sql',
+    'migrations/0010_publish_preflight_leases.sql',
+  ]) {
+    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+  }
+  const store = new D1PublishJobStore(database);
+  const claim = (suffix: string) =>
+    store.claim({
+      idempotencyKey: `publish-race-${suffix}-0001`,
+      candidateChecksum: suffix.repeat(64),
+      candidate: {
+        siteId: 'pointsite',
+        draftId: `10000000-0000-4000-8000-00000000000${suffix === 'a' ? '1' : '2'}`,
+        revisionId: `20000000-0000-4000-8000-00000000000${suffix === 'a' ? '1' : '2'}`,
+        revisionChecksum: suffix.repeat(64),
+        schemaVersion: 8,
+        rendererVersion: '8.0.0',
+        fileCount: 2,
+      },
+      baseSha: 'c'.repeat(40),
+      actor: 'publisher@pointatx.org',
+      requestId: `request-race-${suffix}`,
+      now: '2026-09-08T12:00:00Z',
+    });
+
+  const results = await Promise.allSettled([claim('a'), claim('b')]);
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+  expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+  expect(results.find((result) => result.status === 'rejected')?.reason).toMatchObject({
+    message: 'PUBLISH_SLOT_BUSY',
+  });
+  const active = await database
+    .prepare(
+      "SELECT COUNT(*) AS count FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running')",
+    )
+    .first<{ count: number }>();
+  expect(active?.count).toBe(1);
 });

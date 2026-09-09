@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { StagingVerificationEvidence } from '../../src/server/github/client';
 import { D1PublishJobStore } from '../../src/server/publish/jobs';
+import { D1PublishPreflightStore } from '../../src/server/publish/preflights';
 import { StagingPublisher } from '../../src/server/publish/service';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 
@@ -27,9 +28,12 @@ async function setup() {
     d1Databases: { DB: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
-  await database.exec(
-    (await readFile('migrations/0001_initial.sql', 'utf8')).replace(/\s+/g, ' ').trim(),
-  );
+  for (const migration of [
+    'migrations/0001_initial.sql',
+    'migrations/0010_publish_preflight_leases.sql',
+  ]) {
+    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+  }
   const repository = new InMemoryRepository();
   const draft = await repository.createDraft({
     name: 'Publish test',
@@ -38,6 +42,34 @@ async function setup() {
     idempotencyKey: 'create-publish-test',
     requestId: 'request-create',
   });
+  await database
+    .prepare(
+      "INSERT INTO drafts (id,site_id,name,status,created_by,created_at,updated_at) VALUES (?,'pointsite',?,'active',?,?,?)",
+    )
+    .bind(draft.id, draft.name, draft.createdBy, draft.createdAt, draft.updatedAt)
+    .run();
+  await database
+    .prepare(
+      'INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    )
+    .bind(
+      draft.revision.id,
+      draft.id,
+      draft.revision.sequence,
+      draft.revision.parentRevisionId,
+      draft.revision.checksum,
+      JSON.stringify(draft.document),
+      draft.revision.label,
+      draft.revision.schemaVersion,
+      draft.revision.rendererVersion,
+      draft.revision.createdBy,
+      draft.revision.createdAt,
+    )
+    .run();
+  await database
+    .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+    .bind(draft.revision.id, draft.id)
+    .run();
   let currentSha = baseSha;
   const client = {
     currentMainSha: vi.fn(() => Promise.resolve(currentSha)),
@@ -73,19 +105,101 @@ async function setup() {
     }),
   };
   const jobs = new D1PublishJobStore(database);
+  const preflights = new D1PublishPreflightStore(database);
   return {
     database,
     repository,
     draft,
     client,
     jobs,
-    publisher: new StagingPublisher(repository, config, undefined, jobs, () =>
+    preflights,
+    publisher: new StagingPublisher(repository, config, undefined, jobs, preflights, () =>
       Promise.resolve(client),
     ),
   };
 }
 
+const preflightInput = (
+  draft: Awaited<ReturnType<InMemoryRepository['createDraft']>>,
+  key: string,
+) => ({
+  draftId: draft.id,
+  expectedRevisionId: draft.revision.id,
+  expectedRevisionChecksum: draft.revision.checksum,
+  actor: 'publisher@pointatx.org',
+  idempotencyKey: key,
+  requestId: `request-${key}`,
+});
+
 describe('staging publish coordinator', () => {
+  it('requires and retains a private exact-revision preflight before any Staging write', async () => {
+    const { publisher, draft, client, preflights } = await setup();
+    const input = {
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
+      expectedBaseSha: baseSha,
+      actor: 'publisher@pointatx.org',
+      idempotencyKey: 'publish-after-preflight',
+      requestId: 'request-publish',
+    };
+
+    await expect(publisher.publish(input)).rejects.toThrow('PREFLIGHT_REQUIRED');
+    expect(client.commitFiles).not.toHaveBeenCalled();
+
+    const result = await publisher.preflight({
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
+      actor: input.actor,
+      idempotencyKey: 'preflight-exact-revision',
+      requestId: 'request-preflight',
+    });
+    expect(result).toMatchObject({
+      state: 'passed',
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+    });
+    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(await preflights.getLatestForDraft(draft.id)).toMatchObject({
+      status: 'passed',
+      candidateChecksum: result.candidateChecksum,
+    });
+
+    await expect(publisher.publish(input)).resolves.toMatchObject({ status: 'succeeded' });
+  });
+
+  it('keeps preflight current across unrelated Staging changes but invalidates contract drift', async () => {
+    const { publisher, draft, client, preflights } = await setup();
+    const passed = await publisher.preflight(
+      preflightInput(draft, 'preflight-independent-staging'),
+    );
+    client.currentMainSha.mockResolvedValueOnce('e'.repeat(40));
+    await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
+      currentStagingSha: 'e'.repeat(40),
+      preflight: {
+        state: 'passed',
+        candidateChecksum: passed.candidateChecksum,
+      },
+    });
+
+    await preflights.recordFailed({
+      idempotencyKey: 'preflight-contract-drift',
+      draftId: draft.id,
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      rendererContractChecksum: 'f'.repeat(64),
+      failureCode: 'STAGING_RENDERER_MISMATCH',
+      actor: 'publisher@pointatx.org',
+      requestId: 'request-contract-drift',
+      now: '2099-09-08T12:00:00Z',
+    });
+    await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
+      preflight: { state: 'required', reason: 'renderer-contract-changed' },
+    });
+    expect(client.commitFiles).not.toHaveBeenCalled();
+  });
+
   it('commits one exact candidate and returns the durable result on retry', async () => {
     const { publisher, draft, client, jobs } = await setup();
     await expect(publisher.currentBaseSha()).resolves.toBe(baseSha);
@@ -98,6 +212,7 @@ describe('staging publish coordinator', () => {
       idempotencyKey: 'publish-candidate-0001',
       requestId: 'request-publish',
     };
+    await publisher.preflight(preflightInput(draft, 'preflight-candidate-0001'));
     const result = await publisher.publish(input);
     const retry = await publisher.publish({
       ...input,
@@ -125,6 +240,76 @@ describe('staging publish coordinator', () => {
     });
   });
 
+  it('presents an expired publication lease as safely stopped and available to retry', async () => {
+    const { publisher, draft, jobs, client } = await setup();
+    const preflight = await publisher.preflight(preflightInput(draft, 'preflight-expired-lease'));
+    await jobs.claim({
+      idempotencyKey: 'publish-expired-lease',
+      candidateChecksum: preflight.candidateChecksum,
+      candidate: {
+        siteId: 'pointsite',
+        draftId: draft.id,
+        revisionId: draft.revision.id,
+        revisionChecksum: draft.revision.checksum,
+        schemaVersion: draft.document.schemaVersion,
+        rendererVersion: draft.document.rendererVersion,
+        fileCount: 2,
+      },
+      baseSha,
+      actor: 'publisher@pointatx.org',
+      requestId: 'request-expired-lease',
+      now: '2020-01-01T00:00:00Z',
+    });
+
+    await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
+      availability: { state: 'available' },
+      job: {
+        status: 'cancelled',
+        evidence: { failureCode: 'PUBLISH_LEASE_EXPIRED' },
+      },
+    });
+    await expect(
+      publisher.publish({
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedRevisionChecksum: draft.revision.checksum,
+        expectedBaseSha: baseSha,
+        actor: 'publisher@pointatx.org',
+        idempotencyKey: 'publish-expired-lease',
+        requestId: 'request-expired-lease-retry',
+      }),
+    ).resolves.toMatchObject({ status: 'succeeded', commitSha });
+    expect(client.commitFiles).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks the exact draft revision immediately before claiming Staging', async () => {
+    const { publisher, repository, draft, client } = await setup();
+    await publisher.preflight(preflightInput(draft, 'preflight-revision-recheck'));
+    vi.spyOn(repository, 'getDraft')
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce({
+        ...draft,
+        revision: {
+          ...draft.revision,
+          id: '20000000-0000-4000-8000-000000000099',
+          checksum: 'f'.repeat(64),
+        },
+      });
+
+    await expect(
+      publisher.publish({
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedRevisionChecksum: draft.revision.checksum,
+        expectedBaseSha: baseSha,
+        actor: 'publisher@pointatx.org',
+        idempotencyKey: 'publish-revision-recheck',
+        requestId: 'request-revision-recheck',
+      }),
+    ).rejects.toThrow('DRAFT_REVISION_DRIFT');
+    expect(client.commitFiles).not.toHaveBeenCalled();
+  });
+
   it('records exact verification evidence and rejects a reused key after draft drift', async () => {
     const { publisher, repository, draft, client } = await setup();
     const input = {
@@ -136,6 +321,7 @@ describe('staging publish coordinator', () => {
       idempotencyKey: 'publish-candidate-0002',
       requestId: 'request-publish',
     };
+    await publisher.preflight(preflightInput(draft, 'preflight-candidate-0002'));
     const result = await publisher.publish(input);
     const verified = await publisher.refreshVerification(
       result.jobId ?? '',
@@ -197,6 +383,7 @@ describe('staging publish coordinator', () => {
       idempotencyKey: 'publish-candidate-0003',
       requestId: 'request-failure',
     };
+    await publisher.preflight(preflightInput(draft, 'preflight-candidate-0003'));
     await expect(publisher.publish(input)).rejects.toThrow('GITHUB_TEST_FAILURE');
     const job = await jobs.getByKey(input.idempotencyKey);
     expect(job).toMatchObject({
@@ -209,11 +396,11 @@ describe('staging publish coordinator', () => {
     await expect(publisher.getJob('missing')).resolves.toBeNull();
   });
 
-  it('fails before candidate writes when protected Staging has a different renderer', async () => {
+  it('rejects a stale expected Staging base before claiming or writing', async () => {
     const { publisher, draft, client, jobs } = await setup();
-    client.assertRendererCompatible.mockRejectedValueOnce(
-      new Error('STAGING_RENDERER_MISMATCH: site.css'),
-    );
+    await publisher.preflight(preflightInput(draft, 'preflight-stale-base'));
+    client.currentMainSha.mockResolvedValue('e'.repeat(40));
+
     await expect(
       publisher.publish({
         draftId: draft.id,
@@ -221,7 +408,26 @@ describe('staging publish coordinator', () => {
         expectedRevisionChecksum: draft.revision.checksum,
         expectedBaseSha: baseSha,
         actor: 'publisher@pointatx.org',
-        idempotencyKey: 'publish-renderer-mismatch',
+        idempotencyKey: 'publish-stale-base',
+        requestId: 'request-stale-base',
+      }),
+    ).rejects.toThrow('STAGING_BASE_DRIFT');
+    expect(await jobs.getByKey('publish-stale-base')).toBeNull();
+    expect(client.commitFiles).not.toHaveBeenCalled();
+  });
+
+  it('fails before candidate writes when protected Staging has a different renderer', async () => {
+    const { publisher, draft, client, jobs } = await setup();
+    client.assertRendererCompatible.mockRejectedValueOnce(
+      new Error('STAGING_RENDERER_MISMATCH: site.css'),
+    );
+    await expect(
+      publisher.preflight({
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedRevisionChecksum: draft.revision.checksum,
+        actor: 'publisher@pointatx.org',
+        idempotencyKey: 'preflight-renderer-mismatch',
         requestId: 'request-renderer-mismatch',
       }),
     ).rejects.toThrow('STAGING_RENDERER_MISMATCH: site.css');
