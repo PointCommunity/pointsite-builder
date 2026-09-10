@@ -9,4 +9,4 @@
 
 The upstream `SKILL.md` and its nine Markdown references are vendored under `references/`. The PointSite Builder entrypoint removes tool-specific `allowed-tools` frontmatter, pins the fallback invocation, distinguishes this CLI-specific workflow from the existing environment-neutral `playwright` skill, and adds authorization, sensitive-state, session-ownership, and artifact-handling boundaries.
 
-The vendored files are unmodified copies from the pinned source. The new PointSite Builder entrypoint is an adaptation and is prominently identified as such here.
+The nine reference files remain unmodified copies from the pinned source. The vendored entrypoint in `official-cli-reference.md` adapts its nine relative reference links to their installed sibling locations. The new PointSite Builder entrypoint is an adaptation and is prominently identified as such here.

@@ -2,254 +2,369 @@
   "version": 1,
   "files": {
     ".agents/pipeliner-policy.html": {
-      "sourceSha256": "b331062146622916d9d4bec51cb4f4a52f4b2277d990a9d24eb7b511198c9399",
-      "targetSha256": "48904a5e1b0e2006e45853814e8ebe81488bc48cdd765efec2c47976af706e82",
-      "rationale": "Preserve generic guidance with explicit Builder product-policy and Issue-free maintenance precedence; format to repository style."
+      "sourceSha256": "a5daa92018d180e1408d3437672246a58aaebce39a3c3d7040d35eadfddc24b1",
+      "targetSha256": "cede96f3470f4ff0c1553a09367bc3b184eb6a66ec65a44a8824ee65b13d83c3",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-adopt/SKILL.md": {
+      "sourceSha256": "145867f47a6de75aef195ab76374f359aac4f64e0cf64cb72102343b8c37f689",
+      "targetSha256": "7beb578d7ef786d55e16311c7690c86a28340f473b71ca631328f27324e7aea7",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-adopt/agents/openai.yaml": {
       "sourceSha256": "ce04ce995cddc70b7d7693b5a5b89a88572f9f2c78aa56113244ab5826896c13",
       "targetSha256": "a39ff8e490a042ce561758d0df79a7c3a96e313dd8a59e9abf3f156a30b12f1e",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-adopt/SKILL.md": {
-      "sourceSha256": "b557ab2ce9a02dd3799c3d6675c7631a644644bb964f0b69da5ffb2659504b79",
-      "targetSha256": "3281529a2aa07d71c61b9862558b87e5258acd39868495fc7c00abd8e3807941",
-      "rationale": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
+    ".agents/skills/pipeliner-adopt/references/discovery.md": {
+      "sourceSha256": "f317821ca9761e705b3e8882bb339c21a072ddda13875b613446e6a6f59b8798",
+      "targetSha256": "e379bfc4027c88fa724f93e1562f53e36a6d6d364a9c1e9c8bebbee6b97ff91c",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-adopt/references/reconciliation.md": {
+      "sourceSha256": "a050341a3c7b8b807a57234c88849ee460051adb5f28751b01f59b74ddfabb5f",
+      "targetSha256": "ba2649932bd76b755813dd59ed6126e6b5d232eeb36e498dbadcb8ea81f0e7cf",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-audit-backlog/SKILL.md": {
+      "sourceSha256": "45e0f1b4d753825faf278cddeafe100f4c075ac9101704fecd8f8529aa674f40",
+      "targetSha256": "ae9bd38302adaf1550a52accb59672971ea8d98f03c6a86f5d64568860cca47d",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml": {
       "sourceSha256": "faecbac92f646f5e0fab46fc70423a3a920453b2b41e960c97d4b7f6a184c909",
       "targetSha256": "64d50ea1a9441c6a12e29bc0ee2b91cd0333f87f09750f78e5ea0b4586a6914d",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-audit-backlog/SKILL.md": {
-      "sourceSha256": "b256a744fce697c73088891025bd39fc85d214f9b0fb0dd1022c18a899a87e68",
-      "targetSha256": "796dee9aee057fc762c9204a4671df65e3bfe7826b16682c19b6ae5f24776c0c",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-close-issue/SKILL.md": {
+      "sourceSha256": "cca5c2c66ac72d7cd42ed367264ef682a6defbcae5fc6385d81ff7102e65ef41",
+      "targetSha256": "938f44971b96aceffa5b0359ffe0c024f8025c5bb8eb640439a4267bea67af92",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-close-issue/agents/openai.yaml": {
       "sourceSha256": "6bcb20f0203052514dc932e388a4fdeafb111c77431f2f2262a0b4f8edf12dce",
       "targetSha256": "9d2e6595ab33d6fad0aa35edf600f4595a0822ef108e4370bd18bbb47f6f76e2",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-close-issue/SKILL.md": {
-      "sourceSha256": "91ccb39818ada243ffe3129d9ec544978c88fac53ec0e4112a2c9177f378a1f9",
-      "targetSha256": "74bdfaf03863bd19526f64cfa1fb228784fabb4282c1f2c17635f5f07c7ad14b",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-create-issue/SKILL.md": {
+      "sourceSha256": "e612bc066166b7b35ef903698c812103461327fafa4c652e39e291ffc5c0a0b1",
+      "targetSha256": "0d77b3474704a9d0159938b3b7b81b82b9e26d06fc0b49236c3db1df376b735d",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-create-issue/agents/openai.yaml": {
       "sourceSha256": "8912968c47a6b0c710c72cefbb3afe567afb8a3bc7c2d9439e055f209df78cd3",
       "targetSha256": "342adc00a7009ded088017309b856dbca0b04777143129885ee5d47da3ebdeb3",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-create-issue/SKILL.md": {
-      "sourceSha256": "ecf83483fd37f22c141397c9795efebb4ab3ee21ecea35244535746d908a1229",
-      "targetSha256": "2601609c0adf5808b0c14b382e6e7113ad833d04b11595a8dc4a751f396d5db3",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-maintain/SKILL.md": {
+      "sourceSha256": "c3a2609fb5f34b0601261d0e89650fede16d6f8cebda5f494c851405c7528aa9",
+      "targetSha256": "abcb5b4014c420842a74004b234bd016cedf821ba382bd9bc98ed7d4b1b9354e",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-maintain/agents/openai.yaml": {
       "sourceSha256": "a562f20e59d1b9221d592b289d195c4d44de56297202a06d44608c93648ded43",
       "targetSha256": "5e8433f5055431eed91b8c0a43e146ea9bc40e4ba0588238ba5e76aa671b03bf",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-maintain/SKILL.md": {
-      "sourceSha256": "7b1d97d6f7c8a3cd951423e8391597e417ff29d79acd33a461ba1b4cfd56887b",
-      "targetSha256": "2ae38d59eb13739b7ebdc1105b9c976b9ef67ed451cc52559593e09987fa5724",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-maintain/references/evidence.md": {
+      "sourceSha256": "69eefb7278cd9961549107934f63b4d640a90a120c5ef825339f172e80e7af09",
+      "targetSha256": "510add4bbdd1796b71834a81d134b4aa2e3b4281fb543c582643e6ea53625c3a",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-maintain/references/home.md": {
+      "sourceSha256": "2cd3f8ae244c931ea755e11fd4d19f20f4936c4cb982af2af41d0f1f5b28d82a",
+      "targetSha256": "273d00ba00ca0df07b51b910192f1da45966253418a250fd75f8749f5b0a749b",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-maintain/references/providers.md": {
+      "sourceSha256": "f407a653d952dff8ac2644ae097c9fbb2d82b70fed6cbfd82036d4a53e7e80fa",
+      "targetSha256": "2b6a4f856ef512b102475824cf32fbe629e0670bfa8f56a3b544ba73200f3aed",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-maintain/references/questions.md": {
+      "sourceSha256": "7ddc66970c029bcc96757a01811f7e388c44d9cb29ff5ccde21da046062d68d9",
+      "targetSha256": "abb724ef58beb790055873debe7d94d9acf899b44dce273b3ee8e1cd8ad564aa",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-maintain/references/release-cycle.md": {
+      "sourceSha256": "8825141364e44969671d019dc9896738212b24f91d99289682886da5232e4ae2",
+      "targetSha256": "e1026a85afd02aeb6401885fc3f70bb028a99f7ce445e1244a2719020862167a",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-monitor-updates/SKILL.md": {
+      "sourceSha256": "a59ef32d7d38d0ffe5431af2cba312c4c20ed9425c4bb8b035871dd1f32deb99",
+      "targetSha256": "895dc17f4f302c65ac21c0c82a5969e5b7c8c7e564222dcb0db512dd7fc2de23",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-monitor-updates/agents/openai.yaml": {
       "sourceSha256": "00cfa1635eefc03c435b63386a1d99c97b5ec28835dd512783102492346fc46c",
       "targetSha256": "c038618ee63a7ee991717b472254cf30a83551f073db34606f4b0feddc01b673",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-monitor-updates/references/monitor-prompt.md": {
+      "sourceSha256": "32a92f0086f030e42cc8f70dfcfd1ff1fb25872060950f3eefa632ddd0e89264",
+      "targetSha256": "ff3639c0907534bfdb4426f4c40913dfafe52645c1680206011beb6bbf932ac4",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-pipeline-health/SKILL.md": {
+      "sourceSha256": "59946cb8bdb60c197c39c7d2eccb686171e62ab0600d89acc24d835d8012043e",
+      "targetSha256": "f3124fb454d56f404005dfbf416c5316ef768b0e51eeefc0477e6f963aa37cf8",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-pipeline-health/agents/openai.yaml": {
       "sourceSha256": "0fca951f5e4d1624c59eca0257865e5389807fa1d46baf1b8c0161d47ea11098",
       "targetSha256": "875ed4048db8452aededf729e7fda7c0b7c4678941a033431e9ab4657bf3075b",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-pipeline-health/SKILL.md": {
-      "sourceSha256": "5c6a4605e8c0f5afbca234843c8dbea346a5483390c108de9b86a2e55056008b",
-      "targetSha256": "78f303976a88372322dd070347d0be857265c874df8f2accd799e472cfedaa32",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-pipeline-health/references/project-operations.md": {
+      "sourceSha256": "587bd70ca90100937e6fbc8bb889b9dc1d875b2c77667fb59c0a99d8016515f7",
+      "targetSha256": "03c18926600661dde797386787ac90a485565aa6c9de0434a75673044ad52c24",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-release-candidate/SKILL.md": {
+      "sourceSha256": "b1ff96ab28431162b891e9933c4024aa3bba907f59e289932d8fa7be71137374",
+      "targetSha256": "144aa44c9cfee0e9a1870d13d9a4e9f4f4be319ab5f89541ad8d805ed8f99184",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-release-candidate/agents/openai.yaml": {
       "sourceSha256": "c8035efab91603067af4de0cd4daec33edcbb56b7a6438b1f9826ab2f589f1bd",
       "targetSha256": "7050fe1142236b1fb2c31a8e805ac3e971f3f6dbfe47d71243a10c93950d4543",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-release-candidate/SKILL.md": {
-      "sourceSha256": "adfffcb0515330b7d2dca4a0c11e88c0d69ade6b04e9a5a3e65b730cdb3c6b40",
-      "targetSha256": "de3694c54525320d2604a98a199885ad6cd2c574a2b4d6cd8c414d5f7baef2d8",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    ".agents/skills/pipeliner-release-candidate/references/strategies.md": {
+      "sourceSha256": "2ad91c6aa8231a0be8d9e509963c54164307aad332f8789957085117e31d7202",
+      "targetSha256": "1036561f2475540a5f02f031b698e68ede9efcacc1f3fb3b21fbc6d185e8e463",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-release-production/SKILL.md": {
+      "sourceSha256": "4d10606b7d63f5984aa78479fbb2407d8e665269e5a1b9e74cae792c706c4670",
+      "targetSha256": "28ad67641f919f6ad520f69e47cdf65dd961db6006696478554c6ee381535adf",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-release-production/agents/openai.yaml": {
       "sourceSha256": "408c3e02e69f5b4f9ba2d99b40f6555cfe05ccc011d91cec016d432dffc5bd74",
       "targetSha256": "e2e9bfae124fffc636c1183c93f2b82c4bb85eb20a63512740404c54591e9e26",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    ".agents/skills/pipeliner-release-production/SKILL.md": {
-      "sourceSha256": "056f170c8e09eac5dbc9327743f71987c694bac9d6ab04304f13da64ffd073fb",
-      "targetSha256": "1c48c33c13172c4602b0e04f41a71608c2b73a2b1b6e13088bb8681de294b99f",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
-    },
-    ".agents/skills/pipeliner-review-issue/agents/openai.yaml": {
-      "sourceSha256": "1df2a308657decfbfd89d88c6ac64d8691d64c71c73ce4acc7ca40e48ac2b5b2",
-      "targetSha256": "6efdf2c6c356e1cc63e1fbb9f459974e3d0c796c164595e8490406a9b6aa4023",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-review-issue/SKILL.md": {
-      "sourceSha256": "112f4aac91845e3be1f5b9f0e919511ee4b64cdf3e963dc821c42863da9e5194",
-      "targetSha256": "066766cf9e480b487f1ac47b2a6e3290bdbfca0283e503729a8ef926ef5bab4a",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "sourceSha256": "240aae20be050f8a41b5a87e869b25c0edae6d58ee73bbee83ec6facbfd4488d",
+      "targetSha256": "1594801d102fd8ac015952b6a8295d569b9437b5d3c437ddd27c34fbddb2b716",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-review-issue/agents/openai.yaml": {
+      "sourceSha256": "094dc4d2f0f467884e598c645634ead1c2917b50cd674a3f83bdaa83939cdea0",
+      "targetSha256": "7f9228e75fb92104ecbb73b819c5c580a3b26f96443aa604d0507b83cafd968a",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-review-issue/references/pm-testing.md": {
+      "sourceSha256": "9466a3508718f9d9508053a0cfb1d776f24c6c2e5422015da2a8fbd523499ace",
+      "targetSha256": "2a7da8230927d5c3d54e9d8dd23bdcc33867c4156ef6d756014c01a7dda221c2",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-update/SKILL.md": {
+      "sourceSha256": "ef47b638ae14e45684f3600760363bec643e34472aa51e0679059040ab40ea36",
+      "targetSha256": "0f40e06a5a3eb1d5b1bfc4a1abb251092dc69862aa5e53c9cac2ffc5cfb32862",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-update/agents/openai.yaml": {
       "sourceSha256": "343ff9a35d1cbaf1d6781fd11dd5c824dfacd038f0c734ed89c3fb22544ff459",
       "targetSha256": "79d253a466be2c61699853e18f73b3bc56af5ed2a20ce69d5958b5155e8a6b22",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
-    ".agents/skills/pipeliner-work-issue/agents/openai.yaml": {
-      "sourceSha256": "efc7a7e75ce03ea7c65e29883907144763303f9d5abb95647d26845f55f5cf98",
-      "targetSha256": "bd12177862c63a757dd04c6a250ee1c1d866de5bc39525a9200c7ffdaccaa99c",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    ".agents/skills/pipeliner-work-issue/references/local-qa.md": {
-      "sourceSha256": "42eca9b0c87e92926a802955083908200f6a92d9d4f3e6ba15bd6461cb864a6b",
-      "targetSha256": "f854ad63298577afc4f1961fc823da5c566285c29f047d0b1cef794ed8d91390",
-      "rationale": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
+    ".agents/skills/pipeliner-update/references/upstream.md": {
+      "sourceSha256": "159dfb8bf9ae2da431f083b1178eec384e5f497bd8f292bb32491da3115be51d",
+      "targetSha256": "96cfc693ff7c43499bae1c72d05f8e0deacd7bbf9e18b5bbcc894dc1677da67e",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-work-issue/SKILL.md": {
-      "sourceSha256": "877f5a20d5932ade1ba6371d35a3e0d7c4099556c796d6345bd545560379fe49",
-      "targetSha256": "91f86614b948df85d79d08f966f79ce0ba21852380028dd2d0f02b78639307eb",
-      "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "sourceSha256": "1d2ed6c6a07c496325f76af41558d148f521000994006fe5ad930fa8f3899ae0",
+      "targetSha256": "e6c26019f5aa6ae91525f471edee1eab964995a3c93520a944091e9bd51273df",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-work-issue/agents/openai.yaml": {
+      "sourceSha256": "6d54fcd2cb1345c07ab543ef107d78c8a3009d11312e496f27c39afc8b30fdb3",
+      "targetSha256": "3615f20eeae4a044f65a941eec1b3dc847c21adf37b6bad05a4dc6ff9ff631d3",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-work-issue/references/lifecycle.md": {
+      "sourceSha256": "fe879491e0b54071430d65deaaafeec765885bba796efe583efce1c91d2e4628",
+      "targetSha256": "c703e84952118924de18279f1b4120d23cf96719706b3d0d2b66f670269abeb4",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    ".agents/skills/pipeliner-work-issue/references/local-qa.md": {
+      "sourceSha256": "5066113b76d5deae50221ee91196e3c60f4c17158d354ffc56d4f01974d62024",
+      "targetSha256": "c0c11cab4063fc40659c3c6a8bdb961614cd7b2f5e4093a7003f9f02e3d59a32",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".github/ISSUE_TEMPLATE/bug.yml": {
       "sourceSha256": "cbbb45cae918bb9ad505e7dc8f75da146ba9d3cec0366dcbf26100be43fcc2c7",
       "targetSha256": "f6d9d5a863deb6ad6e8bb9bf45311205cc1fced35dc92b705a95782b1185ec39",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     ".github/ISSUE_TEMPLATE/feature.yml": {
       "sourceSha256": "fe0a8c02d606debcb090515c37839f1a3e4b24cf485615fbc1016a58cdd3fbdc",
       "targetSha256": "c908133bf828ea0f2fd4e620f852b32818b30d323668ef03aca950c3c1ac3a4c",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     ".github/ISSUE_TEMPLATE/maintenance.yml": {
       "sourceSha256": "103f20a55d7429de6bf7af8b60af6c5652421f5178d79cc06feec0bc91754478",
       "targetSha256": "250a9a18779a2bf31cc9c6d4419737662a773117d7e796799ceb67645d91ca76",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     ".github/pull_request_template.md": {
       "sourceSha256": "283de4a7c8893f35044d0d1a59782ded22dabcdb0c4d77c3d70fc665e8c2bf60",
       "targetSha256": "dbd3d08872a178ac8748b0b7ab8ee18c8f2e452061695b5e21cd805c0b0f9c13",
-      "rationale": "Document explicit Issue-free framework-maintenance PR marker while preserving product Issue references and PM Testing sections."
-    },
-    "AGENTS.md": {
-      "sourceSha256": "9ccb55ad570db181e548e3271e453faedc53082d39416d4b717bebf8530a5fd1",
-      "targetSha256": "75549432eac79382b5e3ec8403015e85d9a49546b60abd44bf99899b767212e7",
-      "rationale": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
-    },
-    "blueprints/github-labels.json": {
-      "sourceSha256": "fde4722934324c3aba849d289d6a97604d1db256e0130272ce2b98af6b23d799",
-      "targetSha256": "e19520c9b7b0947da09cff8098826040e47342d19184592577095a8efdc3b9e3",
-      "rationale": "Retain live Builder-specific label taxonomy and descriptions; area:deployment covers generic release and area:workflow covers tooling. No unrelated label mutations."
-    },
-    "blueprints/profiles/direct-production.config.json": {
-      "sourceSha256": "c7c69615df806c2d5767c35eee038c44229e9de3517e6c6474d83936855fdc69",
-      "targetSha256": "99f6ab4ba01053f5610150f262db807191d5c46be9e114ebe3aae4b10b666ba9",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/profiles/immutable-promotion.config.json": {
-      "sourceSha256": "5f7a4f2e12d9e36433df15a4637e145739e249eaa735c34171498317617aa42d",
-      "targetSha256": "4b725a9dccf2ad1eca9e619b337e2ab9ce31e6f2f57d2dff36401298f51abd54",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/profiles/multi-environment.config.json": {
-      "sourceSha256": "b2b196814c16af0a9da7b9ae0c2c9b6faebbbd6ac04bd34bf06fe3931dc21af4",
-      "targetSha256": "b23b698bac6228b2091cc799f48e36cacf18ef1aa2696fcc624b92a419ba27c6",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/qa/self-handoff.json": {
-      "sourceSha256": "81a08fa02e7fe7643c122786a7b8e0b9846c9ef72b4a26604c6fbe236b291ef2",
-      "targetSha256": "93a825d0d058d99d38418e1718c01715614f89ffbed0eb702787e3bf320a9299",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/qa/shared-windows.json": {
-      "sourceSha256": "b0b82ae7e86d122118cec9b491029d8fff0c6354b80cb5f2ef8f7e044362f33e",
-      "targetSha256": "6b4e9b13bfdfa292ad29b4f9933d97d8d0b66664cee56fbd2cfa708de477bccc",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/qa/single.json": {
-      "sourceSha256": "a78a1f691a4559c0fa0d4baf155241c7f1e6bccca676f644296a2e3dc5ef0946",
-      "targetSha256": "452107a118718571deae5b9a4d6dcda9860f8e4eec3d968065f3c045065b64a6",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "blueprints/qa/split-native.json": {
-      "sourceSha256": "e799680d64e873bbc43f0b9bd5a1c6128df8a0fa84c438a2b0f5be27f61d5428",
-      "targetSha256": "8e2a06c2647e4c113aee766780f3577ee06574a8e8a7175e1d18043666a2b119",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "pipeliner.config.json": {
-      "sourceSha256": "a0df563e50a4ec7e73b44815a167e2139bab6034eeebfd5bfb4fd09b52c5fa0e",
-      "targetSha256": "b9e8333c202ea4b0ce2d19c7f1e7bb93b22a43fa8e03eed660107337d3043281",
-      "rationale": "Repository formatting of the verified Builder-specific configuration; no example topology or release commands retained."
-    },
-    "schema/pipeliner.schema.json": {
-      "sourceSha256": "6b86dd0f69889b85d23b2194a760b66a88bbf9a73666697a4f9a2384c8ab0472",
-      "targetSha256": "98d0524096c7f799bf93264d9679bfb2d524f0210aeb287a06eaa8996be7fce1",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/audit-project.mjs": {
-      "sourceSha256": "b808ec0ca0c41a31422211c3222ab0b29ec9d03bc3adece379624b32cd07dfb6",
-      "targetSha256": "8705b8cf5d520604349561f02dfda513d00ce3087441f4747e49953f063b039b",
-      "rationale": "Audit the configured adopter identity and private Builder Project instead of comparing it with the public upstream example; regression tested."
-    },
-    "scripts/evaluate-qa.mjs": {
-      "sourceSha256": "a26f5724b70ad035d830e050f837cab820b8e93a58292fd2d31210d1512693d6",
-      "targetSha256": "459a2a1690a71a60e83b037c093317d1cab9a2ce0066496e8f5ce8563fe5d865",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/adoption.mjs": {
-      "sourceSha256": "6040834f14f04a60a7a8a10900c98c24821a80ac6a46914d8251f6d0e566594f",
-      "targetSha256": "59f9ac5aa1d2d57fffc89dce7e3603faa916a7b364e13611a478fdbe8f8f2e1d",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/ci.mjs": {
-      "sourceSha256": "41d39874b3667e9b6de1d6e9e09b5b4010a25122b24a97689b36e4d551bb6f19",
-      "targetSha256": "31b8546a124bc3f9466f900e4aeb0d70c4017ac00b2d9a8634bcd450775c04ef",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/cleanup.mjs": {
-      "sourceSha256": "92d37747b5456b00cf16640f8ea7ed0d29b1209bf09b4b06c0e8f95d127ebd16",
-      "targetSha256": "9103284408ac57e56ee4ff327eee8c7eac88769bdfb4fc36c73e39afec6b45cd",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/config.mjs": {
-      "sourceSha256": "0ea784bb8c944a11f73ecd5b65b71a251df74ff79d057232725ca7ce64b574b4",
-      "targetSha256": "2c7fdf39f06298da6df77d36cbf09b742608412c549968ca2d2880a9d7a89287",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/intake.mjs": {
-      "sourceSha256": "fca3a8028304e8aaee4143d260371f98f881c6c9f65516b095506a97b7ba4500",
-      "targetSha256": "db5a8c5b3bc9f208d15e7f4cb2dad63f24c1ba79baa23438817afdd450725287",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/qa.mjs": {
-      "sourceSha256": "62ded45fade6ed0713559aa6f520d616cc65ddf2e535be87c7184507a823778d",
-      "targetSha256": "bc8c50c12374995eb79d2d68960b1f07ab1861926e22f7a3e13e58d78ecc348b",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    "scripts/lib/validation.mjs": {
-      "sourceSha256": "04ffb96524fdef12bec0c99a50f1583ece0507d7079e4f43bf3ed05522bcc07b",
-      "targetSha256": "7fc9cba8a3a75e6d93e3f0b6626c647bb8de250a8ab455d992d9ab3b70648285",
-      "rationale": "Accept explicit adopter identity in Project comparison while retaining upstream blueprint validation and all field/view/workflow requirements; regression tested."
-    },
-    "scripts/validate-repository.mjs": {
-      "sourceSha256": "fb01f8962a59a438f66b985a54babe9ee03008c0f2b6e54307e37952994cacf8",
-      "targetSha256": "a926fecc96aeedf5b6ac0e9dd478468fed1744ad55fb0b8bf230de2854a17e89",
-      "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "rationale": "Preserve explicit maintenance PR marker and Builder product approval contract."
     },
     ".github/workflows/reusable-quality.yml": {
       "sourceSha256": "d5adbda5c422f05cfda9bd4a221f24a2217abb1099e17e98fb9c70c75ee9537b",
       "targetSha256": "05deae7980b65215c82e86389d6b4a83e5801c18286f4d08c96b2e0a24637079",
-      "rationale": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
+      "rationale": "Retain reviewed first-parent whitespace check and parent history to avoid shallow-checkout false positives; no arbitrary caller commands."
+    },
+    "AGENTS.md": {
+      "sourceSha256": "4999f771ff372390b1589b02c59ffae5df8f6d96e313d3477255ddf2a8259056",
+      "targetSha256": "d586e2868773e53d27e8e84cabc62efaa87f3db127feb0a51da69972612b35cf",
+      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    "blueprints/github-labels.json": {
+      "sourceSha256": "fde4722934324c3aba849d289d6a97604d1db256e0130272ce2b98af6b23d799",
+      "targetSha256": "e19520c9b7b0947da09cff8098826040e47342d19184592577095a8efdc3b9e3",
+      "rationale": "Preserve verified Builder label taxonomy."
+    },
+    "blueprints/profiles/direct-production.config.json": {
+      "sourceSha256": "cd134e6cda62e2b0e53723d2429bd8e698bd695bafcf0fd7f97e24d5aaf634d0",
+      "targetSha256": "73f57c5c73d6a4a6369d67b5b041bb88452166f0a42953424c03fe676a5e9595",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/profiles/immutable-promotion.config.json": {
+      "sourceSha256": "682a99631a8367bcee44e2660a2511cf5e59ac28399c7157ac14b94d438684a3",
+      "targetSha256": "9cd497826f9c2afc416c01608ada9785d4fb7159c48911741e872c6a75319e3a",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/profiles/multi-environment.config.json": {
+      "sourceSha256": "74338ec1da9d41cb341b12576e4c0af4f8548159aa8a54d0cc034b83875160c5",
+      "targetSha256": "e5074c0f332c654a537afaa1fc3ab9fadc31f524470a0044f316faff2dbd7fca",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/profiles/staged-release.config.json": {
+      "sourceSha256": "de75b97e1e1f22aaa4b64f4970db9eb3b18083056b10c889112b61e667fcf0db",
+      "targetSha256": "bff54a51f71100e7368d3024884b84df4b0db534e2acde89229d35f87955c2ec",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/qa/self-handoff.json": {
+      "sourceSha256": "8bdc492f6adb2e8990cec1c9f63f897b7483336ed777ecd76616d7ce68f15d53",
+      "targetSha256": "4e25f061745bac8649f84af74edbb81812455593a23b8773cdf403dc8da34a19",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/qa/shared-windows.json": {
+      "sourceSha256": "7a6824b2569d15edd4115fbe857fad3e95bef96b760ee4ba795ed1e2c60de861",
+      "targetSha256": "3d4d47f6128250a05575c82c4fb94b3cd2c269b1e518ac62a276c21786122b25",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/qa/single.json": {
+      "sourceSha256": "fa1ee048b084299cf6f62ff2af04926608bb455cbe5da3324693eb4ed00553c3",
+      "targetSha256": "a4ef3fceb2b92d916d0a5b8aeabb6406c8702f66d28dc5be3cdab329d891b3cc",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "blueprints/qa/split-native.json": {
+      "sourceSha256": "d02ae1c61410a79f5ceba9c7d8b381e851cb50eb1f65cabd04273089fd1f9028",
+      "targetSha256": "d2dc36c993ff01ff685c95e341e05d780fbb8bbf0e8eb08ee8bf5a7df932f96c",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "pipeliner.config.json": {
+      "sourceSha256": "2f3ae5dde393374fcb8ec823ae2884f16d49c5ca2dc4903fa8b0d0d59637b637",
+      "targetSha256": "052aab8d560c4a1426087eb570e957631f30d2f44603018d5a25b8e1cc0178e7",
+      "rationale": "Confirmed Dev agent using brimdor GitHub access, separate brimdor Human PM, existing local QA and release policies; formatting only versus installer input."
+    },
+    "schema/pipeliner.schema.json": {
+      "sourceSha256": "b13a43c9e0eac7835a14736a85017378f6d969a76c45fffc7d546e5ac5f15bfe",
+      "targetSha256": "06ed4d05ff35245b15e741460a5154a6a2f3398666cea9826fda0b3ed68990e4",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/audit-project.mjs": {
+      "sourceSha256": "a854752e5808026235dcfb710d0a8c6fc4822f3f3fc4aa6e07dffc28f53b2f2e",
+      "targetSha256": "3d69165fb4dfde7b0903ba1c7a4984d8ca051fb410d3422387c4a73f2155ae0d",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/evaluate-qa.mjs": {
+      "sourceSha256": "ff90c64a54256dd55c7a9e85bb9ac82755c37fb0382f42ab6100ff5d1b3121ae",
+      "targetSha256": "354c163cce516f31f4894d2e9326515b32a62602101bec7ae2f498be3044c561",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/evaluate-release.mjs": {
+      "sourceSha256": "f0bb9ccb444e25e3ace12763beaeb8afe972aa3916cc6ed15da336fa4dfa75b0",
+      "targetSha256": "067457d5dfe2cbaa7d18482cf0d84b2d4b32e43f6cba97433e0fc17b224f951e",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/adoption.mjs": {
+      "sourceSha256": "2b06bcf468e749b9541f9626772faa631a087e621bd8ec063a66bef80e799886",
+      "targetSha256": "b67c09b418d9e7b1f0896f6ee39a6e54bb96e7e44dc04c099d8ef8171adb63f5",
+      "rationale": "Repository formatting of reviewed installer module with narrowly scoped PM-authorized exact Builder approval-policy exception; original source and patch recorded in provenance."
+    },
+    "scripts/lib/ci.mjs": {
+      "sourceSha256": "41d39874b3667e9b6de1d6e9e09b5b4010a25122b24a97689b36e4d551bb6f19",
+      "targetSha256": "31b8546a124bc3f9466f900e4aeb0d70c4017ac00b2d9a8634bcd450775c04ef",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/cleanup.mjs": {
+      "sourceSha256": "92d37747b5456b00cf16640f8ea7ed0d29b1209bf09b4b06c0e8f95d127ebd16",
+      "targetSha256": "9103284408ac57e56ee4ff327eee8c7eac88769bdfb4fc36c73e39afec6b45cd",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/config.mjs": {
+      "sourceSha256": "430a6a4ddfd026d94d85ca13ac4fe4be45d64e8176006c3e8834221cd8c52c67",
+      "targetSha256": "690d759328f3d3aa67e785574d206bc991218da05673c0c88b7e65291f152d69",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/home.mjs": {
+      "sourceSha256": "769588409d0c368a6cc94d16678261fa28feaa27f56e709f447f313221cf1b27",
+      "targetSha256": "7752e6bb1156b941799599ef794bfef89c137ac93f6ca565beeddb289766c335",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/intake.mjs": {
+      "sourceSha256": "fca3a8028304e8aaee4143d260371f98f881c6c9f65516b095506a97b7ba4500",
+      "targetSha256": "db5a8c5b3bc9f208d15e7f4cb2dad63f24c1ba79baa23438817afdd450725287",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/lifecycle.mjs": {
+      "sourceSha256": "716f588b19fc8beb5418bb99fcb47bc7455407e35fea7f781962060595e18c73",
+      "targetSha256": "d91133ebc9610a42f18d22d1d25b54fc0c874409f2ea7890b596f39ed7ac66ad",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/project.mjs": {
+      "sourceSha256": "c548c90d8ebcca7f7c9b7268b64b5ecf168d123f8b8c9d613220ffe62f284e83",
+      "targetSha256": "2ee8690bcc9732dae8881a9adeea9aca7cef707cabf6930056b5d399aaacbd0d",
+      "rationale": "Preserve complete paginated Project verification; express continuation using the validated cursor to satisfy Builder lint without changing termination or failure handling."
+    },
+    "scripts/lib/qa.mjs": {
+      "sourceSha256": "17fe419a5aa2c41ab40fb43b4dfe244492576e932fe8c8df9f30b494558bdf0d",
+      "targetSha256": "ca1ea3b821bf886bf5a24700c17b6d2702a05c5b9cc9481407b2c39ea34ed412",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/release-cycle.mjs": {
+      "sourceSha256": "c4d807d22f12aef656006960a89b53a84a84fb2417db64751eee82101303caef",
+      "targetSha256": "19c87ec3e1a9691f47eed3081a2735c88c2f7775aa3d984c195183742af0714d",
+      "rationale": "Remove an unnecessary regex escape to satisfy Builder lint; preserve branch validation and all optional-cycle gates."
+    },
+    "scripts/lib/showcase.mjs": {
+      "sourceSha256": "13675a8f849083a16b2713892a85844fe1bf23408f7f56d985ae7bf840ef0641",
+      "targetSha256": "002995f354a3bc1841caa5650a08c2893f182d800118040253120de9c1f607bd",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/validation.mjs": {
+      "sourceSha256": "1aa9d8aba763d2e33859dd275876238318200b735b941aba71e2992dea33f88f",
+      "targetSha256": "21dc9143346e725a9a110af62c2b88ec76d465f82130e8d3fb2c636dbe37d9ec",
+      "rationale": "Incorporate upstream validation and paginated adopter Project support; ignore literal fenced sample output while checking actual local document links."
+    },
+    "scripts/resolve-home.mjs": {
+      "sourceSha256": "d8515a924086a6d6f7231c34b1a5ed1d3774fa46f643411346fa8ae6cb7323f9",
+      "targetSha256": "7a309ecc517d55c56f5d529763c2e5f0b713ac347377a10bd0dd6a5538e5aa48",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/validate-repository.mjs": {
+      "sourceSha256": "fb01f8962a59a438f66b985a54babe9ee03008c0f2b6e54307e37952994cacf8",
+      "targetSha256": "a926fecc96aeedf5b6ac0e9dd478468fed1744ad55fb0b8bf230de2854a17e89",
+      "rationale": "Repository formatting; reviewed upstream behavior retained."
     }
   }
 }

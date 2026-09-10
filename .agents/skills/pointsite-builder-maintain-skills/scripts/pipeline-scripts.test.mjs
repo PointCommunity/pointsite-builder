@@ -301,6 +301,33 @@ test('does not exempt application changes disguised as Pipeliner maintenance', (
   assert.ok(result.errors.some((error) => error.includes('maintenance scope')));
 });
 
+test('accepts new Pipeliner home and release tools but not arbitrary scripts', () => {
+  for (const [file, allowed] of [
+    ['scripts/resolve-home.mjs', true],
+    ['scripts/evaluate-release.mjs', true],
+    ['specs/pipeliner-refresh/spec.md', true],
+    ['scripts/deploy.mjs', false],
+  ]) {
+    const result = auditPipelineSnapshot(
+      baseSnapshot({
+        prs: [
+          {
+            number: 50,
+            headRefName: 'codex/update-pipeliner-refresh',
+            baseRefName: 'main',
+            body: 'Pipeliner maintenance: update',
+            files: [{ path: file }],
+          },
+        ],
+      }),
+    );
+    assert.equal(
+      result.errors.some((error) => error.includes('maintenance scope')),
+      !allowed,
+    );
+  }
+});
+
 test('does not exempt unverified or ordinary unlinked PRs', () => {
   for (const headRefName of ['codex/adopt-pipeliner', 'codex/other-work']) {
     const result = auditPipelineSnapshot(

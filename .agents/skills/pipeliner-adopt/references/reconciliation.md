@@ -1,5 +1,7 @@
 # Reconciliation and Actions review
 
+Builder integration: [the root operating contract](../../../../AGENTS.md) and the Builder profile override generic defaults in this reference. Preserve Builder approval phrases, structured clarification controls, PM-selected Issue scope, direct Cloudflare Production and the single post-deployment PM acceptance gate. Generic paired QA, release cycles and `Approved` examples do not introduce new Builder gates; bootstrap and updates remain exempt from PM Testing.
+
 The agent owns semantic review. Hashes bind the reviewed files; they cannot prove policy strength or absence of application builds in arbitrary scripts.
 
 ## Customized files

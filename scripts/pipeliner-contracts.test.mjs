@@ -3,8 +3,71 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm, writeFile, mkdir, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { compareProjectSnapshot, validateAdoptionContract } from './lib/validation.mjs';
+import {
+  compareProjectSnapshot,
+  validateAdoptionContract,
+  validateLocalLinks,
+} from './lib/validation.mjs';
+
+test('reference validation ignores fenced sample output but rejects broken document links', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'builder-links-test-'));
+  const file = path.join(root, 'reference.md');
+  try {
+    await writeFile(file, '```text\n[Snapshot](missing.yml)\n```\n');
+    assert.deepEqual(await validateLocalLinks(root, [file]), []);
+    await writeFile(file, '[Missing](missing.md)\n');
+    assert.equal((await validateLocalLinks(root, [file])).length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 import { prepare, cleanup } from './local-qa.mjs';
+import { planAdoption } from './lib/adoption.mjs';
+import { requirePairedQA } from './lib/qa.mjs';
+import { identityKeys, reviewRoute } from './lib/lifecycle.mjs';
+
+test('Builder participant migration keeps Dev distinct from the Human PM and release identity staged', async () => {
+  const profile = JSON.parse(await readFile('pipeliner.config.json', 'utf8'));
+  assert.equal(requirePairedQA(profile.qa), profile.qa);
+  assert.deepEqual(profile.qa.developers, [
+    { id: 'Dev', kind: 'agent', github: 'brimdor', environments: ['local-macos'] },
+  ]);
+  assert.deepEqual(profile.qa.pms, [{ id: 'brimdor', kind: 'human' }]);
+  assert.equal(profile.qa.turns[0].developer, 'Dev');
+  assert.equal(profile.qa.turns[0].pm, 'brimdor');
+  assert.deepEqual(identityKeys(profile, 'pre-release'), ['sourceCommit', 'gitTree']);
+  assert.deepEqual(identityKeys(profile, 'released'), ['sourceCommit', 'gitTree', 'deploymentId']);
+  assert.equal(profile.release.environments.length, 1);
+  assert.equal(profile.release.environments[0].url, 'https://builder.pointatx.org');
+  assert.equal(profile.release.cycle, undefined);
+  assert.equal(
+    reviewRoute({ status: 'In Review', pullRequestState: 'MERGED', findings: true }),
+    'new-remediation-pr',
+  );
+});
+
+test('adoption preserves only the exact approved Builder phrases and rejects drift or another repository', async () => {
+  const profile = JSON.parse(await readFile('pipeliner.config.json', 'utf8'));
+  const targetRoot = await mkdtemp(path.join(tmpdir(), 'builder-adoption-test-'));
+  const preview = (candidate) =>
+    planAdoption({ sourceRoot: process.cwd(), targetRoot, profile: candidate });
+  try {
+    const plan = await preview(profile);
+    assert.equal(plan.conflicts.length, 0);
+    assert.ok(plan.create.some((file) => file.relativePath === 'scripts/resolve-home.mjs'));
+    const changed = structuredClone(profile);
+    changed.workflow.approvalPhrases.completion = 'Approved';
+    await assert.rejects(preview(changed), /exact PM-preserved Builder contract/);
+    const other = structuredClone(profile);
+    other.repository.name = 'another-repository';
+    await assert.rejects(preview(other), /exact PM-preserved Builder contract/);
+    const changedTurn = structuredClone(profile);
+    changedTurn.qa.turns[0].approvalPhrase = 'Approved';
+    await assert.rejects(preview(changedTurn), /exact PM-preserved Builder contract/);
+  } finally {
+    await rm(targetRoot, { recursive: true, force: true });
+  }
+});
 
 test('audits the private adopter Project without requiring the public upstream identity', async () => {
   const blueprint = JSON.parse(await readFile('blueprints/github-project.json', 'utf8'));
@@ -21,9 +84,10 @@ test('audits the private adopter Project without requiring the public upstream i
     views: blueprint.views,
     workflows: blueprint.workflows,
   };
-  assert.deepEqual(compareProjectSnapshot(blueprint, snapshot, identity), []);
-  assert.ok(compareProjectSnapshot(blueprint, { ...snapshot, public: true }, identity).length);
-  assert.ok(compareProjectSnapshot(blueprint, { ...snapshot, repositories: [] }, identity).length);
+  const profile = JSON.parse(await readFile('pipeliner.config.json', 'utf8'));
+  assert.deepEqual(compareProjectSnapshot(blueprint, snapshot, profile), []);
+  assert.ok(compareProjectSnapshot(blueprint, { ...snapshot, public: true }, profile).length);
+  assert.ok(compareProjectSnapshot(blueprint, { ...snapshot, repositories: [] }, profile).length);
 });
 
 test('cleanup removes only outputs absent at QA preparation and refuses a forged inventory', async () => {

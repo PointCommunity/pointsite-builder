@@ -5,7 +5,9 @@ description: Perform a read-only audit of repository, Issue, Project, pull-reque
 
 # Audit Pipeline Health
 
-Builder specialization: use [the pointsite-builder-pipeline-health skill](../pointsite-builder-pipeline-health/SKILL.md) and the root operating contract for this repository. The generic steps below are reference guidance; Builder direct Production, post-deployment PM acceptance, and the Issue-free framework-maintenance exception take precedence. Full local QA remains required; lightweight CI cannot replace it.
+Builder specialization: use [the pointsite-builder-pipeline-health skill](../pointsite-builder-pipeline-health/SKILL.md) for this repository. The root operating contract and `pipeliner.config.json` take precedence over the generic reference steps below. Preserve configured approval phrases, structured clarification controls, PM-selected Backlog work, full local QA, direct Cloudflare Production and post-deployment PM acceptance. Do not add a pre-production PM gate or a release cycle. Pipeliner adoption and updates are direct framework maintenance: Do not create or require a GitHub Issue, reserve the active slot, deploy the application or schedule monitoring.
+
+Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate.
 
 Follow [Issue-based communication](../../../AGENTS.md#issue-based-communication): organize work-status findings by owning Issue and its remaining gates, including linked pull-request, check, and deployment evidence. Report unlinked pull requests or missing Issues explicitly without substituting PR numbers for Issue identity.
 
@@ -18,3 +20,5 @@ Read `AGENTS.md`, `pipeliner.config.json`, and [Project operations](references/p
 5. Report each layer separately, identify exact drift and evidence limits, name the owning skill or PM decision required, and state that no changes were made.
 
 Never repair Project fields, Issues, pull requests, Git, artifacts, deployments, or runtime state from this skill.
+
+When `release.cycle` is configured, follow [release scope and phase governance](../pipeliner-maintain/references/release-cycle.md): inspect target/milestone, Release Issue, phase, freeze and blockers without treating phase as Status. Read-only inspection never starts or advances a cycle. Related findings stay on the same Issue; unrelated intake requires exact draft approval.

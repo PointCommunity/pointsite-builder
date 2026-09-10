@@ -5,7 +5,9 @@ description: Create, update, and validate Pipeliner policy, canonical skills, pr
 
 # Maintain Pipeliner
 
-Builder specialization: use [the pointsite-builder-maintain-skills skill](../pointsite-builder-maintain-skills/SKILL.md) and the root operating contract for this repository. The generic steps below are reference guidance; Builder direct Production, post-deployment PM acceptance, and the Issue-free framework-maintenance exception take precedence. Full local QA remains required; lightweight CI cannot replace it.
+Builder specialization: use [the pointsite-builder-maintain-skills skill](../pointsite-builder-maintain-skills/SKILL.md) for this repository. The root operating contract and `pipeliner.config.json` take precedence over the generic reference steps below. Preserve configured approval phrases, structured clarification controls, PM-selected Backlog work, full local QA, direct Cloudflare Production and post-deployment PM acceptance. Do not add a pre-production PM gate or a release cycle. Pipeliner adoption and updates are direct framework maintenance: Do not create or require a GitHub Issue, reserve the active slot, deploy the application or schedule monitoring.
+
+Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate.
 
 Use this skill for changes to `AGENTS.md`, provider imports, `.agents/`, `.claude/skills/`, `pipeliner.config.json`, schemas, blueprints, adoption tooling, or alignment validation.
 
@@ -19,7 +21,7 @@ Use [pipeliner-update](../pipeliner-update/SKILL.md) to incorporate an upstream 
 - Preserve [Issue-based communication](../../../AGENTS.md#issue-based-communication) across bootstrap instructions and skills: status and approval messages identify the Issue first, completion placeholders use its number, and pull requests remain critical supporting evidence. Keep approvals bound to the configured gate and exact candidate.
 - Update the specification or blueprint before changing a contract. Add a failing behavioral test before changing tooling logic.
 - Run the skill creator's `quick_validate.py` for every changed canonical skill, then `npm run check` and realistic dry-run or audit cases.
-- Verify provider links against current official documentation when directory conventions may have changed.
+- Verify provider links against current official documentation using [provider discovery](references/providers.md); report documentation checks separately from actual provider execution. Preserve exactly 12 skill entrypoints; put shared contracts in references.
 - Keep human-facing standalone policy material as self-contained Dark Mode HTML and routine evidence in existing Issues, pull requests, checks, and concise chat.
 
 Never weaken a safety or approval contract merely to satisfy a structural test.

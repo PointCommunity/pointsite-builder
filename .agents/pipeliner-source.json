@@ -2,208 +2,321 @@
   "version": 1,
   "repository": "https://github.com/Zuriel-Labs/pipeliner.git",
   "ref": "main",
-  "commit": "e9b3c976c2112ca5293cd547fd219b9f734f5234",
-  "appliedAt": "2026-09-10T16:44:16.446Z",
+  "commit": "d07653633104e632ebeeb25a3ab67ce32b973382",
+  "appliedAt": "2026-09-10T21:44:48.724446Z",
   "exceptions": [
     {
       "path": ".agents/pipeliner-policy.html",
-      "reason": "Preserve generic guidance with explicit Builder product-policy and Issue-free maintenance precedence; format to repository style."
-    },
-    {
-      "path": ".agents/skills/pipeliner-adopt/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-adopt/SKILL.md",
-      "reason": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-adopt/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-adopt/references/discovery.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-adopt/references/reconciliation.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-audit-backlog/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-close-issue/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-close-issue/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-create-issue/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-close-issue/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-create-issue/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-maintain/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-create-issue/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-maintain/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/references/evidence.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/references/home.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/references/providers.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/references/questions.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/references/release-cycle.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-monitor-updates/SKILL.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-monitor-updates/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-pipeline-health/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-monitor-updates/references/monitor-prompt.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-pipeline-health/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-release-candidate/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-pipeline-health/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-pipeline-health/references/project-operations.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-release-candidate/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-release-production/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-release-candidate/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-candidate/references/strategies.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-release-production/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-review-issue/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "path": ".agents/skills/pipeliner-release-production/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-review-issue/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-review-issue/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-review-issue/references/pm-testing.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-update/SKILL.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-update/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
-      "path": ".agents/skills/pipeliner-work-issue/agents/openai.yaml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": ".agents/skills/pipeliner-work-issue/references/local-qa.md",
-      "reason": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
+      "path": ".agents/skills/pipeliner-update/references/upstream.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".agents/skills/pipeliner-work-issue/SKILL.md",
-      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/agents/openai.yaml",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/references/lifecycle.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/references/local-qa.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     {
       "path": ".github/ISSUE_TEMPLATE/bug.yml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Repository formatting; reviewed upstream behavior retained."
     },
     {
       "path": ".github/ISSUE_TEMPLATE/feature.yml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Repository formatting; reviewed upstream behavior retained."
     },
     {
       "path": ".github/ISSUE_TEMPLATE/maintenance.yml",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Repository formatting; reviewed upstream behavior retained."
     },
     {
       "path": ".github/pull_request_template.md",
-      "reason": "Document explicit Issue-free framework-maintenance PR marker while preserving product Issue references and PM Testing sections."
-    },
-    {
-      "path": "AGENTS.md",
-      "reason": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
-    },
-    {
-      "path": "blueprints/github-labels.json",
-      "reason": "Retain live Builder-specific label taxonomy and descriptions; area:deployment covers generic release and area:workflow covers tooling. No unrelated label mutations."
-    },
-    {
-      "path": "blueprints/profiles/direct-production.config.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/profiles/immutable-promotion.config.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/profiles/multi-environment.config.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/qa/self-handoff.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/qa/shared-windows.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/qa/single.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "blueprints/qa/split-native.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "pipeliner.config.json",
-      "reason": "Repository formatting of the verified Builder-specific configuration; no example topology or release commands retained."
-    },
-    {
-      "path": "schema/pipeliner.schema.json",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/audit-project.mjs",
-      "reason": "Audit the configured adopter identity and private Builder Project instead of comparing it with the public upstream example; regression tested."
-    },
-    {
-      "path": "scripts/evaluate-qa.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/adoption.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/ci.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/cleanup.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/config.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/intake.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/qa.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
-    },
-    {
-      "path": "scripts/lib/validation.mjs",
-      "reason": "Accept explicit adopter identity in Project comparison while retaining upstream blueprint validation and all field/view/workflow requirements; regression tested."
-    },
-    {
-      "path": "scripts/validate-repository.mjs",
-      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+      "reason": "Preserve explicit maintenance PR marker and Builder product approval contract."
     },
     {
       "path": ".github/workflows/reusable-quality.yml",
-      "reason": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
+      "reason": "Retain reviewed first-parent whitespace check and parent history to avoid shallow-checkout false positives; no arbitrary caller commands."
+    },
+    {
+      "path": "AGENTS.md",
+      "reason": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+    },
+    {
+      "path": "blueprints/github-labels.json",
+      "reason": "Preserve verified Builder label taxonomy."
+    },
+    {
+      "path": "blueprints/profiles/direct-production.config.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/profiles/immutable-promotion.config.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/profiles/multi-environment.config.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/profiles/staged-release.config.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/qa/self-handoff.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/qa/shared-windows.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/qa/single.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "blueprints/qa/split-native.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "pipeliner.config.json",
+      "reason": "Confirmed Dev agent using brimdor GitHub access, separate brimdor Human PM, existing local QA and release policies; formatting only versus installer input."
+    },
+    {
+      "path": "schema/pipeliner.schema.json",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/audit-project.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/evaluate-qa.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/evaluate-release.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/adoption.mjs",
+      "reason": "Repository formatting of reviewed installer module with narrowly scoped PM-authorized exact Builder approval-policy exception; original source and patch recorded in provenance."
+    },
+    {
+      "path": "scripts/lib/ci.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/cleanup.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/config.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/home.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/intake.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/lifecycle.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/project.mjs",
+      "reason": "Preserve complete paginated Project verification; express continuation using the validated cursor to satisfy Builder lint without changing termination or failure handling."
+    },
+    {
+      "path": "scripts/lib/qa.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/release-cycle.mjs",
+      "reason": "Remove an unnecessary regex escape to satisfy Builder lint; preserve branch validation and all optional-cycle gates."
+    },
+    {
+      "path": "scripts/lib/showcase.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/lib/validation.mjs",
+      "reason": "Incorporate upstream validation and paginated adopter Project support; ignore literal fenced sample output while checking actual local document links."
+    },
+    {
+      "path": "scripts/resolve-home.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
+    },
+    {
+      "path": "scripts/validate-repository.mjs",
+      "reason": "Repository formatting; reviewed upstream behavior retained."
     }
-  ]
+  ],
+  "installerReconciliation": {
+    "path": "scripts/lib/adoption.mjs",
+    "originalSha256": "d00360758eeac831a4a946f1f5f09a2c29bab239e6a11cfa6a56cd66241159fa",
+    "reviewedSourceSha256": "2b06bcf468e749b9541f9626772faa631a087e621bd8ec063a66bef80e799886",
+    "installedSha256": "b67c09b418d9e7b1f0896f6ee39a6e54bb96e7e44dc04c099d8ef8171adb63f5",
+    "reason": "PM explicitly required preservation of Builder approval policies. Scoped exception accepts only the exact Builder repository, direct-Production topology and existing phrases; regression tests reject changed phrases and other repositories. All destination identity and conflict checks remain enforced."
+  },
+  "decisions": {
+    "agentDev": {
+      "id": "Dev",
+      "kind": "agent",
+      "github": "brimdor"
+    },
+    "humanPM": {
+      "id": "brimdor",
+      "kind": "human"
+    },
+    "source": "Explicit PM answers during this update",
+    "releaseCycle": "Not adopted; preserve single Cloudflare Production and existing approval gates",
+    "questionControls": "Structured clarification requested by PM; no deadlines or silence-based approval"
+  }
 }
