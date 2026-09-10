@@ -2,7 +2,7 @@
   "version": 1,
   "workflows": {
     ".github/workflows/quality.yml": {
-      "rationale": "Reviewed pinned checkout/setup-node, dependency-free Node governance tests and validators, their static imports and policy/profile inputs. Contract tests use temporary fixture directories and a short-lived local port probe, never an application build/server. npm run skills:check --ignore-scripts suppresses npm pre/post hooks; npm ci --ignore-scripts plus npm audit retain dependency scanning without package build hooks. Pinned TruffleHog scans Git history with prebuilt tooling; pinned Semgrep installs scanner tooling and scans src/worker/tests only. No application, container-image, browser or performance build/test is reachable. Full application suites remain local and must be recorded separately.",
+      "rationale": "Reviewed pinned checkout/setup-node, dependency-free Node governance tests and validators, their static imports and policy/profile inputs. Contract tests use temporary fixture directories and a short-lived local port probe, never an application build/server. npm run skills:check --ignore-scripts suppresses npm pre/post hooks; npm ci --ignore-scripts plus npm audit retain dependency scanning without package build hooks. Pinned TruffleHog scans Git history with prebuilt tooling; pinned Semgrep installs scanner tooling and scans src/worker/tests only. No application, container-image, browser or performance build/test is reachable. Full application suites remain local and must be recorded separately. Issue 42 package.json review: the sole addition is the manually invoked pointview:setup command; neither workflow nor any CI npm command calls it, and no lifecycle hook or existing command changed.",
       "files": {
         ".agents/pipeliner-policy.html": "48904a5e1b0e2006e45853814e8ebe81488bc48cdd765efec2c47976af706e82",
         ".agents/pointsite-builder-pipeline-policy.html": "07a8427b9adebd6c1c2a1016abaf49f7d2542f6cf8b55029e668ce4964a72d80",
@@ -99,7 +99,7 @@
         "blueprints/qa/single.json": "452107a118718571deae5b9a4d6dcda9860f8e4eec3d968065f3c045065b64a6",
         "blueprints/qa/split-native.json": "8e2a06c2647e4c113aee766780f3577ee06574a8e8a7175e1d18043666a2b119",
         "package-lock.json": "0d3cb697a13bcba7577f502fd6924a39cdc399ca44b175f6c04c3672487f3d80",
-        "package.json": "cc3d1dc93d93033b42b19fce3c301382f09584120fa61969380a7c3efc09a514",
+        "package.json": "ed3bda693b30b308b1d11481b6ff50d553417ec7013b0713456c88745edebb8b",
         "pipeliner.config.json": "b9e8333c202ea4b0ce2d19c7f1e7bb93b22a43fa8e03eed660107337d3043281",
         "scripts/lib/adoption.mjs": "59f9ac5aa1d2d57fffc89dce7e3603faa916a7b364e13611a478fdbe8f8f2e1d",
         "scripts/lib/ci.mjs": "31b8546a124bc3f9466f900e4aeb0d70c4017ac00b2d9a8634bcd450775c04ef",

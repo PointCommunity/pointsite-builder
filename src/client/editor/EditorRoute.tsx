@@ -29,6 +29,8 @@ import { EditorProvider, useEditor } from './EditorProvider';
 import { PageManager } from './PageManager';
 import { StructurePanel } from './StructurePanel';
 import { mutationForContext } from './action-attribution';
+import { FeedbackButton } from '../feedback/FeedbackButton';
+import { saveFeedbackWorkspace } from '../feedback/workspace';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
@@ -50,12 +52,14 @@ function Workspace({
   onClose,
   themeToggle,
   checkout,
+  feedbackPanel,
 }: {
   role: Role;
   canPublish: boolean;
   onClose: () => void;
   themeToggle: ReactNode;
   checkout: DraftCheckout | null;
+  feedbackPanel?: Panel;
 }) {
   const {
     draft,
@@ -68,7 +72,11 @@ function Workspace({
     copyRecoveryData,
   } = useEditor();
   const [panel, setPanel] = useState<Panel>(
-    role === 'viewer' ? 'preview' : (checkout?.viewState?.panel ?? 'layout'),
+    feedbackPanel && (feedbackPanel !== 'admin' || role === 'administrator')
+      ? feedbackPanel
+      : role === 'viewer'
+        ? 'preview'
+        : (checkout?.viewState?.panel ?? 'layout'),
   );
   const [publishOpen, setPublishOpen] = useState(false);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
@@ -255,6 +263,15 @@ function Workspace({
         </div>
         <div className="save-cluster">
           {themeToggle}
+          <FeedbackButton
+            screen={`editor.${panel}`}
+            beforeLaunch={async () => {
+              if (!autosave.canLeave) throw new Error('Autosave pending');
+              if (checkout)
+                await api.touchCheckout(draft.id, checkout.clientId, checkout.token, viewState());
+              saveFeedbackWorkspace(`editor.${panel}`, draft.id);
+            }}
+          />
           <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">
             {autosave.message}
           </span>
@@ -487,6 +504,7 @@ export function EditorRoute({
   canPublish,
   onClose,
   themeToggle,
+  feedbackPanel,
 }: {
   draft: DraftRecord;
   checkout: DraftCheckout | null;
@@ -494,6 +512,7 @@ export function EditorRoute({
   canPublish: boolean;
   onClose: () => void;
   themeToggle: ReactNode;
+  feedbackPanel?: Panel;
 }) {
   return (
     <EditorProvider initialDraft={draft} checkout={checkout}>
@@ -503,6 +522,7 @@ export function EditorRoute({
         onClose={onClose}
         themeToggle={themeToggle}
         checkout={checkout}
+        feedbackPanel={feedbackPanel}
       />
     </EditorProvider>
   );

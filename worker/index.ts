@@ -11,6 +11,9 @@ import { D1PublishPreflightStore } from '../src/server/publish/preflights';
 import { D1ApprovalService } from '../src/server/approvals/service';
 import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
+import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
+
+declare const __BUILDER_SOURCE_REVISION__: string;
 
 class D1RoleDirectory implements RoleDirectory {
   constructor(private readonly database: D1Database) {}
@@ -27,6 +30,10 @@ class D1RoleDirectory implements RoleDirectory {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
+    const feedbackConfig =
+      config.environment === 'production'
+        ? parseFeedbackConfig(env as unknown as Record<string, unknown>)
+        : undefined;
     const roles = new D1RoleDirectory(env.DB);
     const repository = new D1DraftRepository(env.DB);
     const media = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
@@ -36,6 +43,15 @@ export default {
       authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles, auth),
       environment: config.environment,
       version: config.appVersion,
+      ...(feedbackConfig
+        ? {
+            feedback: new FeedbackService(
+              feedbackConfig,
+              config.appVersion,
+              __BUILDER_SOURCE_REVISION__,
+            ),
+          }
+        : {}),
       ...(config.github
         ? {
             publisher: new StagingPublisher(

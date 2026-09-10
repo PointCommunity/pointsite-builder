@@ -1587,3 +1587,16 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
     transition-duration: 0.01ms !important;
   }
 }
+.feedback-control {
+  display: grid;
+  gap: 4px;
+  max-width: 240px;
+}
+.feedback-guidance {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.feedback-control p {
+  margin: 0;
+  font-size: 0.875rem;
+}
