@@ -15,7 +15,6 @@ export function GridPlacementInspector({
   const breakpoint = useGridBreakpoint();
   const [status, setStatus] = useState('');
   const area = areaForBreakpoint(value, breakpoint);
-  const inherited = breakpoint !== 'desktop' && !value[breakpoint];
   const set = (change: Partial<typeof area>) => {
     const next = updateGridArea(value, breakpoint, change);
     const resolved = resolveGridArea(
@@ -35,9 +34,8 @@ export function GridPlacementInspector({
     <fieldset className="grid-placement-inspector" data-occupied-elements={occupied.length}>
       <legend>{breakpoint[0].toUpperCase() + breakpoint.slice(1)} grid position</legend>
       <p className="inspector-help">
-        {inherited
-          ? `Inheriting the desktop position. Changing a value creates a ${breakpoint} override.`
-          : 'Drag on the canvas or enter exact grid values.'}
+        This position belongs only to the selected responsive view. Drag on the canvas or enter
+        exact grid values.
       </p>
       {status ? (
         <p className="inspector-error" role="alert">
@@ -90,19 +88,6 @@ export function GridPlacementInspector({
           />
         </label>
       </div>
-      {breakpoint !== 'desktop' && value[breakpoint] ? (
-        <button
-          className="button button--compact"
-          type="button"
-          onClick={() => {
-            const next = { ...value };
-            delete next[breakpoint];
-            onChange(next);
-          }}
-        >
-          Reset to desktop
-        </button>
-      ) : null}
     </fieldset>
   );
 }

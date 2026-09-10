@@ -27,6 +27,8 @@ import {
   areaForBreakpoint,
   defaultRowSpan,
   GRID_COLUMNS,
+  independentGridArea,
+  independentResponsiveValue,
   nextGridArea,
   updateGridArea,
 } from '../../site-kit/grid-layout';
@@ -88,6 +90,7 @@ function HeroTextResizeHandle({
   const getItemById = usePointPuck((state) => state.getItemById);
   const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
   const dispatch = usePointPuck((state) => state.dispatch);
+  const breakpoint = useGridBreakpoint();
   const [status, setStatus] = useState('');
   const cancelActiveResize = useRef<(() => void) | null>(null);
   const widthKey = kind === 'heading' ? 'headingWidth' : 'bodyWidth';
@@ -134,7 +137,10 @@ function HeroTextResizeHandle({
             typeof currentProps.id === 'string' || typeof currentProps.id === 'number'
               ? String(currentProps.id)
               : componentId,
-          block: { ...parsed.data, [widthKey]: nextWidth },
+          block: {
+            ...parsed.data,
+            [widthKey]: { ...parsed.data[widthKey], [breakpoint]: nextWidth },
+          },
         },
       },
       recordHistory: true,
@@ -198,7 +204,7 @@ function HeroTextResizeHandle({
     const current = getItemById(componentId) as unknown as ComponentData | null;
     const parsed = SiteElementSchema.safeParse(current?.props.block);
     const storedWidth =
-      parsed.success && parsed.data.type === 'hero' ? parsed.data[widthKey] : undefined;
+      parsed.success && parsed.data.type === 'hero' ? parsed.data[widthKey][breakpoint] : undefined;
     commit(
       adjustHeroTextWidth(
         storedWidth ?? renderedWidth(event.currentTarget),
@@ -282,6 +288,8 @@ function defaultElement<T extends SiteElement['type']>(
       align: 'left',
       surface: 'primary',
       actions: [],
+      headingWidth: independentResponsiveValue(100),
+      bodyWidth: independentResponsiveValue(100),
     },
     heading: {
       id,
@@ -703,6 +711,32 @@ function GridPlacementField({
   return <GridPlacementInspector value={value} occupied={occupied} onChange={onChange} />;
 }
 
+function GridAlignmentField({
+  value,
+  onChange,
+}: {
+  value: SectionBlock['items'][number]['align'];
+  onChange: (value: SectionBlock['items'][number]['align']) => void;
+}) {
+  const breakpoint = useGridBreakpoint();
+  return (
+    <label className="grid-alignment-field">
+      <span>{breakpoint[0].toUpperCase() + breakpoint.slice(1)} vertical alignment</span>
+      <select
+        aria-label={`${breakpoint} vertical alignment`}
+        value={value[breakpoint]}
+        onChange={(event) => onChange({ ...value, [breakpoint]: event.target.value })}
+      >
+        {['start', 'center', 'end', 'stretch'].map((option) => (
+          <option key={option} value={option}>
+            {option[0].toUpperCase() + option.slice(1)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function sectionToData(section: SectionBlock): ComponentData {
   return {
     type: 'Section',
@@ -751,8 +785,15 @@ function dataToSection(item: ComponentData): SectionBlock {
           child.props.span ??
           12,
       ),
-      align: (child.props.align ?? 'stretch') as SectionBlock['items'][number]['align'],
-      grid: child.props.grid as SectionBlock['items'][number]['grid'],
+      align: (child.props.align ??
+        independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
+      grid: (child.props.grid ??
+        independentGridArea({
+          column: 1,
+          row: 1,
+          columnSpan: 12,
+          rowSpan: 4,
+        })) as SectionBlock['items'][number]['grid'],
       element: SiteElementSchema.parse(child.props.block),
     })),
   };
@@ -767,10 +808,11 @@ function rootElementToSection(item: ComponentData): SectionBlock {
       {
         id: String(item.props.id || crypto.randomUUID()),
         span: Number(item.props.span ?? 12),
-        align: (item.props.align ?? 'stretch') as SectionBlock['items'][number]['align'],
-        grid: (item.props.grid as SectionBlock['items'][number]['grid']) ?? {
-          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
-        },
+        align: (item.props.align ??
+          independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
+        grid:
+          (item.props.grid as SectionBlock['items'][number]['grid']) ??
+          independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 4 }),
         element: SiteElementSchema.parse(item.props.block),
       },
     ],
@@ -869,12 +911,15 @@ function VisualEditorImpl({
         }) => <GridPlacementField value={value} onChange={onChange} />,
       },
       align: {
-        type: 'select',
+        type: 'custom',
         label: 'Vertical alignment',
-        options: ['start', 'center', 'end', 'stretch'].map((value) => ({
-          label: value[0].toUpperCase() + value.slice(1),
+        render: ({
           value,
-        })),
+          onChange,
+        }: {
+          value: SectionBlock['items'][number]['align'];
+          onChange: (value: SectionBlock['items'][number]['align']) => void;
+        }) => <GridAlignmentField value={value} onChange={onChange} />,
       },
     };
     components[type] = {
@@ -902,10 +947,13 @@ function VisualEditorImpl({
       defaultProps: {
         block: defaultElement(type, document),
         span: 12,
-        align: 'stretch',
-        grid: {
-          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: defaultRowSpan(type) },
-        },
+        align: independentResponsiveValue('stretch'),
+        grid: independentGridArea({
+          column: 1,
+          row: 1,
+          columnSpan: 12,
+          rowSpan: defaultRowSpan(type),
+        }),
       },
       resolveData: (
         data: { props: ElementProps },
@@ -926,7 +974,11 @@ function VisualEditorImpl({
           }));
         const defaultSpan =
           parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
-        const fallback = nextGridArea(parentItems, defaultSpan, defaultRowSpan(type));
+        const startingGrid = {
+          desktop: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'desktop'),
+          tablet: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'tablet'),
+          mobile: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'mobile'),
+        };
         const intent = getGridDropIntent();
         const applies =
           parentSettings?.layout === 'grid' &&
@@ -934,8 +986,8 @@ function VisualEditorImpl({
           intent.type === type;
         const activeBreakpoint = intent?.breakpoint ?? getGridBreakpoint();
         const grid = applies
-          ? updateGridArea({ desktop: fallback }, activeBreakpoint, intent.area)
-          : { desktop: fallback };
+          ? updateGridArea(startingGrid, activeBreakpoint, intent.area)
+          : startingGrid;
         return {
           props: {
             ...data.props,
@@ -956,8 +1008,8 @@ function VisualEditorImpl({
         const parsed = SiteElementSchema.safeParse(block);
         const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
         const desktop = grid.desktop;
-        const tablet = grid.tablet ?? desktop;
-        const mobile = grid.mobile ?? desktop;
+        const tablet = grid.tablet;
+        const mobile = grid.mobile;
         const style = {
           '--point-grid-desktop-column': desktop.column,
           '--point-grid-desktop-row': desktop.row,
@@ -971,11 +1023,14 @@ function VisualEditorImpl({
           '--point-grid-mobile-row': mobile.row,
           '--point-grid-mobile-column-span': mobile.columnSpan,
           '--point-grid-mobile-row-span': mobile.rowSpan,
+          '--point-align-desktop': align.desktop,
+          '--point-align-tablet': align.tablet,
+          '--point-align-mobile': align.mobile,
         } as CSSProperties;
         return (
           <div
             ref={puck.dragRef}
-            className={`point-layout-item point-layout-item--grid point-layout-item--${align}`}
+            className="point-layout-item point-layout-item--grid"
             style={style}
           >
             {parsed.success ? (

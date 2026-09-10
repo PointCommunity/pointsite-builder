@@ -1,4 +1,5 @@
 import type { SectionBlock } from './types';
+import { independentResponsiveValue } from './grid-layout';
 
 export function derivedUuid(id: string, mask: number): string {
   const [head = '00000000', ...rest] = id.split('-');
@@ -17,7 +18,7 @@ export function createEditableHeaderSection(
     items.push({
       id: derivedUuid(pageId, 0x1a1a1a1a),
       span: 4,
-      align: 'center',
+      align: independentResponsiveValue('center'),
       grid: {
         desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 2 },
         tablet: { column: 1, row: 1, columnSpan: 4, rowSpan: 2 },
@@ -37,7 +38,7 @@ export function createEditableHeaderSection(
   items.push({
     id: derivedUuid(pageId, 0x3c3c3c3c),
     span: 8,
-    align: 'center',
+    align: independentResponsiveValue('center'),
     grid: {
       desktop: { column: 5, row: 1, columnSpan: 8, rowSpan: 2 },
       tablet: { column: 5, row: 1, columnSpan: 8, rowSpan: 2 },

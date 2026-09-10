@@ -47,6 +47,14 @@
   <body>
     <h1>Issue 37 implementation plan</h1>
     <section>
+      <h2>0. Apply the PM responsive-layout correction</h2>
+      <p>
+        Treat Phone, Tablet, and Desktop as independent geometry stores while preserving one shared
+        element tree. Cover grid coordinates and spans, vertical placement, and both Hero text
+        widths. Keep content and semantic style fields shared.
+      </p>
+    </section>
+    <section>
       <h2>1. Reproduce and isolate</h2>
       <p>
         Trace width data from the resize handle through Puck action state, document conversion, the
@@ -72,7 +80,16 @@
       </p>
     </section>
     <section>
-      <h2>4. Remove the visible Move pill</h2>
+      <h2>4. Migrate and render independent view geometry</h2>
+      <p>
+        Introduce schema version 9. Materialize three explicit grid, placement-alignment, and Hero
+        width values for existing and new elements; migrate earlier drafts by cloning their current
+        effective values. Emit responsive CSS variables so editor, Preview, and published rendering
+        select the matching value at the existing 900px and 520px breakpoints.
+      </p>
+    </section>
+    <section>
+      <h2>5. Remove the visible Move pill</h2>
       <p>
         Remove the visible label node and obsolete styling without removing the semantic
         full-element move button. Verify pointer movement, keyboard movement, focus-visible styling,
@@ -80,7 +97,7 @@
       </p>
     </section>
     <section>
-      <h2>5. Review and release</h2>
+      <h2>6. Review and release</h2>
       <p>
         Run focused checks after each slice, then the complete repository gates and hands-on browser
         QA. Push a task-owned PR with <code>Refs #37</code>, require exact-head Quality, review,
@@ -105,8 +122,8 @@
           is required at both boundaries.
         </li>
         <li>
-          No schema migration is expected; stop and obtain PM direction if diagnosis proves one is
-          necessary.
+          Migration must preserve the currently effective appearance of every existing document;
+          versioned migration tests cover all supported source versions and idempotence.
         </li>
       </ul>
     </section>

@@ -1,8 +1,8 @@
 import {
-  areaForBreakpoint,
   areasOverlap,
   clampGridArea,
   gridAreaFromPoint,
+  independentGridArea,
   legacyGridAreas,
   moveGridArea,
   nextGridArea,
@@ -15,13 +15,16 @@ import {
 describe('responsive grid layout', () => {
   const desktop = { column: 1, row: 1, columnSpan: 6, rowSpan: 4 };
 
-  it('inherits desktop until a narrower breakpoint is changed', () => {
-    const grid = { desktop };
-    expect(areaForBreakpoint(grid, 'tablet')).toEqual(desktop);
+  it('keeps all three breakpoint layouts explicit and independent', () => {
+    const grid = {
+      desktop,
+      tablet: { ...desktop },
+      mobile: { ...desktop },
+    };
     const changed = updateGridArea(grid, 'tablet', { column: 3, columnSpan: 8 });
     expect(changed.desktop).toEqual(desktop);
     expect(changed.tablet).toEqual({ column: 3, row: 1, columnSpan: 8, rowSpan: 4 });
-    expect(areaForBreakpoint(changed, 'mobile')).toEqual(desktop);
+    expect(changed.mobile).toEqual(desktop);
   });
 
   it('clamps moves and resizes inside twelve columns', () => {
@@ -74,8 +77,8 @@ describe('responsive grid layout', () => {
 
   it('finds the first unoccupied location', () => {
     const items = [
-      { grid: { desktop: { column: 1, row: 1, columnSpan: 6, rowSpan: 4 } } },
-      { grid: { desktop: { column: 7, row: 1, columnSpan: 6, rowSpan: 4 } } },
+      { grid: independentGridArea({ column: 1, row: 1, columnSpan: 6, rowSpan: 4 }) },
+      { grid: independentGridArea({ column: 7, row: 1, columnSpan: 6, rowSpan: 4 }) },
     ];
     expect(nextGridArea(items, 6, 3)).toEqual({
       column: 1,
@@ -95,8 +98,16 @@ describe('responsive grid layout', () => {
       ],
     });
     expect(areas).toEqual([
-      { desktop: { column: 1, row: 1, columnSpan: 6, rowSpan: 2 } },
-      { desktop: { column: 7, row: 1, columnSpan: 6, rowSpan: 2 } },
+      {
+        desktop: { column: 1, row: 1, columnSpan: 6, rowSpan: 2 },
+        tablet: { column: 1, row: 1, columnSpan: 6, rowSpan: 2 },
+        mobile: { column: 1, row: 1, columnSpan: 6, rowSpan: 2 },
+      },
+      {
+        desktop: { column: 7, row: 1, columnSpan: 6, rowSpan: 2 },
+        tablet: { column: 7, row: 1, columnSpan: 6, rowSpan: 2 },
+        mobile: { column: 7, row: 1, columnSpan: 6, rowSpan: 2 },
+      },
     ]);
   });
 
@@ -134,7 +145,7 @@ describe('responsive grid layout', () => {
   it('never lets a section become shorter than its content', () => {
     expect(
       requiredSectionRows(4, [
-        { grid: { desktop: { column: 1, row: 8, columnSpan: 4, rowSpan: 3 } } },
+        { grid: independentGridArea({ column: 1, row: 8, columnSpan: 4, rowSpan: 3 }) },
       ]),
     ).toBe(10);
     expect(requiredSectionRows(12, [])).toBe(12);

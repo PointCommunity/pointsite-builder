@@ -2,6 +2,7 @@ import { IDS, validSiteDocument } from './site-documents';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { createCompatibilitySection } from '../../src/site-kit/migrations';
 import type { SiteDocument, SiteElement } from '../../src/site-kit/types';
+import { independentResponsiveValue } from '../../src/site-kit/grid-layout';
 
 export const allBlocks: SiteElement[] = [
   {
@@ -13,6 +14,8 @@ export const allBlocks: SiteElement[] = [
     align: 'left',
     surface: 'primary',
     actions: [{ label: 'Visit', href: '/visit', style: 'primary' }],
+    headingWidth: independentResponsiveValue(100),
+    bodyWidth: independentResponsiveValue(100),
   },
   {
     id: '22222222-2222-4222-8222-222222222202',

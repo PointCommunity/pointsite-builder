@@ -139,8 +139,8 @@ describe('D1 draft repository', () => {
       .map((placement) => placement.element)
       .find((element) => element.type === 'hero');
     if (!hero || hero.type !== 'hero') throw new Error('Expected a Hero fixture');
-    hero.headingWidth = 73;
-    hero.bodyWidth = 57;
+    hero.headingWidth.mobile = 73;
+    hero.bodyWidth.mobile = 57;
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
@@ -165,7 +165,10 @@ describe('D1 draft repository', () => {
       .flatMap((section) => section.items)
       .map((placement) => placement.element)
       .find((element) => element.id === hero.id);
-    expect(savedHero).toMatchObject({ headingWidth: 73, bodyWidth: 57 });
+    expect(savedHero).toMatchObject({
+      headingWidth: { desktop: 100, tablet: 100, mobile: 73 },
+      bodyWidth: { desktop: 100, tablet: 100, mobile: 57 },
+    });
     expect(reloadedHero).toEqual(savedHero);
     await expect(
       database

@@ -58,17 +58,17 @@ describe('controlled public renderer', () => {
       variant,
       align,
       body: 'Independent body copy',
-      headingWidth: 70,
-      bodyWidth: 55,
+      headingWidth: { desktop: 70, tablet: 65, mobile: 60 },
+      bodyWidth: { desktop: 55, tablet: 50, mobile: 45 },
     });
 
     const { container } = render(<>{renderBlock(hero, defaultSiteDocument)}</>);
 
     expect(container.querySelector('.point-hero-text-box--heading')).toHaveStyle(
-      '--point-hero-text-width: 70%',
+      '--point-hero-text-width-desktop: 70%; --point-hero-text-width-tablet: 65%; --point-hero-text-width-mobile: 60%',
     );
     expect(container.querySelector('.point-hero-text-box--body')).toHaveStyle(
-      '--point-hero-text-width: 55%',
+      '--point-hero-text-width-desktop: 55%; --point-hero-text-width-tablet: 50%; --point-hero-text-width-mobile: 45%',
     );
   });
 
@@ -246,9 +246,11 @@ describe('controlled public renderer', () => {
         {
           id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
           span: 6,
-          align: 'end' as const,
+          align: { desktop: 'end', tablet: 'center', mobile: 'start' } as const,
           grid: {
             desktop: { column: 4, row: 2, columnSpan: 6, rowSpan: 3 },
+            tablet: { column: 3, row: 3, columnSpan: 8, rowSpan: 4 },
+            mobile: { column: 1, row: 4, columnSpan: 12, rowSpan: 5 },
           },
           element: heading,
         },
@@ -260,7 +262,7 @@ describe('controlled public renderer', () => {
         '.point-layout-section--narrow.point-layout-section--primary.point-layout-section--pad-large',
       ),
     ).not.toBeNull();
-    const gridItem = container.querySelector('.point-layout-item--end.point-layout-item--grid');
+    const gridItem = container.querySelector('.point-layout-item--grid');
     expect(gridItem).not.toBeNull();
     expect(gridItem).not.toHaveClass('point-layout-item--span-6');
     expect(gridItem).toHaveStyle({
@@ -268,6 +270,9 @@ describe('controlled public renderer', () => {
       '--point-grid-desktop-row': '2',
       '--point-grid-desktop-column-span': '6',
       '--point-grid-desktop-row-span': '3',
+      '--point-align-desktop': 'end',
+      '--point-align-tablet': 'center',
+      '--point-align-mobile': 'start',
     });
     expect(container.querySelector('.point-layout-section__grid')).toHaveStyle(
       '--point-section-columns: 12',
