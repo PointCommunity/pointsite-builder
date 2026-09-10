@@ -28,7 +28,10 @@ describe('feedback control', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Send feedback (test)' }));
     await waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
     view.rerender(<FeedbackButton screen="editor.settings" beforeLaunch={prepare} />);
-    await act(() => finish());
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
     expect(submit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Your draft is safe');
   });
