@@ -26,6 +26,37 @@
     </style>
   </head>
   <body>
+    <section>
+      <h2>Update to e9b3c976c2112ca5293cd547fd219b9f734f5234</h2>
+      <p>
+        Apply the reviewed upstream delta from 93692c025e0065d00ecaf5b870c6fd566393a1cf: adoption
+        and updates finish through agent testing, remediation, verified publication and cleanup,
+        without PM Testing or acceptance. Retain the PM-directed Issue-free maintenance exception
+        and every product-release approval.
+      </p>
+      <ol>
+        <li>
+          Preview changed managed files and merge the upstream delta without replacing Builder
+          customizations.
+        </li>
+        <li>
+          Add a regression test for the no-PM bootstrap contract; update validation, skills, policy
+          and the reusable checkout action while retaining parent-history checks.
+        </li>
+        <li>
+          Refresh reviewed reconciliation, CI and source evidence; prove repeat adoption is
+          conflict-free and configuration is unchanged.
+        </li>
+        <li>
+          Run the full local suite and agent routing checks, publish a maintenance PR, verify the
+          exact main tree and checks, and remove temporary resources.
+        </li>
+      </ol>
+      <p>
+        Application code, dependencies, Project state, credentials and deployments are outside this
+        update. A reviewed source revert recovers the prior framework installation.
+      </p>
+    </section>
     <h1>Pipeliner adoption</h1>
     <p>
       Install reviewed Pipeliner tooling in PointCommunity/pointsite-builder through direct
@@ -95,8 +126,8 @@
         verify its exact tree and merge, and confirm default-branch checks.
       </li>
       <li>
-        Remove task-owned processes and build outputs, preserve unrelated work, and present concise
-        repository PM Testing steps.
+        Remove task-owned processes and build outputs, preserve unrelated work, and report agent
+        verification and completion without a PM acceptance step.
       </li>
     </ol>
     <h2>Verification</h2>
@@ -116,7 +147,7 @@
       existing resources. Single-environment Builder QA does not introduce an extra pre-production
       PM gate: product acceptance remains the existing Production Showcase.
     </p>
-    <h2>PM Testing</h2>
+    <h2>Agent verification</h2>
     <ol>
       <li>
         Read the installed profile and root instructions; expect the correct repository, Project,
@@ -127,8 +158,8 @@
         QA.
       </li>
       <li>
-        Ask for a Pipeliner update; expect direct maintenance with no Issue intake or application
-        deployment.
+        Validate the update contract; expect direct maintenance with no Issue intake, PM Testing,
+        acceptance gate or application deployment.
       </li>
     </ol>
   </body>

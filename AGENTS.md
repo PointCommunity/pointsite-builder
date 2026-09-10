@@ -20,7 +20,7 @@
 - Run every `quality.commands` and local `qa.environments[].suite` command against the exact source/tree. Record commands, exit codes and candidate identity in the supporting PR or Issue; GitHub's Pipeline contracts job never substitutes for these results.
 - Before setup, run `node scripts/local-qa.mjs prepare` in a fresh task worktree. After tests, run `node scripts/local-qa.mjs cleanup`, including failure paths. Remove only inventoried task-created outputs. Test harnesses must stop their own servers; verify their absence before cleanup. Preserve unrelated processes, files, caches and credentials.
 - The single local environment has no QA baton or additional pre-production PM gate. Local suite evidence permits agent review; product PM acceptance remains the post-deployment Production Showcase. The configured completion phrase in the local QA turn is bound to that final candidate; do not fabricate a passing PM record before actual approval. Generic multi-host QA requirements apply only if that topology is explicitly adopted later.
-- Framework adoption is source-only maintenance: PM Testing reviews installed config, policy, commands and checks without deploying Builder. Product Issue completion rules below remain unchanged.
+- No PM Testing is required for adoption or updates. The agent runs configured suites and tests installed routing, preserved config, repeat adoption and checks; remediates findings; verifies publication and cleanup; then reports completion. Do not request a PM test session, PM Testing checklist, PM acceptance or bootstrap-completion approval. Product Issue completion rules below remain unchanged.
 
 ## Authority and source of truth
 

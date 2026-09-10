@@ -2,19 +2,19 @@
   "version": 1,
   "files": {
     ".agents/pipeliner-policy.html": {
-      "sourceSha256": "ab6bd29956b0de224b5343b82795a57881686ea640299e25f2a872959bda875f",
-      "targetSha256": "82760020748b6eeeaa74813a1de3d7bb54224a5cf14724f0ac6fabd78afcc3b6",
+      "sourceSha256": "b331062146622916d9d4bec51cb4f4a52f4b2277d990a9d24eb7b511198c9399",
+      "targetSha256": "48904a5e1b0e2006e45853814e8ebe81488bc48cdd765efec2c47976af706e82",
       "rationale": "Preserve generic guidance with explicit Builder product-policy and Issue-free maintenance precedence; format to repository style."
     },
     ".agents/skills/pipeliner-adopt/agents/openai.yaml": {
-      "sourceSha256": "ce9b91b95a4a06ab07e15116e45b8465c5b991c20c5e4ce39460a12be8a1b627",
-      "targetSha256": "6ff166c9e134aad9333c530083ae5bbd8a834cdb66dc58fb9277a36137e4ae95",
+      "sourceSha256": "ce04ce995cddc70b7d7693b5a5b89a88572f9f2c78aa56113244ab5826896c13",
+      "targetSha256": "a39ff8e490a042ce561758d0df79a7c3a96e313dd8a59e9abf3f156a30b12f1e",
       "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
     },
     ".agents/skills/pipeliner-adopt/SKILL.md": {
-      "sourceSha256": "1a51575df1d829964c54a6015ccd87c2129a598a3095b7827df5da0620884db7",
-      "targetSha256": "aafbba9bae5d38b2ad63c250a2c9ff73726596c2a0e9572cf259314a45060791",
-      "rationale": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary."
+      "sourceSha256": "b557ab2ce9a02dd3799c3d6675c7631a644644bb964f0b69da5ffb2659504b79",
+      "targetSha256": "3281529a2aa07d71c61b9862558b87e5258acd39868495fc7c00abd8e3807941",
+      "rationale": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml": {
       "sourceSha256": "faecbac92f646f5e0fab46fc70423a3a920453b2b41e960c97d4b7f6a184c909",
@@ -52,8 +52,8 @@
       "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
     },
     ".agents/skills/pipeliner-maintain/SKILL.md": {
-      "sourceSha256": "d83be6d4a67a12eea33abc12ccd5bf4f2b322ef683ee3f2249c1da022c74fd94",
-      "targetSha256": "e66c7d229274459e25e747a410d7812cadd6decb53ede274dc48433838f9a0c3",
+      "sourceSha256": "7b1d97d6f7c8a3cd951423e8391597e417ff29d79acd33a461ba1b4cfd56887b",
+      "targetSha256": "2ae38d59eb13739b7ebdc1105b9c976b9ef67ed451cc52559593e09987fa5724",
       "rationale": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
     },
     ".agents/skills/pipeliner-monitor-updates/agents/openai.yaml": {
@@ -113,8 +113,8 @@
     },
     ".agents/skills/pipeliner-work-issue/references/local-qa.md": {
       "sourceSha256": "42eca9b0c87e92926a802955083908200f6a92d9d4f3e6ba15bd6461cb864a6b",
-      "targetSha256": "98fd9ad22800996b6a25b6e0e65dafe621d1aa2c01e41898dcdcae25bba9dc09",
-      "rationale": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption."
+      "targetSha256": "f854ad63298577afc4f1961fc823da5c566285c29f047d0b1cef794ed8d91390",
+      "rationale": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     ".agents/skills/pipeliner-work-issue/SKILL.md": {
       "sourceSha256": "877f5a20d5932ade1ba6371d35a3e0d7c4099556c796d6345bd545560379fe49",
@@ -142,9 +142,9 @@
       "rationale": "Document explicit Issue-free framework-maintenance PR marker while preserving product Issue references and PM Testing sections."
     },
     "AGENTS.md": {
-      "sourceSha256": "86f05edf77f7edf843b76a779279784556b58a684a3f67276d5f3e82db65ef7a",
-      "targetSha256": "da4cab2eb9338f4a8ff1da10aa4cfd956eb0a66770db8fd412f505ea994ff722",
-      "rationale": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance."
+      "sourceSha256": "9ccb55ad570db181e548e3271e453faedc53082d39416d4b717bebf8530a5fd1",
+      "targetSha256": "75549432eac79382b5e3ec8403015e85d9a49546b60abd44bf99899b767212e7",
+      "rationale": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     "blueprints/github-labels.json": {
       "sourceSha256": "fde4722934324c3aba849d289d6a97604d1db256e0130272ce2b98af6b23d799",
@@ -237,8 +237,8 @@
       "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
     },
     "scripts/lib/validation.mjs": {
-      "sourceSha256": "27d959c4b468cb7106f30935606af748bf4711dc65c991eaaf61f161e890f084",
-      "targetSha256": "b0eeac7a0f926065fcf9156a1ef436c57ff628625372b66826c5a542e9030db7",
+      "sourceSha256": "04ffb96524fdef12bec0c99a50f1583ece0507d7079e4f43bf3ed05522bcc07b",
+      "targetSha256": "7fc9cba8a3a75e6d93e3f0b6626c647bb8de250a8ab455d992d9ab3b70648285",
       "rationale": "Accept explicit adopter identity in Project comparison while retaining upstream blueprint validation and all field/view/workflow requirements; regression tested."
     },
     "scripts/validate-repository.mjs": {
@@ -247,8 +247,8 @@
       "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
     },
     ".github/workflows/reusable-quality.yml": {
-      "sourceSha256": "28b2970036147971c0aa1a004c25f1d0f5d32e768ee601c70dd1562e135ebfb0",
-      "targetSha256": "a2ddca4ee138246bbf0990cb00a56665009e5bb2a91d0ac50830fe6e22675d15",
+      "sourceSha256": "d5adbda5c422f05cfda9bd4a221f24a2217abb1099e17e98fb9c70c75ee9537b",
+      "targetSha256": "05deae7980b65215c82e86389d6b4a83e5801c18286f4d08c96b2e0a24637079",
       "rationale": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
     }
   }

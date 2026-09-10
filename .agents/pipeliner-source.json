@@ -2,8 +2,8 @@
   "version": 1,
   "repository": "https://github.com/Zuriel-Labs/pipeliner.git",
   "ref": "main",
-  "commit": "93692c025e0065d00ecaf5b870c6fd566393a1cf",
-  "appliedAt": "2026-09-10T16:05:45.512Z",
+  "commit": "e9b3c976c2112ca5293cd547fd219b9f734f5234",
+  "appliedAt": "2026-09-10T16:44:16.446Z",
   "exceptions": [
     {
       "path": ".agents/pipeliner-policy.html",
@@ -15,7 +15,7 @@
     },
     {
       "path": ".agents/skills/pipeliner-adopt/SKILL.md",
-      "reason": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary."
+      "reason": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     {
       "path": ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml",
@@ -95,7 +95,7 @@
     },
     {
       "path": ".agents/skills/pipeliner-work-issue/references/local-qa.md",
-      "reason": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption."
+      "reason": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     {
       "path": ".agents/skills/pipeliner-work-issue/SKILL.md",
@@ -119,7 +119,7 @@
     },
     {
       "path": "AGENTS.md",
-      "reason": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance."
+      "reason": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance. Adopt upstream exemption from PM Testing and acceptance for framework adoption and updates; preserve application PM gates."
     },
     {
       "path": "blueprints/github-labels.json",
