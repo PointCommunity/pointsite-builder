@@ -8,6 +8,19 @@ export type GridResizeHandle =
 
 export const GRID_COLUMNS = 12;
 export const MAX_GRID_ROWS = 1_000;
+export const GRID_BREAKPOINTS = ['desktop', 'tablet', 'mobile'] as const;
+
+export function independentResponsiveValue<T>(value: T): Record<GridBreakpoint, T> {
+  return { desktop: value, tablet: value, mobile: value };
+}
+
+export function independentGridArea(area: GridArea): ResponsiveGridArea {
+  return {
+    desktop: { ...area },
+    tablet: { ...area },
+    mobile: { ...area },
+  };
+}
 
 const defaultRows: Record<SiteElement['type'], number> = {
   hero: 10,
@@ -34,7 +47,7 @@ export function defaultRowSpan(type: SiteElement['type']): number {
 }
 
 export function areaForBreakpoint(grid: ResponsiveGridArea, breakpoint: GridBreakpoint): GridArea {
-  return grid[breakpoint] ?? grid.desktop;
+  return grid[breakpoint];
 }
 
 export function clampGridArea(area: GridArea): GridArea {
@@ -113,7 +126,7 @@ export function updateGridArea(
 ): ResponsiveGridArea {
   const current = areaForBreakpoint(grid, breakpoint);
   const next = clampGridArea({ ...current, ...change });
-  return breakpoint === 'desktop' ? { ...grid, desktop: next } : { ...grid, [breakpoint]: next };
+  return { ...grid, [breakpoint]: next };
 }
 
 export function moveGridArea(area: GridArea, columns: number, rows: number): GridArea {
@@ -173,7 +186,7 @@ export function legacyGridAreas(section: {
         ? Math.max(1, Math.min(GRID_COLUMNS, Math.round(item.span * unit)))
         : GRID_COLUMNS;
     const desktop = nextGridArea(occupied, columnSpan, defaultRowSpan(item.element.type));
-    const grid = { desktop };
+    const grid = independentGridArea(desktop);
     occupied = [...occupied, { grid }];
     return grid;
   });

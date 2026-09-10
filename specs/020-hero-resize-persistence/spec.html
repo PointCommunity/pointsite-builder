@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Issue 37 - Hero resize persistence</title>
+    <title>Issue 37 - independent responsive layouts</title>
     <style>
       :root {
         color-scheme: dark;
@@ -49,7 +49,7 @@
     </style>
   </head>
   <body>
-    <h1>Issue 37: Hero resize persistence</h1>
+    <h1>Issue 37: independent responsive layouts</h1>
     <p>
       Source of truth: GitHub Issue #37, “Persist Hero text resizing and remove the canvas Move
       badge.”
@@ -64,6 +64,12 @@
         pill while preserving the full move control and all pointer, keyboard, focus, announcement,
         collision, resize, and selection behavior.
       </p>
+      <p>
+        PM production finding, 2026-09-09: Phone, Tablet, and Desktop are independent layout
+        canvases. An element's grid position, grid size, vertical placement, and Hero Heading or
+        Body width may differ in each view. The element tree and element content remain shared, so
+        adding, removing, duplicating, or editing an element continues to affect all three views.
+      </p>
     </section>
 
     <section>
@@ -74,7 +80,8 @@
         </li>
         <li>
           <code>SiteDocument</code>, immutable revisions, checksums, and compare-and-swap remain the
-          persistence source of truth; no schema migration or browser-only storage is needed.
+          persistence source of truth. Schema version 9 will make all three layout values explicit;
+          browser-only storage is not used.
         </li>
         <li>
           Pointer-move frames stay transient. Pointer release or keyboard input creates the durable
@@ -85,8 +92,30 @@
           removed.
         </li>
         <li>
-          The approved Issue body resolves product behavior, so implementation may proceed without
-          another specification approval.
+          The PM production finding supersedes the original exclusion of breakpoint-specific Hero
+          widths for this remediation cycle.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Responsive ownership contract</h2>
+      <ul>
+        <li>
+          Independent per view: grid column, row, column span, row span, placement alignment, Hero
+          Heading width, and Hero Body width.
+        </li>
+        <li>
+          Shared across views: section and element membership, ordering, content, links, media,
+          color/surface, typography choices, and other semantic element settings.
+        </li>
+        <li>
+          New elements receive three explicit, equal starting layouts. Editing any one view changes
+          only that view; there is no inheritance or “Reset to desktop” behavior.
+        </li>
+        <li>
+          Version 8 and older documents migrate without a visual jump by copying each existing
+          effective layout and Hero width into Phone, Tablet, and Desktop values.
         </li>
       </ul>
     </section>
@@ -135,16 +164,16 @@
       <h2>Testing strategy</h2>
       <ul>
         <li>
-          RED: browser coverage must fail on the current branch by asserting the exact width in the
-          save request and after a real API-backed reload.
+          RED: focused unit and browser coverage must fail on the current branch by asserting that a
+          Phone resize does not change Tablet or Desktop and that all grid layouts are explicit.
         </li>
         <li>
           GREEN: focused interaction coverage proves pointer, keyboard, cancel, delayed
           acknowledgement, consecutive actions, view switching, and checkout close/reopen behavior.
         </li>
         <li>
-          Repository tests prove both width fields survive schema parsing, checksum calculation,
-          memory and D1 revision insertion, and retrieval.
+          Repository tests prove all responsive width and placement fields survive schema parsing,
+          checksum calculation, memory and D1 revision insertion, migration, and retrieval.
         </li>
         <li>
           Accessibility coverage proves the visible Move text is absent while the named button,
@@ -159,11 +188,11 @@
       <ul>
         <li>
           Always preserve action ordering, idempotency, validation, checkout ownership, responsive
-          containment, independent Heading and Body values, and renderer parity.
+          containment, independent view geometry, independent Heading and Body values, and renderer
+          parity.
         </li>
         <li>
-          Ask before changing the Issue body, data schema, width limits, keyboard steps, or
-          deployment model.
+          Ask before changing the Issue body, width limits, keyboard steps, or deployment model.
         </li>
         <li>
           Never expose draft content or internal identifiers, create revisions for transient pointer
@@ -183,6 +212,13 @@
         <li>
           The exact final Heading or Body width is the value saved, checksummed, reloaded,
           previewed, and published by the existing renderer contract.
+        </li>
+        <li>
+          Moving, resizing, or vertically placing an element in one responsive view leaves the other
+          two views byte-for-byte unchanged.
+        </li>
+        <li>
+          Removing an element in any responsive view removes the one shared element from all three.
         </li>
         <li>
           A cancelled pointer resize restores the starting value and creates no durable revision.

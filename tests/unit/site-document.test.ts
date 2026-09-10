@@ -3,6 +3,7 @@ import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { createCompatibilitySection } from '../../src/site-kit/migrations';
 import type { SiteElement } from '../../src/site-kit/types';
 import { allBlocks } from '../fixtures/block-data';
+import { independentGridArea, independentResponsiveValue } from '../../src/site-kit/grid-layout';
 
 function cloneDocument(): Record<string, unknown> {
   return structuredClone(validSiteDocument);
@@ -222,10 +223,13 @@ describe('SiteDocumentSchema', () => {
         items: allBlocks.map((element, index) => ({
           id: `30000000-0000-4000-8000-${String(index + 2).padStart(12, '0')}`,
           span: 12,
-          align: 'stretch',
-          grid: {
-            desktop: { column: 1, row: index * 10 + 1, columnSpan: 12, rowSpan: 10 },
-          },
+          align: independentResponsiveValue('stretch'),
+          grid: independentGridArea({
+            column: 1,
+            row: index * 10 + 1,
+            columnSpan: 12,
+            rowSpan: 10,
+          }),
           element,
         })),
       },
@@ -246,8 +250,8 @@ describe('SiteDocumentSchema', () => {
       {
         id: '30000000-0000-4000-8000-000000000099',
         span: 4,
-        align: 'start',
-        grid: { desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 2 } },
+        align: independentResponsiveValue('start'),
+        grid: independentGridArea({ column: 1, row: 1, columnSpan: 4, rowSpan: 2 }),
         element: {
           id: '30000000-0000-4000-8000-000000000098',
           type: 'button',

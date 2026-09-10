@@ -4,6 +4,7 @@ import { createEditableHeaderSection } from './editable-header';
 import { createEditablePageHeroSection } from './editable-page-hero';
 import type { SiteDocument, SiteElement } from './types';
 import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
+import { independentResponsiveValue } from './grid-layout';
 
 function uid(sequence: number): string {
   return `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`;
@@ -355,6 +356,8 @@ const pages: SiteDocument['pages'] = [
         align: 'center',
         surface: 'image',
         actions: [],
+        headingWidth: independentResponsiveValue(100),
+        bodyWidth: independentResponsiveValue(100),
       }),
       block({
         type: 'heading',

@@ -449,8 +449,14 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
   await expect(canvas.locator('.page-hero')).toHaveCount(2);
   await page.getByRole('button', { name: 'Move Page hero copy down' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Page hero copy moved.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
   await page.getByRole('button', { name: 'Remove Page hero', exact: true }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(1280);
+  await expect(canvas.locator('.page-hero')).toHaveCount(1);
   await page.getByRole('button', { name: 'Remove Page hero copy', exact: true }).click();
+  await expect(canvas.locator('.page-hero')).toHaveCount(0);
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(1280);
   await expect(canvas.locator('.page-hero')).toHaveCount(0);
   await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
 
@@ -599,6 +605,7 @@ test('keeps a non-auto desktop grid position identical in canvas and Preview', a
 test('keeps every page Hero inside the phone canvas and resizes Hero text by drag or keyboard', async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -679,7 +686,7 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     ?.blocks.flatMap((section) => section.items)
     .map((placement) => placement.element)
     .find((element) => element.type === 'hero')?.bodyWidth;
-  expect(requestedKeyboardWidth).toBe(95);
+  expect(requestedKeyboardWidth).toEqual({ desktop: 100, tablet: 100, mobile: 95 });
 
   const beforeDrag = (await body.boundingBox())?.width ?? 0;
   const dragBaseline = controls.saveRequests.length;
@@ -703,11 +710,34 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
     ?.blocks.flatMap((section) => section.items)
     .map((placement) => placement.element)
-    .find((element) => element.type === 'hero')?.bodyWidth;
+    .find((element) => element.type === 'hero')?.bodyWidth.mobile;
   const renderedDragWidth = await body.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
   );
   expect(requestedDragWidth).toBe(renderedDragWidth);
+
+  await page.getByRole('button', { name: 'Switch to Tablet viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(768);
+  await expect
+    .poll(() =>
+      body.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
+      ),
+    )
+    .toBe(100);
+  await page.getByRole('button', { name: 'Switch to Desktop viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(1280);
+  await expect
+    .poll(() =>
+      body.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).getPropertyValue('--point-hero-text-width')),
+      ),
+    )
+    .toBe(100);
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
+  await canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+  await expect(handle).toBeVisible();
 
   const beforeCancel = (await body.boundingBox())?.width ?? 0;
   const cancelBaseline = controls.saveRequests.length;
@@ -795,7 +825,7 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
         .find((candidate) => candidate.title === 'Our Beliefs')
         ?.blocks.flatMap((section) => section.items)
         .map((placement) => placement.element)
-        .find((element) => element.type === 'hero')?.headingWidth,
+        .find((element) => element.type === 'hero')?.headingWidth.mobile,
   );
   expect(orderedWidths).toEqual([95, 90]);
   expect(
@@ -805,7 +835,10 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
       ?.blocks.flatMap((section) => section.items)
       .map((placement) => placement.element)
       .find((element) => element.type === 'hero'),
-  ).toMatchObject({ headingWidth: 90, bodyWidth: requestedDragWidth });
+  ).toMatchObject({
+    headingWidth: { desktop: 100, tablet: 100, mobile: 90 },
+    bodyWidth: { desktop: 100, tablet: 100, mobile: requestedDragWidth },
+  });
 
   await expect(page.getByText('All changes saved')).toBeVisible();
   const undoBaseline = controls.saveRequests.length;
@@ -817,8 +850,8 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
       ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
       ?.blocks.flatMap((section) => section.items)
       .map((placement) => placement.element)
-      .find((element) => element.type === 'hero')?.headingWidth,
-  ).toBeUndefined();
+      .find((element) => element.type === 'hero')?.headingWidth.mobile,
+  ).toBe(100);
   await page.getByRole('button', { name: 'redo' }).click();
   await expect.poll(() => controls.saveRequests.length).toBe(undoBaseline + 2);
   expect(
@@ -827,7 +860,7 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
       ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
       ?.blocks.flatMap((section) => section.items)
       .map((placement) => placement.element)
-      .find((element) => element.type === 'hero')?.headingWidth,
+      .find((element) => element.type === 'hero')?.headingWidth.mobile,
   ).toBe(90);
 
   await page.getByRole('button', { name: 'Preview' }).click();
@@ -1146,7 +1179,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await page.getByLabel('desktop width in columns').last().fill('6');
   await page.getByLabel('desktop column').last().fill('4');
-  await page.getByLabel('Vertical alignment').last().selectOption({ label: 'End' });
+  await page.getByLabel('desktop vertical alignment').last().selectOption({ label: 'End' });
   const placement = canvas.locator('.point-layout-item').filter({ hasText: 'Section heading' });
   await expect(placement).toHaveCSS('grid-column-start', '4');
   await expect(placement).toHaveCSS('grid-column-end', 'span 6');
@@ -1215,13 +1248,16 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await page.getByRole('button', { name: 'Switch to Tablet viewport' }).click();
   await canvas.getByRole('heading', { name: 'Section heading' }).click();
-  await expect(page.getByText(/Inheriting the desktop position/).last()).toBeVisible();
+  await expect(page.getByText(/belongs only to the selected responsive view/).last()).toBeVisible();
+  await page.getByLabel('tablet vertical alignment').last().selectOption({ label: 'Start' });
   await page.getByLabel('tablet width in columns').last().fill('8');
   await page.getByLabel('tablet column').last().fill('3');
   await expect(placement).toHaveCSS('grid-column-start', '3');
   await expect(placement).toHaveCSS('grid-column-end', 'span 8');
   await page.getByRole('button', { name: 'Switch to Desktop viewport' }).click();
   await canvas.getByRole('heading', { name: 'Section heading' }).click();
+  await expect(page.getByLabel('desktop vertical alignment').last()).toHaveValue('end');
+  await expect(placement).toHaveCSS('align-self', 'end');
   await expect(placement).toHaveCSS('grid-column-start', '5');
   await expect(placement).toHaveCSS('grid-column-end', `span ${resizedDesktopWidth}`);
 

@@ -7,6 +7,11 @@ const shortText = z.string().trim().min(1).max(120);
 const bodyText = z.string().trim().min(1).max(5_000);
 const optionalBodyText = z.string().trim().max(5_000).optional();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hexadecimal color');
+const responsiveHeroWidth = z.strictObject({
+  desktop: z.number().int().min(30).max(100),
+  tablet: z.number().int().min(30).max(100),
+  mobile: z.number().int().min(30).max(100),
+});
 
 function relativeLuminance(hex: string): number {
   const values = [1, 3, 5].map(
@@ -43,8 +48,8 @@ const HeroBlockSchema = z.strictObject({
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
   variant: z.enum(['standard', 'homeHero', 'pageHero']).optional(),
-  headingWidth: z.number().int().min(30).max(100).optional(),
-  bodyWidth: z.number().int().min(30).max(100).optional(),
+  headingWidth: responsiveHeroWidth.default({ desktop: 100, tablet: 100, mobile: 100 }),
+  bodyWidth: responsiveHeroWidth.default({ desktop: 100, tablet: 100, mobile: 100 }),
 });
 
 const HeadingBlockSchema = z.strictObject({
@@ -313,14 +318,20 @@ export const GridAreaSchema = z
 
 const ResponsiveGridAreaSchema = z.strictObject({
   desktop: GridAreaSchema,
-  tablet: GridAreaSchema.optional(),
-  mobile: GridAreaSchema.optional(),
+  tablet: GridAreaSchema,
+  mobile: GridAreaSchema,
+});
+
+const ResponsivePlacementAlignmentSchema = z.strictObject({
+  desktop: z.enum(['start', 'center', 'end', 'stretch']),
+  tablet: z.enum(['start', 'center', 'end', 'stretch']),
+  mobile: z.enum(['start', 'center', 'end', 'stretch']),
 });
 
 const ElementPlacementSchema = z.strictObject({
   id: uuid,
   span: z.number().int().min(1).max(12),
-  align: z.enum(['start', 'center', 'end', 'stretch']),
+  align: ResponsivePlacementAlignmentSchema,
   grid: ResponsiveGridAreaSchema,
   element: SiteElementSchema,
 });
@@ -541,7 +552,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(8),
+    schemaVersion: z.literal(9),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,

@@ -151,11 +151,15 @@ function HeroTextBox({
   children,
 }: {
   kind: HeroTextKind;
-  width?: number;
+  width: Extract<SiteElement, { type: 'hero' }>['headingWidth'];
   resizeHandle?: (kind: HeroTextKind) => ReactNode;
   children: ReactNode;
 }) {
-  const style = width ? ({ '--point-hero-text-width': `${width}%` } as CSSProperties) : undefined;
+  const style = {
+    '--point-hero-text-width-desktop': `${width.desktop}%`,
+    '--point-hero-text-width-tablet': `${width.tablet}%`,
+    '--point-hero-text-width-mobile': `${width.mobile}%`,
+  } as CSSProperties;
   return (
     <div className={`point-hero-text-box point-hero-text-box--${kind}`} style={style}>
       {children}
@@ -1097,8 +1101,8 @@ export function renderSection(
       <div className="point-layout-section__grid" style={style}>
         {section.items.map((placement) => {
           const desktop = placement.grid.desktop;
-          const tablet = placement.grid.tablet ?? desktop;
-          const mobile = placement.grid.mobile ?? desktop;
+          const tablet = placement.grid.tablet;
+          const mobile = placement.grid.mobile;
           const spanClass =
             section.layout === 'flow'
               ? ` point-layout-item--span-${Math.min(placement.span, sectionColumns)}`
@@ -1118,11 +1122,18 @@ export function renderSection(
                   '--point-grid-mobile-row': mobile.row,
                   '--point-grid-mobile-column-span': mobile.columnSpan,
                   '--point-grid-mobile-row-span': mobile.rowSpan,
+                  '--point-align-desktop': placement.align.desktop,
+                  '--point-align-tablet': placement.align.tablet,
+                  '--point-align-mobile': placement.align.mobile,
                 } as CSSProperties)
-              : undefined;
+              : ({
+                  '--point-align-desktop': placement.align.desktop,
+                  '--point-align-tablet': placement.align.tablet,
+                  '--point-align-mobile': placement.align.mobile,
+                } as CSSProperties);
           return (
             <div
-              className={`point-layout-item point-layout-item--${section.layout} point-layout-item--${placement.align}${spanClass}`}
+              className={`point-layout-item point-layout-item--${section.layout}${spanClass}`}
               key={placement.id}
               style={placementStyle}
             >

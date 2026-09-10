@@ -40,6 +40,21 @@
     <h1>Issue 37 tasks</h1>
     <ol>
       <li>
+        <strong>Reproduce responsive coupling.</strong> Acceptance: focused tests fail because a
+        Phone Hero width change is visible in Tablet/Desktop and because legacy grid values rely on
+        Desktop fallback.
+      </li>
+      <li>
+        <strong>Version independent geometry.</strong> Acceptance: schema version 9 stores explicit
+        Phone, Tablet, and Desktop grid, vertical-placement, Heading-width, and Body-width values;
+        migration preserves each old document's effective appearance and is idempotent.
+      </li>
+      <li>
+        <strong>Keep the element tree shared.</strong> Acceptance: responsive layout edits affect
+        only the selected view, while add/remove/content edits still operate on the single shared
+        element.
+      </li>
+      <li>
         <strong>Reproduce the lost final width.</strong> Acceptance: a focused browser test fails on
         current code and identifies the first boundary whose document is stale. Verify with a
         grep-filtered Playwright run.

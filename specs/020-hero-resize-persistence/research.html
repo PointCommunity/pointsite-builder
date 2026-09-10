@@ -47,6 +47,30 @@
   <body>
     <h1>Issue 37 root-cause research</h1>
     <section>
+      <h2>PM production finding</h2>
+      <p>
+        Phone, Tablet, and Desktop must own independent element geometry. Element identity,
+        membership, ordering, and content remain shared. The current implementation violates that
+        contract in two separate places.
+      </p>
+      <ul>
+        <li>
+          Responsive grids store only <code>desktop</code> as required and resolve missing Tablet or
+          Phone values through <code>grid[breakpoint] ?? grid.desktop</code>. A Desktop edit
+          therefore changes an unmaterialized narrower view.
+        </li>
+        <li>
+          Hero <code>headingWidth</code> and <code>bodyWidth</code> are scalar numbers. The current
+          viewport is not represented in the persisted value, so a resize necessarily changes all
+          three views.
+        </li>
+        <li>
+          Placement alignment is also scalar even though the editor presents it alongside grid
+          geometry, so it has the same coupling defect.
+        </li>
+      </ul>
+    </section>
+    <section>
       <h2>Observed architecture</h2>
       <ul>
         <li>
@@ -68,6 +92,17 @@
           <code>headingWidth</code> and <code>bodyWidth</code> values.
         </li>
       </ul>
+    </section>
+    <section>
+      <h2>Responsive remediation decision</h2>
+      <p>
+        Version the document schema and require explicit <code>desktop</code>, <code>tablet</code>,
+        and <code>mobile</code> values for grid area, placement alignment, and each Hero text width.
+        Version 8 inputs clone their currently effective values into the three slots. New elements
+        also begin with equal slots. CSS variables select the correct stored value at the same
+        breakpoint thresholds already used by the canvas and public renderer. Removing inheritance
+        also removes the inspector's “Reset to desktop” operation.
+      </p>
     </section>
     <section>
       <h2>Confirmed root cause</h2>

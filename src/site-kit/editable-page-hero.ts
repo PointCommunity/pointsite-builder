@@ -1,5 +1,6 @@
 import type { SectionBlock } from './types';
 import { derivedUuid } from './editable-header';
+import { independentGridArea, independentResponsiveValue } from './grid-layout';
 
 export interface LegacyPageHero {
   id: string;
@@ -28,8 +29,8 @@ export function createEditablePageHeroSection(page: LegacyPageHero): SectionBloc
       {
         id: derivedUuid(page.id, 0x7a2b3c4d),
         span: 12,
-        align: 'stretch',
-        grid: { desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 } },
+        align: independentResponsiveValue('stretch'),
+        grid: independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 1 }),
         element: {
           id: derivedUuid(page.id, 0x8b3c4d5e),
           type: 'hero',
@@ -41,6 +42,8 @@ export function createEditablePageHeroSection(page: LegacyPageHero): SectionBloc
           align: 'left',
           surface: page.heroMediaId ? 'image' : 'primary',
           actions: [],
+          headingWidth: independentResponsiveValue(100),
+          bodyWidth: independentResponsiveValue(100),
         },
       },
     ],

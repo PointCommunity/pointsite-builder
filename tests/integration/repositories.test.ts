@@ -140,8 +140,8 @@ describe('repository contract', () => {
       .map((placement) => placement.element)
       .find((element) => element.type === 'hero');
     if (!hero || hero.type !== 'hero') throw new Error('Expected a Hero fixture');
-    hero.headingWidth = 71;
-    hero.bodyWidth = 53;
+    hero.headingWidth.mobile = 71;
+    hero.bodyWidth.mobile = 53;
 
     const saved = await repository.saveDraft({
       draftId: created.id,
@@ -160,7 +160,10 @@ describe('repository contract', () => {
       .map((placement) => placement.element)
       .find((element) => element.id === hero.id);
 
-    expect(persistedHero).toMatchObject({ headingWidth: 71, bodyWidth: 53 });
+    expect(persistedHero).toMatchObject({
+      headingWidth: { desktop: 100, tablet: 100, mobile: 71 },
+      bodyWidth: { desktop: 100, tablet: 100, mobile: 53 },
+    });
     expect(latest.document).toEqual(revision.document);
     expect(revision.checksum).toBe(await checksumDocument(revision.document));
     expect(revision).toMatchObject({
