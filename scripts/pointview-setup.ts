@@ -52,12 +52,20 @@ export function validateRegistration(input: unknown, kid: string, publicX: strin
 }
 
 function command(file: string, args: string[], input?: string) {
-  const result = spawnSync(file, args, {
-    input,
-    encoding: 'utf8',
-    stdio: ['pipe', 'pipe', 'pipe'],
-    timeout: 120_000,
-  });
+  // On macOS Node creates a socket for child stdin. The 1Password CLI requires a
+  // real pipe to detect JSON input. Positional arguments preserve exact quoting;
+  // secrets remain on stdin and never enter shell text or process arguments.
+  const piped = file === 'op' && input !== undefined;
+  const result = spawnSync(
+    piped ? '/bin/bash' : file,
+    piped ? ['-o', 'pipefail', '-c', 'cat | "$@"', 'pointview-setup', file, ...args] : args,
+    {
+      input,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 120_000,
+    },
+  );
   // CLI diagnostics may contain secret input. Only expose a fixed failure message.
   if (result.status !== 0)
     throw new Error(`${file} operation failed; no secret diagnostics were printed.`);
@@ -171,6 +179,12 @@ function main() {
       kid,
       jwk.x!,
     );
+    // Reserve the public output before creating a vault item. An existing or
+    // unwritable path must not leave a newly generated key behind in the vault.
+    writeFileSync(values.output, JSON.stringify(registration, null, 2) + '\n', {
+      flag: 'wx',
+      mode: 0o600,
+    });
     // The only serialized private key goes directly through stdin into the approved vault.
     const saved = z.object({ id: z.string() }).parse(
       JSON.parse(
@@ -188,13 +202,17 @@ function main() {
         ),
       ),
     );
+    console.log(
+      JSON.stringify({
+        vaultItemId: saved.id,
+        keyId: kid,
+        publicRegistration: resolve(values.output),
+        status: 'saved; verifying recovery',
+      }),
+    );
     const recovered = readKey(values.vault, saved.id);
     if (recovered.jwk.x !== jwk.x || recovered.kid !== kid)
       throw new Error('Vault readback did not match.');
-    writeFileSync(values.output, JSON.stringify(registration, null, 2) + '\n', {
-      flag: 'wx',
-      mode: 0o600,
-    });
     console.log(
       JSON.stringify({
         vaultItemId: saved.id,

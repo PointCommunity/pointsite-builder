@@ -135,10 +135,11 @@
       <h2>Operations and rotation</h2>
       <p>
         Run npm run pointview:setup -- prepare with the approved --vault, verified --installation,
-        and an unused --output path. This saves the generated private key directly into 1Password,
-        reads it back, and writes only public source configuration. Register that configuration
-        through PointView Owner administration. Validate and save there to prove the GitHub App
-        repository, Project, and label mapping. Initial registration is disabled.
+        and an unused --output path. This reserves the public source configuration file before
+        creating a vault item, saves the generated private key through a real stdin pipe into
+        1Password, prints the non-secret recovery identifiers, and reads the key back. Register that
+        configuration through PointView Owner administration. Validate and save there to prove the
+        GitHub App repository, Project, and label mapping. Initial registration is disabled.
       </p>
       <p>
         Run npm run pointview:setup -- stage with --vault, --item from preparation, and
@@ -174,13 +175,14 @@
           Live setup and rotation remain unverified.
         </li>
         <li>
-          Blocked on user input: approved vault selection and GitHub passkey confirmation for App
-          installation access. The PointView App installation lookup for
-          PointCommunity/pointsite-builder returned HTTP 404 on 2026-09-10.
+          Signing key prepared and recovery verified in the existing Server vault. Builder source
+          registration exists in PointView Canary with enabled=false and validation UNKNOWN. GitHub
+          installation settings still require user authentication before repository access can be
+          configured; the installation lookup returned HTTP 404 on 2026-09-10.
         </li>
         <li>
-          Pending: source registration, release, controlled live verification and PM Showcase.
-          Production configuration and source registration have not changed.
+          Pending: source validation and enablement, release, controlled live verification and PM
+          Showcase. Builder Production configuration has not changed.
         </li>
         <li>
           Corrected pipeline discovery: main adopted Pipeliner in PR #43. The Issue branch now
@@ -189,9 +191,9 @@
           verify cleanup, and require all four lightweight checks on the new exact head.
         </li>
         <li>
-          Dependency review finding: Builder is now a public repository, while the inspected
-          PointView source-target validator rejects public repositories. This must be reconciled in
-          PointView before claiming registration or integration readiness.
+          Resolved dependency: PointView commit 71a212cf576704e4f7fff20a364a5914d9a2087c supports
+          public source repositories and is deployed to Canary. Its feedback and screenshot privacy
+          boundaries remain intact. App installation validation remains a separate gate.
         </li>
       </ul>
     </section>
