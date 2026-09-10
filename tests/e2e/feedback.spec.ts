@@ -16,7 +16,7 @@ const draft = {
 };
 
 for (const flow of ['cancel', 'submit'] as const) {
-  test(`feedback ${flow} posts context and restores the viewer editor panel`, async ({ page }) => {
+  test(`mocked feedback ${flow} return restores the viewer editor panel`, async ({ page }) => {
     const origin = 'https://pointview.eaglepass.io';
     const screens: string[] = [];
     let posts = 0;

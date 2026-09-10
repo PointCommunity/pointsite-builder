@@ -169,8 +169,9 @@
         <li>Complete: live Issue/Project selection and prerequisite research.</li>
         <li>Complete locally: signing/API implementation and authorization tests.</li>
         <li>
-          Complete locally: feedback controls, workspace restoration, browser coverage, and
-          setup/rotation tooling.
+          Implemented locally: feedback controls, workspace restoration, and setup/rotation tooling.
+          Browser tests cover a mocked PointView return page, not real submission or queued intake.
+          Live setup and rotation remain unverified.
         </li>
         <li>
           Blocked on user input: approved vault selection and GitHub passkey confirmation for App
@@ -182,9 +183,45 @@
           Production configuration and source registration have not changed.
         </li>
         <li>
-          CI limitation: the existing Quality workflow runs application builds, conflicting with the
-          PM's no-GitHub-builds direction. A draft with CI skipped is not release evidence and
-          cannot satisfy the exact-head Quality gate.
+          Corrected pipeline discovery: main adopted Pipeliner in PR #43. The Issue branch now
+          includes its local QA inventory and lightweight CI. The earlier skipped-CI head is not
+          review evidence. Repeat every configured command in a fresh inventoried task worktree,
+          verify cleanup, and require all four lightweight checks on the new exact head.
+        </li>
+        <li>
+          Dependency review finding: Builder is now a public repository, while the inspected
+          PointView source-target validator rejects public repositories. This must be reconciled in
+          PointView before claiming registration or integration readiness.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h2>Remaining release gates</h2>
+      <ul>
+        <li>Complete code and operations review and remediate findings on this Issue.</li>
+        <li>
+          Verify actual signed Builder-to-PointView handoff and authenticated Administrator checkout
+          return; mocked navigation does not meet these criteria.
+        </li>
+        <li>
+          Verify source registration, matching key, App installation, repository/Project mapping,
+          queue creation, and no synchronous GitHub mutation.
+        </li>
+        <li>
+          Record exact source commit/tree, local command exit codes, cleanup proof, and all four
+          GitHub check results; make the candidate ready and move the Issue to In Review with
+          readback.
+        </li>
+        <li>
+          Squash merge, prove reviewed-tree equality, and require exact-main lightweight checks.
+        </li>
+        <li>
+          Record the prior Cloudflare version, deploy clean exact main, and verify the new version,
+          health, assets, and affected live behavior.
+        </li>
+        <li>
+          Present the production Showcase with prerequisites, numbered actions, expected results,
+          and regressions. Request completion approval only for that unchanged deployed candidate.
         </li>
       </ul>
     </section>
