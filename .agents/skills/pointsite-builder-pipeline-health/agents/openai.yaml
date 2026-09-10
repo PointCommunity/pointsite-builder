@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Pipeline Health'
+  short_description: 'Repository-specific pointsite builder pipeline health guidance'
+  default_prompt: 'Use $pointsite-builder-pipeline-health and follow AGENTS.md for the current task.'

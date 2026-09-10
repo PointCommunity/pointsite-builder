@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Awesome Design'
+  short_description: 'Repository-specific awesome design guidance'
+  default_prompt: 'Use $awesome-design and follow AGENTS.md for the current task.'

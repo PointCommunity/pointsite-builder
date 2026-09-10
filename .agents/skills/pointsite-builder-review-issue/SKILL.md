@@ -5,6 +5,8 @@ description: 'Perform complete agent QA for the active PointSite Builder Issue, 
 
 # Review a PointSite Builder Issue
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole active Issue, PR diff and history, acceptance criteria, relevant specifications, and current test guidance.
 
 1. Require the Issue to be the sole active card in In Progress, assigned only to `brimdor`, with exactly one matching open PR whose body contains `Refs #<number>` without auto-close syntax. Keep it In Progress throughout agent QA.

@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pipeliner policy</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0d12;
+        --panel: #121823;
+        --text: #eef3fa;
+        --muted: #9eabc0;
+        --line: #29364a;
+        --accent: #77d5ff;
+        --ok: #75e6a4;
+        --warn: #ffd479;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #15253b 0, #0a0d12 42%);
+        color: var(--text);
+        font:
+          16px/1.6 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      main {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 56px 0 80px;
+      }
+      header,
+      section {
+        background: rgba(18, 24, 35, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: clamp(20px, 4vw, 38px);
+        margin: 0 0 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        margin-top: 0;
+      }
+      h1 {
+        font-size: clamp(2.25rem, 7vw, 5rem);
+        letter-spacing: -0.05em;
+      }
+      h2 {
+        color: var(--accent);
+      }
+      p,
+      li {
+        max-width: 78ch;
+      }
+      .eyebrow {
+        color: var(--ok);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+      }
+      .card {
+        background: #0d131d;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .stage {
+        color: var(--accent);
+        font-weight: 750;
+      }
+      code {
+        background: #080b10;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0.12rem 0.35rem;
+      }
+      .warning {
+        border-left: 4px solid var(--warn);
+        padding-left: 16px;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <h2>PointSite Builder specialization</h2>
+      <p>
+        AGENTS.md and the Builder-specific pipeline policy govern this adopter. Pipeliner adoption,
+        alignment, updates and requested monitoring are Issue-free direct maintenance and never
+        deploy applications. Product changes use the Builder skills, full local QA, direct
+        Production and post-deployment PM acceptance. The generic multi-environment lifecycle below
+        does not add a pre-production PM gate to the single local Builder environment.
+      </p>
+    </aside>
+    <main>
+      <header>
+        <div class="eyebrow">Project-agnostic delivery governance</div>
+        <h1>Pipeliner</h1>
+        <p>
+          One evidence-first path from a coherent GitHub Issue to an exact, verified release and
+          clear PM Testing. The repository profile supplies project-specific details; the lifecycle
+          supplies the safety contract.
+        </p>
+      </header>
+
+      <section>
+        <h2>Lifecycle</h2>
+        <div class="grid">
+          <div class="card">
+            <div class="stage">1 · Backlog</div>
+            <p>
+              Research, clarify, approve, create, classify, and read back one implementation-ready
+              Issue.
+            </p>
+          </div>
+          <div class="card">
+            <div class="stage">2 · In Progress</div>
+            <p>
+              Reserve the single active slot, specify, implement test-first, validate, and publish a
+              linked pull request.
+            </p>
+          </div>
+          <div class="card">
+            <div class="stage">3 · In Review</div>
+            <p>
+              Complete agent QA, remediate every finding, identify the exact candidate, and prepare
+              PM Testing.
+            </p>
+          </div>
+          <div class="card">
+            <div class="stage">4 · Done</div>
+            <p>
+              Release through the configured strategy, verify, receive candidate-specific PM
+              acceptance, then close and read back.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Issue-based communication</h2>
+        <p>
+          Every progress update, blocker, testing handoff, release result, approval request and
+          acknowledgment, and completion message identifies the owning GitHub Issue first. Pull
+          requests remain critical supporting evidence for review, checks, merge state, and
+          candidate identity.
+        </p>
+        <p>
+          For Issue #42 implemented by PR #57, report “Issue #42 is awaiting PM Testing; PR #57 is
+          merged.” The default completion approval is <code>Approved to complete Issue #42</code>.
+          Use the Issue number, never the PR number. Preserve other configured gate phrases and bind
+          every approval to the Issue, specific gate, and exact unchanged candidate.
+        </p>
+        <p>
+          Report the Issue complete only after all configured gates and live readback pass. If no
+          Issue exists or linkage is unclear, state the limitation and follow Issue-creation
+          governance without inventing an identifier.
+        </p>
+      </section>
+
+      <section>
+        <h2>Agent-owned Project movement</h2>
+        <p>
+          The agent performs routine GitHub Project transitions and immediately verifies the
+          resulting Status, metadata, assignment, Issue state, linkage, and active count. The PM
+          never has to drag a card to keep the pipeline coherent.
+        </p>
+        <p class="warning">
+          Exactly one Issue may be active. Merge, green CI, deployment health, and silence are
+          evidence—not completion or approval.
+        </p>
+      </section>
+
+      <section>
+        <h2>Release strategies</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Immutable promotion</h3>
+            <p>
+              Build once, verify the review candidate, obtain exact approval, and promote the same
+              artifact without rebuilding.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Direct Production</h3>
+            <p>
+              Deploy the reviewed default-branch revision, verify Production, then keep the Issue
+              open for PM Testing and exact completion approval.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Multi-environment</h3>
+            <p>
+              Validate the same code candidate independently on every required native host or
+              environment. One approval cannot substitute for another.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Project Manager QA</h2>
+        <p>
+          Every review or release handoff gives the PM the exact target, prerequisites, numbered
+          actions, expected results, regression checks, candidate identity, limitations, and the
+          precise approval phrase when approval is the next gate.
+        </p>
+        <p>
+          When repository evidence cannot resolve a material behavior, topology, or recovery
+          decision, the agent pauses and asks the PM focused clarifying questions.
+        </p>
+      </section>
+
+      <section>
+        <h2>Repository discovery</h2>
+        <p>
+          Branch protection and rulesets are optional and never enabled by default. The agent asks
+          the PM whether protection is wanted and, if so, which branches and rules to enforce.
+          Existing controls remain unchanged until an explicit decision. Agent quality gates and PM
+          approval still apply without branch protection.
+        </p>
+        <p>
+          Begin with an explicit target or intent to create a repository. The agent resolves missing
+          name, purpose, owner, visibility and destination, then verifies access and identity.
+          Failed access is not proof of absence. Existing customized policies and unrelated work
+          remain protected.
+        </p>
+        <p>
+          The interview establishes runtime systems, developer availability, required local QA
+          turns, PM ownership, setup, cleanup and release destinations. Material unanswered choices
+          pause dependent work. Bootstrap does not deploy the application.
+        </p>
+      </section>
+
+      <section>
+        <h2>Local QA and ownership</h2>
+        <p>
+          QA turns are independent of release destinations. One developer may test Windows and
+          macOS; two developers may both test Windows. Each required turn runs the full suite
+          locally and records the exact candidate, owner, environment, session, results, PM Testing
+          and cleanup.
+        </p>
+        <p>
+          One developer on one environment needs no baton. Otherwise, the outgoing owner verifies
+          every gate and confirms the exact candidate is available to the next environment. The
+          incoming owner verifies identity and acknowledges pickup. Waiting remains In Progress on
+          the same Issue; missing hosts never count as a pass.
+        </p>
+        <p>
+          Application, native-package and container-image builds stay on compatible local systems.
+          GitHub Actions retains reviewed lightweight checks, including inspection of every indirect
+          command chain. Local evidence never fabricates a GitHub check result.
+        </p>
+        <p>
+          Track test-owned processes, containers, images, volumes, artifacts and workspaces by exact
+          identity. Clean up after successful and failed runs, preserve unrelated resources, and
+          verify removal. Resources retained for PM Testing need an owner and cleanup trigger; final
+          removal remains a required gate.
+        </p>
+      </section>
+
+      <section>
+        <h2>Framework updates and optional monitoring</h2>
+        <p>
+          Use <code>pipeliner-update</code> to incorporate a reviewed upstream revision into an
+          existing repository. Preserve its configuration and custom policies, validate the
+          reconciled installation, record the applied framework commit, and publish the verified
+          maintenance update. Framework updates and update-monitor setup run directly without
+          creating or requiring GitHub Issues, consuming the active slot, or asking for Issue
+          approval. Existing repository protections still apply. Missing historical provenance
+          remains unknown until verified.
+        </p>
+        <p>
+          Use <code>pipeliner-monitor-updates</code> only when the user requests scheduled
+          detection. The agent discovers the environment's supported scheduler, resolves the
+          schedule, avoids duplicate jobs, and verifies the saved automation. Unsupported
+          environments receive an honest limitation. Monitoring reports meaningful changes and never
+          installs updates; adoption does not create a monitor automatically.
+        </p>
+      </section>
+
+      <section>
+        <h2>Candidate integrity</h2>
+        <p>
+          An approval belongs only to the configured source commit, Git tree, artifact digest,
+          rendered configuration, deployment revision, native host, or validation session that
+          defines that candidate. A material identity change invalidates approval and returns the
+          work to verification.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

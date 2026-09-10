@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "repository": "https://github.com/Zuriel-Labs/pipeliner.git",
+  "ref": "main",
+  "commit": "93692c025e0065d00ecaf5b870c6fd566393a1cf",
+  "appliedAt": "2026-09-10T16:05:45.512Z",
+  "exceptions": [
+    {
+      "path": ".agents/pipeliner-policy.html",
+      "reason": "Preserve generic guidance with explicit Builder product-policy and Issue-free maintenance precedence; format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-adopt/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-adopt/SKILL.md",
+      "reason": "PM explicitly requires initial adoption without a GitHub Issue; preserve safe identity verification, conflict reconciliation, Project validation and no-deployment boundary."
+    },
+    {
+      "path": ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-audit-backlog/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-close-issue/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-close-issue/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-create-issue/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-create-issue/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-maintain/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-monitor-updates/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-pipeline-health/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-pipeline-health/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-candidate/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-candidate/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-production/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-production/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-review-issue/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-review-issue/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".agents/skills/pipeliner-update/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/agents/openai.yaml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/references/local-qa.md",
+      "reason": "Preserve Builder single-environment direct Production with full local agent QA and final Production PM acceptance; no invented pre-production PM gate. Retain complete generic multi-host protocol for future explicit adoption."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/SKILL.md",
+      "reason": "Route generic product lifecycle guidance to specialized Builder skills; retain local full QA, direct Production and the explicit Issue-free maintenance exception. Format to repository style."
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug.yml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature.yml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/maintenance.yml",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "reason": "Document explicit Issue-free framework-maintenance PR marker while preserving product Issue references and PM Testing sections."
+    },
+    {
+      "path": "AGENTS.md",
+      "reason": "Preserve specialized Builder product governance; integrate PM-directed Issue-free adoption and framework maintenance, full local Mac QA, lightweight CI, and existing direct Production/post-deployment PM acceptance."
+    },
+    {
+      "path": "blueprints/github-labels.json",
+      "reason": "Retain live Builder-specific label taxonomy and descriptions; area:deployment covers generic release and area:workflow covers tooling. No unrelated label mutations."
+    },
+    {
+      "path": "blueprints/profiles/direct-production.config.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/profiles/immutable-promotion.config.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/profiles/multi-environment.config.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/qa/self-handoff.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/qa/shared-windows.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/qa/single.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "blueprints/qa/split-native.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "pipeliner.config.json",
+      "reason": "Repository formatting of the verified Builder-specific configuration; no example topology or release commands retained."
+    },
+    {
+      "path": "schema/pipeliner.schema.json",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/audit-project.mjs",
+      "reason": "Audit the configured adopter identity and private Builder Project instead of comparing it with the public upstream example; regression tested."
+    },
+    {
+      "path": "scripts/evaluate-qa.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/adoption.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/ci.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/cleanup.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/config.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/intake.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/qa.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": "scripts/lib/validation.mjs",
+      "reason": "Accept explicit adopter identity in Project comparison while retaining upstream blueprint validation and all field/view/workflow requirements; regression tested."
+    },
+    {
+      "path": "scripts/validate-repository.mjs",
+      "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".github/workflows/reusable-quality.yml",
+      "reason": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
+    }
+  ]
+}

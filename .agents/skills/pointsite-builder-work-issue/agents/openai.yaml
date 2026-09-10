@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Work Issue'
+  short_description: 'Repository-specific pointsite builder work issue guidance'
+  default_prompt: 'Use $pointsite-builder-work-issue and follow AGENTS.md for the current task.'

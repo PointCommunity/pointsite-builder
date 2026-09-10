@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Release Production'
+  short_description: 'Repository-specific pointsite builder release production guidance'
+  default_prompt: 'Use $pointsite-builder-release-production and follow AGENTS.md for the current task.'

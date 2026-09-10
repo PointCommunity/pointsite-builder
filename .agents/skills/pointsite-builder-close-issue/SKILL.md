@@ -5,6 +5,8 @@ description: 'Merge and deploy a verified PointSite Builder candidate, then comp
 
 # Close a PointSite Builder Issue
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole active Issue, PR, exact review evidence, live checks, and current repository state.
 
 1. Require the Issue to be the sole active card in In Review, open, and assigned only to `brimdor`. Confirm the matching PR targets `main`, contains `Refs #<number>` without auto-close syntax, is current and mergeable, has zero unresolved review findings, and passes every GitHub Quality job for its exact head.

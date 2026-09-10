@@ -37,6 +37,25 @@ function isDependabot(pr) {
   return (pr.headRefName ?? '').startsWith('dependabot/');
 }
 
+function isFrameworkMaintenance(pr) {
+  return (
+    /^codex\/(?:adopt|update|align|monitor)-pipeliner(?:-|$)/.test(pr.headRefName ?? '') &&
+    /^Pipeliner maintenance: (?:adoption|update|alignment|monitor)$/m.test(pr.body ?? '')
+  );
+}
+
+function maintenanceFilesAllowed(files) {
+  return (
+    Array.isArray(files) &&
+    files.length > 0 &&
+    files.every(({ path }) =>
+      /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|pipeliner\.config\.json|package(?:-lock)?\.json|eslint\.config\.js|\.gitignore|\.prettierignore|\.agents\/.+|\.claude\/skills\/.+|\.github\/.+|blueprints\/.+|schema\/.+|specs\/pipeliner-adoption\/.+|scripts\/(?:lib\/.+|(?:audit-project|evaluate-qa|validate-repository|local-qa|pipeliner-contracts)(?:\.test)?\.mjs))$/.test(
+        path ?? '',
+      ),
+    )
+  );
+}
+
 function optionNames(fields, fieldName) {
   return (
     fields.find((field) => field.name === fieldName)?.options?.map((option) => option.name) ?? []
@@ -53,7 +72,20 @@ export function auditPipelineSnapshot(snapshot) {
   const issueByNumber = new Map(issues.map((issue) => [issue.number, issue]));
   const activeItems = issueItems.filter((item) => ACTIVE.has(item.status));
   const dependabotPrs = prs.filter(isDependabot);
-  const allPipelinePrs = prs.filter((pr) => !isDependabot(pr));
+  const maintenancePrs = prs.filter(
+    (pr) => isFrameworkMaintenance(pr) && (!pr.state || pr.state === 'OPEN'),
+  );
+  for (const pr of maintenancePrs) {
+    if (
+      pr.baseRefName !== 'main' ||
+      AUTO_CLOSE_PATTERN.test(pr.body ?? '') ||
+      refsFrom(pr.body).length ||
+      !maintenanceFilesAllowed(pr.files)
+    ) {
+      errors.push(`PR #${pr.number} has unverified or invalid Pipeliner maintenance scope`);
+    }
+  }
+  const allPipelinePrs = prs.filter((pr) => !isDependabot(pr) && !isFrameworkMaintenance(pr));
   const pipelinePrs = allPipelinePrs.filter((pr) => !pr.state || pr.state === 'OPEN');
 
   if (
@@ -213,7 +245,7 @@ export function auditPipelineSnapshot(snapshot) {
     }
   }
 
-  return { errors, warnings, activeItems, pipelinePrs, dependabotPrs };
+  return { errors, warnings, activeItems, pipelinePrs, dependabotPrs, maintenancePrs };
 }
 
 function run(command, args) {
@@ -335,7 +367,21 @@ export function readLiveSnapshot() {
       '100',
       '--json',
       'number,title,body,state,mergedAt,isDraft,headRefName,baseRefName,statusCheckRollup,url',
-    ]),
+    ]).map((pr) =>
+      isFrameworkMaintenance(pr) && pr.state === 'OPEN'
+        ? {
+            ...pr,
+            files: runJson('gh', [
+              'api',
+              '--paginate',
+              '--slurp',
+              `repos/${REPO}/pulls/${pr.number}/files?per_page=100`,
+            ])
+              .flat()
+              .map((file) => ({ path: file.filename })),
+          }
+        : pr,
+    ),
   };
 }
 
