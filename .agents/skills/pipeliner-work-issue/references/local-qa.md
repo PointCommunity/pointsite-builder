@@ -1,6 +1,6 @@
 # Local QA execution and baton
 
-Builder specialization: the configured single macOS environment records full local agent QA and cleanup before review. Its PM record remains pending until the exact Production Showcase is approved; it does not add a second pre-production PM gate. Use the Builder-specific review/close skills instead of requiring `evaluate-qa` to report PM completion before deployment. For source-only framework maintenance, use the root Issue-free exception and repository PM Testing without application deployment. A later explicitly configured multi-host topology must use the complete baton protocol below.
+Builder specialization: the configured single macOS environment records full local agent QA and cleanup before review. Its PM record remains pending until the exact Production Showcase is approved; it does not add a second pre-production PM gate. Use the Builder-specific review/close skills instead of requiring `evaluate-qa` to report PM completion before deployment. Source-only framework adoption and updates use the root Issue-free exception and agent testing, with no PM Testing, acceptance gate or application deployment. A later explicitly configured multi-host topology must use the complete baton protocol below.
 
 Read `qa` independently of `release`. Missing legacy QA is a discovery question, not a default pass. Keep the same primary Issue active during waiting and pickup; do not start another Issue or mark On Hold without PM direction.
 

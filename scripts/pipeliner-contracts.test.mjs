@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm, writeFile, mkdir, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { compareProjectSnapshot } from './lib/validation.mjs';
+import { compareProjectSnapshot, validateAdoptionContract } from './lib/validation.mjs';
 import { prepare, cleanup } from './local-qa.mjs';
 
 test('audits the private adopter Project without requiring the public upstream identity', async () => {
@@ -60,4 +60,19 @@ test('maintenance routing retains Issue-free adoption and local-only application
     workflow,
     /run:.*npm run (?:build|test:e2e|test:performance|test:coverage|check)\b/,
   );
+});
+
+test('adoption validation requires agent testing instead of a bootstrap PM gate', async () => {
+  const agents = await readFile('AGENTS.md', 'utf8');
+  const adoptionSkill = await readFile('.agents/skills/pipeliner-adopt/SKILL.md', 'utf8');
+  const updateSkill = await readFile('.agents/skills/pipeliner-update/SKILL.md', 'utf8');
+  assert.match(agents, /No PM Testing is required for adoption or updates/);
+  assert.match(updateSkill, /No PM Testing is required for adoption or updates/);
+  assert.deepEqual(validateAdoptionContract({ agents, adoptionSkill }), []);
+  const regressed = adoptionSkill.replaceAll(
+    'No PM Testing is required for adoption or updates',
+    'PM Testing steps are required',
+  );
+  assert.ok(validateAdoptionContract({ agents, adoptionSkill: regressed }).length > 0);
+  assert.match(agents, /Approved to complete Issue #<number>/);
 });
