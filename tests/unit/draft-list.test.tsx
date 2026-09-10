@@ -51,6 +51,28 @@ function renderList(overrides: Partial<React.ComponentProps<typeof DraftList>> =
 }
 
 describe('archived draft lifecycle controls', () => {
+  it.each(['viewer', 'editor', 'publisher', 'administrator'] as const)(
+    'preserves action order and availability for active and archived %s cards',
+    (role) => {
+      const archived = archivedDraft();
+      const active = { ...archived, id: 'active-draft', status: 'active' as const };
+      renderList({ role, drafts: [active, archived] });
+      const cards = screen.getAllByRole('listitem');
+      expect(
+        within(cards[0])
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual(role === 'viewer' ? ['Open preview'] : ['Open editor', 'Duplicate', 'Archive']);
+      expect(
+        within(cards[1])
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual(
+        role === 'viewer' ? ['Open preview'] : ['Open editor', 'Duplicate', 'Unarchive', 'Delete'],
+      );
+    },
+  );
+
   it('shows owner resume and disables another editor with a readable explanation', () => {
     const active = { ...archivedDraft(), status: 'active' as const };
     const { unmount } = render(
