@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 42: Contextual PointView feedback</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        background: #101414;
+        color: #eceee9;
+        font: 17px/1.65 system-ui;
+        max-width: 960px;
+        margin: auto;
+        padding: 32px;
+      }
+      a {
+        color: #dec586;
+      }
+      code {
+        color: #dec586;
+      }
+      section {
+        margin-block: 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 42: Contextual PointView feedback</h1>
+    <section>
+      <h2>Objective and acceptance</h2>
+      <p>
+        Implement the approved Issue 42 contract: authenticated dashboard and editor feedback, an
+        Administrator-only Canary pilot, verified minimal screen context, explicit screenshot
+        selection in PointView, workspace restoration, and safe disablement. Builder remains
+        Production-only. Production feedback for every role is enabled only after PointView
+        Production verification.
+      </p>
+      <p>
+        The browser supplies only a canonical screen enum. The Worker supplies source slug,
+        environment, version, exact build revision, fixed return URL, unpredictable nonce, audience,
+        issued-at and expiration. No draft, account, checkout, or session information enters the
+        assertion.
+      </p>
+    </section>
+    <section>
+      <h2>Research and constraints</h2>
+      <p>
+        The current PointView SDK and launch verifier require EdDSA JWTs, audience pointview, issuer
+        equal to source_app, a maximum 300-second lifetime, and a form POST with launch_token to
+        /launch. PointView validates the request Origin and consumes the nonce transactionally. Its
+        Cloudflare Access session and active PointView account are prerequisites for the pilot.
+      </p>
+      <p>
+        On 2026-09-10, Canary /api/ready returned 200 with all six checks passing. Its source
+        registry contains PointView only; Builder registration and installation access still need
+        verification.
+      </p>
+      <p>
+        Builder already restores an owned checkout and its editor panel. Before navigating, preserve
+        the current view using the existing authenticated checkout endpoint and refuse departure
+        while autosave cannot safely leave. Keep a minimal, temporary same-tab return marker for
+        viewer and dashboard restoration; never store the assertion. Feedback failure before handoff
+        leaves the workspace mounted.
+      </p>
+      <p>
+        Primary references:
+        <a href="https://developers.cloudflare.com/workers/runtime-apis/web-crypto/"
+          >Cloudflare Web Crypto</a
+        >
+        and
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form"
+          >HTML form submission</a
+        >. Reuse installed jose and zod; no new runtime dependencies or database migration.
+      </p>
+    </section>
+    <section>
+      <h2>Implementation plan</h2>
+      <ol>
+        <li>
+          Write failing tests for isolated configuration validation, strict screen mapping, Ed25519
+          signatures and minimum claims, expiration and nonce uniqueness, and safe return URL.
+        </li>
+        <li>
+          Add authenticated configuration and launch API routes using existing CSRF, rate limiting,
+          no-store, and error-response boundaries. Invalid feedback configuration disables feedback
+          without interrupting Builder.
+        </li>
+        <li>
+          Add one shared accessible feedback control to both headers. Preserve and restore workspace
+          state, POST the assertion transiently, and provide plain-language failure and privacy
+          guidance.
+        </li>
+        <li>
+          Add checked setup and rotation operations using the approved 1Password vault and
+          Cloudflare secret input. Validate source and App installation before enablement; retain
+          overlapping public keys during rotation.
+        </li>
+        <li>
+          Run local unit, integration, browser, security, performance, and repository quality gates.
+          Review exact PR head, merge and deploy exact verified main through the repository release
+          workflow, and verify the controlled live queued submission.
+        </li>
+      </ol>
+    </section>
+    <section>
+      <h2>Structure, style, and verification</h2>
+      <p>
+        Server signing and configuration belong in src/server/feedback; routes in src/server/routes;
+        shared canonical screen types in src/shared; the control in src/client/feedback; operational
+        scripts in scripts; tests in tests/unit, tests/integration, and tests/e2e. Use strict
+        TypeScript and native React controls, following the existing request wrapper and
+        mutation-header helpers; for example,
+        <code>const parsed = InputSchema.safeParse(input);</code> followed by a fixed public
+        validation error.
+      </p>
+      <p>
+        Commands: npm run check; npm run test:performance; npm run test:e2e; npm run
+        pipeline:health; npm run verify:live; git diff --check. Focused Vitest runs precede each
+        slice. Browser evidence must cover roles, both headers, keyboard/focus, canonical panel
+        context, return restoration, failure, cancellation, submission, and disablement. Production
+        acceptance additionally requires one verified live queued record and no synchronous GitHub
+        mutation.
+      </p>
+      <p>
+        Always preserve unrelated work and test security boundaries. Ask for unresolved vault
+        selection or required user authentication. Never disclose secrets, add Builder environments,
+        publish public-site content, weaken authentication, or close the Issue without the current
+        Showcase approval.
+      </p>
+    </section>
+    <section>
+      <h2>Operations and rotation</h2>
+      <p>
+        Run npm run pointview:setup -- prepare with the approved --vault, verified --installation,
+        and an unused --output path. This saves the generated private key directly into 1Password,
+        reads it back, and writes only public source configuration. Register that configuration
+        through PointView Owner administration. Validate and save there to prove the GitHub App
+        repository, Project, and label mapping. Initial registration is disabled.
+      </p>
+      <p>
+        Run npm run pointview:setup -- stage with --vault, --item from preparation, and
+        --registration pointing to the public configuration. It verifies the recovered key matches
+        and stages it through Cloudflare secret stdin without printing it. It does not activate
+        feedback. For the reviewed pilot release, configure POINTVIEW_MODE as pilot and
+        POINTVIEW_ORIGIN as https://pointview-canary.eaglepass.io only after the source is enabled
+        and VALID. Repeat candidate and live checks after secret or configuration changes.
+      </p>
+      <p>
+        For rotation, prepare with --previous pointing to the current public registration. This
+        retains existing public keys while adding the replacement. Validate the expanded
+        registration, stage the new key, verify a live handoff, and retire old public keys after
+        outstanding assertions expire. Retain old vault items for recovery. To disable, run npm run
+        pointview:setup -- disable and verify the action disappears within 30 seconds or on
+        focus/refresh.
+      </p>
+      <p>
+        Production rollout requires PointView Production verification and source registration there.
+        After verification, use production mode and https://pointview.eaglepass.io, verify every
+        authenticated Builder role, and record the new released candidate. Secret changes create a
+        Worker deployment and require fresh release identity and live verification.
+      </p>
+    </section>
+    <section>
+      <h2>Task status</h2>
+      <ul>
+        <li>Complete: live Issue/Project selection and prerequisite research.</li>
+        <li>Complete locally: signing/API implementation and authorization tests.</li>
+        <li>
+          Complete locally: feedback controls, workspace restoration, browser coverage, and
+          setup/rotation tooling.
+        </li>
+        <li>
+          Blocked on user input: approved vault selection and GitHub passkey confirmation for App
+          installation access. The PointView App installation lookup for
+          PointCommunity/pointsite-builder returned HTTP 404 on 2026-09-10.
+        </li>
+        <li>
+          Pending: source registration, release, controlled live verification and PM Showcase.
+          Production configuration and source registration have not changed.
+        </li>
+        <li>
+          CI limitation: the existing Quality workflow runs application builds, conflicting with the
+          PM's no-GitHub-builds direction. A draft with CI skipped is not release evidence and
+          cannot satisfy the exact-head Quality gate.
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>

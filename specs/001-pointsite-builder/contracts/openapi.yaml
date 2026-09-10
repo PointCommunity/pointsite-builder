@@ -8,6 +8,67 @@ servers:
 security:
   - githubSession: []
 paths:
+  /feedback:
+    get:
+      operationId: getFeedbackAvailability
+      responses:
+        '200':
+          description: Role-filtered feedback availability; no operational configuration or secrets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode]
+                properties:
+                  mode: { type: string, enum: [disabled, pilot, production] }
+        '401': { $ref: '#/components/responses/Error' }
+  /feedback/launch:
+    post:
+      operationId: createFeedbackLaunch
+      description: Requires same-origin JSON, Fetch Metadata, and authenticated authorization. No draft or identity data is accepted. The transient assertion must only be sent as launch_token in an HTTPS form POST; never store or log it.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [screen]
+              properties:
+                screen:
+                  type: string
+                  enum:
+                    [
+                      dashboard,
+                      editor.layout,
+                      editor.forms,
+                      editor.library,
+                      editor.preview,
+                      editor.history,
+                      editor.settings,
+                      editor.admin,
+                    ]
+      responses:
+        '200':
+          description: Private no-store launch assertion, valid for 120 seconds
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [action, launchToken]
+                properties:
+                  action: { type: string, format: uri }
+                  launchToken: { type: string, maxLength: 5000 }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /health:
     get:
       security: []

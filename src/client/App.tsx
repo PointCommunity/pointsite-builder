@@ -7,6 +7,13 @@ import type {
 import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
 import { EditorRoute } from './editor/EditorRoute';
+import { FeedbackButton } from './feedback/FeedbackButton';
+import {
+  clearFeedbackWorkspace,
+  readFeedbackWorkspace,
+  saveFeedbackWorkspace,
+} from './feedback/workspace';
+import type { EditorPanel } from '../server/repositories/contracts';
 
 export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -37,6 +44,12 @@ export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { f
 }
 
 export function App() {
+  const [feedbackWorkspace] = useState(readFeedbackWorkspace);
+  const [feedbackPanel, setFeedbackPanel] = useState<EditorPanel | undefined>(() =>
+    feedbackWorkspace?.screen.startsWith('editor.')
+      ? (feedbackWorkspace.screen.slice(7) as EditorPanel)
+      : undefined,
+  );
   const [builderTheme, setBuilderTheme] = useState<'dark' | 'light'>(() => {
     const saved = globalThis.localStorage?.getItem('pointsite-builder:theme:v1');
     return saved === 'light' ? 'light' : 'dark';
@@ -82,6 +95,18 @@ export function App() {
         setActor(identity);
         setDrafts(items);
         setState('ready');
+        clearFeedbackWorkspace();
+        if (feedbackWorkspace?.screen === 'dashboard') return;
+        if (feedbackWorkspace?.draftId) {
+          const returningDraft = items.find((item) => item.id === feedbackWorkspace.draftId);
+          if (
+            returningDraft &&
+            (identity.role === 'viewer' || returningDraft.status !== 'active')
+          ) {
+            setSelected(returningDraft);
+            return;
+          }
+        }
         if (identity.role !== 'viewer') {
           void api
             .ownedCheckout()
@@ -104,7 +129,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, feedbackWorkspace]);
   useEffect(() => {
     if (state !== 'ready' || selected) return;
     let active = true;
@@ -183,6 +208,7 @@ export function App() {
         draft={selected}
         checkout={checkout}
         role={actor.role}
+        feedbackPanel={feedbackWorkspace?.draftId === selected.id ? feedbackPanel : undefined}
         canPublish={
           (actor.role === 'publisher' || actor.role === 'administrator') &&
           Boolean(
@@ -191,6 +217,7 @@ export function App() {
           )
         }
         onClose={() => {
+          setFeedbackPanel(undefined);
           setSelected(null);
           setCheckout(null);
           void load();
@@ -214,6 +241,13 @@ export function App() {
           <span>{actor.displayName ?? actor.email}</span>
           <span className="environment-label">{actor.role}</span>
           {themeToggle}
+          <FeedbackButton
+            screen="dashboard"
+            beforeLaunch={() => {
+              saveFeedbackWorkspace('dashboard');
+              return Promise.resolve();
+            }}
+          />
           <form action="/auth/logout" method="post">
             <button className="button" type="submit">
               Sign out

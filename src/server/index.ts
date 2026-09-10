@@ -17,6 +17,8 @@ import { createAdminRoutes } from './routes/admin';
 import type { D1ApprovalService } from './approvals/service';
 import { createApprovalRoutes } from './routes/approvals';
 import type { RetentionService } from './maintenance/retention';
+import type { FeedbackService } from './feedback/service';
+import { createFeedbackRoutes } from './routes/feedback';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -30,6 +32,7 @@ export interface AppDependencies {
   productionBaseSha?: () => Promise<string>;
   retention?: RetentionService;
   auth?: GitHubAuthenticator;
+  feedback?: FeedbackService;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -73,6 +76,7 @@ export function createApp(dependencies: AppDependencies) {
     return dependencies.auth.logout();
   });
   app.route('/api/drafts', createDraftRoutes(dependencies.repository, mutationLimiter));
+  app.route('/api/feedback', createFeedbackRoutes(dependencies.feedback, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));

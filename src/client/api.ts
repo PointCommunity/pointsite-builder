@@ -10,6 +10,7 @@ import type {
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
 import type { StagingWorkflowSnapshot } from './publish/workflow';
+import type { FeedbackAvailability, FeedbackScreen } from '../shared/feedback';
 
 export interface ActorResponse {
   email: string;
@@ -137,6 +138,15 @@ function mutationHeaders(key: string, extra?: HeadersInit): HeadersInit {
 }
 
 export const api = {
+  feedbackAvailability: () =>
+    request<FeedbackAvailability>('/feedback', { signal: AbortSignal.timeout(10_000) }),
+  launchFeedback: (screen: FeedbackScreen) =>
+    request<{ action: string; launchToken: string }>('/feedback/launch', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ screen }),
+      signal: AbortSignal.timeout(10_000),
+    }),
   me: () => request<ActorResponse>('/me'),
   listDrafts: async () => (await request<{ items: DraftRecord[] }>('/drafts')).items,
   getDraft: (id: string) => request<DraftRecord>(`/drafts/${id}`),
