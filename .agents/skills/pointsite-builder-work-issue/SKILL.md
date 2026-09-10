@@ -5,6 +5,8 @@ description: 'Select, start, and implement one PointSite Builder GitHub Issue th
 
 # Work a PointSite Builder Issue
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the live Project, all active cards, open Issues and pull requests, git state, the selected Issue, and relevant source/specification evidence before acting.
 
 ## Selection gate

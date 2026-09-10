@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Playwright Cli'
+  short_description: 'Repository-specific playwright cli guidance'
+  default_prompt: 'Use $playwright-cli and follow AGENTS.md for the current task.'

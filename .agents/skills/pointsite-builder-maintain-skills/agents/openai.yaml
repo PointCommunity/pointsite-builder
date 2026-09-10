@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Maintain Skills'
+  short_description: 'Repository-specific pointsite builder maintain skills guidance'
+  default_prompt: 'Use $pointsite-builder-maintain-skills and follow AGENTS.md for the current task.'

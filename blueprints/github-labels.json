@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "labels": [
+    {
+      "color": "D73A4A",
+      "description": "A defect or regression in existing Builder behavior.",
+      "name": "type:bug"
+    },
+    {
+      "color": "A2EEEF",
+      "description": "A new user-facing Builder capability or behavior.",
+      "name": "type:feature"
+    },
+    {
+      "color": "1D76DB",
+      "description": "Repository, dependency, refactoring, or operational maintenance.",
+      "name": "type:maintenance"
+    },
+    {
+      "color": "1D76DB",
+      "description": "Visual editor, page composition, reusable elements, or content editing.",
+      "name": "area:authoring"
+    },
+    {
+      "color": "B60205",
+      "description": "Security or privacy hardening and remediation.",
+      "name": "type:security"
+    },
+    {
+      "color": "006B75",
+      "description": "D1 schema, migrations, persistence, revisions, or draft lifecycle.",
+      "name": "area:data"
+    },
+    {
+      "color": "FBCA04",
+      "description": "Cloudflare Worker production deployment, rollback, or runtime operations.",
+      "name": "area:deployment"
+    },
+    {
+      "color": "0075CA",
+      "description": "Human-facing or repository documentation.",
+      "name": "area:documentation"
+    },
+    {
+      "color": "C5DEF5",
+      "description": "Authentication, authorization, collaborators, or roles.",
+      "name": "area:identity"
+    },
+    {
+      "color": "BFDADC",
+      "description": "Media library, assets, metadata, uploads, or governed references.",
+      "name": "area:media"
+    },
+    {
+      "color": "5319E7",
+      "description": "Staging candidate publication, verification, acceptance, or public-site promotion governance.",
+      "name": "area:publishing"
+    },
+    {
+      "color": "0E8A16",
+      "description": "Interface, interaction, responsiveness, accessibility, or rendering.",
+      "name": "area:ui"
+    },
+    {
+      "color": "6F42C1",
+      "description": "GitHub Issues, Project metadata, agent skills, CI, or development governance.",
+      "name": "area:workflow"
+    }
+  ]
+}

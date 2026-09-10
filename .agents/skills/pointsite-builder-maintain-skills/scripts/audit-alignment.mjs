@@ -23,7 +23,21 @@ const sharedDesignSkillNames = [
   'playwright-cli',
   'web-design-guidelines',
 ];
-const skillNames = [...pipelineSkillNames, ...sharedDesignSkillNames];
+const pipelinerSkillNames = [
+  'pipeliner-adopt',
+  'pipeliner-update',
+  'pipeliner-monitor-updates',
+  'pipeliner-create-issue',
+  'pipeliner-audit-backlog',
+  'pipeliner-work-issue',
+  'pipeliner-review-issue',
+  'pipeliner-release-candidate',
+  'pipeliner-release-production',
+  'pipeliner-close-issue',
+  'pipeliner-pipeline-health',
+  'pipeliner-maintain',
+];
+const skillNames = [...pipelineSkillNames, ...sharedDesignSkillNames, ...pipelinerSkillNames];
 const errors = [];
 
 function read(relativePath) {
@@ -167,7 +181,7 @@ if (fs.existsSync(canonicalRoot)) {
 
 const expectedScripts = {
   'skills:check':
-    'node --test .agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs && node .agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs',
+    'node --test .agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs scripts/pipeliner-contracts.test.mjs && node .agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs && node scripts/validate-repository.mjs',
   'pipeline:health':
     'node .agents/skills/pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs',
   'verify:live': 'node .agents/skills/pointsite-builder-release-production/scripts/verify-live.mjs',
@@ -180,6 +194,15 @@ if (!packageJson.scripts?.check?.includes('npm run skills:check')) {
   errors.push('package.json check must include skills:check');
 }
 requireText(qualityWorkflow, 'npm run skills:check', '.github/workflows/quality.yml');
+requireText(agents, 'direct framework maintenance', 'AGENTS.md');
+requireText(qualityWorkflow, 'npm ci --ignore-scripts', '.github/workflows/quality.yml');
+if (
+  /run:.*(?:npm run (?:build|test:e2e|test:performance|test:coverage|check)|playwright install)/.test(
+    qualityWorkflow,
+  )
+) {
+  errors.push('application QA must remain local; lightweight Actions cannot build the application');
+}
 
 for (const relativePath of [
   '.agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs',

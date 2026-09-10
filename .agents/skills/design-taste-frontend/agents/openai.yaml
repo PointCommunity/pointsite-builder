@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Design Taste Frontend'
+  short_description: 'Repository-specific design taste frontend guidance'
+  default_prompt: 'Use $design-taste-frontend and follow AGENTS.md for the current task.'

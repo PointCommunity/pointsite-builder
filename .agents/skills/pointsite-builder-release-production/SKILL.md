@@ -5,6 +5,8 @@ description: 'Deploy the exact verified PointSite Builder main revision directly
 
 # Release PointSite Builder Production
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the active Issue, merged PR, exact candidate evidence, current git state, Cloudflare identity, deployment history, and applicable migration plan. Run only from `pointsite-builder-close-issue` unless the PM explicitly requests a standalone Builder deployment.
 
 1. Require a clean local `main` with `HEAD == origin/main`, the expected merge tree, and successful GitHub Quality for that exact commit. The Builder has no staging or Canary deployment.

@@ -1,0 +1,144 @@
+{
+  "$schema": "./schema/pipeliner.schema.json",
+  "version": 1,
+  "repository": {
+    "owner": "PointCommunity",
+    "name": "pointsite-builder",
+    "defaultBranch": "main",
+    "projectManager": "brimdor"
+  },
+  "project": {
+    "owner": "PointCommunity",
+    "number": 1,
+    "title": "PointSite Builder",
+    "statusField": "Status",
+    "statuses": {
+      "backlog": "Backlog",
+      "onHold": "On Hold",
+      "inProgress": "In Progress",
+      "inReview": "In Review",
+      "done": "Done"
+    },
+    "metadataFields": {
+      "priority": {
+        "name": "Priority",
+        "options": ["P0", "P1", "P2", "P3"]
+      },
+      "impact": {
+        "name": "Impact",
+        "options": ["High", "Medium", "Low"]
+      },
+      "effort": {
+        "name": "Effort",
+        "options": ["XS", "S", "M", "L", "XL"]
+      }
+    }
+  },
+  "workflow": {
+    "maxActiveIssues": 1,
+    "branchPattern": "issue/{number}-{slug}",
+    "issueReference": "Refs #{number}",
+    "branchProtection": "disabled",
+    "approvalPhrases": {
+      "issueCreation": "Approved to create this exact GitHub Issue",
+      "production": "Approved to merge and deploy production",
+      "completion": "Approved to complete Issue #{number}",
+      "nativeCandidate": "Beta approved"
+    },
+    "pmTesting": {
+      "required": true,
+      "terms": ["Project Manager QA", "PM Testing"],
+      "requiredSections": [
+        "target",
+        "prerequisites",
+        "numbered actions",
+        "expected results",
+        "regression checks"
+      ]
+    }
+  },
+  "quality": {
+    "commands": [
+      "npm run check",
+      "npm run test:performance",
+      "npm run test:e2e",
+      "npm audit --audit-level=high",
+      "git diff --check"
+    ],
+    "requiredChecks": [
+      "Pipeline contracts",
+      "Dependency security",
+      "Secret security",
+      "Source security"
+    ]
+  },
+  "release": {
+    "strategy": "direct-production",
+    "candidateIdentity": ["sourceCommit", "gitTree", "deploymentId"],
+    "environments": [
+      {
+        "name": "Production",
+        "role": "production",
+        "url": "https://builder.pointatx.org",
+        "buildCommand": "npm run build",
+        "deployCommand": "npm run deploy",
+        "verifyCommand": "npm run verify:live",
+        "approvalPhrase": "Approved to complete Issue #{number}",
+        "promoteWithoutRebuild": false
+      }
+    ]
+  },
+  "qa": {
+    "applicationType": "web",
+    "runtimePlatforms": [
+      {
+        "os": "browser",
+        "architecture": "any"
+      },
+      {
+        "os": "cloudflare-workers",
+        "architecture": "managed"
+      }
+    ],
+    "candidateIdentity": ["sourceCommit", "gitTree"],
+    "developers": [
+      {
+        "id": "brimdor",
+        "environments": ["local-macos"]
+      }
+    ],
+    "environments": [
+      {
+        "id": "local-macos",
+        "os": "darwin",
+        "architecture": "arm64",
+        "prerequisites": [
+          "Apple Silicon macOS; Node.js >=22.13.0; Git; authenticated gh for read-only Project audits",
+          "Fresh task worktree; port 4173 free; local Playwright fixtures only; no production credentials required"
+        ],
+        "setup": [
+          "node scripts/local-qa.mjs prepare",
+          "npm ci",
+          "npx playwright install chromium firefox webkit"
+        ],
+        "suite": [
+          "npm run check",
+          "npm run test:performance",
+          "npm run test:e2e",
+          "npm audit --audit-level=high",
+          "git diff --check"
+        ],
+        "teardown": ["node scripts/local-qa.mjs cleanup"]
+      }
+    ],
+    "turns": [
+      {
+        "id": "local",
+        "developer": "brimdor",
+        "environment": "local-macos",
+        "pm": "brimdor",
+        "approvalPhrase": "Approved to complete Issue #{number}"
+      }
+    ]
+  }
+}

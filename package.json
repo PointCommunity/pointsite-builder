@@ -21,7 +21,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "skills:check": "node --test .agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs && node .agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs",
+    "skills:check": "node --test .agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs scripts/pipeliner-contracts.test.mjs && node .agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs && node scripts/validate-repository.mjs",
     "pipeline:health": "node .agents/skills/pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs",
     "verify:live": "node .agents/skills/pointsite-builder-release-production/scripts/verify-live.mjs",
     "check": "npm run skills:check && npm run format:check && npm run typecheck && npm run lint -- --max-warnings=0 && npm run contract:lint && npm run verify:runbooks && npm run test:coverage && npm run build",

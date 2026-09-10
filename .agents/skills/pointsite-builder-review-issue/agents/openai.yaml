@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Review Issue'
+  short_description: 'Repository-specific pointsite builder review issue guidance'
+  default_prompt: 'Use $pointsite-builder-review-issue and follow AGENTS.md for the current task.'

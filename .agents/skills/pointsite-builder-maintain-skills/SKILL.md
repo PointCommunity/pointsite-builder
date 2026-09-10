@@ -5,6 +5,8 @@ description: 'Create, update, and validate PointSite Builder repository skills, 
 
 # Maintain PointSite Builder Skills
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Use this skill for every change to `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.agents/`, `.claude/skills/`, or skill-workflow validation scripts.
 
 - `.agents/skills/` is canonical. Do not put Builder workflow authority only in user-global skills.
