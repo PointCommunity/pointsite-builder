@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><title>Builder Pipeliner question update</title>
+  <style>
+    body {
+      background: #10151f;
+      color: #e6edf6;
+      font: 16px/1.6 system-ui;
+      max-width: 900px;
+      margin: 3rem auto;
+      padding: 1rem;
+    }
+    code {
+      color: #91dcff;
+    }
+    h1,
+    h2 {
+      color: #b6caff;
+    }
+  </style>
+  <h1>Builder Pipeliner question update</h1>
+  <p>
+    Internal maintenance specification: incorporate upstream
+    <code>1b60fe5baf9f73461103ab1354bcbd54ad87f26f</code> from installed
+    <code>d07653633104e632ebeeb25a3ab67ce32b973382</code>.
+  </p>
+  <h2>Approved behavior</h2>
+  <p>
+    The PM approved a narrowly scoped exception preserving Builder structured question controls and
+    indefinite waits. Recognize only the exact canonical Builder directive when the profile
+    identifies PointCommunity/pointsite-builder. Continue rejecting other native-question directives
+    and instructions to continue work while waiting. Generic callers retain upstream behavior.
+    Preserve all approval phrases, participant identities, local suites, Project identity and direct
+    Production policy.
+  </p>
+  <h2>Implementation sequence</h2>
+  <ol>
+    <li>
+      Add negative and positive regression cases for question validation, adoption previews and
+      post-preview byte changes.
+    </li>
+    <li>
+      Incorporate upstream question detection, provider scanning and end-turn routing. Reconcile
+      Builder guidance and source installer with explicit scoped exceptions.
+    </li>
+    <li>
+      Review all managed differences, refresh exact-byte reconciliation and CI evidence, dry-run,
+      apply and repeat the installer.
+    </li>
+    <li>
+      Run full configured local checks, performance, browser suites and dependency audit. Record
+      upstream provenance after successful validation.
+    </li>
+    <li>
+      Publish a maintenance PR, verify exact-head checks and merged content, then remove task-owned
+      test outputs and checkouts.
+    </li>
+  </ol>
+  <h2>Acceptance and risks</h2>
+  <p>
+    Tests must reject another repository, unapproved wording, continued-work instructions, stale
+    reconciliation hashes and changed destination bytes. Installed routing must retain Issue-free
+    maintenance, existing PM gates and no inferred answers. Detection is bounded static matching,
+    not a proof of arbitrary prose. No application deployment, monitoring, Project mutation,
+    dependency change or global configuration change is in scope.
+  </p>
+</html>

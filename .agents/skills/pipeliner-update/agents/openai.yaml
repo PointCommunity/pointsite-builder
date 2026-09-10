@@ -1,4 +1,4 @@
 interface:
   display_name: 'Update Pipeliner'
   short_description: 'Update an adoption while preserving local policies'
-  default_prompt: 'Use $pipeliner-update to update and publish Pipeliner in the current repository from a reviewed upstream revision, preserving local configuration without creating a GitHub Issue.'
+  default_prompt: 'Use $pipeliner-update to update and publish Pipeliner from a reviewed upstream revision, preserving Builder configuration without creating a GitHub Issue. Follow Builder structured clarification rules and stop task work after asking until the Human replies.'

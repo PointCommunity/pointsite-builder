@@ -7,7 +7,7 @@ description: Research, clarify, draft, create, classify, and verify one implemen
 
 Builder specialization: use [the pointsite-builder-create-issue skill](../pointsite-builder-create-issue/SKILL.md) for this repository. The root operating contract and `pipeliner.config.json` take precedence over the generic reference steps below. Preserve configured approval phrases, structured clarification controls, PM-selected Backlog work, full local QA, direct Cloudflare Production and post-deployment PM acceptance. Do not add a pre-production PM gate or a release cycle. Pipeliner adoption and updates are direct framework maintenance: Do not create or require a GitHub Issue, reserve the active slot, deploy the application or schedule monitoring.
 
-Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate.
+Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate. Follow Builder structured clarification rules; after asking, stop task work until the Human replies without polling or a deadline.
 
 Follow [Issue-based communication](../../../AGENTS.md#issue-based-communication): identify the proposed work by its draft title until GitHub assigns an Issue number, then use that Issue number in status and handoffs. Keep the exact draft-creation approval gate; never predict a number or substitute an existing PR number.
 
