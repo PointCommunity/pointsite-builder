@@ -7,7 +7,7 @@ description: Build or prepare and verify the exact review or native candidate re
 
 Builder specialization: the root operating contract and `pipeliner.config.json` take precedence over the generic reference steps below. Preserve configured approval phrases, structured clarification controls, PM-selected Backlog work, full local QA, direct Cloudflare Production and post-deployment PM acceptance. Do not add a pre-production PM gate or a release cycle. Use [the pointsite-builder-release-production skill](../pointsite-builder-release-production/SKILL.md) for this repository; Builder has no separate candidate environment. Pipeliner adoption and updates are direct framework maintenance: Do not create or require a GitHub Issue, reserve the active slot, deploy the application or schedule monitoring.
 
-Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate.
+Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate. Follow Builder structured clarification rules; after asking, stop task work until the Human replies without polling or a deadline.
 
 Follow [Issue-based communication](../../../AGENTS.md#issue-based-communication): report candidate readiness or blockers for the owning Issue. Lead PM Testing and approval requests with its Issue number, then include exact candidate identity and linked pull-request evidence.
 

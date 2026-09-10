@@ -4,6 +4,7 @@ import path from 'node:path';
 import { validateProfile } from './config.mjs';
 import { auditCI } from './ci.mjs';
 import { validateQA } from './qa.mjs';
+import { validateQuestionText } from './questions.mjs';
 
 const REQUIRED_FIELDS = new Map([
   ['Status', ['Backlog', 'On Hold', 'In Progress', 'In Review', 'Done']],
@@ -46,14 +47,8 @@ const REQUIRED_SKILLS = [
 ].map((name) => `pipeliner-${name}`);
 
 // Detect known superseded directives after reconciliation, not arbitrary natural-language semantics.
-export function validateOperationalText(text) {
-  const errors = [];
-  if (
-    /prefer[^.\n]*native question|use permitted native app questions|questions use native controls|ask focused questions through[^.\n]*native question/i.test(
-      text,
-    )
-  )
-    errors.push('superseded native-question directive; use message-only questions');
+export function validateOperationalText(text, options) {
+  const errors = validateQuestionText(text, options);
   if (/retest from the first turn|restart (?:QA )?from the first turn/i.test(text))
     errors.push('superseded fixed QA restart; finish current pair then circulate');
   return errors;
@@ -298,6 +293,7 @@ export async function validateRepository(rootPath, { requireConfig = true } = {}
   }
   if (!policy.includes('PM Testing')) errors.push('pipeline policy must contain PM Testing');
 
+  let questionProfile;
   if (requireConfig) {
     const profileContent = await readText(
       path.join(root, 'pipeliner.config.json'),
@@ -307,6 +303,7 @@ export async function validateRepository(rootPath, { requireConfig = true } = {}
     if (profileContent) {
       try {
         validateProfile(JSON.parse(profileContent));
+        questionProfile = JSON.parse(profileContent);
       } catch (error) {
         errors.push(`invalid pipeliner.config.json: ${error.message}`);
       }
@@ -401,11 +398,16 @@ export async function validateRepository(rootPath, { requireConfig = true } = {}
     );
     for (const file of [
       path.join(root, 'AGENTS.md'),
+      path.join(root, 'CLAUDE.md'),
+      path.join(root, 'GEMINI.md'),
       path.join(root, '.agents/pipeliner-policy.html'),
       ...(await walkFiles(skillsRoot)),
+      ...(await walkFiles(adapterRoot)),
     ]) {
-      if (!/\.(md|html)$/.test(file)) continue;
-      for (const error of validateOperationalText(await readFile(file, 'utf8')))
+      if (!/\.(md|html|ya?ml)$/.test(file)) continue;
+      for (const error of validateOperationalText(await readFile(file, 'utf8'), {
+        profile: questionProfile,
+      }))
         errors.push(`${path.relative(root, file)}: ${error}`);
     }
   }

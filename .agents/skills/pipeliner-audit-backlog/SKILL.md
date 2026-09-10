@@ -7,7 +7,7 @@ description: Audit and, when explicitly requested, repair Backlog Issue classifi
 
 Builder specialization: use [the pointsite-builder-audit-issues skill](../pointsite-builder-audit-issues/SKILL.md) for this repository. The root operating contract and `pipeliner.config.json` take precedence over the generic reference steps below. Preserve configured approval phrases, structured clarification controls, PM-selected Backlog work, full local QA, direct Cloudflare Production and post-deployment PM acceptance. Do not add a pre-production PM gate or a release cycle. Pipeliner adoption and updates are direct framework maintenance: Do not create or require a GitHub Issue, reserve the active slot, deploy the application or schedule monitoring.
 
-Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate.
+Apply the shared [installed repository home](../pipeliner-maintain/references/home.md) and [message-only questions](../pipeliner-maintain/references/questions.md) contracts. First adoption retains its explicit-target gate. Follow Builder structured clarification rules; after asking, stop task work until the Human replies without polling or a deadline.
 
 Follow [Issue-based communication](../../../AGENTS.md#issue-based-communication): lead each finding, recommendation, and status with the Backlog Issue number. Include linked pull requests as supporting evidence and distinguish delivered implementation from an Issue that has passed all completion gates.
 

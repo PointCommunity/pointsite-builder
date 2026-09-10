@@ -63,7 +63,12 @@ export function selectWork(profile, { issues, requested, intent = 'start' }) {
 }
 
 export function clarificationDecision({ answered = false } = {}) {
-  return { channel: 'message', state: answered === true ? 'answered' : 'waiting', timeout: null };
+  return {
+    channel: 'message',
+    state: answered === true ? 'answered' : 'waiting',
+    timeout: null,
+    endTurn: answered !== true,
+  };
 }
 
 export function reviewRoute(

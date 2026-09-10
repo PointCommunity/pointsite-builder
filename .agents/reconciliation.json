@@ -2,34 +2,34 @@
   "version": 1,
   "files": {
     ".agents/pipeliner-policy.html": {
-      "sourceSha256": "a5daa92018d180e1408d3437672246a58aaebce39a3c3d7040d35eadfddc24b1",
-      "targetSha256": "cede96f3470f4ff0c1553a09367bc3b184eb6a66ec65a44a8824ee65b13d83c3",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "397291860dab9f124dd5a97b896a6dd3afaf01680ccc7ad029c281103b52d41b",
+      "targetSha256": "ecbc6e2b2622a8e953869bffd2b6b5187f47657f686b667d692273e9ed71ff19",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-adopt/SKILL.md": {
-      "sourceSha256": "145867f47a6de75aef195ab76374f359aac4f64e0cf64cb72102343b8c37f689",
-      "targetSha256": "7beb578d7ef786d55e16311c7690c86a28340f473b71ca631328f27324e7aea7",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "108d9f17cfdfbdade6d43b800ddb4789930c8065a6caabfa54c5a706574592d8",
+      "targetSha256": "1f6691a0484a053b0b59ab2de1c0183caf02bba4bb7cba86e5c06a7ce18f2184",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-adopt/agents/openai.yaml": {
-      "sourceSha256": "ce04ce995cddc70b7d7693b5a5b89a88572f9f2c78aa56113244ab5826896c13",
-      "targetSha256": "a39ff8e490a042ce561758d0df79a7c3a96e313dd8a59e9abf3f156a30b12f1e",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "bdfe5127cca3fef21bbb17a49e570bb75ac0b1799fa4ef1cedb42237e1674cc2",
+      "targetSha256": "7cb72d6687083ff498d5373cb451a0fdc4838f86585ebc6d29e40fec8e440de3",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-adopt/references/discovery.md": {
-      "sourceSha256": "f317821ca9761e705b3e8882bb339c21a072ddda13875b613446e6a6f59b8798",
-      "targetSha256": "e379bfc4027c88fa724f93e1562f53e36a6d6d364a9c1e9c8bebbee6b97ff91c",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "888c5f7521c088be1c7e33ca79e6921858a4cfef406deca84ca986fb3f430f3a",
+      "targetSha256": "e9ddac9c794e92f2fc9dbec9c534b55f72acc830ffa6f14b1db643639c7a9ad8",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-adopt/references/reconciliation.md": {
-      "sourceSha256": "a050341a3c7b8b807a57234c88849ee460051adb5f28751b01f59b74ddfabb5f",
-      "targetSha256": "ba2649932bd76b755813dd59ed6126e6b5d232eeb36e498dbadcb8ea81f0e7cf",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "1f68c9bce6d32460a7884e54b27932bcc87772b0c129e02157672d42bd3a93af",
+      "targetSha256": "1909d96d4a38e5422c27f2e978634a79ac0344ab932cb1dbd3221ef9065a8e22",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-audit-backlog/SKILL.md": {
-      "sourceSha256": "45e0f1b4d753825faf278cddeafe100f4c075ac9101704fecd8f8529aa674f40",
-      "targetSha256": "ae9bd38302adaf1550a52accb59672971ea8d98f03c6a86f5d64568860cca47d",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "162a65f65c3bb64859de7877981a6c9c3c2513052b4cef6fd2e77846eb32ab82",
+      "targetSha256": "2359465d74d76aaec135ba6d419d027bc6912340d2fc5fbd273ffeafca7d461d",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-audit-backlog/agents/openai.yaml": {
       "sourceSha256": "faecbac92f646f5e0fab46fc70423a3a920453b2b41e960c97d4b7f6a184c909",
@@ -37,9 +37,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-close-issue/SKILL.md": {
-      "sourceSha256": "cca5c2c66ac72d7cd42ed367264ef682a6defbcae5fc6385d81ff7102e65ef41",
-      "targetSha256": "938f44971b96aceffa5b0359ffe0c024f8025c5bb8eb640439a4267bea67af92",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "4aaa212aea86e734b95bebfb5f035ca1d2196b6bbf6c49c9ec79061f411de68d",
+      "targetSha256": "50a2d34c7003e0f273d04455521bceb934a9d0c6787b2d7a9e4e25dac4495030",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-close-issue/agents/openai.yaml": {
       "sourceSha256": "6bcb20f0203052514dc932e388a4fdeafb111c77431f2f2262a0b4f8edf12dce",
@@ -47,9 +47,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-create-issue/SKILL.md": {
-      "sourceSha256": "e612bc066166b7b35ef903698c812103461327fafa4c652e39e291ffc5c0a0b1",
-      "targetSha256": "0d77b3474704a9d0159938b3b7b81b82b9e26d06fc0b49236c3db1df376b735d",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "c04f822ad7bee6017f84dc6f53e7ceea64f77ca02b66b34d2abdedd784c0ae27",
+      "targetSha256": "fca09c48fa0a481e2107a374ef40865de36bdbd90accacf5e9419561ef89d160",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-create-issue/agents/openai.yaml": {
       "sourceSha256": "8912968c47a6b0c710c72cefbb3afe567afb8a3bc7c2d9439e055f209df78cd3",
@@ -57,9 +57,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-maintain/SKILL.md": {
-      "sourceSha256": "c3a2609fb5f34b0601261d0e89650fede16d6f8cebda5f494c851405c7528aa9",
-      "targetSha256": "abcb5b4014c420842a74004b234bd016cedf821ba382bd9bc98ed7d4b1b9354e",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "c697011539dbac0cf75153fd2728b5701ab7ef63657781d8c8ca514ac4a96986",
+      "targetSha256": "42574fb5609270a8733ece3f4fd527dfaafdbb25ebbba3259d9f8ab2d83de881",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-maintain/agents/openai.yaml": {
       "sourceSha256": "a562f20e59d1b9221d592b289d195c4d44de56297202a06d44608c93648ded43",
@@ -82,9 +82,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-maintain/references/questions.md": {
-      "sourceSha256": "7ddc66970c029bcc96757a01811f7e388c44d9cb29ff5ccde21da046062d68d9",
-      "targetSha256": "abb724ef58beb790055873debe7d94d9acf899b44dce273b3ee8e1cd8ad564aa",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "6e7e043530280683f52cbd2de28caa60f08bb6a00c4db2e27e80d39c69c12023",
+      "targetSha256": "7d4033ef4b48ab386bae41f54baa1ec842bea875514705c39e8516ec2ff266c2",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-maintain/references/release-cycle.md": {
       "sourceSha256": "8825141364e44969671d019dc9896738212b24f91d99289682886da5232e4ae2",
@@ -92,9 +92,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-monitor-updates/SKILL.md": {
-      "sourceSha256": "a59ef32d7d38d0ffe5431af2cba312c4c20ed9425c4bb8b035871dd1f32deb99",
-      "targetSha256": "895dc17f4f302c65ac21c0c82a5969e5b7c8c7e564222dcb0db512dd7fc2de23",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "7ec6f1810f54004e46cb34189848294dcd452ec803aa1bb57549bcb43f217f0e",
+      "targetSha256": "b79c71fe9046eb0e1e399a09c634e35cd206a5a623c9c2e35b3c9a26d664d8ca",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-monitor-updates/agents/openai.yaml": {
       "sourceSha256": "00cfa1635eefc03c435b63386a1d99c97b5ec28835dd512783102492346fc46c",
@@ -107,9 +107,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-pipeline-health/SKILL.md": {
-      "sourceSha256": "59946cb8bdb60c197c39c7d2eccb686171e62ab0600d89acc24d835d8012043e",
-      "targetSha256": "f3124fb454d56f404005dfbf416c5316ef768b0e51eeefc0477e6f963aa37cf8",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "89697267a136089bd7ceb88ae3cf450735807a85269f24596e8867e922d0d057",
+      "targetSha256": "0689b685819d3b43f1ca794b70173ea26ecd9090c2e3eddae3edcc145495df1c",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-pipeline-health/agents/openai.yaml": {
       "sourceSha256": "0fca951f5e4d1624c59eca0257865e5389807fa1d46baf1b8c0161d47ea11098",
@@ -122,9 +122,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-release-candidate/SKILL.md": {
-      "sourceSha256": "b1ff96ab28431162b891e9933c4024aa3bba907f59e289932d8fa7be71137374",
-      "targetSha256": "144aa44c9cfee0e9a1870d13d9a4e9f4f4be319ab5f89541ad8d805ed8f99184",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "98209f56bc881f8f3aca47140e4f17dd338844a6eb9ac755153e4fa59cf774be",
+      "targetSha256": "ef920de364800169ba9d500e186f5bdfbf54b509ff92ac5cefb05a6cc2222a80",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-release-candidate/agents/openai.yaml": {
       "sourceSha256": "c8035efab91603067af4de0cd4daec33edcbb56b7a6438b1f9826ab2f589f1bd",
@@ -137,9 +137,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-release-production/SKILL.md": {
-      "sourceSha256": "4d10606b7d63f5984aa78479fbb2407d8e665269e5a1b9e74cae792c706c4670",
-      "targetSha256": "28ad67641f919f6ad520f69e47cdf65dd961db6006696478554c6ee381535adf",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "fcfc5e9371e7377f95dc7d0626de43cd9f42e2aa6b955652765607bb81aef730",
+      "targetSha256": "99def50b6072d9f4a9440d9f53ca2e0e26aedc960c45ede281d95afa190b7595",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-release-production/agents/openai.yaml": {
       "sourceSha256": "408c3e02e69f5b4f9ba2d99b40f6555cfe05ccc011d91cec016d432dffc5bd74",
@@ -147,9 +147,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-review-issue/SKILL.md": {
-      "sourceSha256": "240aae20be050f8a41b5a87e869b25c0edae6d58ee73bbee83ec6facbfd4488d",
-      "targetSha256": "1594801d102fd8ac015952b6a8295d569b9437b5d3c437ddd27c34fbddb2b716",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "318679316634504caf72647712a8e7980348f6ed70250f9d87ae3db64dfa09a5",
+      "targetSha256": "49cb857cc34b57fb82ddd135e86d67c1b5cea2ce4f7ef4ceb0441a12522afb93",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-review-issue/agents/openai.yaml": {
       "sourceSha256": "094dc4d2f0f467884e598c645634ead1c2917b50cd674a3f83bdaa83939cdea0",
@@ -162,14 +162,14 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-update/SKILL.md": {
-      "sourceSha256": "ef47b638ae14e45684f3600760363bec643e34472aa51e0679059040ab40ea36",
-      "targetSha256": "0f40e06a5a3eb1d5b1bfc4a1abb251092dc69862aa5e53c9cac2ffc5cfb32862",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "8d627cc6fb0940921132456338ea606f8cd128d14f88bb7eb2213d8592bcb7fe",
+      "targetSha256": "02ba4922ff2dfa8fde4c52908bdd64c2e31b7d35950cf0296dc25ff3d4f7c5c7",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-update/agents/openai.yaml": {
-      "sourceSha256": "343ff9a35d1cbaf1d6781fd11dd5c824dfacd038f0c734ed89c3fb22544ff459",
-      "targetSha256": "79d253a466be2c61699853e18f73b3bc56af5ed2a20ce69d5958b5155e8a6b22",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "2425a553dad3aca2ccb201c65a23f46a855a09cce375110a7e47617990610920",
+      "targetSha256": "88e0491f37cd2056b0bcd12847ce4a7ab6f7d3df465374d9ba7f843ff2d887b1",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-update/references/upstream.md": {
       "sourceSha256": "159dfb8bf9ae2da431f083b1178eec384e5f497bd8f292bb32491da3115be51d",
@@ -177,9 +177,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-work-issue/SKILL.md": {
-      "sourceSha256": "1d2ed6c6a07c496325f76af41558d148f521000994006fe5ad930fa8f3899ae0",
-      "targetSha256": "e6c26019f5aa6ae91525f471edee1eab964995a3c93520a944091e9bd51273df",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "7a6f619c2e7a8f0c613281d84d8cdc108ce35f19f609b3c84d16a002536557f8",
+      "targetSha256": "579b7b9520c2536285778182d1cc435800e3db02b6828c7237d9b8c3b19b3629",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-work-issue/agents/openai.yaml": {
       "sourceSha256": "6d54fcd2cb1345c07ab543ef107d78c8a3009d11312e496f27c39afc8b30fdb3",
@@ -187,9 +187,9 @@
       "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
     },
     ".agents/skills/pipeliner-work-issue/references/lifecycle.md": {
-      "sourceSha256": "fe879491e0b54071430d65deaaafeec765885bba796efe583efce1c91d2e4628",
-      "targetSha256": "c703e84952118924de18279f1b4120d23cf96719706b3d0d2b66f670269abeb4",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "ff138b7aaae8577e4cd392bde2e0d90cc24df0371706d2dee9f1584c61c41915",
+      "targetSha256": "f4e63fcf380d5fe9be8e845ac8f57c169f9890ab4610fe56944cef686306ee4a",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     ".agents/skills/pipeliner-work-issue/references/local-qa.md": {
       "sourceSha256": "5066113b76d5deae50221ee91196e3c60f4c17158d354ffc56d4f01974d62024",
@@ -222,9 +222,9 @@
       "rationale": "Retain reviewed first-parent whitespace check and parent history to avoid shallow-checkout false positives; no arbitrary caller commands."
     },
     "AGENTS.md": {
-      "sourceSha256": "4999f771ff372390b1589b02c59ffae5df8f6d96e313d3477255ddf2a8259056",
-      "targetSha256": "d586e2868773e53d27e8e84cabc62efaa87f3db127feb0a51da69972612b35cf",
-      "rationale": "Preserve Builder authority, exact approval phrases, structured clarification, PM-selected work, direct Cloudflare Production, post-deployment PM acceptance and Issue-free framework maintenance; incorporate upstream home, participant and evidence guidance."
+      "sourceSha256": "4805555bfbb7b40ba0524b51caf086454b4bba00bf8f3d2fb1ed952cd0bedb92",
+      "targetSha256": "8baaa8567ff5e4a758590193517b7bace2f851a30975df18449bfa170b8f91f4",
+      "rationale": "Reviewed upstream end-turn question changes; preserve Builder structured clarification, approval phrases and lifecycle authority while stopping task work after asking. PM approved the narrow validator exception."
     },
     "blueprints/github-labels.json": {
       "sourceSha256": "fde4722934324c3aba849d289d6a97604d1db256e0130272ce2b98af6b23d799",
@@ -297,9 +297,9 @@
       "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     "scripts/lib/adoption.mjs": {
-      "sourceSha256": "2b06bcf468e749b9541f9626772faa631a087e621bd8ec063a66bef80e799886",
-      "targetSha256": "b67c09b418d9e7b1f0896f6ee39a6e54bb96e7e44dc04c099d8ef8171adb63f5",
-      "rationale": "Repository formatting of reviewed installer module with narrowly scoped PM-authorized exact Builder approval-policy exception; original source and patch recorded in provenance."
+      "sourceSha256": "4fbf0ff049053deec97ade2578833eb334c1b2d6e5038415365a157ecdc37f21",
+      "targetSha256": "4fbf0ff049053deec97ade2578833eb334c1b2d6e5038415365a157ecdc37f21",
+      "rationale": "Reviewed upstream question validation and provider scanning; preserve existing Builder fixes, exact approval contract and PM-approved exact structured-question clause exception. All other conflict and byte-drift checks remain enforced."
     },
     "scripts/lib/ci.mjs": {
       "sourceSha256": "41d39874b3667e9b6de1d6e9e09b5b4010a25122b24a97689b36e4d551bb6f19",
@@ -327,9 +327,9 @@
       "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     "scripts/lib/lifecycle.mjs": {
-      "sourceSha256": "716f588b19fc8beb5418bb99fcb47bc7455407e35fea7f781962060595e18c73",
-      "targetSha256": "d91133ebc9610a42f18d22d1d25b54fc0c874409f2ea7890b596f39ed7ac66ad",
-      "rationale": "Repository formatting; reviewed upstream behavior retained."
+      "sourceSha256": "f26233c7ab6f25c0d40be1f1953aecb231fcb764434b074bb5500ec2b3027388",
+      "targetSha256": "b6609e4e2676b12e55a3b267ca009d356957142ace55436ed1ffa92bd4332957",
+      "rationale": "Reviewed upstream question validation and provider scanning; preserve existing Builder fixes, exact approval contract and PM-approved exact structured-question clause exception. All other conflict and byte-drift checks remain enforced."
     },
     "scripts/lib/project.mjs": {
       "sourceSha256": "c548c90d8ebcca7f7c9b7268b64b5ecf168d123f8b8c9d613220ffe62f284e83",
@@ -352,9 +352,9 @@
       "rationale": "Repository formatting; reviewed upstream behavior retained."
     },
     "scripts/lib/validation.mjs": {
-      "sourceSha256": "1aa9d8aba763d2e33859dd275876238318200b735b941aba71e2992dea33f88f",
-      "targetSha256": "21dc9143346e725a9a110af62c2b88ec76d465f82130e8d3fb2c636dbe37d9ec",
-      "rationale": "Incorporate upstream validation and paginated adopter Project support; ignore literal fenced sample output while checking actual local document links."
+      "sourceSha256": "9638335da652807e63e96be6a04647e2fc22d9f0985c2b7b2783c55ddaaf2bcc",
+      "targetSha256": "7535829679a68e61857663213a609818701b93d500a186fd354a92e19b951e13",
+      "rationale": "Reviewed upstream question validation and provider scanning; preserve existing Builder fixes, exact approval contract and PM-approved exact structured-question clause exception. All other conflict and byte-drift checks remain enforced."
     },
     "scripts/resolve-home.mjs": {
       "sourceSha256": "d8515a924086a6d6f7231c34b1a5ed1d3774fa46f643411346fa8ae6cb7323f9",
@@ -365,6 +365,11 @@
       "sourceSha256": "fb01f8962a59a438f66b985a54babe9ee03008c0f2b6e54307e37952994cacf8",
       "targetSha256": "a926fecc96aeedf5b6ac0e9dd478468fed1744ad55fb0b8bf230de2854a17e89",
       "rationale": "Repository formatting; reviewed upstream behavior retained."
+    },
+    "scripts/lib/questions.mjs": {
+      "sourceSha256": "7a89fad7989234e2e617a72268bba1e2facf2580a38d3503d553386e50482a50",
+      "targetSha256": "7a89fad7989234e2e617a72268bba1e2facf2580a38d3503d553386e50482a50",
+      "rationale": "Reviewed upstream question validation and provider scanning; preserve existing Builder fixes, exact approval contract and PM-approved exact structured-question clause exception. All other conflict and byte-drift checks remain enforced."
     }
   }
 }

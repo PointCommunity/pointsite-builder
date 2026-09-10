@@ -1,5 +1,7 @@
 # Conditional bootstrap checklist and migration
 
+Before asking, persist confirmed answers and finish task-owned cleanup. Follow Builder structured clarification rules, then stop task work until the Human replies. Review provider prompts and root instructions; reconcile authorized question conflicts and repeat the installer preview until `questionConflicts` is empty. Report incompatible host guidance without changing global settings.
+
 Builder integration: [the root operating contract](../../../../AGENTS.md) and the Builder profile override generic defaults in this reference. Preserve Builder approval phrases, structured clarification controls, PM-selected Issue scope, direct Cloudflare Production and the single post-deployment PM acceptance gate. Generic paired QA, release cycles and `Approved` examples do not introduce new Builder gates; bootstrap and updates remain exempt from PM Testing.
 
 Use [message-only questions](../../pipeliner-maintain/references/questions.md). Read repository evidence and saved answers first. Mark each checklist item resolved, unresolved or not applicable with its reason in the existing target-owned decision record; persist confirmed configuration in the target profile. Do not manufacture names, topology, approval phrases or commands. Ask only applicable unresolved questions and preserve answers across sessions and repeated adoption.
