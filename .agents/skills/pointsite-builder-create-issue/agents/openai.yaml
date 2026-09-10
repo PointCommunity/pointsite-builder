@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Create Issue'
+  short_description: 'Repository-specific pointsite builder create issue guidance'
+  default_prompt: 'Use $pointsite-builder-create-issue and follow AGENTS.md for the current task.'

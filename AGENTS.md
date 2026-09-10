@@ -1,5 +1,27 @@
 # PointSite Builder development and release governance
 
+## Pipeliner adoption and maintenance
+
+- Pipeliner adoption, alignment, updates, and explicitly requested monitor management are direct framework maintenance. Do not create or require a GitHub Issue, reserve the active Issue slot, move Project cards, or ask for Issue-creation/completion approval. The PM explicitly authorized this exception. Use a focused `codex/` branch and supporting PR, verify local QA and exact-head checks, publish the reviewed tree, and report the installed revision. No application deployment is authorized by framework maintenance.
+- Use `pipeliner-adopt` for installation, `pipeliner-update` for updates, and `pipeliner-monitor-updates` only when scheduling is explicitly requested. Preserve unrelated work and existing protection. Do not automatically schedule monitoring.
+- Maintenance PRs use `codex/adopt-pipeliner`, `codex/update-pipeliner`, `codex/align-pipeliner`, or `codex/monitor-pipeliner` with an optional descriptive suffix. Include a standalone `Pipeliner maintenance: adoption`, `Pipeliner maintenance: update`, `Pipeliner maintenance: alignment`, or `Pipeliner maintenance: monitor` line matching the operation. The pipeline audit verifies the changed-file scope; application source changes do not qualify for this exception.
+- The target repository location is required for adoption. If neither a target nor new-repository intent is specified, ask one concise question and wait before target or Project mutation. An explicit target or previously resolved target remains authorized; do not ask again.
+- `pipeliner.config.json` is the machine-readable repository, QA, Project, and release profile. `.agents/pipeliner-policy.html` supplies framework guidance; this file and `.agents/pointsite-builder-pipeline-policy.html` retain Builder-specific authority. Generic Pipeliner product Issue/review/release commands route through the corresponding `pointsite-builder-*` skills. This maintenance exception takes precedence over their Issue intake rules.
+- Record reviewed upstream identity in `.agents/pipeliner-source.json`, manual managed-file reconciliation in `.agents/reconciliation.json`, and reviewed Actions command hashes in `.agents/ci-review.json`. Changed content requires fresh semantic review, not blind hash acceptance.
+
+## Issue-based communication
+
+- Lead product-work updates, handoffs and approval requests with the owning Issue; use the Issue number in completion phrases. Framework maintenance instead reports the target, operation and exact revision, without inventing an Issue.
+
+## Local QA and lightweight CI
+
+- Build applications only locally on the configured compatible host. No application, native-package, container-image, browser or performance builds/tests run in GitHub Actions, including through setup hooks, transitive scripts or reusable workflows. Preserve lightweight contract, dependency, source and secret checks. Run dependency installation in Actions with `--ignore-scripts`.
+- The configured developer and PM is `brimdor`; local QA runs on macOS arm64 with the complete existing Chromium, Firefox, WebKit and mobile browser suite. No native Windows verification is implied by browser tests.
+- Run every `quality.commands` and local `qa.environments[].suite` command against the exact source/tree. Record commands, exit codes and candidate identity in the supporting PR or Issue; GitHub's Pipeline contracts job never substitutes for these results.
+- Before setup, run `node scripts/local-qa.mjs prepare` in a fresh task worktree. After tests, run `node scripts/local-qa.mjs cleanup`, including failure paths. Remove only inventoried task-created outputs. Test harnesses must stop their own servers; verify their absence before cleanup. Preserve unrelated processes, files, caches and credentials.
+- The single local environment has no QA baton or additional pre-production PM gate. Local suite evidence permits agent review; product PM acceptance remains the post-deployment Production Showcase. The configured completion phrase in the local QA turn is bound to that final candidate; do not fabricate a passing PM record before actual approval. Generic multi-host QA requirements apply only if that topology is explicitly adopted later.
+- Framework adoption is source-only maintenance: PM Testing reviews installed config, policy, commands and checks without deploying Builder. Product Issue completion rules below remain unchanged.
+
 ## Authority and source of truth
 
 - This file governs the PointSite Builder application in `PointCommunity/pointsite-builder`, which is separate from the public PointSite website. The PM is the human GitHub user `brimdor` (Chris).
@@ -46,7 +68,7 @@
 ## Quality, security, and documentation
 
 - Use Node.js 22 or later, strict TypeScript, project-native format/lint/type/contract/runbook/test/coverage/build/performance/browser gates, and WCAG 2.2 AA as the interface target.
-- GitHub currently rejects branch-protection and repository-ruleset configuration for this private repository at the organization plan level. Enforce PR, exact-tree, and Quality gates through the repository workflow and audit scripts, and report this limitation; never claim unavailable GitHub branch rules are active.
+- The repository is public and branch protection is intentionally disabled in the adopted profile, matching the PM-selected recommendation and current GitHub state. Enforce PR, exact-tree, full local QA and lightweight Quality gates through the repository workflow and audit scripts. Do not enable protection or rulesets unless explicitly requested, and always inspect live settings before reporting them.
 - Local hands-on browser QA is required for changed user flows before release. After deployment, verify live health and assets plus affected authenticated behavior when supported access is already available; never request credentials or weaken authentication to manufacture evidence.
 - Never put credentials, GitHub or session tokens, draft data, private media, or sensitive operational values in source, Issues, PRs, logs, artifacts, or responses.
 - Routine Issue completion evidence belongs in the existing Issue or PR plus a concise final chat handoff. Do not create or open a standalone acceptance report, duplicate closeout document, or other summary artifact unless the PM explicitly requests that artifact as a deliverable. Specifications, tests, CI, deployment output, and live verification remain the evidence sources.

@@ -66,6 +66,22 @@
     </style>
   </head>
   <body>
+    <aside>
+      <h2>Pipeliner maintenance and local QA</h2>
+      <p>
+        Pipeliner adoption, alignment, updates, and explicitly requested monitor management are
+        direct framework maintenance. They require no GitHub Issue, active-slot transition, or Issue
+        approval. Verify and publish a focused maintenance PR, then report the installed revision.
+        Maintenance never deploys Builder or schedules a monitor by default.
+      </p>
+      <p>
+        The product lifecycle below remains authoritative for application Issues. Full application,
+        browser and performance QA runs locally on the configured Mac; GitHub Quality runs
+        lightweight pipeline and security checks only. Its success never substitutes for complete
+        local evidence. Single-environment local QA introduces no additional pre-production PM
+        approval; product acceptance remains the Production Showcase.
+      </p>
+    </aside>
     <h1>PointSite Builder Development Pipeline</h1>
     <p>
       This is the shared policy source for repository-owned PointSite Builder workflow skills. It
@@ -368,10 +384,11 @@
 
     <h2>GitHub enforcement limitation</h2>
     <p>
-      GitHub currently rejects branch protection and repository rulesets for this private repository
-      at the organization plan level. Repository skills and deterministic audits enforce the PR,
-      exact-tree, and Quality contract and report this limitation. They never claim unavailable
-      branch rules are active.
+      The source repository is public; its Project remains private. Branch protection and rulesets
+      are intentionally disabled, matching the adopted profile and current settings. Repository
+      skills enforce PR review, complete local QA, exact-tree identity and lightweight Quality
+      checks. Inspect live settings before reporting them; enabling protection requires explicit PM
+      direction.
     </p>
 
     <h2>Boundaries</h2>

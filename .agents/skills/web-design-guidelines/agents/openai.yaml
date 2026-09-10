@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Web Design Guidelines'
+  short_description: 'Repository-specific web design guidelines guidance'
+  default_prompt: 'Use $web-design-guidelines and follow AGENTS.md for the current task.'

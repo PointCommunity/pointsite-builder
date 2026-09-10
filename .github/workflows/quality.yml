@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Format, lint, types, tests, build
+    name: Pipeline contracts
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,30 +31,9 @@ jobs:
           node-version: 22.23.2
           cache: npm
 
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm run typecheck
-      - run: npm run lint -- --max-warnings=0
-      - run: npm run contract:lint
-      - run: npm run verify:runbooks
-      - run: npm run skills:check
-      - run: npm run test:coverage
-      - run: npm run build
-      - run: npm run test:performance
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm run test:e2e
-
-      - name: Upload test and build evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: builder-quality-${{ github.sha }}
-          path: |
-            coverage/
-            dist/
-            artifacts/
-          if-no-files-found: warn
-          retention-days: 14
+      # Dependency-free governance validation only. Full application QA runs locally.
+      - run: npm run skills:check --ignore-scripts
+      - run: git -c core.hooksPath=/dev/null show --format= --check HEAD
 
   dependency-security:
     name: Dependency security
@@ -70,7 +49,7 @@ jobs:
           node-version: 22.23.2
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Block high and critical dependency advisories
         run: npm audit --audit-level=high
 

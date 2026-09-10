@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Image To Code'
+  short_description: 'Repository-specific image to code guidance'
+  default_prompt: 'Use $image-to-code and follow AGENTS.md for the current task.'

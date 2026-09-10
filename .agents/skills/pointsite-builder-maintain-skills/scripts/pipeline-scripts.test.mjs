@@ -264,3 +264,52 @@ test('rejects multiple active cards, incomplete metadata, and auto-closing PRs',
   assert.ok(result.errors.some((error) => error.includes('at least one area label')));
   assert.ok(result.errors.some((error) => error.includes('auto-close')));
 });
+
+test('accepts explicit Pipeliner maintenance without an Issue or active card', () => {
+  const result = auditPipelineSnapshot(
+    baseSnapshot({
+      prs: [
+        {
+          number: 50,
+          headRefName: 'codex/adopt-pipeliner',
+          baseRefName: 'main',
+          body: 'Pipeliner maintenance: adoption',
+          files: [{ path: 'AGENTS.md' }, { path: 'pipeliner.config.json' }],
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.pipelinePrs.length, 0);
+  assert.equal(result.maintenancePrs.length, 1);
+});
+
+test('does not exempt application changes disguised as Pipeliner maintenance', () => {
+  const result = auditPipelineSnapshot(
+    baseSnapshot({
+      prs: [
+        {
+          number: 50,
+          headRefName: 'codex/adopt-pipeliner',
+          baseRefName: 'main',
+          body: 'Pipeliner maintenance: adoption',
+          files: [{ path: 'src/App.tsx' }],
+        },
+      ],
+    }),
+  );
+  assert.ok(result.errors.some((error) => error.includes('maintenance scope')));
+});
+
+test('does not exempt unverified or ordinary unlinked PRs', () => {
+  for (const headRefName of ['codex/adopt-pipeliner', 'codex/other-work']) {
+    const result = auditPipelineSnapshot(
+      baseSnapshot({
+        prs: [
+          { number: 50, headRefName, baseRefName: 'main', body: 'Pipeliner maintenance: adoption' },
+        ],
+      }),
+    );
+    assert.ok(result.errors.length > 0);
+  }
+});

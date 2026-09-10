@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pointsite Builder Audit Issues'
+  short_description: 'Repository-specific pointsite builder audit issues guidance'
+  default_prompt: 'Use $pointsite-builder-audit-issues and follow AGENTS.md for the current task.'

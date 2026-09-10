@@ -5,6 +5,8 @@ description: 'Audit and correct PointSite Builder backlog Issue classification. 
 
 # Audit the PointSite Builder Backlog
 
+Pipeliner adoption, alignment, updates and requested monitor management use the direct framework-maintenance exception in `AGENTS.md`, without a GitHub Issue or active-slot transition. For product Issues, lead status and approval messages with the owning Issue and retain this specialized Builder workflow. Application QA runs locally; GitHub Quality provides lightweight contract and security evidence only.
+
 Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the live Project fields, every Backlog Issue, all open pull requests, live labels, and relevant duplicate or dependency evidence.
 
 - Scope is strictly Project Status Backlog. Do not edit On Hold, In Progress, In Review, Done, closed Issues, or pull requests.
