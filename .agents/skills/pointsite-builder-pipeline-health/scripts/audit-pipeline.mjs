@@ -372,14 +372,13 @@ export function readLiveSnapshot() {
         ? {
             ...pr,
             files: runJson('gh', [
-              'pr',
-              'view',
-              String(pr.number),
-              '--repo',
-              REPO,
-              '--json',
-              'files',
-            ]).files,
+              'api',
+              '--paginate',
+              '--slurp',
+              `repos/${REPO}/pulls/${pr.number}/files?per_page=100`,
+            ])
+              .flat()
+              .map((file) => ({ path: file.filename })),
           }
         : pr,
     ),

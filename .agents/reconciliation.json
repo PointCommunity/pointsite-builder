@@ -245,6 +245,11 @@
       "sourceSha256": "fb01f8962a59a438f66b985a54babe9ee03008c0f2b6e54307e37952994cacf8",
       "targetSha256": "a926fecc96aeedf5b6ac0e9dd478468fed1744ad55fb0b8bf230de2854a17e89",
       "rationale": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    ".github/workflows/reusable-quality.yml": {
+      "sourceSha256": "28b2970036147971c0aa1a004c25f1d0f5d32e768ee601c70dd1562e135ebfb0",
+      "targetSha256": "a2ddca4ee138246bbf0990cb00a56665009e5bb2a91d0ac50830fe6e22675d15",
+      "rationale": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
     }
   }
 }

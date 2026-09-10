@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 2
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -33,7 +35,7 @@ jobs:
 
       # Dependency-free governance validation only. Full application QA runs locally.
       - run: npm run skills:check --ignore-scripts
-      - run: git -c core.hooksPath=/dev/null show --format= --check HEAD
+      - run: git -c core.hooksPath=/dev/null show --first-parent --format= --check HEAD
 
   dependency-security:
     name: Dependency security

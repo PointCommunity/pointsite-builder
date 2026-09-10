@@ -54,6 +54,8 @@ test('maintenance routing retains Issue-free adoption and local-only application
   assert.match(agents, /Pipeliner adoption.*direct framework maintenance/);
   assert.match(adopt, /Do not create or require a GitHub Issue/);
   assert.match(workflow, /npm ci --ignore-scripts/);
+  assert.match(workflow, /fetch-depth: 2/);
+  assert.match(workflow, /show --first-parent --format= --check HEAD/);
   assert.doesNotMatch(
     workflow,
     /run:.*npm run (?:build|test:e2e|test:performance|test:coverage|check)\b/,

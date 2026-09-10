@@ -313,3 +313,23 @@ test('does not exempt unverified or ordinary unlinked PRs', () => {
     assert.ok(result.errors.length > 0);
   }
 });
+
+test('checks maintenance scope beyond the first 100 changed files', () => {
+  const result = auditPipelineSnapshot(
+    baseSnapshot({
+      prs: [
+        {
+          number: 50,
+          headRefName: 'codex/adopt-pipeliner',
+          baseRefName: 'main',
+          body: 'Pipeliner maintenance: adoption',
+          files: [
+            ...Array.from({ length: 100 }, (_, i) => ({ path: `.agents/fixture-${i}.md` })),
+            { path: 'src/App.tsx' },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.ok(result.errors.some((error) => error.includes('maintenance scope')));
+});

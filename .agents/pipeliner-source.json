@@ -200,6 +200,10 @@
     {
       "path": "scripts/validate-repository.mjs",
       "reason": "Repository Prettier formatting only; upstream behavior and contract retained after review."
+    },
+    {
+      "path": ".github/workflows/reusable-quality.yml",
+      "reason": "Fetch parent history and check first-parent changes so shallow Actions checkouts do not treat the entire existing repository as newly added."
     }
   ]
 }

@@ -47,10 +47,10 @@
         ".agents/skills/pointsite-builder-maintain-skills/SKILL.md": "0b3124342a1638f1559885c787c27a1da407bf7b3b1884d2f24725339517235d",
         ".agents/skills/pointsite-builder-maintain-skills/agents/openai.yaml": "12898ea6301ff4a0b0701483f00c92b2b51afc8f06ce2d2d6af365ee99239eb2",
         ".agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs": "134d2945b304cf69c899066e1382624eb817681db69b5222b708890c531b92ac",
-        ".agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs": "29f166abbef89fea9e490a4ea2c52cfdade64e134abc3b81084ccf9902843273",
+        ".agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs": "f80b4ffc0f6df5d7af813e9c222f6b676489f48f859c77b86009ed5d2374358d",
         ".agents/skills/pointsite-builder-pipeline-health/SKILL.md": "c080eb88146e3e6b7f6e4bca3493b552622f8f47439d26dacc5fe6db5e72c56f",
         ".agents/skills/pointsite-builder-pipeline-health/agents/openai.yaml": "83868c3cc3336f1518dc92df44bed86e35c085c06179bb31cac5030e1f7bd6ea",
-        ".agents/skills/pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs": "4adef0750eeb09896bb97f86d91bbc780d314a89c082ba89d4160f7c641afe53",
+        ".agents/skills/pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs": "cc32be791c3afcef0c2936d278f09f3e033d788d783738f9d2f33ef9d47f2cf8",
         ".agents/skills/pointsite-builder-release-production/SKILL.md": "caff1c6f0a47e95892870db58501b51b2213032b15da0c0cb4d38c6282e6f1d5",
         ".agents/skills/pointsite-builder-release-production/agents/openai.yaml": "011ca273b80b43bb118af3bd5ca693c81a0b3ec2aa12d74e98505be1a7152b79",
         ".agents/skills/pointsite-builder-release-production/scripts/verify-live.mjs": "08b3ef3d6a1e7784016b8980fdd95a5f47500e70377fd5ddec4a55f7b5700b54",
@@ -85,7 +85,7 @@
         ".claude/skills/pointsite-builder-review-issue/SKILL.md": "c78f3f786292dc207a94ba44bba9eeedc10df669a8e8c4249adfcd65af9bc165",
         ".claude/skills/pointsite-builder-work-issue/SKILL.md": "cc87c64d1013b8406fa3b6021017e8767351c2eae6a9cac6c2206de3a793dfd1",
         ".claude/skills/web-design-guidelines/SKILL.md": "ac686e20362b1832283483ab7fcf1abefa82cd1d75a5abcff14f22fb60e2c102",
-        ".github/workflows/quality.yml": "6d6df60f4423f081d35492fccdcae32999260bd546de81d1b05c0e556d91cfe8",
+        ".github/workflows/quality.yml": "c93659e30b634d70af15f941f5d06e78a9e6242fdb2a5a459b6c223a46373cb2",
         "AGENTS.md": "da4cab2eb9338f4a8ff1da10aa4cfd956eb0a66770db8fd412f505ea994ff722",
         "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
         "GEMINI.md": "42fbbc9d55ee0d149c90e4bf93abe8b7278a5482b232be6f5bfc59cc0465e694",
@@ -109,14 +109,14 @@
         "scripts/lib/qa.mjs": "bc8c50c12374995eb79d2d68960b1f07ab1861926e22f7a3e13e58d78ecc348b",
         "scripts/lib/validation.mjs": "b0eeac7a0f926065fcf9156a1ef436c57ff628625372b66826c5a542e9030db7",
         "scripts/local-qa.mjs": "a545d5da10048b0241a27d3bb07cd018f17837ed3cae21c58f787fb21fd989c6",
-        "scripts/pipeliner-contracts.test.mjs": "1d3ef7f9b8e9d3f5905bc732a406774ae850dfc6c6b585b8c2a0403aaf468a8c",
+        "scripts/pipeliner-contracts.test.mjs": "59688c8641b34a43f6500d12c83fab83ac49deab47620c111cd66384c0d19917",
         "scripts/validate-repository.mjs": "a926fecc96aeedf5b6ac0e9dd478468fed1744ad55fb0b8bf230de2854a17e89"
       }
     },
     ".github/workflows/reusable-quality.yml": {
-      "rationale": "Reviewed pinned actions/checkout and fixed git show --check with hooks disabled. No caller commands, package install, build or application tests.",
+      "rationale": "Reviewed pinned checkout with parent history and fixed first-parent git show --check with hooks disabled; shallow root diffs cannot rescan unrelated history. No caller commands, package install, build or application tests.",
       "files": {
-        ".github/workflows/reusable-quality.yml": "28b2970036147971c0aa1a004c25f1d0f5d32e768ee601c70dd1562e135ebfb0"
+        ".github/workflows/reusable-quality.yml": "a2ddca4ee138246bbf0990cb00a56665009e5bb2a91d0ac50830fe6e22675d15"
       }
     }
   }
