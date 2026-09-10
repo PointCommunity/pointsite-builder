@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 28: Draft card action layout</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #111410;
+        color: #f4f5f1;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 2rem;
+      }
+      h2 {
+        color: #bfdaaa;
+      }
+      a {
+        color: #b8d8ff;
+      }
+      code {
+        color: #e7d59c;
+      }
+      li {
+        margin-block: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 28: Standardize the draft card action layout</h1>
+    <p>
+      Implement the selected Issue's approved scope within the existing Builder design system. Draft
+      cards need predictable action placement at every supported width and text size. The Issue
+      selection authorizes implementation and direct production release; final PM acceptance follows
+      the production Showcase.
+    </p>
+    <h2>Research and diagnosis</h2>
+    <p>
+      DraftList.tsx places the primary action, checkout explanation, and every mutation in one
+      shared button-row. app.css gives that row flex wrapping and space-between alignment. Different
+      action counts and label lengths therefore produce inconsistent rows and gaps. Card headings
+      and metadata also vary in height, so actions need a shared alignment model.
+    </p>
+    <p>
+      Use intrinsic wrapping with equal-width tracks; preserve DOM order rather than visually
+      reordering controls. Reference:
+      <a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Grids"
+        >MDN CSS Grid</a
+      >, <a href="https://www.w3.org/WAI/WCAG22/Understanding/reflow">WCAG reflow</a>, and
+      <a href="https://www.w3.org/WAI/WCAG22/Understanding/resize-text.html">WCAG text resizing</a>.
+      Verify 320 CSS-pixel reflow (the 400% zoom equivalent for a 1280-pixel viewport), and
+      separately double text sizes without changing the viewport.
+    </p>
+    <h2>Layout contract</h2>
+    <ol>
+      <li>
+        Each card starts with its status, name, revision metadata and, when applicable, checkout
+        explanation. Long text wraps inside the card.
+      </li>
+      <li>
+        The action area follows the metadata. Cards in a row align the primary action even when
+        their metadata heights differ. The primary Open editor, Resume editing, or Open preview
+        control always spans the action area's full width.
+      </li>
+      <li>
+        Editor, Publisher and Administrator cards place Duplicate then Archive or Unarchive on the
+        following row in equal-width tracks. If the available width cannot support both labels, both
+        become full-width rows in the same order. Viewer cards contain only Preview.
+      </li>
+      <li>
+        Archived editable cards place Delete last on a full-width row with the existing danger
+        styling. No invisible controls or arbitrary empty grid cells are introduced.
+      </li>
+      <li>
+        Preserve the existing three/two/one-column card-grid breakpoints, theme tokens, button
+        sizing, disabled checkout behavior, accessible names, and focus styles. Visual and keyboard
+        order match; controls never overlap or clip at supported reflow and text sizes.
+      </li>
+    </ol>
+    <p>
+      Enlarged-text reproduction also exposed draft-list heading/form overflow at tablet width.
+      Allow this existing heading and New draft form to wrap within the panel and constrain the
+      input to its available width. This is required for the Issue's no-horizontal-scroll criterion;
+      creation behavior and other application forms remain unchanged.
+    </p>
+    <h2>Scope, files and style</h2>
+    <p>
+      Limit application edits to src/client/drafts/DraftList.tsx and scoped rules in
+      src/client/app.css. Use semantic buttons, existing React/TypeScript conventions and Prettier;
+      retain callbacks and the deletion dialog. Example class naming:
+      <code>className="draft-card__actions"</code>. Add component coverage in
+      tests/unit/draft-list.test.tsx and focused browser coverage in
+      tests/e2e/draft-card-actions.spec.ts. No dependencies, schema, lifecycle, publishing or
+      permission changes are needed. Ask before expanding the approved Issue body or scope.
+    </p>
+    <h2>Plan and ordered tasks</h2>
+    <ol>
+      <li>Record this layout contract and add role/action-order and browser geometry tests.</li>
+      <li>Run the browser reproduction against the existing component and confirm the defect.</li>
+      <li>Group actions, scope intrinsic layout rules to draft cards, and rerun focused tests.</li>
+      <li>
+        Check mixed status, checkout states, long names and metadata, both themes, desktop/tablet/
+        phone widths, 200% text sizing, 320-pixel reflow, keyboard focus and delete cancellation.
+        Retain existing lifecycle end-to-end coverage and inspect rendered screenshots locally.
+      </li>
+      <li>
+        Complete all configured local quality suites, code review and exact-head lightweight GitHub
+        checks. Merge only the reviewed tree; verify exact-main checks and production.
+      </li>
+      <li>
+        Clean inventoried test outputs and servers; present the released Showcase for PM testing.
+      </li>
+    </ol>
+    <h2>Verification commands and release boundary</h2>
+    <p>
+      Focused: <code>npx vitest run tests/unit/draft-list.test.tsx</code> and
+      <code>npx playwright test tests/e2e/draft-card-actions.spec.ts --workers=2</code>. Full:
+      <code>npm run check</code>, <code>npm run test:performance</code>,
+      <code>npm run test:e2e -- --workers=2</code>, <code>npm audit --audit-level=high</code>,
+      <code>git diff --check</code>, and <code>npm run pipeline:health</code>. Use the prepared
+      isolated worktree and <code>node scripts/local-qa.mjs cleanup</code> after stopping task-owned
+      servers. Deployment uses clean exact main and the release skill, records the prior Cloudflare
+      version, then runs <code>npm run deploy</code> and <code>npm run verify:live</code>. Preserve
+      authentication and unrelated local work.
+    </p>
+    <p>
+      Success requires passing geometry, role, focus and lifecycle tests, all local gates, verified
+      production and PM acceptance of the unchanged released candidate. Durable test and release
+      evidence belongs in the supporting PR. Keep Issue 28 open and In Review until the PM
+      explicitly approves completion.
+    </p>
+  </body>
+</html>

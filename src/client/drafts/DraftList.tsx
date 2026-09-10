@@ -195,12 +195,20 @@ export function DraftList({
             const descriptionId = `checkout-${draft.id}`;
             return (
               <li className="draft-card" key={draft.id}>
-                <p className="status-badge">{draft.status}</p>
-                <h2>{draft.name}</h2>
-                <p>
-                  Revision {draft.revision.sequence} · {new Date(draft.updatedAt).toLocaleString()}
-                </p>
-                <div className="button-row">
+                <div className="draft-card__details">
+                  <p className="status-badge">{draft.status}</p>
+                  <h2>{draft.name}</h2>
+                  <p>
+                    Revision {draft.revision.sequence} ·{' '}
+                    {new Date(draft.updatedAt).toLocaleString()}
+                  </p>
+                  {unavailable ? (
+                    <p id={descriptionId}>
+                      Currently being edited. It becomes available automatically after inactivity.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="draft-card__actions">
                   <button
                     className="button button--primary"
                     disabled={unavailable}
@@ -209,38 +217,35 @@ export function DraftList({
                   >
                     {owned ? 'Resume editing' : `Open ${canEdit ? 'editor' : 'preview'}`}
                   </button>
-                  {unavailable ? (
-                    <span id={descriptionId}>
-                      Currently being edited. It becomes available automatically after inactivity.
-                    </span>
-                  ) : null}
                   {canEdit ? (
                     <>
-                      <button className="button" onClick={() => void onDuplicate(draft)}>
-                        Duplicate
-                      </button>
-                      {draft.status === 'active' ? (
-                        <button className="button" onClick={() => void onArchive(draft)}>
-                          Archive
+                      <div className="draft-card__secondary-actions">
+                        <button className="button" onClick={() => void onDuplicate(draft)}>
+                          Duplicate
                         </button>
-                      ) : draft.status === 'archived' ? (
-                        <>
+                        {draft.status === 'active' ? (
+                          <button className="button" onClick={() => void onArchive(draft)}>
+                            Archive
+                          </button>
+                        ) : draft.status === 'archived' ? (
                           <button className="button" onClick={() => void onUnarchive(draft)}>
                             Unarchive
                           </button>
-                          <button
-                            ref={(element) => {
-                              if (deleteTarget?.id === draft.id) deleteTrigger.current = element;
-                            }}
-                            className="button button--danger"
-                            onClick={(event) => {
-                              deleteTrigger.current = event.currentTarget;
-                              setDeleteTarget(draft);
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </>
+                        ) : null}
+                      </div>
+                      {draft.status === 'archived' ? (
+                        <button
+                          ref={(element) => {
+                            if (deleteTarget?.id === draft.id) deleteTrigger.current = element;
+                          }}
+                          className="button button--danger"
+                          onClick={(event) => {
+                            deleteTrigger.current = event.currentTarget;
+                            setDeleteTarget(draft);
+                          }}
+                        >
+                          Delete
+                        </button>
                       ) : null}
                     </>
                   ) : null}
