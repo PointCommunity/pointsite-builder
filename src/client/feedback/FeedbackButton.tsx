@@ -69,6 +69,7 @@ export function FeedbackButton({
         throw new Error('Invalid launch');
       // A second check catches edits made while the signing request was in flight.
       await prepare.current?.();
+      if (currentScreen.current !== screen) throw new Error('Screen changed');
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = result.action;

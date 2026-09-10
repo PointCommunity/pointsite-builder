@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FeedbackButton } from '../../src/client/feedback/FeedbackButton';
 import { api } from '../../src/client/api';
 
@@ -6,6 +6,31 @@ describe('feedback control', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
+  });
+  it('cancels when the panel changes during the final checkout save', async () => {
+    vi.spyOn(api, 'feedbackAvailability').mockResolvedValue({ mode: 'pilot' });
+    vi.spyOn(api, 'launchFeedback').mockResolvedValue({
+      action: 'https://pointview-canary.eaglepass.io/launch',
+      launchToken: 'test-assertion',
+    });
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    let finish!: () => void;
+    const prepare = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+    const view = render(<FeedbackButton screen="editor.layout" beforeLaunch={prepare} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send feedback (test)' }));
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
+    view.rerender(<FeedbackButton screen="editor.settings" beforeLaunch={prepare} />);
+    await act(async () => finish());
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Your draft is safe');
   });
   it('stays absent when disabled', async () => {
     vi.spyOn(api, 'feedbackAvailability').mockResolvedValue({ mode: 'disabled' });
