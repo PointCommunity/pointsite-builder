@@ -11,6 +11,7 @@
     "owner": "PointCommunity",
     "number": 1,
     "title": "PointSite Builder",
+    "visibility": "PRIVATE",
     "statusField": "Status",
     "statuses": {
       "backlog": "Backlog",
@@ -74,6 +75,7 @@
   },
   "release": {
     "strategy": "direct-production",
+    "preReleaseIdentity": ["sourceCommit", "gitTree"],
     "candidateIdentity": ["sourceCommit", "gitTree", "deploymentId"],
     "environments": [
       {
@@ -89,6 +91,8 @@
     ]
   },
   "qa": {
+    "mode": "circulating",
+    "pms": [{ "id": "brimdor", "kind": "human" }],
     "applicationType": "web",
     "runtimePlatforms": [
       {
@@ -103,7 +107,9 @@
     "candidateIdentity": ["sourceCommit", "gitTree"],
     "developers": [
       {
-        "id": "brimdor",
+        "id": "Dev",
+        "kind": "agent",
+        "github": "brimdor",
         "environments": ["local-macos"]
       }
     ],
@@ -134,7 +140,7 @@
     "turns": [
       {
         "id": "local",
-        "developer": "brimdor",
+        "developer": "Dev",
         "environment": "local-macos",
         "pm": "brimdor",
         "approvalPhrase": "Approved to complete Issue #{number}"

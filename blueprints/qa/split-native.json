@@ -1,4 +1,6 @@
 {
+  "mode": "circulating",
+  "pms": [{ "id": "project-manager", "kind": "human" }],
   "applicationType": "native",
   "runtimePlatforms": [
     { "os": "windows", "architecture": "x64" },
@@ -6,8 +8,8 @@
   ],
   "candidateIdentity": ["sourceCommit", "gitTree"],
   "developers": [
-    { "id": "developer-a", "environments": ["windows"] },
-    { "id": "developer-b", "environments": ["macos"] }
+    { "id": "developer-a", "kind": "agent", "github": "developer-a", "environments": ["windows"] },
+    { "id": "developer-b", "kind": "agent", "github": "developer-b", "environments": ["macos"] }
   ],
   "environments": [
     {
@@ -35,14 +37,14 @@
       "developer": "developer-a",
       "environment": "windows",
       "pm": "project-manager",
-      "approvalPhrase": "Windows QA approved"
+      "approvalPhrase": "Approved"
     },
     {
       "id": "macos",
       "developer": "developer-b",
       "environment": "macos",
       "pm": "project-manager",
-      "approvalPhrase": "macOS QA approved"
+      "approvalPhrase": "Approved"
     }
   ]
 }

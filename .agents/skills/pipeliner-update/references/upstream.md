@@ -1,5 +1,7 @@
 # Upstream identity and applied provenance
 
+Builder integration: [the root operating contract](../../../../AGENTS.md) and the Builder profile override generic defaults in this reference. Preserve Builder approval phrases, structured clarification controls, PM-selected Issue scope, direct Cloudflare Production and the single post-deployment PM acceptance gate. Generic paired QA, release cycles and `Approved` examples do not introduce new Builder gates; bootstrap and updates remain exempt from PM Testing.
+
 The default framework source is `https://github.com/Zuriel-Labs/pipeliner`. Use an explicitly configured, verified fork when the adopter intentionally selected one; do not confuse the application's remote with the framework remote. Verify repository identity and default branch through GitHub and Git. Resolve requested branches or tags to full commit SHAs before review. An inaccessible source is unknown, never evidence of no update.
 
 Read an existing `.agents/pipeliner-source.json` when present. This is target-owned evidence, not a file copied from upstream. After a successful adoption or update, agents may maintain this version 1 record containing:

@@ -1,5 +1,7 @@
 # Persistent monitor prompt contract
 
+Builder integration: [the root operating contract](../../../../AGENTS.md) and the Builder profile override generic defaults in this reference. Preserve Builder approval phrases, structured clarification controls, PM-selected Issue scope, direct Cloudflare Production and the single post-deployment PM acceptance gate. Generic paired QA, release cycles and `Approved` examples do not introduce new Builder gates; bootstrap and updates remain exempt from PM Testing.
+
 Write a cohesive scheduler prompt with the verified target repository, its published default branch, framework upstream, tracking ref, and provider-owned state location resolved at setup. Do not save unresolved placeholders, raw credentials, temporary checkout paths, or a dependency on transient conversation context.
 
 Expand the rules below and the referenced provenance comparison rules into the saved prompt itself. A scheduled run must be able to distinguish equal, descendant, divergent, and unknown revisions without access to this conversation or a temporary copy of these skills. Persist repository identities, not assumptions about the foreground app or current checkout.

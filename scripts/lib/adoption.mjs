@@ -19,6 +19,8 @@ const MANAGED_ROOTS = [
   'schema',
   'scripts/audit-project.mjs',
   'scripts/evaluate-qa.mjs',
+  'scripts/evaluate-release.mjs',
+  'scripts/resolve-home.mjs',
   'scripts/lib',
   'scripts/validate-repository.mjs',
 ];
@@ -77,6 +79,37 @@ function entry(relativePath, targetRoot, content, sourcePath = null) {
 
 export async function planAdoption({ sourceRoot, targetRoot, profile, reconciliation }) {
   validateProfile(profile);
+  const phrases = [
+    ...Object.values(profile.workflow.approvalPhrases),
+    ...(profile.qa?.turns ?? []).map((turn) => turn.approvalPhrase),
+    ...(profile.release.cycle?.phases ?? []).map((phase) => phase.approvalPhrase),
+    ...profile.release.environments
+      .filter((environment) => environment.approvalPhrase !== undefined)
+      .map((environment) => environment.approvalPhrase),
+  ];
+  // PM-directed Builder exception: preserve the exact existing approval contract.
+  const builderPhrases = {
+    issueCreation: 'Approved to create this exact GitHub Issue',
+    production: 'Approved to merge and deploy production',
+    completion: 'Approved to complete Issue #{number}',
+    nativeCandidate: 'Beta approved',
+  };
+  const preservesBuilder =
+    profile.repository.owner === 'PointCommunity' &&
+    profile.repository.name === 'pointsite-builder' &&
+    Object.keys(profile.workflow.approvalPhrases).length === Object.keys(builderPhrases).length &&
+    Object.entries(builderPhrases).every(
+      ([key, value]) => profile.workflow.approvalPhrases[key] === value,
+    ) &&
+    profile.qa.turns.every((turn) => turn.approvalPhrase === builderPhrases.completion) &&
+    profile.release.strategy === 'direct-production' &&
+    !profile.release.cycle &&
+    profile.release.environments.length === 1 &&
+    profile.release.environments[0].approvalPhrase === builderPhrases.completion;
+  if (phrases.some((phrase) => phrase !== 'Approved') && !preservesBuilder)
+    throw new Error(
+      'Bootstrap/update requires every approval phrase to be exactly Approved unless the exact PM-preserved Builder contract applies.',
+    );
   const source = await realpath(sourceRoot);
   const target = await realpath(targetRoot);
   if (!(await exists(source))) throw new Error(`source root does not exist: ${source}`);

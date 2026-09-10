@@ -1,20 +1,36 @@
 # Release strategies
 
-Read only the section selected by `release.strategy`.
+Builder integration: [the root operating contract](../../../../AGENTS.md) and the Builder profile override generic defaults in this reference. Preserve Builder approval phrases, structured clarification controls, PM-selected Issue scope, direct Cloudflare Production and the single post-deployment PM acceptance gate. Generic paired QA, release cycles and `Approved` examples do not introduce new Builder gates; bootstrap and updates remain exempt from PM Testing.
+
+With `release.cycle`, first apply the [cycle contract](../../pipeliner-maintain/references/release-cycle.md) for phase branches, scope, aggregate QA and approvals. The sections below describe simple delivery strategies; within a cycle use the configured phase branch instead of default-branch assumptions. Development-Issue completion is phase integration, not Production. Production authorization precedes mutation and is separate from final production-phase approval and completion acceptance. See the exact [evidence format](../../pipeliner-maintain/references/evidence.md).
+
+Read the section selected by `release.strategy` within that routing. Final phase `kind=production` does not change the four strategies or imply a service destination: native-only `multi-environment` may deliver Stable through configured native roles. Use candidate preparation, distribution/integration verification and aggregate all-PM acceptance through review/close; invoke `pipeliner-release-production` only for an actual configured Production destination.
+
+## Identity and approval stages
+
+`release.preReleaseIdentity` lists the exact identity available at the pre-merge/release authorization gate; `release.candidateIdentity` lists final released identity. Each includes sourceCommit/gitTree and pre-release keys must be a subset of final keys. Record every key at its applicable stage, including artifact/configuration when it affects the approved candidate. Do not fabricate future deployment values.
+
+For legacy none/direct-production profiles without preReleaseIdentity, pre-release keys default to sourceCommit/gitTree; preserve stronger existing artifact/configuration approval requirements during reconciliation. For legacy immutable/native profiles, default conservatively to the complete candidateIdentity. If it mixes future Production-only identity with review identity, resolve stage ownership from authoritative release configuration or ask before mutation. New adoption explicitly classifies the keys and must not silently drop stronger evidence.
+
+An expected merge can change sourceCommit while preserving the exact reviewed gitTree; promotion can create a distinct deployment revision while retaining the approved artifact. Capture both stage records and prove continuity. Only those intended transitions preserve the gate authorization. Any unexpected tree/artifact/configuration change invalidates it. Never transfer a native session approval between hosts. Pre-release Production authorization never substitutes for final completion acceptance.
+
+Every official response is `Approved`. Determine scope from the pending request, PM, candidate, environment and stage, never by comparing phrase fields. A Showcase may explicitly bind QA acceptance and an immediately available transition to the same candidate; one response covers that stated outcome. It cannot approve testing of a future undeployed environment. Final acceptance authorizes closure without another confirmation. Reconcile legacy wording during adoption/update without rewriting past evidence.
 
 ## `immutable-promotion`
 
-- Build the exact pull-request candidate once in the configured trusted build environment.
+- Complete agent code review, then build the exact committed pull-request candidate once on the configured compatible local host.
 - Record source commit, Git tree, immutable artifact digest, rendered configuration, and review deployment revision as configured.
 - Deploy the digest to the review environment through its declared source of truth and verify it there.
-- Obtain the configured exact pre-Production approval for this candidate.
+- Complete configured independent local QA turns and cleanup, then obtain the configured exact pre-Production approval for this verified candidate. Preparing the review artifact does not require its PM approval first.
 - Production must reuse the identical digest without rebuilding. A source, dependency, image, migration, rendered configuration, or included documentation change creates a new candidate.
+- Merge the exact reviewed tree, promote the same digest, record final deployment identity and verify Production. Guide final PM Testing and request the configured completion phrase before closing. No repeated skill trigger is needed.
 
 ## `direct-production`
 
 - Candidate review happens through local testing, CI, exact tree identity, and any configured preview—not through an invented Canary.
-- Merge only the exact reviewed tree using the repository's approved merge method.
-- Deploy the exact clean default-branch revision, record the previous Production version, and verify the new Production identity and behavior.
+- Complete configured local QA turns and cleanup, then request workflow.approvalPhrases.production against the pre-release source/tree and any configured prebuilt artifact. This authorizes the planned merge/deploy; it is not acceptance of a future Production deployment. No invented Canary or deployment ID.
+- After actual authorization, merge only the exact reviewed tree using the repository's approved merge method.
+- Deploy the exact clean configured production-phase branch revision (default branch for a simple release), record the previous Production version, and verify the new Production identity and behavior.
 - Keep the Issue In Review after a healthy deployment. Project Manager QA occurs against Production; only the configured completion approval permits Done and closure.
 
 ## `multi-environment`
@@ -22,8 +38,9 @@ Read only the section selected by `release.strategy`.
 - Commit the complete candidate before building the environment-specific artifact.
 - Each required native host or environment runs its own configured gates, build, launch, checklist, and PM Testing session against the exact candidate.
 - Approval is bound to the candidate, environment, platform, and validation session. One environment cannot approve another.
-- Code remediation creates a new candidate and returns it through every affected environment. Do not merge until the configured independent review and hand-back loop is complete.
+- Code remediation creates a new candidate and returns it through every affected environment. Do not merge until the configured independent review and hand-back loop is complete. Prepare each required artifact before asking for its native/environment approval; do not wait for that approval to build it.
+- After native approvals and cleanup, merge the exact tree. If Production is configured, obtain its authorization before integration/deployment and verify that release. Otherwise the final required PM QA approval authorizes exact-candidate native distribution/source integration, verification, closure and cleanup without a second completion prompt. The Showcase states that outcome.
 
 ## `none`
 
-No application release exists. Use source commit and Git tree as the candidate, require configured quality checks, and complete only through the repository's documented review and PM acceptance policy.
+No application release exists. Complete agent review and configured local QA/cleanup against the committed source/tree. Guide PM Testing of the source/tooling behavior with a Showcase explaining that `Approved` authorizes merge, verification, closure and cleanup. After every required pair approves the latest candidate, merge the exact reviewed tree, record the resulting source revision and close after readback without another approval. Do not invoke Production or ask for a nonexistent deployment ID. No additional completion approval is needed for that exact-tree merge. A different tree requires fresh QA and approval.

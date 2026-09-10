@@ -49,7 +49,7 @@ function maintenanceFilesAllowed(files) {
     Array.isArray(files) &&
     files.length > 0 &&
     files.every(({ path }) =>
-      /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|pipeliner\.config\.json|package(?:-lock)?\.json|eslint\.config\.js|\.gitignore|\.prettierignore|\.agents\/.+|\.claude\/skills\/.+|\.github\/.+|blueprints\/.+|schema\/.+|specs\/pipeliner-adoption\/.+|scripts\/(?:lib\/.+|(?:audit-project|evaluate-qa|validate-repository|local-qa|pipeliner-contracts)(?:\.test)?\.mjs))$/.test(
+      /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|pipeliner\.config\.json|package(?:-lock)?\.json|eslint\.config\.js|\.gitignore|\.prettierignore|\.agents\/.+|\.claude\/skills\/.+|\.github\/.+|blueprints\/.+|schema\/.+|specs\/pipeliner-(?:adoption|refresh)\/.+|scripts\/(?:lib\/.+|(?:audit-project|evaluate-qa|evaluate-release|resolve-home|validate-repository|local-qa|pipeliner-contracts)(?:\.test)?\.mjs))$/.test(
         path ?? '',
       ),
     )
