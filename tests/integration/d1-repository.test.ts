@@ -35,6 +35,37 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('repeated renames change only display metadata and audit while preserving revisions and checkout', async () => {
+    const { database, repository } = await repositoryFixture();
+    const draft = await repository.createDraft({
+      name: 'Original',
+      document: defaultSiteDocument,
+      actor: 'editor@pointatx.org',
+      idempotencyKey: 'rename-d1-create',
+      requestId: 'create',
+    });
+    await repository.acquireCheckout({
+      draftId: draft.id,
+      actor: 'editor@pointatx.org',
+      clientId: 'rename-browser-01',
+      requestId: 'checkout',
+    });
+    const revisions = await repository.listRevisions(draft.id);
+    const checkout = await repository.ownedCheckout('editor@pointatx.org');
+    for (const name of ['Renamed once', 'Renamed twice']) {
+      const renamed = await repository.renameDraft(draft.id, name, 'editor@pointatx.org', 'rename');
+      expect(renamed).toEqual({ ...draft, name, updatedAt: renamed.updatedAt });
+      expect(await repository.getDraft(draft.id)).toEqual(renamed);
+      expect(await repository.listRevisions(draft.id)).toEqual(revisions);
+      expect(await repository.ownedCheckout('editor@pointatx.org')).toEqual(checkout);
+    }
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'draft.rename'")
+        .first('count'),
+    ).toBe(2);
+  });
+
   it('atomically acquires, transfers, expires, persists view state, and rejects stale tokens', async () => {
     const { repository } = await repositoryFixture();
     const created = await repository.createDraft({

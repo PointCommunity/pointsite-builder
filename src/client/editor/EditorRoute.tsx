@@ -31,6 +31,7 @@ import { StructurePanel } from './StructurePanel';
 import { mutationForContext } from './action-attribution';
 import { FeedbackButton } from '../feedback/FeedbackButton';
 import { saveFeedbackWorkspace } from '../feedback/workspace';
+import { DraftName } from './DraftName';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
@@ -70,6 +71,7 @@ function Workspace({
     reloadLatest,
     retryAutosave,
     copyRecoveryData,
+    renameDraft,
   } = useEditor();
   const [panel, setPanel] = useState<Panel>(
     feedbackPanel && (feedbackPanel !== 'admin' || role === 'administrator')
@@ -258,7 +260,7 @@ function Workspace({
           ← All drafts
         </button>
         <div>
-          <h1 className="editor-title">{draft.name}</h1>
+          <DraftName name={draft.name} editable={editable} onRename={renameDraft} />
           <span>Revision {draft.revision.sequence}</span>
         </div>
         <div className="save-cluster">

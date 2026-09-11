@@ -255,6 +255,16 @@ async function installApi(
         writesToday: { used: 1, limit: 100000, percent: 0, warning: false, unit: 'operations' },
         measuredAt: '2026-09-05T00:00:00Z',
       };
+    else if (path.endsWith('/publish/staging/workflow'))
+      body = {
+        draftId: draft.id,
+        revisionId: draft.revision.id,
+        revisionChecksum: draft.revision.checksum,
+        preflight: { state: 'required', reason: 'not-validated' },
+        availability: { state: 'available' },
+        job: null,
+        approval: null,
+      };
     else if (path.endsWith('/staging/base')) body = { sha: 'b'.repeat(40) };
     else body = draft;
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -275,6 +285,108 @@ async function installApi(
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
+
+test('renames inline with keyboard and pointer while keeping publishing, history and list names consistent', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Rename draft' }).focus();
+  await page.keyboard.press('Enter');
+  const input = page.getByRole('textbox', { name: 'Draft name', exact: true });
+  await expect(input).toBeFocused();
+  await input.fill('Canceled');
+  await input.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Sunday update', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename draft' })).toBeFocused();
+  await page.getByRole('heading', { name: 'Sunday update', exact: true }).dblclick();
+  await input.fill('  Renamed Sunday  ');
+  await input.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Renamed Sunday', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename draft' })).toBeFocused();
+  await expect(page.locator('.save-state')).toHaveText('All changes saved');
+  await expect(page.locator('.editor-header')).toContainText('Revision 2');
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(
+    page.getByRole('dialog').locator('strong').filter({ hasText: 'Renamed Sunday' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Close publishing window' }).click();
+  await page.getByRole('button', { name: '← All drafts' }).click();
+  await expect(page.locator('.draft-card h2')).toHaveText('Renamed Sunday');
+  await page.reload();
+  await expect(page.locator('.draft-card h2')).toHaveText('Renamed Sunday');
+});
+
+test('rename failure can retry without changing autosave and fits supported narrow and enlarged-text layouts', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  let attempts = 0;
+  await page.route('**/api/drafts/10000000-0000-4000-8000-000000000001', async (route) => {
+    if (route.request().method() === 'PATCH' && attempts++ === 0) {
+      await route.fulfill({ status: 503, json: { code: 'UNAVAILABLE', message: 'Try again' } });
+    } else await route.fallback();
+  });
+  await page.getByRole('button', { name: 'Rename draft' }).click();
+  const input = page.getByLabel('Draft name', { exact: true });
+  await input.fill('x'.repeat(101));
+  await input.press('Enter');
+  await expect(page.locator('.draft-name [role=alert]')).toContainText('1–100');
+  await input.fill('Retry Sunday');
+  await input.press('Enter');
+  await expect(page.locator('.draft-name [role=alert]')).toContainText('Try again');
+  await expect(input).toHaveValue('Retry Sunday');
+  await expect(input).toBeFocused();
+  await expect(page.locator('.save-state')).toHaveText('All changes saved');
+  for (const width of [1280, 920, 768, 721]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = await input.boundingBox();
+    expect(box!.width).toBeGreaterThan(50);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    for (const button of await page.locator('.draft-name button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('.draft-name').evaluate((element) => {
+    const elements = [element, ...element.querySelectorAll<HTMLElement>('*')];
+    const sizes = elements.map((item) => parseFloat(getComputedStyle(item).fontSize));
+    elements.forEach((item, index) => {
+      (item as HTMLElement).style.fontSize = `${sizes[index] * 2}px`;
+    });
+  });
+  expect(
+    await page
+      .locator('.draft-name')
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  await input.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Retry Sunday', exact: true })).toBeVisible();
+});
+
+for (const role of ['viewer', 'editor', 'publisher'] as const) {
+  test(`rename access for ${role}`, async ({ page }) => {
+    await installApi(page, role);
+    await page.goto('/');
+    await page
+      .getByRole('button', {
+        name: role === 'viewer' ? 'Open preview' : 'Open editor',
+        exact: true,
+      })
+      .click();
+    if (role === 'viewer') {
+      await expect(page.getByRole('button', { name: 'Rename draft' })).toHaveCount(0);
+    } else {
+      await page.getByRole('button', { name: 'Rename draft' }).click();
+      await page.getByLabel('Draft name', { exact: true }).fill(`${role} name`);
+      await page.getByRole('button', { name: 'Save name' }).click();
+      await expect(page.getByRole('heading', { name: `${role} name`, exact: true })).toBeVisible();
+    }
+  });
+}
 
 test('keeps draft cards in a left-aligned responsive grid of at most three columns', async ({
   page,

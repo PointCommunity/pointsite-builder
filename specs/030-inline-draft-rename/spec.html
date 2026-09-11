@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 30: Inline draft renaming</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #111410;
+        color: #f4f5f1;
+        font: 16px/1.6 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 2rem;
+      }
+      h2,
+      a {
+        color: #b8d8ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 30: Rename a draft from inside the editor</h1>
+    <h2>Research and contract</h2>
+    <p>
+      The existing authenticated PATCH draft endpoint trims and validates names to 1–100 characters,
+      enforces Editor or higher access, and records draft.rename. Both repositories modify name and
+      updatedAt without changing identity or revisions. EditorProvider currently derives draft
+      metadata from ActionAutosaveController; replacing a whole draft after renaming would discard
+      pending document work. Autosave acknowledgements can also carry older metadata. Apply only
+      confirmed name metadata and preserve it through subsequent save acknowledgements. The draft
+      list reloads when the editor closes; publishing consumes the same editor context.
+    </p>
+    <p>
+      Use semantic buttons and a labeled input with explicit validation and separate status
+      announcements, following <a href="https://www.w3.org/TR/WCAG22/">WCAG 2.2</a> and
+      <a href="https://www.w3.org/WAI/WCAG21/Understanding/status-messages"
+        >WAI status-message guidance</a
+      >. Existing Builder themes, visible focus, button targets, and minimum editor width remain
+      authoritative.
+    </p>
+    <h2>Interaction and scope</h2>
+    <ul>
+      <li>
+        An active editable checkout exposes a visible Rename draft button and heading double-click.
+        Viewer, archived, and unavailable checkouts expose no rename controls.
+      </li>
+      <li>
+        Entering rename mode selects the current name. Enter or Save name commits trimmed valid
+        changed input; Escape or Cancel discards it. Blur leaves editing open to avoid accidental
+        saves. Composition Enter must not submit.
+      </li>
+      <li>
+        Empty and overlong names show associated validation text. Unchanged values exit without a
+        request. Saving prevents duplicate submissions and cancellation; failures preserve the
+        original name and entered text for retry. Successful save and cancellation restore focus to
+        Rename draft.
+      </li>
+      <li>
+        Rename status is separate from document autosave. Only name and the newer updatedAt are
+        merged into controller metadata. Never replace document, revisions, queue, checksums,
+        checkout, lifecycle, or publishing state from a rename response. Preserve confirmed names
+        across stale autosave responses; explicit reload accepts authoritative metadata.
+      </li>
+      <li>
+        No dependencies, API, schema, role, publishing, or public-site changes. Existing
+        draft.rename audit remains server-owned.
+      </li>
+    </ul>
+    <h2>Plan and ordered tasks</h2>
+    <ol>
+      <li>
+        Add failing component interaction and controller concurrency tests, plus API
+        identity/history assertions.
+      </li>
+      <li>
+        Implement a focused DraftName component, provider rename operation, metadata-only controller
+        update, and scoped responsive styles.
+      </li>
+      <li>
+        Verify keyboard/pointer, validation/retry, focus, role and checkout restrictions, repeated
+        renames, navigation/publishing consistency, autosave races, unchanged history, audit,
+        archive/recovery, and D1 persistence.
+      </li>
+      <li>
+        Run all local quality, performance, browser, audit, and diff gates. Inspect the affected
+        flow hands-on and review the final diff.
+      </li>
+      <li>
+        Create a Refs #30 PR, verify exact-head checks, move to In Review, merge the reviewed tree,
+        verify main checks, deploy exact main and verify production.
+      </li>
+      <li>
+        Clean task outputs and servers. Record evidence in the PR/Issue and present production
+        testing steps. Keep Issue 30 In Review until PM approval of that exact candidate.
+      </li>
+    </ol>
+    <h2>Verification</h2>
+    <p>
+      Focused Vitest tests cover input interactions, metadata races, and repository/API
+      relationships. Browser tests cover the real provider/header integration in Chromium, Firefox
+      and WebKit, supported narrow widths, enlarged text, touch-equivalent activation, and separate
+      publishing/list names. Full commands: npm run check; npm run test:performance; npm run
+      test:e2e -- --workers=2; npm audit --audit-level=high; git diff --check; npm run
+      pipeline:health. Prepare and clean with scripts/local-qa.mjs. Release follows the repository
+      release skill with previous Worker version recorded for rollback and npm run verify:live.
+    </p>
+  </body>
+</html>
