@@ -646,9 +646,14 @@ for (const surface of ['transparent', 'canvas', 'primary'] as const) {
         if (!header) throw new Error('Expected header fixture');
         header.position = sectionSurface === 'image' ? 'overlay' : 'flow';
         header.surface = sectionSurface === 'image' ? 'transparent' : sectionSurface;
-        const navigation = header.items.find((item) => item.element.type === 'navigation')?.element;
+        const placement = header.items.find((item) => item.element.type === 'navigation');
+        const navigation = placement?.element;
         if (!navigation || navigation.type !== 'navigation') throw new Error('Expected Navigation');
         navigation.surface = surface;
+        if (placement?.grid) {
+          placement.grid.mobile = { column: 9, row: 1, columnSpan: 4, rowSpan: 3 };
+          placement.grid.tablet = { column: 11, row: 1, columnSpan: 2, rowSpan: 2 };
+        }
       });
       const panelBackground = surface === 'canvas' ? 'rgb(242, 234, 223)' : 'rgb(36, 60, 100)';
       const panelText = surface === 'canvas' ? 'rgb(23, 37, 54)' : 'rgb(255, 242, 214)';
@@ -698,6 +703,15 @@ for (const surface of ['transparent', 'canvas', 'primary'] as const) {
           await expect(toggle).toHaveCSS('color', panelText);
           await expect(menu).toHaveCSS('background-color', panelBackground);
           await expect(parent).toHaveCSS('color', panelText);
+          expect(
+            await menu.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              return (
+                bounds.left + window.scrollX >= 0 &&
+                bounds.right + window.scrollX <= window.innerWidth
+              );
+            }),
+          ).toBe(true);
           expect(
             await toggle.evaluate(
               (element) => element.getBoundingClientRect().top + window.scrollY,

@@ -122,7 +122,13 @@
       must allow visible overflow so dropdowns remain reachable. Preserve grid coordinates and
       clipping for other placements. Anchor the open responsive panel below its toggle without
       increasing the Navigation root height, so centered grid placements do not push the toggle
-      upward. Browser checks verify stable toggle coordinates alongside the color contract.
+      upward. Browser checks verify stable toggle coordinates alongside the color contract. Retain
+      the existing protected-Staging convention of a right-anchored, viewport-bounded responsive
+      panel; narrow authored grid placements must not squeeze its links. Staging's duplicate
+      Navigation overrides must be removed when the shared CSS is synchronized, retaining its
+      unrelated tone-section rule. This cross-repository sync and deployment requires explicit PM
+      authorization before Builder production release, otherwise the renderer guard blocks
+      publishing. The proposed sync preserves the saved document and manifest.
     </p>
     <p>
       No dependencies, schema migration, authentication or API changes. No public-site publication.
