@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 39: Navigation surface colors</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #111410;
+        color: #f4f5f1;
+        font: 16px/1.6 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 2rem;
+      }
+      h2,
+      a {
+        color: #b8d8ff;
+      }
+      td,
+      th {
+        padding: 0.75rem;
+        border: 1px solid #566052;
+        text-align: left;
+      }
+      table {
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 39: Navigation surface colors</h1>
+    <h2>Research and scope</h2>
+    <p>
+      The shared site-kit stylesheet hardcodes dropdowns to canvas/text, while the root alone
+      selects Primary. Transparent roots also override primary section text with the ordinary text
+      role. Canvas, Preview and publication all use the same renderer; its publication contract pins
+      the stylesheet blob. Fix these shared CSS rules without changing saved documents,
+      destinations, structure, breakpoints, positioning, opening or dismissal behavior.
+    </p>
+    <h2>Color contract</h2>
+    <table>
+      <tr>
+        <th>Surface</th>
+        <th>Root and closed toggle</th>
+        <th>Open menu, dropdown and expanded toggle</th>
+      </tr>
+      <tr>
+        <td>Canvas</td>
+        <td>canvas / text</td>
+        <td>canvas / text</td>
+      </tr>
+      <tr>
+        <td>Primary</td>
+        <td>primary / on-primary</td>
+        <td>primary / on-primary</td>
+      </tr>
+      <tr>
+        <td>Transparent</td>
+        <td>Transparent; inherit section text (on-primary in overlay sections)</td>
+        <td>
+          primary / on-primary, an opaque readable treatment over images and any section surface
+        </td>
+      </tr>
+    </table>
+    <p>
+      Top-level and child links inherit their containing color pair. Hover, pressed and keyboard
+      focus underline links without changing text contrast. Focus-visible uses a currentColor inset
+      outline; expanded toggles retain their border and add an underline. Theme roles remain
+      authoritative, including custom themes; arbitrary low-contrast user-selected theme pairs are
+      not corrected by mixing unrelated colors.
+    </p>
+    <p>
+      Use the existing React, TypeScript, CSS and Playwright conventions and installed dependencies.
+      Follow
+      <a href="https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"
+        >W3C contrast guidance</a
+      >
+      and
+      <a href="https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html"
+        >visible keyboard focus guidance</a
+      >. Retain semantic links, keyboard order, navigation and reflow.
+    </p>
+    <h2>Plan and ordered tasks</h2>
+    <ol>
+      <li>
+        Add surface-specific renderer tests and failing browser color assertions using custom theme
+        roles, phone/tablet/desktop widths, image overlay and canvas/surface/primary sections.
+      </li>
+      <li>
+        Use two Navigation-local CSS variables for the open background/text pair; explicitly set the
+        root surfaces, inherit transparent root text and style open states. Refresh the exact
+        stylesheet blob in src/server/publish/renderer-contract.ts.
+      </li>
+      <li>
+        Verify canvas and Preview parity, pointer and keyboard states, child navigation, existing
+        dismissal, enlarged text, and the pinned publication renderer contract. Do not publish or
+        change the separate public-site or protected-Staging repositories.
+      </li>
+      <li>
+        Run focused Vitest and Playwright tests, npm run check, npm run test:performance, npm run
+        test:e2e -- --workers=2, npm audit --audit-level=high, git diff --check and npm run
+        pipeline:health. Perform hands-on local browser QA and review the full diff.
+      </li>
+      <li>
+        Create the Refs #39 PR, verify exact-head Quality, move to In Review, merge the reviewed
+        tree, verify main Quality, deploy exact main and run npm run verify:live. Record the
+        previous Worker version for rollback. Clean task-owned outputs using local-qa.mjs.
+      </li>
+      <li>
+        Present the released candidate for PM testing. Keep Issue 39 open and In Review until
+        approval of the unchanged Production Showcase.
+      </li>
+    </ol>
+    <h2>Boundaries</h2>
+    <p>
+      Hands-on QA exposed existing grid clipping: focusing a child link scrolled hidden grid
+      containers and displaced the root menu. Navigation-containing sections, grids and placements
+      must allow visible overflow so dropdowns remain reachable. Preserve grid coordinates and
+      clipping for other placements. Anchor the open responsive panel below its toggle without
+      increasing the Navigation root height, so centered grid placements do not push the toggle
+      upward. Browser checks verify stable toggle coordinates alongside the color contract. Retain
+      the existing protected-Staging convention of a right-anchored, viewport-bounded responsive
+      panel; narrow authored grid placements must not squeeze its links. Staging's duplicate
+      Navigation overrides must be removed when the shared CSS is synchronized, retaining its
+      unrelated tone-section rule. This cross-repository sync and deployment requires explicit PM
+      authorization before Builder production release, otherwise the renderer guard blocks
+      publishing. The proposed sync preserves the saved document and manifest.
+    </p>
+    <p>
+      No dependencies, schema migration, authentication or API changes. No public-site publication.
+      Preserve unrelated work. All app tests and builds run locally. Evidence belongs in the
+      existing Issue and PR; the source spec is the implementation contract.
+    </p>
+  </body>
+</html>
