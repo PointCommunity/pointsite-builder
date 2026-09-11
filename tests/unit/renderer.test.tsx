@@ -109,6 +109,31 @@ describe('controlled public renderer', () => {
     expect(onNavigate).toHaveBeenCalledWith('/who-we-are');
   });
 
+  it.each(['transparent', 'canvas', 'primary'] as const)(
+    'retains the %s Navigation presentation and child destinations',
+    (surface) => {
+      const document = structuredClone(defaultSiteDocument);
+      const navigation = document.pages[0].blocks
+        .flatMap((section) => section.items)
+        .map((item) => item.element)
+        .find((element) => element.type === 'navigation');
+      if (!navigation) throw new Error('Expected Navigation fixture');
+      navigation.surface = surface;
+      const { container } = render(<SiteRenderer document={document} route="/" />);
+      expect(container.querySelector(`.point-navigation--${surface}`)).not.toBeNull();
+      expect(screen.getByRole('link', { name: /^Who We Are$/ })).toHaveAttribute(
+        'href',
+        '/who-we-are',
+      );
+      expect(screen.getByRole('button', { name: 'Menu' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      expect(screen.getByRole('button', { name: 'Menu' })).toHaveAttribute('aria-expanded', 'true');
+    },
+  );
+
   it('can remove the logo independently while retaining editable navigation', () => {
     const document = structuredClone(defaultSiteDocument);
     const page = document.pages[0];

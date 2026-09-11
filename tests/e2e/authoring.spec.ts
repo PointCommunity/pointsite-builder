@@ -37,8 +37,10 @@ async function installApi(
   page: Page,
   role: Role = 'administrator',
   repositoryPermission: 'admin' | 'maintain' | 'write' | 'triage' | 'read' = 'admin',
+  configureDocument?: (document: DraftRecord['document']) => void,
 ) {
   const draft = original();
+  configureDocument?.(draft.document);
   const drafts = [draft];
   const oldRevision: RevisionRecord = {
     ...draft.revision,
@@ -623,6 +625,127 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
   ).toBeVisible();
   await expect(canvas.getByRole('button', { name: 'Edit global footer' })).toBeVisible();
 });
+
+for (const surface of ['transparent', 'canvas', 'primary'] as const) {
+  for (const sectionSurface of ['image', 'canvas', 'surface', 'primary'] as const) {
+    test(`Navigation ${surface} colors over ${sectionSurface} match canvas and Preview`, async ({
+      page,
+      browserName,
+    }) => {
+      await installApi(page, 'administrator', 'admin', (document) => {
+        Object.assign(document.theme.colors, {
+          canvas: '#f2eadf',
+          text: '#172536',
+          primary: '#243c64',
+          onPrimary: '#fff2d6',
+          surface: '#e0e8ee',
+          mutedText: '#bb2233',
+          border: '#cc4488',
+        });
+        const header = document.pages[0].blocks.find((section) => section.name === 'Site header');
+        if (!header) throw new Error('Expected header fixture');
+        header.position = sectionSurface === 'image' ? 'overlay' : 'flow';
+        header.surface = sectionSurface === 'image' ? 'transparent' : sectionSurface;
+        const navigation = header.items.find((item) => item.element.type === 'navigation')?.element;
+        if (!navigation || navigation.type !== 'navigation') throw new Error('Expected Navigation');
+        navigation.surface = surface;
+      });
+      const panelBackground = surface === 'canvas' ? 'rgb(242, 234, 223)' : 'rgb(36, 60, 100)';
+      const panelText = surface === 'canvas' ? 'rgb(23, 37, 54)' : 'rgb(255, 242, 214)';
+      const rootText =
+        surface === 'primary' ||
+        (surface === 'transparent' && ['image', 'primary'].includes(sectionSurface))
+          ? 'rgb(255, 242, 214)'
+          : 'rgb(23, 37, 54)';
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Open editor' }).click();
+      const canvas = page.locator('.visual-editor iframe').contentFrame();
+      for (const device of ['Phone', 'Tablet', 'Desktop']) {
+        await page.getByRole('button', { name: `Switch to ${device} viewport` }).click();
+        await expect(canvas.locator('.point-navigation')).toHaveCSS('color', rootText);
+        await expect(canvas.locator('.point-navigation__dropdown').first()).toHaveCSS(
+          'background-color',
+          panelBackground,
+        );
+        await expect(canvas.locator('.point-navigation__dropdown a').first()).toHaveCSS(
+          'color',
+          panelText,
+        );
+      }
+      await page.getByRole('button', { name: 'Preview', exact: true }).click();
+      const preview = page.locator('iframe.preview-frame').contentFrame();
+      for (const device of ['phone', 'tablet', 'desktop']) {
+        await page.getByRole('button', { name: `Preview at ${device} width` }).click();
+        const toggle = preview.getByRole('button', { name: 'Menu', exact: true });
+        const menu = preview.getByRole('navigation', { name: 'Church navigation' });
+        const parent = menu.getByRole('link', { name: 'About', exact: true });
+        const child = menu.getByRole('link', { name: 'Who We Are', exact: true });
+        const dropdown = preview.locator('.point-navigation__dropdown').first();
+        if (device === 'phone') {
+          await preview.locator('html').evaluate((element) => {
+            element.style.fontSize = '32px';
+          });
+        }
+        if (device !== 'desktop') {
+          if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.press('Enter');
+          await expect(toggle).toHaveCSS('color', rootText);
+          const closedToggleTop = await toggle.evaluate(
+            (element) => element.getBoundingClientRect().top + window.scrollY,
+          );
+          await toggle.press('Enter');
+          await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+          await expect(toggle).toHaveCSS('background-color', panelBackground);
+          await expect(toggle).toHaveCSS('color', panelText);
+          await expect(menu).toHaveCSS('background-color', panelBackground);
+          await expect(parent).toHaveCSS('color', panelText);
+          expect(
+            await toggle.evaluate(
+              (element) => element.getBoundingClientRect().top + window.scrollY,
+            ),
+          ).toBeCloseTo(closedToggleTop, 0);
+        } else {
+          await parent.hover();
+          await expect(parent).toHaveCSS('text-decoration-line', 'underline');
+        }
+        await expect(dropdown).toHaveCSS('opacity', '1');
+        await expect(dropdown).toHaveCSS('background-color', panelBackground);
+        await expect(child).toHaveCSS('color', panelText);
+        if (device === 'phone') {
+          expect(await menu.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+            true,
+          );
+        }
+        await expect(preview.locator('.point-layout-item').filter({ has: menu })).toHaveCSS(
+          'overflow',
+          'visible',
+        );
+        await expect(
+          preview.locator('.point-layout-section__grid').filter({ has: menu }),
+        ).toHaveCSS('overflow', 'visible');
+        await parent.focus();
+        await parent.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
+        await expect(child).toBeFocused();
+        await expect(child).toHaveCSS('outline-style', 'solid');
+        await expect(child).toHaveCSS('outline-color', panelText);
+        await expect(child).toHaveCSS('text-decoration-line', 'underline');
+        await expect(child).toHaveCSS('color', panelText);
+        if (device !== 'desktop') {
+          await toggle.press('Enter');
+          await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+          await expect(menu).toBeHidden();
+          await preview.locator('html').evaluate((element) => {
+            element.style.fontSize = '';
+          });
+        } else {
+          await child.press('Enter');
+          await expect(
+            preview.getByRole('heading', { level: 1, name: 'Who We Are' }),
+          ).toBeVisible();
+        }
+      }
+    });
+  }
+}
 
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/');

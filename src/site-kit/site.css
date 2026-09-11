@@ -1364,16 +1364,21 @@
   min-height: var(--point-space-large);
 }
 .point-site .point-navigation {
+  --point-navigation-panel: var(--point-primary);
+  --point-navigation-panel-text: var(--point-on-primary);
   display: flex;
   width: 100%;
   padding: 0.5rem;
-  color: var(--point-text);
+  color: inherit;
 }
 .point-site .point-layout-section--position-overlay .point-navigation--transparent {
   color: var(--point-on-primary);
 }
 .point-site .point-navigation--canvas {
+  --point-navigation-panel: var(--point-canvas);
+  --point-navigation-panel-text: var(--point-text);
   background: var(--point-canvas);
+  color: var(--point-text);
 }
 .point-site .point-navigation--primary {
   background: var(--point-primary);
@@ -1404,9 +1409,21 @@
 .point-site .point-navigation__item > a,
 .point-site .point-navigation__dropdown a {
   display: flex;
+  overflow-wrap: anywhere;
   gap: 0.4rem;
   padding: 0.75rem 0.9rem;
   font-weight: 700;
+  color: inherit;
+}
+.point-site .point-navigation a:is(:hover, :focus-visible, :active),
+.point-site .point-navigation__item:focus-within > a,
+.point-site .point-navigation__toggle[aria-expanded='true'] {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.point-site .point-navigation :is(a, button):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
 }
 .point-site .point-navigation__dropdown {
   position: absolute;
@@ -1415,8 +1432,8 @@
   left: 0;
   min-width: 13rem;
   padding: 0.35rem;
-  background: var(--point-canvas);
-  color: var(--point-text);
+  background: var(--point-navigation-panel);
+  color: var(--point-navigation-panel-text);
   box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 0.16);
   opacity: 0;
   pointer-events: none;
@@ -1439,8 +1456,13 @@
   font: inherit;
   font-weight: 700;
 }
+.point-site .point-navigation__toggle[aria-expanded='true'] {
+  background: var(--point-navigation-panel);
+  color: var(--point-navigation-panel-text);
+}
 @media (max-width: 900px) {
   .point-site .point-navigation--responsive {
+    position: relative;
     flex-direction: column;
     align-items: stretch;
   }
@@ -1450,14 +1472,21 @@
   }
   .point-site .point-navigation--responsive .point-navigation__menu {
     display: none;
+    position: absolute;
+    z-index: 5;
+    top: 100%;
+    inset-inline: 0;
     flex-direction: column;
     align-items: stretch;
   }
   .point-site .point-navigation--responsive .point-navigation__menu--open {
     display: flex;
+    background: var(--point-navigation-panel);
+    color: var(--point-navigation-panel-text);
   }
   .point-site .point-navigation--responsive .point-navigation__dropdown {
     position: static;
+    min-width: 0;
     opacity: 1;
     pointer-events: auto;
     transform: none;
@@ -1635,6 +1664,12 @@
 }
 .point-site .point-layout-item--grid > * {
   max-width: 100%;
+}
+/* Navigation menus extend beyond their fixed grid placement. */
+.point-site .point-layout-section:has(.point-navigation),
+.point-site .point-layout-section--grid .point-layout-section__grid:has(.point-navigation),
+.point-site .point-layout-item--grid:has(> .point-navigation) {
+  overflow: visible;
 }
 .point-site .point-layout-item--grid > .page-hero {
   width: 100vw;
