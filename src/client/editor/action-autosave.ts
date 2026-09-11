@@ -95,6 +95,7 @@ export class ActionAutosaveController {
   #queue: QueueEntry[] = [];
   #inFlight: QueueEntry | null = null;
   #draft: DraftRecord;
+  #renamed: Pick<DraftRecord, 'name' | 'updatedAt'> | null = null;
   #document: SiteDocument;
   #state: AutosaveState = 'saved';
   #errorKind: AutosaveErrorKind = null;
@@ -234,6 +235,7 @@ export class ActionAutosaveController {
     this.#queue = [];
     this.#inFlight = null;
     this.#draft = structuredClone(draft);
+    this.#renamed = null;
     this.#document = structuredClone(draft.document);
     this.#state = 'saved';
     this.#errorKind = null;
@@ -253,6 +255,23 @@ export class ActionAutosaveController {
       null,
       2,
     );
+  }
+
+  updateDraftName(draft: Pick<DraftRecord, 'id' | 'name' | 'updatedAt'>): void {
+    if (draft.id !== this.#draft.id) throw new Error('Rename response belongs to another draft');
+    this.#renamed = { name: draft.name, updatedAt: draft.updatedAt };
+    this.#draft = this.#withConfirmedName(this.#draft);
+    this.#emit();
+  }
+
+  #withConfirmedName(draft: DraftRecord): DraftRecord {
+    if (!this.#renamed) return draft;
+    return {
+      ...draft,
+      name: this.#renamed.name,
+      updatedAt:
+        draft.updatedAt > this.#renamed.updatedAt ? draft.updatedAt : this.#renamed.updatedAt,
+    };
   }
 
   activate(): void {
@@ -328,7 +347,8 @@ export class ActionAutosaveController {
       });
       if (this.#disposed) return;
       if (this.#queue[0] === head) this.#queue.shift();
-      this.#draft = structuredClone(saved);
+      // Document acknowledgements can predate a confirmed metadata-only rename.
+      this.#draft = this.#withConfirmedName(structuredClone(saved));
       this.#inFlight = null;
       this.#state = this.#queue.length === 0 ? 'saved' : 'pending';
       this.#emit();

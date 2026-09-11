@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import type { SiteDocument } from '../../src/site-kit/types';
+import type { DraftRecord, Role } from '../../src/server/repositories/contracts';
 import { createApp } from '../../src/server/index';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 
@@ -18,6 +19,71 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 describe('revision and lifecycle API', () => {
+  it('renames by stable ID, validates names and roles, and preserves history through recovery', async () => {
+    const repository = new InMemoryRepository();
+    let role: Role = 'editor';
+    const app = createApp({
+      repository,
+      authenticate: () => Promise.resolve({ email: 'editor@pointatx.org', role }),
+      environment: 'test',
+      version: 'test',
+    });
+    const created = await repository.createDraft({
+      name: 'Original',
+      document: (await import('../../src/site-kit/default-site')).defaultSiteDocument,
+      actor: 'editor@pointatx.org',
+      idempotencyKey: 'rename-test-create',
+      requestId: 'create',
+    });
+    const other = await repository.createDraft({
+      name: 'Other draft',
+      document: created.document,
+      actor: 'editor@pointatx.org',
+      idempotencyKey: 'rename-test-other',
+      requestId: 'other',
+    });
+    const revisions = await repository.listRevisions(created.id);
+    const rename = (name: string) =>
+      app.request(`${origin}/api/drafts/${created.id}`, {
+        method: 'PATCH',
+        headers: mutationHeaders(crypto.randomUUID()),
+        body: JSON.stringify({ name }),
+      });
+    for (const nextRole of ['editor', 'publisher', 'administrator'] as const) {
+      role = nextRole;
+      const response = await rename(`  ${role} draft  `);
+      expect(response.status).toBe(200);
+      const renamed = await json<DraftRecord>(response);
+      expect(renamed).toEqual({ ...created, name: `${role} draft`, updatedAt: renamed.updatedAt });
+      expect(await repository.listRevisions(created.id)).toEqual(revisions);
+      expect(repository.auditEvents.at(-1)).toMatchObject({
+        action: 'draft.rename',
+        targetId: created.id,
+        actor: 'editor@pointatx.org',
+        metadata: {},
+      });
+      expect(await repository.getDraft(other.id)).toEqual(other);
+    }
+    const beforeInvalid = await repository.getDraft(created.id);
+    for (const name of ['', '   ', 'x'.repeat(101)]) expect((await rename(name)).status).toBe(422);
+    role = 'viewer';
+    expect((await rename('Forbidden')).status).toBe(403);
+    expect(await repository.getDraft(created.id)).toEqual(beforeInvalid);
+    role = 'editor';
+    expect((await rename('x'.repeat(100))).status).toBe(200);
+    await repository.setDraftStatus(created.id, 'archived', 'editor@pointatx.org', 'archive');
+    const recovered = await repository.setDraftStatus(
+      created.id,
+      'active',
+      'editor@pointatx.org',
+      'recover',
+    );
+    expect(recovered.id).toBe(created.id);
+    expect(recovered.name).toBe('x'.repeat(100));
+    expect(await repository.listRevisions(created.id)).toEqual(revisions);
+    expect((await app.request(`${origin}/api/drafts/${created.id}`)).status).toBe(200);
+  });
+
   it('lists, labels, and restores immutable revisions as a new revision', async () => {
     const repository = new InMemoryRepository();
     const app = createApp({

@@ -313,6 +313,28 @@ textarea {
 }
 .editor-header > div {
   display: grid;
+  min-width: 0;
+}
+.draft-name__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.draft-name .editor-title {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.draft-name__form {
+  display: grid;
+  gap: 0.5rem;
+}
+.draft-name__form input {
+  width: 100%;
+  min-width: 0;
+}
+.draft-name__form p {
+  margin: 0;
 }
 .editor-header span {
   color: var(--muted);

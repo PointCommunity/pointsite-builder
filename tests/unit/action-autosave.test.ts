@@ -65,6 +65,49 @@ const savedDraft = (
 });
 
 describe('ActionAutosaveController', () => {
+  it('merges rename metadata without replacing pending content or accepting stale save names', async () => {
+    const draft = initialDraft();
+    const save = deferred<DraftRecord>();
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      persist: () => save.promise,
+      isOnline: () => true,
+    });
+    controller.mutate(
+      (document) => ({ ...document, site: { ...document.site, shortName: 'Pending content' } }),
+      { category: 'control-change', context: 'site-settings' },
+    );
+    const before = controller.snapshot;
+    controller.updateDraftName({
+      id: draft.id,
+      name: 'Renamed',
+      updatedAt: '2026-09-10T00:00:00.000Z',
+    });
+    expect(controller.snapshot.document).toBe(before.document);
+    expect(controller.snapshot.draft.revision).toBe(before.draft.revision);
+    expect(controller.snapshot.state).toBe('saving');
+    expect(controller.snapshot.pendingCount).toBe(1);
+    save.resolve(savedDraft(draft, 2, before.document));
+    await Promise.resolve();
+    expect(controller.snapshot.draft.name).toBe('Renamed');
+    expect(controller.snapshot.draft.updatedAt).toBe('2026-09-10T00:00:00.000Z');
+    expect(controller.snapshot.draft.revision.sequence).toBe(2);
+    expect(controller.snapshot.document.site.shortName).toBe('Pending content');
+    expect(controller.snapshot.state).toBe('saved');
+    controller.updateDraftName({
+      id: draft.id,
+      name: 'Renamed twice',
+      updatedAt: '2026-09-09T00:00:00.000Z',
+    });
+    expect(controller.snapshot.draft.updatedAt).toBe('2026-09-10T00:00:00.000Z');
+    const recovery = JSON.parse(controller.recoveryJson()) as { draftName: string };
+    expect(recovery.draftName).toBe('Renamed twice');
+    expect(() => controller.updateDraftName({ ...draft, id: 'another-draft' })).toThrow();
+    controller.replaceWithLatest(draft);
+    expect(controller.snapshot.draft.name).toBe(draft.name);
+    controller.dispose();
+  });
+
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
     vi.useRealTimers();

@@ -33,6 +33,7 @@ interface EditorValue {
   retryAutosave: () => void;
   copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
+  renameDraft: (name: string) => Promise<void>;
 }
 
 type EditorDocumentValue = Pick<
@@ -105,6 +106,14 @@ export function EditorProvider({
     controller.replaceWithLatest(latest);
   }, [controller, initialDraft.id]);
 
+  const renameDraft = useCallback(
+    async (name: string) => {
+      const renamed = await api.renameDraft(initialDraft.id, name);
+      controller.updateDraftName(renamed);
+    },
+    [controller, initialDraft.id],
+  );
+
   const copyRecoveryData = useCallback(async () => {
     const recovery = controller.recoveryJson();
     try {
@@ -137,8 +146,9 @@ export function EditorProvider({
       retryAutosave: controller.retry,
       copyRecoveryData,
       reloadLatest,
+      renameDraft,
     }),
-    [autosave, controller, copyRecoveryData, reloadLatest],
+    [autosave, controller, copyRecoveryData, reloadLatest, renameDraft],
   );
 
   const documentValue = useMemo<EditorDocumentValue>(
