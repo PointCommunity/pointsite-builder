@@ -5,12 +5,15 @@ import { createApp } from '../src/server/index';
 import { D1DraftRepository } from '../src/server/repositories/d1';
 import { StagingPublisher } from '../src/server/publish/service';
 import { D1MediaRepository, D1PrivateBucket, MediaService } from '../src/server/media/service';
+import { D1DraftAssets } from '../src/server/media/draft-assets';
+import { D1LibraryService } from '../src/server/media/library';
 import { D1AdminService } from '../src/server/admin/service';
 import { D1PublishJobStore } from '../src/server/publish/jobs';
 import { D1PublishPreflightStore } from '../src/server/publish/preflights';
 import { D1ApprovalService } from '../src/server/approvals/service';
 import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
+import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration';
 import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
@@ -35,8 +38,16 @@ export default {
         ? parseFeedbackConfig(env as unknown as Record<string, unknown>)
         : undefined;
     const roles = new D1RoleDirectory(env.DB);
-    const repository = new D1DraftRepository(env.DB);
-    const media = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
+    const legacy = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
+    const draftAssets = new D1DraftAssets(env.DB, legacy, env.ASSETS);
+    const repository = new D1DraftRepository(env.DB, draftAssets);
+    const media = new MediaService(
+      new D1MediaRepository(env.DB),
+      new D1PrivateBucket(env.DB),
+      undefined,
+      draftAssets,
+      false,
+    );
     const auth = config.github ? createGitHubAuthenticator(config.github) : undefined;
     const app = createApp({
       repository,
@@ -64,12 +75,22 @@ export default {
           }
         : {}),
       media,
+      library: new D1LibraryService(env.DB, repository, draftAssets),
       admin: new D1AdminService(env.DB),
       approvals: new D1ApprovalService(env.DB),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
       retention: new RetentionService(env.DB, new D1PrivateBucket(env.DB)),
+      ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),
       ...(auth ? { auth } : {}),
     });
+    const url = new URL(request.url);
+    const owner = /^\/assets\/builder\/([a-f0-9-]{36})\//.exec(url.pathname)?.[1];
+    if (owner) {
+      const path = url.pathname;
+      url.pathname = `/api/drafts/${owner}/assets`;
+      url.search = new URLSearchParams({ path }).toString();
+      return app.fetch(new Request(url, request));
+    }
     return app.fetch(request);
   },
 };

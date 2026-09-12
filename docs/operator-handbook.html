@@ -66,6 +66,70 @@
       repair staging by writing directly to production.
     </p>
 
+    <section class="runbook" id="independent-drafts">
+      <h2>Independent drafts and Library lifecycle</h2>
+      <p>
+        Each draft owns its complete document, Library, private images, linked-media records, and
+        revision history. Creating or duplicating a draft creates independent contents. Changes to
+        one draft cannot change another draft. Content drafts are database workspaces; application
+        Git branches are separate from those workspaces.
+      </p>
+      <p>
+        Archive sets aside the entire draft and freezes its contents. Unarchive restores that
+        workspace for editing. Delete is available only after archive and requires the exact typed
+        confirmation <strong>DELETE</strong>. Confirmation permanently purges all private contents
+        and history together. There is no 30-day recovery window. Only content-free deletion and
+        audit evidence remains; purged content must never return through retries or restoration.
+      </p>
+      <p>
+        Publishing creates an independent destination copy of the selected document and every
+        required local image. Deleting the source draft does not affect completed Staging or
+        Production copies. External HTTPS images, videos, and YouTube resources remain external;
+        their records are copied with the document. An active publication operation must finish or
+        be safely cancelled before source-draft purge.
+      </p>
+      <h3>Manage Library items</h3>
+      <ol>
+        <li>Open an active draft with an owned checkout. Wait until all changes are saved.</li>
+        <li>
+          Open Library to see managed images, uploaded images, and linked media in one inventory.
+          Upload creates one item immediately.
+        </li>
+        <li>
+          Search names, file or source details, descriptions, tags, and media types. Sort by date
+          added, date updated, name, or usage in this draft. Reset clears the keyword and restores
+          newest-added sorting.
+        </li>
+        <li>
+          Archive an item to set it aside in Archived items. Its current placements and retained
+          revisions still work. Unarchive preserves the item and its metadata.
+        </li>
+        <li>
+          Permanent item deletion requires archive first and a final Yes confirmation. Current
+          placements, retained revisions, or pending publication references block deletion with an
+          explanation. Use Unarchive to recover an item that is still needed.
+        </li>
+        <li>
+          Replace image is available for images only. Select a valid file, inspect the local
+          preview, write fresh alternative text, and review the final irreversible confirmation.
+          Cancel discards the proposed change. Successful replacement updates current placements in
+          this draft while preserving other drafts, retained snapshots, and published copies.
+        </li>
+      </ol>
+      <p>
+        Viewer access is read only. Whole-draft purge intentionally removes all private history;
+        individual item deletion preserves history still owned by a surviving draft. Completed
+        publication copies alone never require retaining private source images.
+      </p>
+      <p>
+        The
+        <a href="../specs/032-unified-library/spec.html">Issue 32 isolation specification</a>
+        supersedes the historical soft-delete and 30-day draft recovery policies in specifications
+        001 and 003. The <a href="draft-asset-migration.html">asset ownership migration runbook</a>
+        governs migration checks, legacy orphan recovery, and compatible application rollback.
+      </p>
+    </section>
+
     <section class="runbook" id="cloudflare-account-isolation">
       <h2>Cloudflare account isolation</h2>
       <dl>
@@ -140,19 +204,25 @@
           The exact candidate run identifies a deterministic failure or completes both
           <code>verify</code> and <code>deploy</code>. An occupied shared slot reports only its
           queued/running phase and bounded recovery time; it never identifies another private draft
-          or operator.
+          or operator. Candidate upload happens in batches of at most 20 blobs per request, with
+          durable checkpoints. Builder continues the same job automatically while it runs. Upload
+          progress is not publication success: all required images and documents must be present
+          before the Staging branch changes, then normal verification must pass.
         </dd>
         <dt>Stop condition</dt>
         <dd class="stop">
-          Base drift, a path outside the 2 allowlisted candidate files, incomplete live evidence, or
-          an unknown commit.
+          Base drift, a path outside the candidate file allowlist, incomplete live evidence, or an
+          unknown commit.
         </dd>
         <dt>Recovery</dt>
         <dd class="recovery">
           Use Builder's <em>Check availability</em> action first. A queued or running job has a
           15-minute lease; an expired lease is safely cancelled and audited before the exact draft
-          retries. Refresh the base, fix deterministic failures, and retry the stored job. A
-          repeated idempotency key must return the same outcome.
+          retries. After an interruption, reopen the same draft's publishing panel. Builder resumes
+          the existing job through guarded continuation requests and reuses completed blob uploads;
+          status reads never advance publishing. Do not start a competing publication to recover a
+          running job. If the draft, renderer, or Staging base changed, refresh the candidate and
+          pass preflight again. Never bypass a revision or lease conflict.
         </dd>
       </dl>
     </section>
@@ -183,8 +253,12 @@
         </dd>
         <dt>Recovery</dt>
         <dd class="recovery">
-          Validate restore into a new/local database first. For a single draft, restore through
-          immutable revision history; never rewrite revision history.
+          Validate restore into a new/local database first. A surviving draft can restore content
+          through its immutable revision history; never rewrite that history. Permanently purged
+          drafts have no recovery path. Preserve content-free deletion receipts and apply them to
+          any database recovery before reopening traffic so old exports cannot resurrect deleted
+          private content. Provider backups follow provider retention; Builder retains no
+          recoverable private copy after confirmed draft purge.
         </dd>
       </dl>
     </section>
@@ -235,8 +309,9 @@
         </dd>
         <dt>Stop condition</dt>
         <dd class="stop">
-          Usage disagrees with provider readback, current/named/referenced data appears in
-          candidates, or export is unavailable.
+          Usage disagrees with provider readback, ownership is unknown, current/named/referenced
+          data appears in candidates, or export is unavailable. The legacy global-media cleanup path
+          is retired; never use global asset deletion to reclaim storage owned by surviving drafts.
         </dd>
         <dt>Recovery</dt>
         <dd class="recovery">

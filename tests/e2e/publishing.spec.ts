@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { draftAssetFixture } from './draft-asset-fixture';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
 type Scenario =
@@ -60,6 +61,9 @@ async function mockPublishing(
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/assets')) {
+      return route.fulfill(draftAssetFixture(request.url()));
+    }
     if (path === '/api/drafts/checkouts')
       return route.fulfill({
         contentType: 'application/json',
@@ -175,8 +179,15 @@ async function mockPublishing(
               }
             : path.endsWith('/verification')
               ? job
-              : path.endsWith('/media')
-                ? { items: [] }
+              : path.endsWith('/library')
+                ? {
+                    draftId: selectedDraft.id,
+                    revisionId: selectedDraft.latestRevisionId,
+                    revisionChecksum: selectedDraft.revision.checksum,
+                    items: [],
+                    activeCount: 0,
+                    archivedCount: 0,
+                  }
                 : selectedDraft;
     await route.fulfill({
       status: 200,

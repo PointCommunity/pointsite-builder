@@ -53,6 +53,13 @@ const selection =
 
 const leaseExpiry = (now: string) => new Date(Date.parse(now) + 15 * 60_000).toISOString();
 
+const activeCandidate = `EXISTS (
+  SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
+  WHERE d.status='active' AND d.id=json_extract(candidate_json,'$.draftId')
+    AND r.id=json_extract(candidate_json,'$.revisionId')
+    AND r.checksum=json_extract(candidate_json,'$.revisionChecksum')
+)`;
+
 export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
 
@@ -106,26 +113,37 @@ export class D1PublishJobStore {
   }) {
     const id = crypto.randomUUID();
     const now = input.now ?? new Date().toISOString();
-    await this.database.batch([
+    const result = await this.database.batch([
       this.database
         .prepare(
-          "INSERT INTO publish_jobs (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at,lease_expires_at) VALUES (?,?,'staging','queued',?,?,'PointCommunity/pointsite-staging',?,?,?,?)",
+          `INSERT INTO publish_jobs (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at,lease_expires_at)
+           SELECT ?,?,'staging','queued',candidate_json,?,'PointCommunity/pointsite-staging',?,?,?,?
+           FROM (SELECT ? AS candidate_json) WHERE ${activeCandidate}`,
         )
         .bind(
           id,
           input.idempotencyKey,
-          JSON.stringify(input.candidate),
           input.candidateChecksum,
           input.baseSha,
           input.actor,
           now,
           leaseExpiry(now),
+          JSON.stringify(input.candidate),
         ),
-      this.audit(input.actor, 'publish.queued', id, input.requestId, {
-        candidateChecksum: input.candidateChecksum,
-        baseSha: input.baseSha,
-      }),
+      this.audit(
+        input.actor,
+        'publish.queued',
+        id,
+        input.requestId,
+        {
+          candidateChecksum: input.candidateChecksum,
+          baseSha: input.baseSha,
+        },
+        'succeeded',
+        true,
+      ),
     ]);
+    if (!result[0]?.meta.changes) throw new Error('DRAFT_REVISION_DRIFT');
     const created = await this.getByKey(input.idempotencyKey);
     if (!created) throw new Error('PUBLISH_JOB_CREATE_FAILED');
     return created;
@@ -142,12 +160,12 @@ export class D1PublishJobStore {
   }): Promise<PublishJobRecord> {
     const now = input.now ?? new Date().toISOString();
     const existing = await this.getByKey(input.idempotencyKey);
-    if (existing?.status === 'succeeded') return existing;
     if (
       existing &&
       (existing.candidateChecksum !== input.candidateChecksum || existing.baseSha !== input.baseSha)
     )
       throw new Error('IDEMPOTENCY_CONFLICT');
+    if (existing?.status === 'succeeded') return existing;
     if (
       existing &&
       (existing.status === 'queued' || existing.status === 'running') &&
@@ -161,11 +179,11 @@ export class D1PublishJobStore {
       if (existing) {
         const update = await this.database
           .prepare(
-            "UPDATE publish_jobs SET status='running',completed_at=NULL,lease_expires_at=? WHERE id=? AND status IN ('failed','cancelled')",
+            `UPDATE publish_jobs SET status='running',completed_at=NULL,lease_expires_at=? WHERE id=? AND status IN ('failed','cancelled') AND ${activeCandidate}`,
           )
           .bind(leaseExpiry(now), existing.id)
           .run();
-        if (!update.meta.changes) throw new Error('PUBLISH_SLOT_BUSY');
+        if (!update.meta.changes) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
         await this.audit(input.actor, 'publish.running', existing.id, input.requestId, {}).run();
         const reclaimed = await this.getById(existing.id);
         if (!reclaimed) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
@@ -216,12 +234,101 @@ export class D1PublishJobStore {
   ): Promise<void> {
     const update = await this.database
       .prepare(
-        "UPDATE publish_jobs SET status='running',completed_at=NULL,lease_expires_at=? WHERE id=? AND status IN ('queued','failed','cancelled')",
+        `UPDATE publish_jobs SET status='running',completed_at=NULL,lease_expires_at=? WHERE id=? AND status IN ('queued','failed','cancelled') AND ${activeCandidate}`,
       )
       .bind(leaseExpiry(now), id)
       .run();
     if (!update.meta.changes) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
     await this.audit(actor, 'publish.running', id, requestId, {}).run();
+  }
+
+  async acquireStep(id: string): Promise<{ token: string; job: PublishJobRecord }> {
+    const token = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const update = await this.database
+      .prepare(
+        `UPDATE publish_jobs
+      SET evidence_json=json_set(evidence_json,'$.stepToken',?,'$.stepExpiresAt',?),lease_expires_at=?
+      WHERE id=? AND status='running' AND lease_expires_at>?
+        AND (json_extract(evidence_json,'$.stepExpiresAt') IS NULL OR json_extract(evidence_json,'$.stepExpiresAt')<=?)
+        AND ${activeCandidate}`,
+      )
+      .bind(
+        token,
+        new Date(Date.parse(now) + 120_000).toISOString(),
+        leaseExpiry(now),
+        id,
+        now,
+        now,
+      )
+      .run();
+    if (!update.meta.changes) throw new Error('PUBLISH_STEP_UNAVAILABLE');
+    const job = await this.getById(id);
+    if (!job) throw new Error('PUBLISH_STEP_UNAVAILABLE');
+    return { token, job };
+  }
+
+  async guardStep(id: string, token: string): Promise<void> {
+    const now = new Date().toISOString();
+    const row = await this.database
+      .prepare(
+        `SELECT id FROM publish_jobs WHERE id=? AND status='running'
+      AND lease_expires_at>? AND json_extract(evidence_json,'$.stepToken')=?
+      AND json_extract(evidence_json,'$.stepExpiresAt')>? AND ${activeCandidate}`,
+      )
+      .bind(id, now, token, now)
+      .first();
+    if (!row) throw new Error('DRAFT_REVISION_DRIFT');
+  }
+
+  async checkpoint(
+    id: string,
+    token: string,
+    progress: { blobShas: string[]; commit?: { sha: string; url: string } },
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const update = await this.database
+      .prepare(
+        `UPDATE publish_jobs SET evidence_json=json_set(evidence_json,'$.upload',json(?))
+      WHERE id=? AND status='running' AND lease_expires_at>? AND json_extract(evidence_json,'$.stepToken')=?
+      AND json_extract(evidence_json,'$.stepExpiresAt')>? AND ${activeCandidate}`,
+      )
+      .bind(JSON.stringify(progress), id, now, token, now)
+      .run();
+    if (!update.meta.changes) throw new Error('DRAFT_REVISION_DRIFT');
+  }
+
+  async failStep(
+    id: string,
+    token: string,
+    actor: string,
+    requestId: string,
+    code: string,
+  ): Promise<void> {
+    const update = await this.database
+      .prepare(
+        "UPDATE publish_jobs SET status='failed',evidence_json=json_patch(evidence_json,?),completed_at=?,lease_expires_at=NULL WHERE id=? AND status='running' AND json_extract(evidence_json,'$.stepToken')=?",
+      )
+      .bind(JSON.stringify({ failureCode: code }), new Date().toISOString(), id, token)
+      .run();
+    if (update.meta.changes)
+      await this.audit(
+        actor,
+        'publish.failed',
+        id,
+        requestId,
+        { failureCode: code },
+        'failed',
+      ).run();
+  }
+
+  async releaseStep(id: string, token: string): Promise<void> {
+    await this.database
+      .prepare(
+        "UPDATE publish_jobs SET evidence_json=json_remove(evidence_json,'$.stepToken','$.stepExpiresAt') WHERE id=? AND json_extract(evidence_json,'$.stepToken')=?",
+      )
+      .bind(id, token)
+      .run();
   }
 
   async succeed(
@@ -250,7 +357,7 @@ export class D1PublishJobStore {
     await this.database.batch([
       this.database
         .prepare(
-          "UPDATE publish_jobs SET status='failed',evidence_json=?,completed_at=?,lease_expires_at=NULL WHERE id=? AND status='running'",
+          "UPDATE publish_jobs SET status='failed',evidence_json=json_patch(evidence_json,?),completed_at=?,lease_expires_at=NULL WHERE id=? AND status='running'",
         )
         .bind(JSON.stringify({ failureCode: code }), new Date().toISOString(), id),
       this.audit(actor, 'publish.failed', id, requestId, { failureCode: code }, 'failed'),
@@ -277,7 +384,7 @@ export class D1PublishJobStore {
     if (!expired) return;
     const update = await this.database
       .prepare(
-        "UPDATE publish_jobs SET status='cancelled',completed_at=?,lease_expires_at=NULL,evidence_json=? WHERE id=? AND status IN ('queued','running')",
+        "UPDATE publish_jobs SET status='cancelled',completed_at=?,lease_expires_at=NULL,evidence_json=json_patch(evidence_json,?) WHERE id=? AND status IN ('queued','running')",
       )
       .bind(now, JSON.stringify({ failureCode: 'PUBLISH_LEASE_EXPIRED' }), expired.id)
       .run();
@@ -318,10 +425,11 @@ export class D1PublishJobStore {
     requestId: string,
     metadata: Record<string, string>,
     outcome: 'succeeded' | 'failed' | 'denied' = 'succeeded',
+    onlyIfJobExists = false,
   ) {
     return this.database
       .prepare(
-        'INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,?,?,?)',
+        `INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) SELECT ?,?,?,?,?,?,?,?,?${onlyIfJobExists ? ' WHERE EXISTS (SELECT 1 FROM publish_jobs WHERE id=?)' : ''}`,
       )
       .bind(
         crypto.randomUUID(),
@@ -333,6 +441,7 @@ export class D1PublishJobStore {
         outcome,
         requestId,
         JSON.stringify(metadata),
+        ...(onlyIfJobExists ? [id] : []),
       );
   }
 }

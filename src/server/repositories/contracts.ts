@@ -91,6 +91,7 @@ export interface AuditEventRecord {
 }
 
 export interface CreateDraftInput {
+  sourceDraftId?: string;
   name: string;
   document: SiteDocument;
   actor: string;
@@ -98,8 +99,15 @@ export interface CreateDraftInput {
   requestId: string;
 }
 
+export interface DeletedDraftReceipt {
+  id: string;
+  status: 'deleted';
+  deletedAt: string;
+}
+
 export interface SaveDraftInput {
   draftId: string;
+  expectedRevisionId?: string;
   expectedChecksum: string;
   document: SiteDocument;
   actor: string;
@@ -142,10 +150,11 @@ export interface DraftRepository {
   ): Promise<DraftRecord>;
   setDraftStatus(
     draftId: string,
-    status: DraftStatus,
+    status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
   ): Promise<DraftRecord>;
+  purgeDraft(draftId: string, actor: string, requestId: string): Promise<DeletedDraftReceipt>;
   listCheckoutAvailability(actor: string, now?: string): Promise<DraftCheckoutAvailability[]>;
   acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout>;
   touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout>;

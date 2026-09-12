@@ -1,5 +1,6 @@
 import type { SiteDocument } from '../site-kit/types';
 import type {
+  DeletedDraftReceipt,
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRecord,
@@ -11,26 +12,19 @@ import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
 import type { StagingWorkflowSnapshot } from './publish/workflow';
 import type { FeedbackAvailability, FeedbackScreen } from '../shared/feedback';
+import type {
+  LibrarySnapshot,
+  LibraryMutationContext,
+  LibraryMutationResult,
+  LibraryLinkInput,
+  LibraryMetadata,
+} from '../shared/library';
 
 export interface ActorResponse {
   email: string;
   displayName?: string;
   role: Role;
   repositoryPermission?: 'admin' | 'maintain' | 'write' | 'triage' | 'read';
-}
-
-export interface MediaItem {
-  id: string;
-  filename: string;
-  displayName: string;
-  tags: string[];
-  contentType: string;
-  byteSize: number;
-  width: number;
-  height: number;
-  altText: string;
-  status: string;
-  createdAt: string;
 }
 
 export interface AdminRoleItem {
@@ -73,7 +67,18 @@ export interface CandidateTuple {
   productionBaseSha: string;
 }
 
+export type StagingPublishResponse =
+  | StagingPublishResult
+  | {
+      status: 'running';
+      environment: 'staging';
+      jobId: string;
+      uploaded: number;
+      total: number;
+      candidateChecksum: string;
+    };
 export interface StagingPublishResult {
+  status?: 'succeeded';
   jobId?: string;
   siteId: 'pointsite';
   revisionId: string;
@@ -135,6 +140,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 function mutationHeaders(key: string, extra?: HeadersInit): HeadersInit {
   return { 'content-type': 'application/json', 'idempotency-key': key, ...extra };
+}
+
+function libraryHeaders(context: LibraryMutationContext): Record<string, string> {
+  return {
+    'x-draft-checkout': context.checkoutToken,
+    'if-match': `"${context.expectedChecksum}"`,
+    'x-draft-revision': context.expectedRevisionId,
+    'idempotency-key': context.idempotencyKey,
+  };
+}
+
+function libraryImage(
+  context: LibraryMutationContext,
+  file: File,
+  altText: string,
+  replacement?: { itemId: string; metadata: LibraryMetadata },
+): Promise<LibraryMutationResult> {
+  const body = new FormData();
+  body.set('file', file);
+  body.set('altText', altText);
+  if (replacement) {
+    body.set('displayName', replacement.metadata.displayName);
+    body.set('tags', JSON.stringify(replacement.metadata.tags));
+    body.set('confirmed', 'true');
+  }
+  return request(
+    `/drafts/${context.draftId}/library/${replacement ? `items/${encodeURIComponent(replacement.itemId)}/replacement` : 'images'}`,
+    {
+      method: 'POST',
+      headers: libraryHeaders(context),
+      body,
+    },
+  );
 }
 
 export const api = {
@@ -204,14 +242,17 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ name }),
     }),
-  setDraftStatus: (id: string, action: 'archive' | 'recover' | 'delete') =>
+  setDraftStatus: (id: string, action: 'archive' | 'recover') =>
     request<DraftRecord>(`/drafts/${id}`, {
-      method: action === 'delete' ? 'DELETE' : 'PATCH',
+      method: 'PATCH',
       headers: mutationHeaders(crypto.randomUUID()),
-      body:
-        action === 'delete'
-          ? JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION })
-          : JSON.stringify({ status: action === 'archive' ? 'archived' : 'active' }),
+      body: JSON.stringify({ status: action === 'archive' ? 'archived' : 'active' }),
+    }),
+  deleteDraft: (id: string) =>
+    request<DeletedDraftReceipt>(`/drafts/${id}`, {
+      method: 'DELETE',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION }),
     }),
   listRevisions: async (id: string) =>
     (await request<{ items: RevisionRecord[] }>(`/drafts/${id}/revisions`)).items,
@@ -248,7 +289,7 @@ export const api = {
     expectedRevisionChecksum: string,
     expectedBaseSha: string,
   ) =>
-    request<StagingPublishResult>('/publish/staging', {
+    request<StagingPublishResponse>('/publish/staging', {
       method: 'POST',
       headers: mutationHeaders(`staging-${expectedRevisionId}-${expectedBaseSha}`),
       body: JSON.stringify({
@@ -257,6 +298,12 @@ export const api = {
         expectedRevisionChecksum,
         expectedBaseSha,
       }),
+    }),
+  continueStagingPublication: (jobId: string) =>
+    request<StagingPublishResponse>(`/publish/jobs/${jobId}/continue`, {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: '{}',
     }),
   refreshStagingVerification: (jobId: string) =>
     request<PublishJobResponse>(`/publish/jobs/${jobId}/verification`, {
@@ -276,26 +323,44 @@ export const api = {
         ...(note ? { note } : {}),
       }),
     }),
-  listMedia: async () => (await request<{ items: MediaItem[] }>('/media')).items,
-  uploadMedia: (file: File, altText: string) => {
-    const body = new FormData();
-    body.set('file', file);
-    body.set('altText', altText);
-    return request<MediaItem>('/media', {
+  listLibrary: (draftId: string) => request<LibrarySnapshot>(`/drafts/${draftId}/library`),
+  uploadLibraryImage: (context: LibraryMutationContext, file: File, altText: string) =>
+    libraryImage(context, file, altText),
+  replaceLibraryImage: (
+    context: LibraryMutationContext,
+    itemId: string,
+    file: File,
+    metadata: LibraryMetadata,
+  ) => libraryImage(context, file, metadata.altText, { itemId, metadata }),
+  addLibraryLink: (context: LibraryMutationContext, input: LibraryLinkInput) =>
+    request<LibraryMutationResult>(`/drafts/${context.draftId}/library/links`, {
       method: 'POST',
-      headers: { 'idempotency-key': crypto.randomUUID() },
-      body,
-    });
-  },
-  updateMedia: (
-    id: string,
-    input: Pick<MediaItem, 'filename' | 'displayName' | 'altText' | 'tags'>,
-  ) =>
-    request<MediaItem>(`/media/${id}`, {
-      method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify(input),
     }),
+  updateLibraryItem: (
+    context: LibraryMutationContext,
+    itemId: string,
+    action: 'archive' | 'unarchive' | 'update',
+    metadata?: LibraryMetadata,
+  ) =>
+    request<LibraryMutationResult>(
+      `/drafts/${context.draftId}/library/items/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PATCH',
+        headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
+        body: JSON.stringify({ action, ...(metadata ? { metadata } : {}) }),
+      },
+    ),
+  deleteLibraryItem: (context: LibraryMutationContext, itemId: string) =>
+    request<LibraryMutationResult>(
+      `/drafts/${context.draftId}/library/items/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+        headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
+        body: JSON.stringify({ confirmation: true }),
+      },
+    ),
   listRoles: async () => (await request<{ items: AdminRoleItem[] }>('/admin/roles')).items,
   upsertRole: (input: { githubLogin: string; role: Role; active: boolean }) =>
     request<AdminRoleItem>('/admin/roles', {

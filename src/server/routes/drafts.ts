@@ -9,6 +9,7 @@ import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { DraftRepository } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
+import type { MediaService } from '../media/service';
 
 export interface ApiVariables {
   actor: Actor;
@@ -60,7 +61,11 @@ function preconditionChecksum(value: string | undefined): string {
   return match[1];
 }
 
-export function createDraftRoutes(repository: DraftRepository, limiter: SlidingWindowRateLimiter) {
+export function createDraftRoutes(
+  repository: DraftRepository,
+  limiter: SlidingWindowRateLimiter,
+  media?: MediaService,
+) {
   const routes = new Hono<{ Variables: ApiVariables }>();
 
   routes.get('/checkouts', async (context) => {
@@ -154,12 +159,14 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
     const parsed = CreateDraftSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
-    const document = parsed.data.fromRevisionId
-      ? (await repository.getRevision(parsed.data.fromRevisionId)).document
-      : defaultSiteDocument;
+    const source = parsed.data.fromRevisionId
+      ? await repository.getRevision(parsed.data.fromRevisionId)
+      : undefined;
+    const document = source?.document ?? defaultSiteDocument;
     const draft = await repository.createDraft({
       name: parsed.data.name,
       document,
+      sourceDraftId: source?.draftId,
       actor: actor.email,
       idempotencyKey: context.req.header('idempotency-key') ?? '',
       requestId: context.get('requestId'),
@@ -170,6 +177,22 @@ export function createDraftRoutes(repository: DraftRepository, limiter: SlidingW
   routes.get('/:draftId', async (context) => {
     requireRole(context.get('actor'), 'viewer');
     return context.json(await repository.getDraft(context.req.param('draftId')));
+  });
+
+  routes.get('/:draftId/assets', async (context) => {
+    requireRole(context.get('actor'), 'viewer');
+    if (!media) throw new ApiError(404, 'NOT_FOUND', 'Draft image was not found');
+    const object = await media.readForDraft(
+      context.req.param('draftId'),
+      context.req.query('path') ?? '',
+    );
+    return new Response(Uint8Array.from(object.bytes).buffer, {
+      headers: {
+        'content-type': object.contentType,
+        'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    });
   });
 
   routes.put('/:draftId', async (context) => {

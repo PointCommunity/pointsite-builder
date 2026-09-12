@@ -74,11 +74,14 @@ async function setup() {
   const client = {
     currentMainSha: vi.fn(() => Promise.resolve(currentSha)),
     assertRendererCompatible: vi.fn(() => Promise.resolve()),
-    commitFiles: vi.fn(() => {
+    advanceCommit: vi.fn(() => {
       currentSha = commitSha;
       return Promise.resolve({
-        sha: commitSha,
-        url: `https://github.com/PointCommunity/pointsite-staging/commit/${commitSha}`,
+        status: 'succeeded' as const,
+        commit: {
+          sha: commitSha,
+          url: `https://github.com/PointCommunity/pointsite-staging/commit/${commitSha}`,
+        },
       });
     }),
     verificationForCommit: vi.fn<(_: string) => Promise<VerificationResult>>().mockResolvedValue({
@@ -106,6 +109,20 @@ async function setup() {
   };
   const jobs = new D1PublishJobStore(database);
   const preflights = new D1PublishPreflightStore(database);
+  const media = {
+    readManyForDraft: vi.fn().mockResolvedValue(
+      new Map(
+        draft.document.media.map((item) => [
+          item.sourcePath,
+          {
+            bytes: Uint8Array.of(1, 2, 3),
+            contentType: 'image/png',
+            filename: 'fixture.png',
+          },
+        ]),
+      ),
+    ),
+  };
   return {
     database,
     repository,
@@ -113,7 +130,8 @@ async function setup() {
     client,
     jobs,
     preflights,
-    publisher: new StagingPublisher(repository, config, undefined, jobs, preflights, () =>
+    media,
+    publisher: new StagingPublisher(repository, config, media as never, jobs, preflights, () =>
       Promise.resolve(client),
     ),
   };
@@ -132,6 +150,64 @@ const preflightInput = (
 });
 
 describe('staging publish coordinator', () => {
+  it('rejects archived drafts before preflight or publication', async () => {
+    const { publisher, repository, draft, client } = await setup();
+    await publisher.preflight(preflightInput(draft, 'preflight-before-archive'));
+    vi.spyOn(repository, 'getDraft').mockResolvedValue({ ...draft, status: 'archived' });
+    await expect(
+      publisher.preflight(preflightInput(draft, 'preflight-after-archive')),
+    ).rejects.toThrow('DRAFT_REVISION_DRIFT');
+    await expect(
+      publisher.publish({
+        ...preflightInput(draft, 'publish-after-archive'),
+        expectedBaseSha: baseSha,
+      }),
+    ).rejects.toThrow('DRAFT_REVISION_DRIFT');
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+  });
+
+  it('stops archive racing publication after the in-memory revision check', async () => {
+    const { publisher, draft, client, database } = await setup();
+    await publisher.preflight(preflightInput(draft, 'preflight-before-archive-race'));
+    client.assertRendererCompatible.mockImplementationOnce(async () => {
+      await database.prepare("UPDATE drafts SET status='archived' WHERE id=?").bind(draft.id).run();
+    });
+    await expect(
+      publisher.publish({
+        ...preflightInput(draft, 'publish-archive-race'),
+        expectedBaseSha: baseSha,
+      }),
+    ).rejects.toThrow('DRAFT_REVISION_DRIFT');
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+    expect(
+      await database.prepare('SELECT COUNT(*) AS count FROM publish_jobs').first('count'),
+    ).toBe(0);
+  });
+
+  it('rejects bytes missing or changed since preflight before any destination write', async () => {
+    const { publisher, draft, client, media } = await setup();
+    await publisher.preflight(preflightInput(draft, 'preflight-before-byte-change'));
+    media.readManyForDraft.mockResolvedValue(
+      new Map(
+        draft.document.media.map((item) => [
+          item.sourcePath,
+          {
+            bytes: Uint8Array.of(9),
+            contentType: 'image/png',
+            filename: 'fixture.png',
+          },
+        ]),
+      ),
+    );
+    await expect(
+      publisher.publish({
+        ...preflightInput(draft, 'publish-after-byte-change'),
+        expectedBaseSha: baseSha,
+      }),
+    ).rejects.toThrow('PREFLIGHT_CANDIDATE_DRIFT');
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+  });
+
   it('requires and retains a private exact-revision preflight before any Staging write', async () => {
     const { publisher, draft, client, preflights } = await setup();
     const input = {
@@ -145,7 +221,7 @@ describe('staging publish coordinator', () => {
     };
 
     await expect(publisher.publish(input)).rejects.toThrow('PREFLIGHT_REQUIRED');
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
 
     const result = await publisher.preflight({
       draftId: draft.id,
@@ -160,7 +236,7 @@ describe('staging publish coordinator', () => {
       revisionId: draft.revision.id,
       revisionChecksum: draft.revision.checksum,
     });
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
     expect(await preflights.getLatestForDraft(draft.id)).toMatchObject({
       status: 'passed',
       candidateChecksum: result.candidateChecksum,
@@ -197,7 +273,7 @@ describe('staging publish coordinator', () => {
     await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
       preflight: { state: 'required', reason: 'renderer-contract-changed' },
     });
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
   });
 
   it('commits one exact candidate and returns the durable result on retry', async () => {
@@ -226,7 +302,7 @@ describe('staging publish coordinator', () => {
       commitSha,
       status: 'succeeded',
     });
-    expect(client.commitFiles).toHaveBeenCalledOnce();
+    expect(client.advanceCommit).toHaveBeenCalledOnce();
     expect((await jobs.getByKey(input.idempotencyKey))?.status).toBe('succeeded');
     await expect(publisher.workflowForDraft(draft.id)).resolves.toMatchObject({
       currentStagingSha: commitSha,
@@ -279,7 +355,7 @@ describe('staging publish coordinator', () => {
         requestId: 'request-expired-lease-retry',
       }),
     ).resolves.toMatchObject({ status: 'succeeded', commitSha });
-    expect(client.commitFiles).toHaveBeenCalledOnce();
+    expect(client.advanceCommit).toHaveBeenCalledOnce();
   });
 
   it('rechecks the exact draft revision immediately before claiming Staging', async () => {
@@ -307,7 +383,7 @@ describe('staging publish coordinator', () => {
         requestId: 'request-revision-recheck',
       }),
     ).rejects.toThrow('DRAFT_REVISION_DRIFT');
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
   });
 
   it('records exact verification evidence and rejects a reused key after draft drift', async () => {
@@ -373,7 +449,7 @@ describe('staging publish coordinator', () => {
 
   it('persists a failed commit and refuses verification before a successful result', async () => {
     const { publisher, draft, client, jobs } = await setup();
-    client.commitFiles.mockRejectedValueOnce(new Error('GITHUB_TEST_FAILURE'));
+    client.advanceCommit.mockRejectedValueOnce(new Error('GITHUB_TEST_FAILURE'));
     const input = {
       draftId: draft.id,
       expectedRevisionId: draft.revision.id,
@@ -413,7 +489,7 @@ describe('staging publish coordinator', () => {
       }),
     ).rejects.toThrow('STAGING_BASE_DRIFT');
     expect(await jobs.getByKey('publish-stale-base')).toBeNull();
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
   });
 
   it('fails before candidate writes when protected Staging has a different renderer', async () => {
@@ -431,7 +507,7 @@ describe('staging publish coordinator', () => {
         requestId: 'request-renderer-mismatch',
       }),
     ).rejects.toThrow('STAGING_RENDERER_MISMATCH: site.css');
-    expect(client.commitFiles).not.toHaveBeenCalled();
+    expect(client.advanceCommit).not.toHaveBeenCalled();
     expect(await jobs.getByKey('publish-renderer-mismatch')).toBeNull();
   });
 });

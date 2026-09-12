@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Private asset ownership migration</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      li {
+        margin-block: 10px;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #1b242e;
+        padding: 16px;
+        border: 1px solid #435263;
+        border-radius: 8px;
+      }
+      aside {
+        border-left: 4px solid #85ccff;
+        padding-left: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Private asset ownership migration</h1>
+    <p>
+      <a href="../specs/032-unified-library/spec.html">Issue 32 specification</a> · Application
+      migration 0013 · Operator runbook
+    </p>
+    <aside>
+      <p>
+        This migration preserves existing draft documents and revision checksums, including archived
+        drafts and historical-only image references. It copies private images into independent
+        owners before deleting shared originals. It never modifies Staging, Production site
+        repositories, or published candidates. Do not delete real drafts to test migration.
+      </p>
+    </aside>
+    <h2>Release sequence</h2>
+    <ol>
+      <li>
+        Complete local rehearsal and the normal Builder release gates. Record the previous
+        application version and exact new source revision. Rehearsal uses synthetic local data only.
+      </li>
+      <li>
+        Apply migrations 0011, 0012, and 0013 through the normal D1 migration deployment procedure.
+        0013 initializes pending only when legacy rows, unregistered chunks, or unbound retained
+        image paths exist. Empty databases initialize complete.
+      </li>
+      <li>
+        Deploy the reviewed Builder version immediately. The schema retires all writes to shared
+        media storage. An older application version cannot continue uploading to retired storage
+        after 0013.
+      </li>
+      <li>
+        Verify the existing Wrangler account and target database identity, then run the migration
+        CLI status and apply modes below until state is complete. Every response contains counts
+        only. A step verifies one entire draft or recovers one unassigned upload; progress persists
+        across requests and interruptions. Do not send simultaneous operator requests.
+      </li>
+      <li>
+        Require state complete, legacyAssets zero, and legacyBytes zero before the Production
+        Showcase. Verify existing active and archived drafts remain accessible, historical previews
+        resolve owned images, and the archived recovery workspace contains previously unassigned
+        uploads. Preserve exact revision/checksum readbacks without exporting document contents.
+      </li>
+      <li>
+        Clean task-created local test outputs using the repository QA cleanup script. Do not remove
+        live recovery workspaces; their contents belong to the user.
+      </li>
+    </ol>
+    <h2>Agent-operated CLI</h2>
+    <p>
+      The installed Wrangler platform proxy supports remote bindings. The script verifies the
+      production Builder configuration and creates a temporary configuration with only the real DB
+      binding and remote enabled. Wrangler manages its existing authentication. No session cookies
+      or tokens are extracted. The proxy session and local temporary directory are always disposed.
+      Status mode performs no database writes.
+    </p>
+    <p>Read status:</p>
+    <pre><code>npx tsx scripts/migrate-draft-assets.ts --status</code></pre>
+    <p>Apply and resume verified migration steps:</p>
+    <pre><code>npx tsx scripts/migrate-draft-assets.ts --apply</code></pre>
+    <p>
+      The script rejects absent, combined, or unknown modes and never falls back to a local
+      database. Template image bytes come only from the deployed Builder asset origin. Complete
+      release account, revision, and database identity checks before apply mode. No remote migration
+      is run by the local tests.
+    </p>
+    <h2>Administrator status API</h2>
+    <p>
+      Read status with an authenticated same-origin GET. No credentials belong in commands,
+      screenshots, source, or release evidence.
+    </p>
+    <pre><code>/api/admin/asset-migration</code></pre>
+    <p>
+      Migration mutations are available only through the CLI. Worker requests expose status without
+      attempting unbounded per-image migration work.
+    </p>
+    <h2>Preservation and race guards</h2>
+    <ul>
+      <li>
+        Every retained revision contributes its local image paths. Original documents, media IDs,
+        revision IDs, checksums, labels, and draft archive state remain intact.
+      </li>
+      <li>
+        Legacy bytes must match stored SHA-256 and length. Each owned copy is read back and
+        verified. Immutable binding/version/checkpoint identities must still agree at finalization.
+      </li>
+      <li>
+        Unassigned legacy uploads are copied into explicitly archived “Recovered legacy uploads”
+        workspaces. Each workspace holds at most 500 image entries. Original names, descriptions,
+        and tags are retained. New ownership and recovery revisions receive migration timestamps.
+      </li>
+      <li>
+        Chunk objects without metadata are recovered when their filename extension and image
+        signature can be validated. Unknown or corrupt objects stop migration instead of being
+        discarded.
+      </li>
+      <li>
+        Saves can continue. A newly introduced unverified path causes finalization to remain pending
+        or fail safely. Final verification, migration completion, and deletion of shared
+        metadata/chunks occur in one transaction.
+      </li>
+      <li>
+        Whole-draft deletion and retention cleanup are unavailable while migration is pending. SQL
+        triggers also prevent legacy metadata/chunk deletion outside the final transaction. Ordinary
+        archiving preserves the full draft.
+      </li>
+      <li>
+        Migration temporarily needs enough capacity for shared originals plus independent copies.
+        Capacity failure leaves verified partial copies and all original bytes intact. Do not delete
+        originals or raise the capacity limit merely to force completion.
+      </li>
+    </ul>
+    <h2>Interruption and recovery</h2>
+    <p>
+      Retry after an interrupted request. Missing or corrupt source bytes return
+      MEDIA_STORAGE_CORRUPT or MEDIA_NOT_FOUND; insufficient capacity returns
+      ASSET_MIGRATION_CAPACITY; a finalization race returns ASSET_MIGRATION_FAILED. Preserve storage
+      and resolve the reported condition before retrying. Reports must contain only counts,
+      operation codes, and approved identifiers/checksums, never private contents.
+    </p>
+    <p>
+      Before finalization, shared originals remain protected and owned copies may safely resume.
+      After finalization, the old shared-media application is incompatible with the new storage
+      layout. Fix forward using a compatible application version. Any destructive data restoration
+      requires a separate concrete recovery plan and explicit human approval; never silently restore
+      provider backups or shared originals.
+    </p>
+    <h2>Local rehearsal</h2>
+    <p>
+      The integration test creates shared referenced images, an archived draft with a
+      historical-only image binding, a second independent draft, and an unassigned upload. It
+      interrupts and resumes conversion, verifies retained revisions, recovers unassigned content,
+      confirms zero shared metadata/chunks, rejects corrupt sources, and verifies administrator-only
+      status without a Worker mutation route.
+    </p>
+    <pre><code>npx vitest run tests/integration/asset-migration.test.ts</code></pre>
+  </body>
+</html>

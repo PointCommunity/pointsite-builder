@@ -124,7 +124,7 @@ export function createRevisionRoutes(
       throw new ConflictError('Only archived drafts can be deleted');
     }
     return context.json(
-      await repository.setDraftStatus(draft.id, 'deleted', actor.email, context.get('requestId')),
+      await repository.purgeDraft(draft.id, actor.email, context.get('requestId')),
     );
   });
 

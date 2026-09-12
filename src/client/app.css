@@ -1664,3 +1664,138 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   margin: 0;
   font-size: 0.875rem;
 }
+
+.library-workspace {
+  display: grid;
+  gap: 1rem;
+}
+.library-toolbar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(12rem, auto) auto;
+  align-items: end;
+  gap: 1rem;
+}
+.library-toolbar label {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.library-toolbar input,
+.library-toolbar select {
+  width: 100%;
+  min-width: 0;
+}
+.library-inventory {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 1.25rem;
+}
+.library-item {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.library-thumbnail {
+  display: block;
+  width: 100%;
+  height: 12rem;
+  object-fit: contain;
+  background: var(--canvas);
+}
+.library-type-preview {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 1.5rem;
+}
+.library-item-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+.library-item-body h3,
+.library-item-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.library-source,
+.library-tags,
+.library-facts {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.library-facts {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+.library-facts div {
+  display: grid;
+  gap: 0.15rem;
+}
+.library-facts dd {
+  margin: 0;
+}
+.library-blockers {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+.library-blockers ul {
+  padding-left: 1.25rem;
+  margin-bottom: 0;
+}
+.library-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+.library-readonly {
+  color: var(--muted);
+}
+.library-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+.library-dialog fieldset {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  border: 0;
+}
+.library-dialog label {
+  display: grid;
+  gap: 0.5rem;
+}
+.library-dialog input,
+.library-dialog select,
+.library-dialog textarea {
+  min-width: 0;
+  width: 100%;
+}
+.library-image-preview {
+  display: block;
+  width: 100%;
+  max-height: 15rem;
+  object-fit: contain;
+  background: var(--canvas);
+}
+.library-item-actions,
+.library-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .library-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .library-toolbar .button {
+    justify-self: start;
+  }
+}

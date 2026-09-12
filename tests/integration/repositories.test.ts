@@ -6,7 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
-import { ConflictError, InMemoryRepository } from '../../src/server/repositories/memory';
+import {
+  ConflictError,
+  InMemoryRepository,
+  NotFoundError,
+} from '../../src/server/repositories/memory';
 
 const actor = 'editor@pointatx.org';
 
@@ -215,7 +219,7 @@ describe('repository contract', () => {
     });
   });
 
-  it('enforces archive, recovery, and soft-delete transitions', async () => {
+  it('enforces archive, recovery, and permanent deletion transitions', async () => {
     const repository = new InMemoryRepository();
     const created = await repository.createDraft({
       name: 'Lifecycle draft',
@@ -232,16 +236,14 @@ describe('repository contract', () => {
       (await repository.setDraftStatus(created.id, 'active', actor, 'request-11')).status,
     ).toBe('active');
     await expect(
-      repository.setDraftStatus(created.id, 'deleted', actor, 'request-active-delete'),
+      repository.purgeDraft(created.id, actor, 'request-active-delete'),
     ).rejects.toBeInstanceOf(ConflictError);
     await repository.setDraftStatus(created.id, 'archived', actor, 'request-rearchive');
-    expect(
-      (await repository.setDraftStatus(created.id, 'deleted', actor, 'request-12')).status,
-    ).toBe('deleted');
+    expect((await repository.purgeDraft(created.id, actor, 'request-12')).status).toBe('deleted');
     expect(await repository.listDrafts()).toEqual([]);
-    expect(await repository.listDrafts('deleted')).toHaveLength(1);
+    expect(await repository.listDrafts('deleted')).toEqual([]);
     await expect(
       repository.setDraftStatus(created.id, 'active', actor, 'request-13'),
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

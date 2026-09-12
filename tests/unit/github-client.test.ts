@@ -8,6 +8,12 @@ const blobB = 'c'.repeat(40);
 const tree = 'd'.repeat(40);
 const commit = 'e'.repeat(40);
 
+const uploadStep = () => ({
+  requestedAt: '2026-09-12T12:00:00Z',
+  progress: { blobShas: [] },
+  checkpoint: () => Promise.resolve(),
+  guard: () => Promise.resolve(),
+});
 function response(body: unknown, status = 200) {
   return Promise.resolve(
     new Response(body === null ? null : JSON.stringify(body), {
@@ -50,6 +56,7 @@ describe('GitHub staging client', () => {
       .mockImplementationOnce(() => response({ object: { sha: base } }))
       .mockImplementationOnce(() => response({ sha: blobA }))
       .mockImplementationOnce(() => response({ sha: blobB }))
+      .mockImplementationOnce(() => response({ tree: { sha: tree } }))
       .mockImplementationOnce(() => response({ sha: tree }))
       .mockImplementationOnce(() =>
         response({
@@ -60,7 +67,8 @@ describe('GitHub staging client', () => {
       .mockImplementationOnce(() => response(null, 204));
     const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
     await expect(
-      client.commitFiles({
+      client.advanceCommit({
+        ...uploadStep(),
         expectedBaseSha: base,
         message: 'Publish',
         files: [
@@ -68,8 +76,8 @@ describe('GitHub staging client', () => {
           { path: 'content/builder-site.manifest.json', content: '{}' },
         ],
       }),
-    ).resolves.toMatchObject({ sha: commit });
-    expect(fetcher).toHaveBeenCalledTimes(6);
+    ).resolves.toMatchObject({ status: 'succeeded', commit: { sha: commit } });
+    expect(fetcher).toHaveBeenCalledTimes(7);
     expect(fetcher.mock.calls.at(-1)?.[1]).toMatchObject({ method: 'PATCH' });
   });
 
@@ -77,19 +85,75 @@ describe('GitHub staging client', () => {
     const drift = vi.fn(() => response({ object: { sha: 'f'.repeat(40) } }));
     const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', drift);
     await expect(
-      client.commitFiles({
+      client.advanceCommit({
+        ...uploadStep(),
         expectedBaseSha: base,
         message: 'Publish',
         files: [{ path: 'content/builder-site.json', content: '{}' }],
       }),
     ).rejects.toThrow('STAGING_BASE_DRIFT');
     await expect(
-      client.commitFiles({
+      client.advanceCommit({
+        ...uploadStep(),
         expectedBaseSha: base,
         message: 'Publish',
         files: [{ path: '../production', content: '{}' }],
       }),
-    ).rejects.toThrow('allowlist');
+    ).rejects.toThrow('INVALID_UPLOAD_PROGRESS');
+  });
+
+  it.each([
+    'public/assets/point-logo.png',
+    'public/assets/builder/10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000001/photo.png',
+  ])('accepts the self-contained candidate image %s', async (path) => {
+    const fetcher = vi.fn(() => response({ object: { sha: 'f'.repeat(40) } }));
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(
+      client.advanceCommit({
+        ...uploadStep(),
+        expectedBaseSha: base,
+        message: 'Publish',
+        files: [{ path, content: 'AQID', encoding: 'base64' }],
+      }),
+    ).rejects.toThrow('STAGING_BASE_DRIFT');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('rejects duplicate destination paths before any GitHub calls', async () => {
+    const fetcher = vi.fn();
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(
+      client.advanceCommit({
+        ...uploadStep(),
+        expectedBaseSha: base,
+        message: 'Publish',
+        files: [
+          { path: 'public/assets/photo.png', content: 'AQID' },
+          { path: 'public/assets/photo.png', content: 'BAUG' },
+        ],
+      }),
+    ).rejects.toThrow('INVALID_UPLOAD_PROGRESS');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'public/assets/../secret.png',
+    'public/assets//secret.png',
+    'public/assets/fixture.svg',
+    'public/assets/fixture.html',
+    'public/assets/a.png/../../worker.ts',
+  ])('rejects unsafe image write %s without GitHub calls', async (path) => {
+    const fetcher = vi.fn();
+    const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'token', fetcher);
+    await expect(
+      client.advanceCommit({
+        ...uploadStep(),
+        expectedBaseSha: base,
+        message: 'Publish',
+        files: [{ path, content: 'AQID', encoding: 'base64' }],
+      }),
+    ).rejects.toThrow('INVALID_UPLOAD_PROGRESS');
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('accepts only successful quality and deploy checks for the exact commit', async () => {

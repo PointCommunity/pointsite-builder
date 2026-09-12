@@ -75,6 +75,7 @@
 ## Quality, security, and documentation
 
 - Use Node.js 22 or later, strict TypeScript, project-native format/lint/type/contract/runbook/test/coverage/build/performance/browser gates, and WCAG 2.2 AA as the interface target.
+- Run full QA suites sequentially, including across collaborating agents. Finish `npm run check` before performance or browser suites; never overlap coverage, builds, or full browser runs. Keep test-worker concurrency bounded to prevent resource contention and timeouts.
 - The repository is public and branch protection is intentionally disabled in the adopted profile, matching the PM-selected recommendation and current GitHub state. Enforce PR, exact-tree, full local QA and lightweight Quality gates through the repository workflow and audit scripts. Do not enable protection or rulesets unless explicitly requested, and always inspect live settings before reporting them.
 - Local hands-on browser QA is required for changed user flows before release. After deployment, verify live health and assets plus affected authenticated behavior when supported access is already available; never request credentials or weaken authentication to manufacture evidence.
 - Never put credentials, GitHub or session tokens, draft data, private media, or sensitive operational values in source, Issues, PRs, logs, artifacts, or responses.

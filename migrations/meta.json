@@ -1,10 +1,18 @@
 {
   "version": 1,
+  "currentRetention": {
+    "automaticRevisionsDays": 90,
+    "deletedDraftRecoveryDays": 0,
+    "draftLibraryDeletion": "archived-only-confirmed-with-reference-checks",
+    "wholeDraftDeletion": "archived-only-confirmed-immediate-private-purge",
+    "auditDays": 400
+  },
   "migrations": [
     {
       "id": "0001_initial",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": "../docs/rollback/0001_initial.sql",
+      "retentionStatus": "historical-policy-superseded-by-currentRetention",
       "retention": {
         "automaticRevisionsDays": 90,
         "deletedDraftRecoveryDays": 30,
@@ -56,6 +64,22 @@
       "id": "0010_publish_preflight_leases",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0011_draft_owned_assets",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0012_draft_library",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0013_asset_migration",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../docs/draft-asset-migration.html"
     }
   ]
 }

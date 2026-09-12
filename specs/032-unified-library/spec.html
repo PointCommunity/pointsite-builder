@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Independent drafts and unified Library</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      h1,
+      h2 {
+        line-height: 1.25;
+      }
+      li {
+        margin-block: 8px;
+      }
+      aside {
+        border-left: 4px solid #85ccff;
+        padding: 12px 20px;
+        background: #1b242e;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td,
+      th {
+        text-align: left;
+        vertical-align: top;
+        padding: 12px;
+        border: 1px solid #435263;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Independent drafts and a unified Library</h1>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/32">Issue #32</a> ·
+      Specification · September 12, 2026
+    </p>
+    <p>
+      <a href="research.html">Research</a> · <a href="data-model.html">Data and API contracts</a> ·
+      <a href="plan.html">Implementation plan</a> · <a href="tasks.html">Tasks and verification</a>
+    </p>
+    <aside>
+      <p>
+        The PM confirmed that each complete draft must be independent. Archiving sets aside all its
+        contents together. Confirmed deletion of an archived draft permanently purges its private
+        contents. Publishing creates an independent copy in the destination; deleting the source
+        draft must never affect that published copy or another draft.
+      </p>
+      <p>
+        This supersedes the 30-day soft-delete requirement in specification 003 and the foundational
+        draft-recovery policy. No existing live draft is selected for deletion by this
+        implementation request.
+      </p>
+    </aside>
+    <h2>Objective</h2>
+    <p>
+      Give every draft its own complete, searchable Library and lifecycle. Remove the shared
+      upload-history experience and the misleading “Use in Layout” action. Preserve the Builder
+      design system, server authorization, exclusive checkout, exact revision checks, and
+      independent publication evidence.
+    </p>
+    <h2>Required behavior</h2>
+    <ol>
+      <li>
+        <strong>ISO-01 — Ownership:</strong> Every managed image, upload, linked-media record,
+        metadata record, and private binary version belongs to one draft. Library reads and
+        mutations require that draft identity. A forged reference to another draft's private asset
+        is rejected by the server.
+      </li>
+      <li>
+        <strong>ISO-02 — Creation and duplication:</strong> A new draft receives independent content
+        from the application template. Duplicating a draft or retained revision copies its content
+        and required private bytes into the new owner. Subsequent replacement, archival, or deletion
+        in either draft cannot affect the other. Identical bytes must not create shared mutable
+        records across drafts.
+      </li>
+      <li>
+        <strong>ISO-03 — Archive:</strong> Archiving a draft freezes its entire workspace, including
+        its Library and history. Archived contents remain readable and recoverable; mutations
+        require unarchiving. Archiving an individual Library item only changes its visibility within
+        the owning draft, preserving all rendering references.
+      </li>
+      <li>
+        <strong>ISO-04 — Whole-draft purge:</strong> Delete is available only for an archived draft,
+        retains the exact typed DELETE confirmation, and states that deletion cannot be undone. The
+        server atomically removes private documents, all revisions and labels, Library records and
+        versions, private bytes, preflight payloads, editor state, and cached responses containing
+        draft content. It retains only minimal content-free audit/operation evidence. A retry must
+        not return or recreate purged content.
+      </li>
+      <li>
+        <strong>ISO-05 — Publication:</strong> A publication candidate contains its complete
+        document, manifest, and all required local image bytes. It is verified independently of
+        Builder storage. Staging and Production copies must never call Builder media endpoints or
+        depend on a surviving draft. Publishing or deleting a draft does not modify another draft.
+        Existing external HTTPS/YouTube links remain external links; their records are copied with
+        the document.
+      </li>
+      <li>
+        <strong>ISO-06 — Race safety:</strong> Checkouts, revision preconditions, owner checks, and
+        the active publication lease are enforced at commit time. A purge cannot race an in-flight
+        publication or resurrect through an idempotency response. Already completed publications do
+        not block source-draft purge.
+      </li>
+      <li>
+        <strong>LIB-01 — One Library:</strong> Managed images, uploaded images, and linked media
+        appear in one inventory with clear type distinctions. A successful upload appears once
+        immediately. No upload-history section, “Use in Layout” control, obsolete callback, or
+        instruction remains.
+      </li>
+      <li>
+        <strong>LIB-02 — Archive navigation:</strong> The main Library links to Archived items with
+        an accessible count. The archived view has a clear return path and Unarchive. Unarchive
+        preserves identity, metadata, and applicable history.
+      </li>
+      <li>
+        <strong>LIB-03 — Individual deletion:</strong> Only archived items expose permanent
+        deletion. A modal immediately before submission states that deletion cannot be undone and
+        provides explicit Yes and Cancel. The server blocks deletion when the item's private bytes
+        or record are required by retained revisions, placements, or a pending candidate, explains
+        the blocking usage, and offers Unarchive as recovery. Published copies are independent, so
+        their existence alone must not require retaining private source bytes. Whole-draft purge
+        deliberately deletes that draft's history together and is a distinct operation.
+      </li>
+      <li>
+        <strong>LIB-04 — Replacement:</strong> Only image-backed items expose Replace image.
+        Validate selected bytes, preview the proposed image, require fresh alternative text and
+        applicable details, then ask for final irreversible confirmation. Cancel changes nothing.
+        Successful replacement preserves the logical Library identity and updates every applicable
+        placement in the owning draft atomically. Other drafts, retained snapshots, and published
+        copies remain unchanged. Do not add a new undo or binary-restoration feature.
+      </li>
+      <li>
+        <strong>LIB-05 — Search:</strong> Case-insensitive trimmed keyword filtering covers name,
+        safe file/source details, alternative or accessible description, tags, and media type. It
+        composes with sorting, includes a result count, Reset, and a useful empty result state in
+        both active and archived views.
+      </li>
+      <li>
+        <strong>LIB-06 — Sorting:</strong> Support Date Added newest/oldest, Date Updated
+        newest/oldest, Name A–Z/Z–A, and Most Used/Least Used. Usage means placements within the
+        current draft. Equal values use a stable item-ID tie break. Optional missing values are
+        handled deterministically. Counts and results cover the complete draft inventory, including
+        more than 100 items.
+      </li>
+      <li>
+        <strong>LIB-07 — Dates:</strong> Persist creation and update timestamps for every supported
+        item. Migration derives creation from the earliest retained evidence and updates from the
+        latest applicable metadata evidence, with a documented deterministic fallback. Duplication
+        creates new ownership timestamps. Upload, metadata, archive, unarchive, and replacement have
+        attributable audit events.
+      </li>
+      <li>
+        <strong>LIB-08 — Accessibility:</strong> Meet WCAG 2.2 AA for controls, errors, reflow,
+        contrast, keyboard operation, and status. Dialogs receive focus, keep focus inside, close
+        safely, and restore focus to the invoking or next logical control. Viewer access remains
+        read-only; the UI explains disabled actions without exposing another draft's content.
+      </li>
+    </ol>
+    <h2>Stack, source locations, and conventions</h2>
+    <p>
+      Use installed React 19, strict TypeScript, Hono, Zod, D1, Vitest, Testing Library, and
+      Playwright. Keep content and rendering contracts in <code>src/site-kit</code>, API validation
+      in <code>src/server/routes</code>, ownership/persistence in repositories and media services,
+      and Library presentation in <code>src/client/media</code>. Reuse the existing checkout,
+      autosave, checksum, audit, image policy, and dialog patterns. No new runtime dependency is
+      planned.
+    </p>
+    <h2>Acceptance evidence</h2>
+    <p>
+      Tests must establish two drafts with distinct owners, duplicate one, replace and archive media
+      in one, and prove the other has identical content and bytes. Capture a complete publication,
+      purge its archived source draft, and render/verify the destination using only captured files.
+      Query all private tables and storage to prove content removal and retry safety. Migration
+      rehearsal must include legacy shared uploads, historical references, orphan uploads, archived
+      drafts, and large inventories.
+    </p>
+    <p>
+      Run focused tests during each slice, then <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, and <code>git diff --check</code>. Complete local
+      hands-on browser QA, exact-head GitHub checks, direct Builder Production deployment, live
+      verification, and the existing PM Showcase gate.
+    </p>
+    <h2>Boundaries</h2>
+    <ul>
+      <li>
+        Implement the complete original Issue #32 Library scope with the PM's clarified isolation
+        requirements. Keep one active Issue.
+      </li>
+      <li>
+        No feature branch is required for each content draft; database ownership and immutable
+        snapshots provide isolation.
+      </li>
+      <li>
+        No new roles, paid infrastructure, Builder staging/Canary environment, automatic page
+        placement, or public Production publication.
+      </li>
+      <li>
+        Do not delete live user drafts or assets to prove purge behavior. Use synthetic local
+        fixtures and test-owned data only.
+      </li>
+      <li>
+        Provider-managed backups follow provider retention; the application must purge active
+        storage and must not keep its own recoverable copies after a confirmed deletion.
+      </li>
+    </ul>
+  </body>
+</html>

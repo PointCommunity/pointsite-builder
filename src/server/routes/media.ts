@@ -26,6 +26,8 @@ export function createMediaRoutes(
   const available = () => {
     if (!service)
       throw new ApiError(503, 'MEDIA_NOT_CONFIGURED', 'Private media is not configured');
+    if (!service.allowGlobalAccess)
+      throw new ApiError(410, 'DRAFT_REQUIRED', 'Use the Library inside a draft');
     return service;
   };
   routes.get('/', async (context) => {

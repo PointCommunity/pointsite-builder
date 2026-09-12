@@ -97,6 +97,8 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     setActionError(null);
     try {
       const currentJob = snapshot?.job;
+      if (currentJob?.status === 'running' || currentJob?.status === 'queued')
+        await api.continueStagingPublication(currentJob.id);
       if (
         lifecycle.phase !== 'waiting' &&
         currentJob?.status === 'succeeded' &&

@@ -4,7 +4,7 @@ export const databaseContract = {
   jobStatuses: ['queued', 'running', 'succeeded', 'failed', 'cancelled'],
   approvalDecisions: ['approved', 'rejected', 'revoked'],
   automaticRevisionRetentionDays: 90,
-  deletedDraftRecoveryDays: 30,
+  deletedDraftRecoveryDays: 0,
   orphanMediaDeletionDays: 30,
   auditRetentionDays: 400,
 } as const;

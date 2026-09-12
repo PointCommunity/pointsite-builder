@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { githubHeaders, unboundFetch } from './app-auth';
 import type { CandidateFile } from '../publish/candidate';
+import { candidateImagePath } from '../publish/candidate';
 
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const RefResponse = z.object({ object: z.object({ sha: Sha }) });
@@ -22,12 +23,28 @@ const CheckRunsResponse = z.object({
     .max(100),
 });
 const allowedPaths = new Set(['content/builder-site.json', 'content/builder-site.manifest.json']);
-const allowedMediaPath = /^public\/assets\/builder\/[0-9a-f-]{36}\.(?:avif|jpe?g|png|webp)$/;
 
 export interface StagingCommit {
   sha: string;
   url: string;
 }
+
+export interface StagingUploadProgress {
+  blobShas: string[];
+  commit?: StagingCommit;
+}
+export interface StagingUploadInput {
+  expectedBaseSha: string;
+  message: string;
+  files: CandidateFile[];
+  requestedAt: string;
+  progress: StagingUploadProgress;
+  checkpoint(progress: StagingUploadProgress): Promise<void>;
+  guard(): Promise<void>;
+}
+export type StagingUploadResult =
+  | { status: 'running'; uploaded: number; total: number }
+  | { status: 'succeeded'; commit: StagingCommit };
 
 export interface StagingVerificationEvidence {
   commitSha: string;
@@ -119,42 +136,80 @@ export class GitHubStagingClient {
     }
   }
 
-  async commitFiles(input: {
-    expectedBaseSha: string;
-    message: string;
-    files: CandidateFile[];
-  }): Promise<StagingCommit> {
+  async advanceCommit(input: StagingUploadInput): Promise<StagingUploadResult> {
     Sha.parse(input.expectedBaseSha);
     if (
       !input.files.length ||
-      input.files.some((file) => !allowedPaths.has(file.path) && !allowedMediaPath.test(file.path))
-    ) {
-      throw new Error('Candidate contains a path outside the staging allowlist');
-    }
+      new Set(input.files.map((file) => file.path)).size !== input.files.length ||
+      input.files.some(
+        (file) =>
+          !allowedPaths.has(file.path) &&
+          !(file.path.startsWith('public/') && candidateImagePath.test(file.path.slice(6))),
+      ) ||
+      input.progress.blobShas.length > input.files.length
+    )
+      throw new Error('INVALID_UPLOAD_PROGRESS');
+    input.progress.blobShas.forEach((sha) => Sha.parse(sha));
     const observed = await this.currentMainSha();
+    if (input.progress.commit && observed === input.progress.commit.sha) {
+      await input.guard();
+      return { status: 'succeeded', commit: input.progress.commit };
+    }
     if (observed !== input.expectedBaseSha) throw new Error('STAGING_BASE_DRIFT');
-    const tree = [];
-    for (const file of input.files) {
-      const blob = BlobResponse.parse(
-        await this.call('POST', 'git/blobs', {
-          content: file.content,
-          encoding: file.encoding ?? 'utf-8',
+    const progress = structuredClone(input.progress);
+    const end = Math.min(progress.blobShas.length + 20, input.files.length);
+    for (let index = progress.blobShas.length; index < end; index++) {
+      const file = input.files[index];
+      progress.blobShas.push(
+        BlobResponse.parse(
+          await this.call('POST', 'git/blobs', {
+            content: file.content,
+            encoding: file.encoding ?? 'utf-8',
+          }),
+        ).sha,
+      );
+    }
+    await input.checkpoint(progress);
+    if (progress.blobShas.length < input.files.length)
+      return { status: 'running', uploaded: progress.blobShas.length, total: input.files.length };
+    await input.guard();
+    if (!progress.commit) {
+      const base = z
+        .object({ tree: z.object({ sha: Sha }) })
+        .parse(await this.call('GET', `git/commits/${input.expectedBaseSha}`));
+      const tree = input.files.map((file, index) => ({
+        path: file.path,
+        mode: '100644',
+        type: 'blob',
+        sha: progress.blobShas[index],
+      }));
+      const createdTree = TreeResponse.parse(
+        await this.call('POST', 'git/trees', {
+          base_tree: base.tree.sha,
+          tree,
         }),
       );
-      tree.push({ path: file.path, mode: '100644', type: 'blob', sha: blob.sha });
+      // Fixed identity/date makes an uncertain commit response safely repeatable.
+      const identity = {
+        name: 'PointSite Builder',
+        email: 'pointsite-builder@users.noreply.github.com',
+        date: input.requestedAt,
+      };
+      const commit = CommitResponse.parse(
+        await this.call('POST', 'git/commits', {
+          message: input.message,
+          tree: createdTree.sha,
+          parents: [input.expectedBaseSha],
+          author: identity,
+          committer: identity,
+        }),
+      );
+      progress.commit = { sha: commit.sha, url: commit.html_url };
+      await input.checkpoint(progress);
     }
-    const createdTree = TreeResponse.parse(
-      await this.call('POST', 'git/trees', { base_tree: input.expectedBaseSha, tree }),
-    );
-    const commit = CommitResponse.parse(
-      await this.call('POST', 'git/commits', {
-        message: input.message,
-        tree: createdTree.sha,
-        parents: [input.expectedBaseSha],
-      }),
-    );
-    await this.call('PATCH', 'git/refs/heads/main', { sha: commit.sha, force: false });
-    return { sha: commit.sha, url: commit.html_url };
+    await input.guard();
+    await this.call('PATCH', 'git/refs/heads/main', { sha: progress.commit.sha, force: false });
+    return { status: 'succeeded', commit: progress.commit };
   }
 
   async verificationForCommit(commitSha: string): Promise<

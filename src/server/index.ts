@@ -12,6 +12,8 @@ import { createPublishRoutes } from './routes/publish';
 import type { StagingPublisher } from './publish/service';
 import type { MediaService } from './media/service';
 import { createMediaRoutes } from './routes/media';
+import { createLibraryRoutes } from './routes/library';
+import type { D1LibraryService } from './media/library';
 import type { D1AdminService } from './admin/service';
 import { createAdminRoutes } from './routes/admin';
 import type { D1ApprovalService } from './approvals/service';
@@ -19,6 +21,8 @@ import { createApprovalRoutes } from './routes/approvals';
 import type { RetentionService } from './maintenance/retention';
 import type { FeedbackService } from './feedback/service';
 import { createFeedbackRoutes } from './routes/feedback';
+import type { D1OwnershipMigration } from './maintenance/asset-migration';
+import { createAssetMigrationRoutes } from './routes/asset-migration';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -27,12 +31,14 @@ export interface AppDependencies {
   version: string;
   publisher?: StagingPublisher;
   media?: MediaService;
+  library?: D1LibraryService;
   admin?: D1AdminService;
   approvals?: D1ApprovalService;
   productionBaseSha?: () => Promise<string>;
   retention?: RetentionService;
   auth?: GitHubAuthenticator;
   feedback?: FeedbackService;
+  ownershipMigration?: D1OwnershipMigration;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -75,11 +81,19 @@ export function createApp(dependencies: AppDependencies) {
       throw new AuthenticationError('Invalid logout request');
     return dependencies.auth.logout();
   });
-  app.route('/api/drafts', createDraftRoutes(dependencies.repository, mutationLimiter));
+  app.route(
+    '/api/drafts',
+    createDraftRoutes(dependencies.repository, mutationLimiter, dependencies.media),
+  );
+  app.route('/api/drafts', createLibraryRoutes(dependencies.library, mutationLimiter));
   app.route('/api/feedback', createFeedbackRoutes(dependencies.feedback, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
+  app.route(
+    '/api/admin/asset-migration',
+    createAssetMigrationRoutes(dependencies.ownershipMigration),
+  );
   app.route(
     '/api/admin',
     createAdminRoutes(dependencies.admin, mutationLimiter, dependencies.retention),
@@ -116,6 +130,18 @@ export function createApp(dependencies: AppDependencies) {
     }
     if (error instanceof ConflictError) {
       return secured(errorResponse(new ApiError(409, 'CONFLICT', error.message), requestId));
+    }
+    if (error instanceof Error && error.message === 'PRIVATE_MEDIA_LINK') {
+      return secured(
+        errorResponse(
+          new ApiError(
+            422,
+            'PRIVATE_MEDIA_LINK',
+            'Upload images into the draft instead of linking to private Builder storage.',
+          ),
+          requestId,
+        ),
+      );
     }
     console.error(
       JSON.stringify({

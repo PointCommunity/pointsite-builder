@@ -55,15 +55,13 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
     );
     if (!body.success) throw new ApiError(422, 'VALIDATION_FAILED', 'Review the publish candidate');
     try {
-      return context.json(
-        await publisher.publish({
-          ...body.data,
-          actor: actor.email,
-          idempotencyKey: context.req.header('idempotency-key') ?? '',
-          requestId: context.get('requestId'),
-        }),
-        201,
-      );
+      const result = await publisher.publish({
+        ...body.data,
+        actor: actor.email,
+        idempotencyKey: context.req.header('idempotency-key') ?? '',
+        requestId: context.get('requestId'),
+      });
+      return context.json(result, result.status === 'running' ? 202 : 201);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
@@ -87,7 +85,9 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         );
       if (
         error instanceof Error &&
-        (error.message === 'PUBLISH_JOB_NOT_CLAIMABLE' || error.message === 'PUBLISH_SLOT_BUSY')
+        (error.message === 'PUBLISH_JOB_NOT_CLAIMABLE' ||
+          error.message === 'PUBLISH_SLOT_BUSY' ||
+          error.message === 'PUBLISH_STEP_UNAVAILABLE')
       )
         throw new ApiError(
           409,
@@ -157,6 +157,39 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
     const job = await publisher.getJob(context.req.param('jobId'));
     if (!job) throw new ApiError(404, 'NOT_FOUND', 'Publish job was not found');
     return context.json(job);
+  });
+  routes.post('/jobs/:jobId/continue', async (context) => {
+    const actor = requirePublishAccess(context.get('actor'));
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Staging publishing is not configured');
+    await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
+    try {
+      const result = await publisher.continuePublication(
+        context.req.param('jobId'),
+        actor.email,
+        context.get('requestId'),
+      );
+      return context.json(result, result.status === 'running' ? 202 : 201);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /^(PUBLISH_STEP_UNAVAILABLE|PUBLISH_JOB_NOT_CLAIMABLE|DRAFT_REVISION_DRIFT|STAGING_BASE_DRIFT|PREFLIGHT_CANDIDATE_DRIFT)$/.test(
+          error.message,
+        )
+      )
+        throw new ApiError(
+          409,
+          error.message,
+          'Publication cannot continue; refresh the saved draft and publication status',
+        );
+      if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
+        throw new ApiError(
+          409,
+          'STAGING_RENDERER_MISMATCH',
+          'Staging renderer differs from Builder',
+        );
+      throw error;
+    }
   });
   routes.post('/jobs/:jobId/verification', async (context) => {
     const actor = requirePublishAccess(context.get('actor'));
