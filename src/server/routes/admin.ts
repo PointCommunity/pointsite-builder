@@ -102,6 +102,12 @@ export function createAdminRoutes(
         ),
       );
     } catch (error) {
+      if (error instanceof Error && error.message === 'ASSET_MIGRATION_INCOMPLETE')
+        throw new ApiError(
+          409,
+          error.message,
+          'Draft media migration is still running. Retention cleanup is unavailable until all private copies are verified.',
+        );
       if (error instanceof Error && error.message === 'RETENTION_EXPORT_MISMATCH')
         throw new ApiError(
           409,

@@ -1,4 +1,5 @@
 import { validateImageUpload } from './policy';
+import type { DraftAssetObject } from './draft-assets';
 
 export type MediaStatus = 'ready' | 'rejected' | 'published' | 'orphaned';
 
@@ -57,7 +58,30 @@ export class MediaService {
     private readonly repository: MediaRepository,
     private readonly bucket: PrivateBucket,
     private readonly capacityBytes = 250 * 1024 * 1024,
+    private readonly draftAssets?: {
+      readForDraft(draftId: string, sourcePath: string): Promise<DraftAssetObject>;
+      readManyForDraft(
+        draftId: string,
+        sourcePaths: string[],
+        maximumBytes?: number,
+      ): Promise<Map<string, DraftAssetObject>>;
+    },
+    readonly allowGlobalAccess = true,
   ) {}
+
+  async readForDraft(draftId: string, sourcePath: string): Promise<DraftAssetObject> {
+    if (!this.draftAssets) throw new Error('MEDIA_NOT_FOUND');
+    return this.draftAssets.readForDraft(draftId, sourcePath);
+  }
+
+  async readManyForDraft(
+    draftId: string,
+    sourcePaths: string[],
+    maximumBytes?: number,
+  ): Promise<Map<string, DraftAssetObject>> {
+    if (!this.draftAssets) throw new Error('MEDIA_NOT_FOUND');
+    return this.draftAssets.readManyForDraft(draftId, sourcePaths, maximumBytes);
+  }
 
   list(): Promise<MediaRecord[]> {
     return this.repository.list();

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Tasks and verification</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      li {
+        margin-block: 12px;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tasks and verification</h1>
+    <p>
+      <a href="spec.html">Specification</a> · Status: implementation and focused verification
+      complete; final repository gates, reviewed release, live verification, and PM Showcase remain.
+    </p>
+    <ol>
+      <li>
+        <strong>T01 — Baseline purge regressions.</strong> Acceptance: tests prove retained draft
+        data and stale idempotency responses after deletion. Files: new purge integration test.
+        Verify: focused Vitest against current D1 and memory repositories.
+      </li>
+      <li>
+        <strong>T02 — Ownership schema and fixtures.</strong> Acceptance: all Library items and
+        private versions have one draft owner; foreign-owner writes fail; migration preserves
+        retained content. Files: migration, fixture, repository contract, migration test. Verify:
+        real D1 migration, rerun, rollback, and failure injection.
+      </li>
+      <li>
+        <strong>T03 — Complete draft creation.</strong> Depends on T02. Acceptance: template imports
+        own all required local assets; capacity or copy failure leaves no partial draft. Files:
+        draft repository, asset-copy helper, creation tests. Verify: compare file hashes and row
+        counts.
+      </li>
+      <li>
+        <strong>T04 — Independent duplication.</strong> Depends on T03. Acceptance: copied draft
+        remains usable after source replacement/archive/purge; no private binary owner is shared.
+        Files: create route, repository duplication, focused tests. Verify: source/destination
+        snapshots and binary equality before and after changes.
+      </li>
+      <li>
+        <strong>T05 — Scoped Library contract.</strong> Depends on T02. Acceptance: full
+        owner-scoped listing, read-only Viewer behavior, mutation preconditions, safe DTOs, and
+        OpenAPI coverage. Files: shared types, routes, API contract, route tests. Verify:
+        unauthorized, cross-owner, stale-checksum, malformed, and more-than-100-item cases.
+      </li>
+      <li>
+        <strong>T06 — Archive and timestamps.</strong> Depends on T05. Acceptance: item and
+        whole-draft archive semantics preserve contents and stop forbidden mutations; all item dates
+        are deterministic. Files: service/repository and lifecycle tests. Verify: archived
+        rendering, unarchive identity, audit, and repeated operation behavior.
+      </li>
+      <li>
+        <strong>T07 — Independent publication.</strong> Depends on T03. Acceptance: candidate
+        contains every local dependency, checksum binds exact bytes, and a captured destination
+        renders after source storage is gone. Files: candidate packager, publisher lease guards,
+        publication tests. Verify: local simulated Staging/Production destinations only.
+      </li>
+      <li>
+        <strong>T08 — Permanent draft purge.</strong> Depends on T04, T06, T07. Acceptance: all
+        private contents removed atomically; retries return no old payload; another draft and
+        published copy remain intact. Files: D1 and memory repositories, deletion route, purge
+        tests. Verify: green T01 plus binary, foreign-key, lease, rollback, and retry cases.
+      </li>
+      <li>
+        <strong>T09 — Unified Library interface.</strong> Depends on T05, T06. Acceptance: one
+        inventory, automatic upload insertion, eight sort options, keyword filtering, reset, counts,
+        and active/archived navigation. Files: Library component, API client, styles, unit tests.
+        Verify: mixed types, ties, empty states, large inventory, and Viewer controls.
+      </li>
+      <li>
+        <strong>T10 — Autosave integration.</strong> Depends on T09. Acceptance: canonical server
+        mutations enter the editor without losing pending local changes; obsolete attachment
+        callbacks disappear. Files: EditorProvider, EditorRoute, autosave tests, Library tests.
+        Verify: delayed responses and checksum conflicts.
+      </li>
+      <li>
+        <strong>T11 — Image replacement.</strong> Depends on T05, T10. Acceptance: validated
+        preview, fresh metadata, final confirmation/cancel, preserved logical item, isolated version
+        update. Files: service, route, Library dialog, focused tests. Verify: bytes, capacity,
+        duplicates, concurrent attempts, cancellation, historical references, and audit.
+      </li>
+      <li>
+        <strong>T12 — Individual media deletion.</strong> Depends on T06, T11. Acceptance:
+        archived-only Yes/Cancel; protected references block; eligible bytes and records disappear
+        atomically. Files: service, dialog, retention integration, tests. Verify: every protected
+        reference category and failure rollback.
+      </li>
+      <li>
+        <strong>T13 — Browser and security checks.</strong> Depends on T08–T12. Acceptance:
+        keyboard/focus, reflow, image rendering, ownership, archive, purge, and independent
+        publication pass real local browser checks. Files: focused browser tests and affected unit
+        fixtures. Verify: complete Chromium, Firefox, WebKit, and mobile suite, plus hands-on QA.
+      </li>
+      <li>
+        <strong>T14 — Migration, documentation, and release.</strong> Depends on T13. Acceptance:
+        rehearsal/recovery evidence, updated governing contract and retention documentation, full
+        local suites, cleanup, reviewed PR, exact Builder deployment, live verification, and PM
+        Showcase. Verify: <code>npm run check</code>, <code>npm run test:performance</code>,
+        <code>npm run test:e2e</code>, <code>npm audit --audit-level=high</code>,
+        <code>git diff --check</code>, and <code>node scripts/local-qa.mjs cleanup</code>.
+      </li>
+    </ol>
+  </body>
+</html>

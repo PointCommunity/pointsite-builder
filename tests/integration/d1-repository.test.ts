@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
@@ -16,16 +16,17 @@ async function repositoryFixture() {
     d1Databases: { DB: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
-  for (const migration of [
-    'migrations/0001_initial.sql',
-    'migrations/0002_integrity_triggers.sql',
-    'migrations/0003_revision_labels.sql',
-    'migrations/0008_revision_actions.sql',
-    'migrations/0009_draft_checkouts.sql',
-  ]) {
+  for (const migration of (await readdir('migrations'))
+    .filter((name) => name.endsWith('.sql'))
+    .sort()) {
     // D1's exec helper executes one statement per physical line, so collapse
     // formatted migration SQL while preserving statement delimiters.
-    await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
+    await database.exec(
+      (await readFile(`migrations/${migration}`, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
   }
   return { database, repository: new D1DraftRepository(database) };
 }
@@ -265,17 +266,10 @@ describe('D1 draft repository', () => {
       ).status,
     ).toBe('archived');
     expect(
-      (
-        await repository.setDraftStatus(
-          created.id,
-          'deleted',
-          'editor@pointatx.org',
-          'd1-request-8',
-        )
-      ).status,
+      (await repository.purgeDraft(created.id, 'editor@pointatx.org', 'd1-request-8')).status,
     ).toBe('deleted');
     expect(await repository.listDrafts()).toEqual([]);
-    expect(await repository.listDrafts('deleted')).toHaveLength(1);
+    expect(await repository.listDrafts('deleted')).toEqual([]);
   });
 
   it('allows only one concurrent compare-and-swap revision and leaves no partial audit', async () => {

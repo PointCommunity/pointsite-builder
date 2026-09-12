@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { draftAssetFixture } from './draft-asset-fixture';
 
 test('viewer receives a read-only preview with no authoring or publish controls', async ({
   page,
@@ -35,6 +36,9 @@ test('viewer receives a read-only preview with no authoring or publish controls'
     const request = route.request();
     if (request.method() !== 'GET') mutations.push(`${request.method()} ${request.url()}`);
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/assets')) {
+      return route.fulfill(draftAssetFixture(request.url()));
+    }
     if (path === '/api/drafts/checkouts')
       return route.fulfill({
         contentType: 'application/json',
@@ -50,7 +54,16 @@ test('viewer receives a read-only preview with no authoring or publish controls'
           ? { email: 'viewer@pointatx.org', role: 'viewer', repositoryPermission: 'read' }
           : path.endsWith('/drafts')
             ? { items: [draft], nextCursor: null }
-            : draft,
+            : path.endsWith('/library')
+              ? {
+                  draftId: draft.id,
+                  revisionId: draft.latestRevisionId,
+                  revisionChecksum: draft.revision.checksum,
+                  items: [],
+                  activeCount: 0,
+                  archivedCount: 0,
+                }
+              : draft,
       ),
     });
   });
@@ -97,6 +110,9 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/assets')) {
+      return route.fulfill(draftAssetFixture(request.url()));
+    }
     if (path === '/api/drafts/checkouts')
       return route.fulfill({
         contentType: 'application/json',
@@ -139,8 +155,15 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
         ? { items: [draft], nextCursor: null }
         : path.endsWith('/revisions')
           ? { items: [draft.revision], nextCursor: null }
-          : path.endsWith('/media')
-            ? { items: [], nextCursor: null }
+          : path.endsWith('/library')
+            ? {
+                draftId: draft.id,
+                revisionId: draft.latestRevisionId,
+                revisionChecksum: draft.revision.checksum,
+                items: [],
+                activeCount: 0,
+                archivedCount: 0,
+              }
             : draft;
     await route.fulfill({
       status: path.endsWith('/drafts') && request.method() === 'POST' ? 201 : 200,

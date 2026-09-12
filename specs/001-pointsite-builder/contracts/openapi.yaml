@@ -189,7 +189,13 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
     delete:
-      operationId: softDeleteDraft
+      operationId: purgeArchivedDraft
+      description: >-
+        Requires an archived draft and exact typed DELETE confirmation. Permanently purges the
+        complete private workspace, all retained revisions, Library records and binary versions,
+        editor state, private publication preparation and cached content responses. Completed
+        Staging and Production copies are independent and remain unchanged. An active publication
+        lease blocks purge. Retains only a content-free deletion receipt; no recovery window.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -204,12 +210,12 @@ paths:
                 confirmation: { type: string, const: DELETE }
       responses:
         '200':
-          description: Archived draft soft-deleted and retained for recovery
+          description: Complete archived workspace purged, or content-free receipt from a prior purge
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Draft' }
+              schema: { $ref: '#/components/schemas/DeletedDraftReceipt' }
         '409':
-          description: Draft is not archived
+          description: Draft is not archived, has an active checkout, or publication is in progress
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -344,20 +350,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
         '412': { $ref: '#/components/responses/Error' }
-  /media:
+  /drafts/{draftId}/library:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
     get:
-      operationId: listMedia
+      operationId: listDraftLibrary
+      description: >-
+        Viewer access. Returns the complete owner-scoped mixed inventory, including archived
+        items and inventories larger than 100 items. No pagination or shared upload history.
+        Usage counts represent placements in this draft only. No private storage keys are returned.
       responses:
         '200':
-          description: Media metadata
+          description: Complete Library snapshot with current revision checksum
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/MediaList'
+              schema: { $ref: '#/components/schemas/LibrarySnapshot' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/library/images:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryChecksum'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryRequestKey'
     post:
-      operationId: uploadMedia
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+      operationId: uploadDraftLibraryImage
+      description: >-
+        Editor access, active owned checkout, exact saved revision, same-origin multipart request.
+        Validates file bytes, extension, MIME, dimensions and fresh alt text. Creates one image
+        item immediately in this draft. Accepted formats are JPEG, PNG, WebP and AVIF, at most
+        5 MiB and 8000 pixels per side. Maximum multipart request size is 5308416 bytes.
       requestBody:
         required: true
         content:
@@ -370,26 +395,105 @@ paths:
                 altText: { type: string, minLength: 1, maxLength: 300 }
       responses:
         '201':
-          description: Validated private media
+          description: Uploaded image and committed owning draft revision
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Media' }
-        '413': { $ref: '#/components/responses/Error' }
-  /media/{mediaId}:
-    parameters:
-      - name: mediaId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    get:
-      operationId: readMedia
-      responses:
-        '200': { description: Private media bytes }
+              schema: { $ref: '#/components/schemas/LibraryMutationResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/library/links:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryChecksum'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryRequestKey'
+    post:
+      operationId: addDraftLibraryLink
+      description: >-
+        Editor access. Adds an independent linked-media record to the active owning draft.
+        Requires an approved HTTPS image, direct video, or YouTube URL matching mediaType.
+        The external resource remains hosted at its source; the record belongs to this draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LibraryLinkInput' }
+      responses:
+        '201': { $ref: '#/components/responses/LibraryMutation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/library/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/LibraryItemId'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryChecksum'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryRequestKey'
     patch:
-      operationId: updateMediaMetadata
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+      operationId: updateDraftLibraryItem
+      description: >-
+        Editor access. Updates metadata, archives, or unarchives one item in the owning active
+        draft. Archiving changes Library visibility without changing placements or retained
+        revisions. Unarchive preserves identity and metadata. The same item ID in another
+        draft is outside this operation's ownership scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [action, metadata]
+                  properties:
+                    action: { type: string, const: update }
+                    metadata: { $ref: '#/components/schemas/LibraryMetadata' }
+                - type: object
+                  additionalProperties: false
+                  required: [action]
+                  properties:
+                    action: { type: string, enum: [archive, unarchive] }
+      responses:
+        '200': { $ref: '#/components/responses/LibraryMutation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteArchivedLibraryItem
+      description: >-
+        Editor access. Permanently deletes only an archived item after final confirmation.
+        Returns a conflict explaining current placements, retained revisions, or pending candidate
+        references that block deletion. Unarchive is the recovery path. Completed published
+        copies are independent and do not alone block private source deletion. Whole-draft purge
+        is a separate operation which removes all private history together.
       requestBody:
         required: true
         content:
@@ -397,25 +501,105 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [filename, displayName, altText, tags]
+              required: [confirmation]
               properties:
-                filename: { type: string, minLength: 1, maxLength: 255 }
-                displayName: { type: string, minLength: 1, maxLength: 120 }
+                confirmation: { type: boolean, const: true }
+      responses:
+        '200': { $ref: '#/components/responses/LibraryMutation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/library/items/{itemId}/replacement:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/LibraryItemId'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryChecksum'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryRequestKey'
+    post:
+      operationId: replaceDraftLibraryImage
+      description: >-
+        Editor access. Replaces only an active image item, including linked images, after local
+        validated preview and final irreversible confirmation. Preserves logical item identity,
+        creates draft-owned immutable bytes, and atomically updates current placements in this
+        draft. Linked images become uploaded images. Other drafts, retained revision snapshots,
+        and independently published copies remain unchanged. No binary undo API is provided.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, altText, displayName, confirmed]
+              properties:
+                file: { type: string, contentMediaType: application/octet-stream }
                 altText: { type: string, minLength: 1, maxLength: 300 }
+                displayName: { type: string, minLength: 1, maxLength: 120 }
                 tags:
-                  type: array
-                  maxItems: 20
-                  items: { type: string, minLength: 1, maxLength: 40 }
+                  type: string
+                  description: JSON-encoded array, at most 20 tags of 1 to 40 characters each
+                  default: '[]'
+                confirmed: { type: string, const: 'true' }
+      responses:
+        '200': { $ref: '#/components/responses/LibraryMutation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /drafts/{draftId}/assets:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    get:
+      operationId: readDraftOwnedAsset
+      description: >-
+        Authenticated Viewer access to immutable bytes owned by this draft, including retained
+        historical paths. Cross-owner references and purged drafts/assets are not found.
+        Published destinations never depend on this private endpoint. Global /media access is retired.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string, pattern: '^/assets/' }
       responses:
         '200':
-          description: Updated private media metadata
+          description: Private image bytes with content type and no-store caching
           content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Media' }
+            image/png:
+              schema: { type: string, contentMediaType: image/png }
+            image/jpeg:
+              schema: { type: string, contentMediaType: image/jpeg }
+            image/webp:
+              schema: { type: string, contentMediaType: image/webp }
+            image/avif:
+              schema: { type: string, contentMediaType: image/avif }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
   /publish/staging:
     post:
       operationId: publishStaging
+      description: >-
+        Starts or resumes the exact preflighted candidate under the shared publication lease.
+        Each request uploads at most 20 blobs and checkpoints completed blob identities.
+        Returns 202 while work remains or 201 after every file is uploaded and the exact
+        non-forced Staging branch update completes. Running is not release success.
+        Continue the returned job with POST; GET never advances publishing.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -437,6 +621,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StagingPublishResult' }
+        '202':
+          description: Upload checkpointed; continue the same job to finish publishing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StagingPublishProgress' }
         '409': { $ref: '#/components/responses/Error' }
   /publish/staging/preflight:
     post:
@@ -511,6 +700,57 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PublishJob' }
+  /publish/jobs/{jobId}/continue:
+    post:
+      operationId: continueStagingPublication
+      description: >-
+        Publisher or Administrator with repository publish permission. Requires same-origin JSON,
+        Fetch Metadata and a valid Idempotency-Key. Advances only the existing exact candidate;
+        accepts no draft data or replacement candidate. Revalidates the active lease, step ownership,
+        saved revision, renderer contract, candidate checksum and Staging base before writes.
+        Uploads at most 20 remaining blobs per request, checkpointing each completed blob identity.
+        Repeat this POST while running; the same job resumes after reload. Finalizes the tree and
+        commit only when all required local images and documents are uploaded. Concurrent steps
+        or expired/inactive jobs conflict. GET status remains read only.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '201':
+          description: Complete candidate committed to Staging; verification follows separately
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StagingPublishResult' }
+        '202':
+          description: More upload work remains; progress is durably checkpointed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StagingPublishProgress' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409':
+          description: >-
+            PUBLISH_STEP_UNAVAILABLE, PUBLISH_JOB_NOT_CLAIMABLE, DRAFT_REVISION_DRIFT,
+            STAGING_BASE_DRIFT, PREFLIGHT_CANDIDATE_DRIFT or STAGING_RENDERER_MISMATCH.
+            Conflicts never authorize a different candidate or bypass the shared lease.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /publish/jobs/{jobId}/verification:
     post:
       operationId: refreshStagingVerification
@@ -611,6 +851,22 @@ paths:
       operationId: getCapacity
       responses:
         '200': { description: Storage and operation estimates with warning thresholds }
+  /admin/asset-migration:
+    get:
+      operationId: getAssetOwnershipMigrationStatus
+      description: >-
+        Administrator-only, read-only ownership migration status. Returns aggregate counts and
+        readiness without draft contents, private storage keys, or credentials. Migration execution
+        is CLI-only; this API exposes no POST or other mutation operation.
+      responses:
+        '200':
+          description: Asset ownership migration readiness and remaining aggregate work
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetMigrationStatus' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /admin/retention:
     get:
       operationId: planRetention
@@ -641,6 +897,30 @@ components:
       in: cookie
       name: __Secure-pointsite_builder_session
   parameters:
+    LibraryRevision:
+      name: X-Draft-Revision
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Exact current revision identity, required even when metadata changes leave the document checksum unchanged
+    LibraryItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+      description: Logical item identity, resolved only inside the owning draft
+    LibraryChecksum:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string, pattern: '^"[a-f0-9]{64}"$' }
+      description: Exact saved revision checksum enclosed in double quotes
+    LibraryRequestKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 100, pattern: '^[A-Za-z0-9._:-]{16,100}$' }
+      description: Request identity bound to the draft and action; retries cannot replay purged content
     CheckoutToken:
       name: X-Draft-Checkout
       in: header
@@ -658,12 +938,36 @@ components:
       required: true
       schema: { type: string, minLength: 16, maxLength: 100 }
   responses:
+    LibraryMutation:
+      description: Canonical Library state and committed owning draft revision
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/LibraryMutationResult' }
     Error:
       description: Structured error
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    AssetMigrationStatus:
+      type: object
+      additionalProperties: false
+      required: [state, remainingDrafts, legacyAssets, legacyBytes, recoveredUploads]
+      properties:
+        state: { type: string, enum: [pending, complete] }
+        remainingDrafts: { type: integer, minimum: 0 }
+        legacyAssets: { type: integer, minimum: 0 }
+        legacyBytes: { type: integer, minimum: 0 }
+        recoveredUploads: { type: integer, minimum: 0 }
+    DeletedDraftReceipt:
+      type: object
+      additionalProperties: false
+      required: [id, status, deletedAt]
+      description: Content-free receipt. Contains no draft name, document, media, links, or history.
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, const: deleted }
+        deletedAt: { type: string, format: date-time }
     CheckoutClient:
       type: object
       additionalProperties: false
@@ -842,30 +1146,97 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Revision' }
         nextCursor: { type: ['string', 'null'] }
-    Media:
-      type: object
-      required: [id, filename, displayName, tags, contentType, byteSize, altText, status]
-      properties:
-        id: { type: string, format: uuid }
-        filename: { type: string }
-        displayName: { type: string }
-        tags: { type: array, items: { type: string } }
-        contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/avif] }
-        byteSize: { type: integer, minimum: 1, maximum: 5242880 }
-        width: { type: integer, minimum: 1, maximum: 8000 }
-        height: { type: integer, minimum: 1, maximum: 8000 }
-        altText: { type: string, minLength: 1 }
-        status: { type: string, enum: [ready, rejected, published, orphaned] }
-        createdAt: { type: string, format: date-time }
-    MediaList:
+    LibraryMetadata:
       type: object
       additionalProperties: false
-      required: [items, nextCursor]
+      required: [displayName, altText, tags]
       properties:
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        altText: { type: string, maxLength: 300 }
+        tags:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 40 }
+    LibraryLinkInput:
+      type: object
+      additionalProperties: false
+      required: [displayName, altText, tags, mediaType, url]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        altText: { type: string, maxLength: 300 }
+        tags:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 40 }
+        mediaType: { type: string, enum: [image, video, youtube] }
+        url: { type: string, format: uri, maxLength: 2000 }
+    LibraryItem:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          mediaType,
+          sourceType,
+          displayName,
+          filename,
+          sourcePath,
+          url,
+          altText,
+          tags,
+          createdAt,
+          updatedAt,
+          archivedAt,
+          usageCount,
+          deleteBlockers,
+        ]
+      properties:
+        id: { type: string }
+        mediaType: { type: string, enum: [image, video, youtube] }
+        sourceType: { type: string, enum: [managed, uploaded, linked] }
+        displayName: { type: string }
+        filename: { type: string }
+        sourcePath:
+          { type: string, description: 'Safe document source path, never a private storage key' }
+        url:
+          {
+            type: string,
+            description: Owner-scoped private image URL or approved external linked URL,
+          }
+        altText: { type: string }
+        tags: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        usageCount: { type: integer, minimum: 0 }
+        deleteBlockers:
+          type: array
+          description: Safe explanations of owning draft placements, retained revisions, or pending candidate references
+          items: { type: string }
+        width: { type: integer, minimum: 1, maximum: 8000 }
+        height: { type: integer, minimum: 1, maximum: 8000 }
+        byteSize: { type: integer, minimum: 1, maximum: 5242880 }
+    LibrarySnapshot:
+      type: object
+      additionalProperties: false
+      required: [draftId, revisionId, revisionChecksum, items, activeCount, archivedCount]
+      properties:
+        draftId: { type: string, format: uuid }
+        revisionId: { type: string, format: uuid }
+        revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
         items:
           type: array
-          items: { $ref: '#/components/schemas/Media' }
-        nextCursor: { type: ['string', 'null'] }
+          description: Complete mixed inventory, including active and archived items; no 100-item cap
+          items: { $ref: '#/components/schemas/LibraryItem' }
+        activeCount: { type: integer, minimum: 0 }
+        archivedCount: { type: integer, minimum: 0 }
+    LibraryMutationResult:
+      type: object
+      additionalProperties: false
+      required: [draft, library]
+      properties:
+        draft: { $ref: '#/components/schemas/Draft' }
+        library: { $ref: '#/components/schemas/LibrarySnapshot' }
     SiteDocument:
       type: object
       required:
@@ -1042,6 +1413,18 @@ components:
         stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         stagingCommitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         productionBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    StagingPublishProgress:
+      type: object
+      additionalProperties: false
+      required: [environment, jobId, status, uploaded, total, candidateChecksum]
+      description: Content-free upload progress; excludes private bytes, source documents, credentials and internal checkpoints.
+      properties:
+        environment: { type: string, const: staging }
+        jobId: { type: string, format: uuid }
+        status: { type: string, const: running }
+        uploaded: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 1 }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
     StagingPublishResult:
       type: object
       additionalProperties: false

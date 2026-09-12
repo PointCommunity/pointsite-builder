@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Research</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      li {
+        margin-block: 10px;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Research: draft and media independence</h1>
+    <p>
+      <a href="spec.html">Specification</a> · Source baseline
+      <code>e1a3330c1dadc596d585af7f15258d332266d5a6</code>
+    </p>
+    <h2>Verified current behavior</h2>
+    <ul>
+      <li>
+        <code>repositories/d1.ts</code> creates independent draft and revision rows, saves full JSON
+        documents, and checks the revision checksum and checkout. Duplication currently copies
+        document references without copying uploaded binaries.
+      </li>
+      <li>
+        <code>media/service.ts</code> lists uploads globally, caps that list at 100, and
+        deduplicates on checksum/size across the system. <code>media_assets</code> has no draft
+        owner. Metadata edits update a shared record.
+      </li>
+      <li>
+        <code>MediaLibrary.tsx</code> separately renders managed images, upload history, and linked
+        media. “Use in Layout” attaches an upload to the document and switches panels; it does not
+        place an image in a section.
+      </li>
+      <li>
+        <code>setDraftStatus</code> only changes the status and deletion timestamp. Content remains
+        in revisions and idempotent responses. The existing retention policy waits 30 days and
+        requires a saved export.
+      </li>
+      <li>
+        <code>publish/candidate.ts</code> copies uploaded binary bytes into Git candidate files but
+        inherits other local assets from the destination repository. Candidate checksums include the
+        bytes that are explicitly copied. <code>GitHubStagingClient.commitFiles</code> creates a
+        commit on the existing Staging tree.
+      </li>
+      <li>
+        <code>RetentionService</code> currently derives media references from latest nondeleted
+        drafts, missing retained historical references. Its deletion order removes bytes before the
+        database batch. It must not remain an alternate unsafe deletion route after ownership
+        changes.
+      </li>
+      <li>
+        Immutable revisions, preflight foreign keys, publication jobs, approval records, editor
+        state, and idempotency caches all participate in the ownership/purge design. A row
+        disappearing from the Drafts page is insufficient proof of deletion.
+      </li>
+    </ul>
+    <h2>Technical sources</h2>
+    <ul>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/worker-api/d1-database/"
+          >Cloudflare D1 database API</a
+        >: use transactional batches for metadata, version bindings, private chunks, and audit
+        operations; an error must roll back the entire operation.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/platform/limits/">Cloudflare D1 limits</a>:
+        keep queries within parameter and statement limits. Use bound parameters, bounded batches,
+        and complete pagination; do not build an unbounded list of IDs into one query.
+      </li>
+      <li>
+        <a href="https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/">W3C modal dialog pattern</a
+        >: explicit labeling, focus containment, dismissal, and focus restoration govern destructive
+        confirmations.
+      </li>
+      <li>
+        <a href="https://www.w3.org/WAI/WCAG21/Techniques/html/H102">W3C native dialog technique</a
+        >: prefer native dialog behavior when compatible with the existing test and UI stack.
+      </li>
+    </ul>
+    <h2>Decisions</h2>
+    <ul>
+      <li>
+        Use explicit per-draft ownership and immutable binary versions. Preserve a Library item's
+        logical identity independently of the stored binary version.
+      </li>
+      <li>
+        Keep each existing revision's document and checksum intact. Migration binds its referenced
+        asset paths to owned immutable copies; only a new revision may update current content paths.
+      </li>
+      <li>
+        Do not use global upload deduplication to connect drafts. A duplicate operation creates
+        independent ownership and copies the required bytes.
+      </li>
+      <li>
+        Published files are destination-owned snapshots. Their existence does not retain the source
+        draft. External linked services remain external; publication copies the link and
+        accessibility metadata.
+      </li>
+      <li>
+        Use server-derived usage and deletion blockers. Search and sorting operate on the complete
+        inventory for one draft, with no cross-draft details in UI messages.
+      </li>
+      <li>
+        Disable legacy orphan cleanup for newly owned assets; all cleanup paths must use the same
+        ownership and reference rules.
+      </li>
+    </ul>
+  </body>
+</html>

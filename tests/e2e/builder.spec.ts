@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { draftAssetFixture } from './draft-asset-fixture';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
 const document = structuredClone(defaultSiteDocument);
@@ -41,6 +42,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/assets')) {
+      return route.fulfill(draftAssetFixture(request.url()));
+    }
     if (path === '/api/drafts/checkouts')
       return route.fulfill({
         contentType: 'application/json',
@@ -207,8 +211,15 @@ test.beforeEach(async ({ page }) => {
                               productionBaseSha: 'e'.repeat(40),
                             },
                           }
-                        : path.endsWith('/media')
-                          ? { items: [] }
+                        : path.endsWith('/library')
+                          ? {
+                              draftId: draft.id,
+                              revisionId: draft.latestRevisionId,
+                              revisionChecksum: draft.revision.checksum,
+                              items: [],
+                              activeCount: 0,
+                              archivedCount: 0,
+                            }
                           : path.endsWith('/admin/roles')
                             ? { items: [] }
                             : path.endsWith('/admin/audit')

@@ -301,7 +301,7 @@ export function App() {
             );
           }}
           onDelete={async (draft) => {
-            await api.setDraftStatus(draft.id, 'delete');
+            await api.deleteDraft(draft.id);
             setDrafts((current) => current.filter((item) => item.id !== draft.id));
           }}
         />

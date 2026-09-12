@@ -79,7 +79,7 @@ export class RetentionService {
     const [revisionRows, draftRows, latestRows, mediaRows, auditRows] = await Promise.all([
       this.database
         .prepare(
-          "SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.status!='deleted' AND r.created_at<? AND r.id!=d.latest_revision_id AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id) ORDER BY r.created_at,r.id",
+          "SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.status='active' AND r.created_at<? AND r.id!=d.latest_revision_id AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id) ORDER BY r.created_at DESC,r.id DESC",
         )
         .bind(automaticCutoff)
         .all<RevisionRow>(),
@@ -91,7 +91,7 @@ export class RetentionService {
         .all<DraftRow>(),
       this.database
         .prepare(
-          "SELECT r.document_json FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id WHERE d.status!='deleted'",
+          "SELECT r.document_json FROM drafts d JOIN revisions r ON r.draft_id=d.id WHERE d.status!='deleted'",
         )
         .all<{ document_json: string }>(),
       this.database.prepare('SELECT * FROM media_assets ORDER BY created_at,id').all<MediaRow>(),
@@ -143,6 +143,16 @@ export class RetentionService {
   }
 
   async apply(plan: RetentionPlan, savedExportChecksum: string, actor: string, requestId: string) {
+    const migrationTable = await this.database
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='draft_asset_migration'")
+      .first();
+    if (
+      migrationTable &&
+      (await this.database
+        .prepare('SELECT state FROM draft_asset_migration WHERE id=1')
+        .first('state')) !== 'complete'
+    )
+      throw new Error('ASSET_MIGRATION_INCOMPLETE');
     const observed = await checksum(plan.export);
     if (observed !== plan.exportChecksum || savedExportChecksum !== plan.exportChecksum)
       throw new Error('RETENTION_EXPORT_MISMATCH');

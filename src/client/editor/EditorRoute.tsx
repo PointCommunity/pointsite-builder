@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -24,6 +25,7 @@ import { SiteSettings } from '../settings/SiteSettings';
 import { FormsEditor } from '../settings/FormsEditor';
 import { StagingPublish } from '../publish/StagingPublish';
 import { MediaLibrary } from '../media/MediaLibrary';
+import { draftDisplayDocument } from '../media/draft-display-document';
 import { AdminRoute } from '../admin/AdminRoute';
 import { EditorProvider, useEditor } from './EditorProvider';
 import { PageManager } from './PageManager';
@@ -72,7 +74,12 @@ function Workspace({
     retryAutosave,
     copyRecoveryData,
     renameDraft,
+    runLibraryMutation,
   } = useEditor();
+  const displayDocument = useMemo(
+    () => draftDisplayDocument(document, draft.id),
+    [document, draft.id],
+  );
   const [panel, setPanel] = useState<Panel>(
     feedbackPanel && (feedbackPanel !== 'admin' || role === 'administrator')
       ? feedbackPanel
@@ -380,13 +387,14 @@ function Workspace({
             {editable ? (
               <Suspense fallback={<p>Loading visual editor…</p>}>
                 <VisualEditor
+                  draftId={draft.id}
                   pageId={pageId}
                   structureRevision={structureRevision}
                   onEditFooter={openFooterSettings}
                 />
               </Suspense>
             ) : (
-              <Preview document={document} />
+              <Preview document={displayDocument} />
             )}
           </section>
         </main>
@@ -423,36 +431,24 @@ function Workspace({
       ) : null}
       {panel === 'preview' ? (
         <main id="main-content" className="single-panel single-panel--preview">
-          <Preview document={document} />
+          <Preview document={displayDocument} />
         </main>
       ) : null}
       {panel === 'library' ? (
         <main id="main-content" className="single-panel">
           <MediaLibrary
-            document={document}
-            onDocumentChange={(next) =>
-              updateDocument(() => next, mutationForContext('linked-media'))
+            draftId={draft.id}
+            revisionChecksum={draft.revision.checksum}
+            revisionId={draft.latestRevisionId}
+            editable={editable && autosave.canLeave && saveState === 'saved'}
+            disabledReason={
+              role === 'viewer'
+                ? 'Viewer access is read only.'
+                : !editable
+                  ? 'This draft is read only. An active checkout is required to change its Library.'
+                  : 'Wait for all draft changes to save before changing the Library.'
             }
-            onSelect={(item) => {
-              const extension =
-                item.contentType === 'image/jpeg' ? 'jpg' : item.contentType.replace('image/', '');
-              updateDocument(
-                (next) => {
-                  if (!next.media.some((media) => media.id === item.id)) {
-                    next.media.push({
-                      id: item.id,
-                      sourcePath: `/assets/builder/${item.id}.${extension}`,
-                      alt: item.altText,
-                      displayName: item.displayName,
-                      tags: item.tags,
-                    });
-                  }
-                  return next;
-                },
-                mutationForContext('library-attachment', 'add'),
-              );
-              setPanel('layout');
-            }}
+            runMutation={runLibraryMutation}
           />
         </main>
       ) : null}

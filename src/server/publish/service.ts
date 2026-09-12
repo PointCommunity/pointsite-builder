@@ -1,6 +1,11 @@
 import { createInstallationToken } from '../github/app-auth';
 import { GitHubStagingClient } from '../github/client';
-import type { StagingCommit, StagingVerificationEvidence } from '../github/client';
+import type {
+  StagingUploadInput,
+  StagingUploadResult,
+  StagingUploadProgress,
+  StagingVerificationEvidence,
+} from '../github/client';
 import type { MediaService } from '../media/service';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
@@ -34,11 +39,7 @@ interface StagingClient {
     expectedBaseSha: string,
     contract: Record<string, string>,
   ): Promise<void>;
-  commitFiles(input: {
-    expectedBaseSha: string;
-    message: string;
-    files: Awaited<ReturnType<typeof buildCandidate>>['files'];
-  }): Promise<StagingCommit>;
+  advanceCommit(input: StagingUploadInput): Promise<StagingUploadResult>;
   verificationForCommit(commitSha: string): Promise<
     | { status: 'pending' }
     | {
@@ -108,6 +109,7 @@ export class StagingPublisher {
   async preflight(input: PreflightInput) {
     if (!this.preflights) throw new Error('PREFLIGHTS_NOT_CONFIGURED');
     const draft = await this.repository.getDraft(input.draftId);
+    if (draft.status !== 'active') throw new Error('DRAFT_REVISION_DRIFT');
     const contractChecksum = await this.rendererContractChecksum();
     if (
       draft.revision.id !== input.expectedRevisionId ||
@@ -142,6 +144,13 @@ export class StagingPublisher {
       const baseSha = await client.currentMainSha();
       await client.assertRendererCompatible(baseSha, STAGING_RENDERER_CONTRACT);
       const candidate = await buildCandidate(draft, this.media);
+      const currentDraft = await this.repository.getDraft(input.draftId);
+      if (
+        currentDraft.status !== 'active' ||
+        currentDraft.revision.id !== input.expectedRevisionId ||
+        currentDraft.revision.checksum !== input.expectedRevisionChecksum
+      )
+        throw new Error('DRAFT_REVISION_DRIFT');
       const passed = await this.preflights.recordPassed({
         ...input,
         revisionId: draft.revision.id,
@@ -204,6 +213,7 @@ export class StagingPublisher {
     if (!this.jobs || !this.preflights) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     const draft = await this.repository.getDraft(input.draftId);
     if (
+      draft.status !== 'active' ||
       draft.revision.id !== input.expectedRevisionId ||
       draft.revision.checksum !== input.expectedRevisionChecksum
     )
@@ -239,7 +249,16 @@ export class StagingPublisher {
       existing.leaseExpiresAt &&
       existing.leaseExpiresAt > now
     )
-      throw new Error('PUBLISH_SLOT_BUSY');
+      return this.continuePublication(existing.id, input.actor, input.requestId);
+    if (existing?.evidence.upload) {
+      const reclaimed = await this.jobs.claim({
+        ...input,
+        candidateChecksum: existing.candidateChecksum,
+        candidate: existing.candidate,
+        baseSha: existing.baseSha,
+      });
+      return this.continuePublication(reclaimed.id, input.actor, input.requestId);
+    }
     if ((await this.jobs.availability(now)).state === 'busy') throw new Error('PUBLISH_SLOT_BUSY');
     const reusable = await this.jobs.getLatestReusable(
       preflight.candidateChecksum,
@@ -276,6 +295,7 @@ export class StagingPublisher {
     }
     const currentDraft = await this.repository.getDraft(input.draftId);
     if (
+      currentDraft.status !== 'active' ||
       currentDraft.revision.id !== input.expectedRevisionId ||
       currentDraft.revision.checksum !== input.expectedRevisionChecksum
     ) {
@@ -303,24 +323,98 @@ export class StagingPublisher {
       actor: input.actor,
       requestId: input.requestId,
     });
-    let commit: { sha: string; url: string };
+    return this.advance(job, input.actor, input.requestId, client, candidate);
+  }
+
+  async continuePublication(id: string, actor: string, requestId: string) {
+    if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    const job = await this.jobs.getById(id);
+    if (!job) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
+    if (job.status === 'succeeded' && job.resultSha && job.externalUrl) {
+      const draft = await this.repository.getDraft(String(job.candidate.draftId));
+      return this.result(
+        draft,
+        job.candidateChecksum,
+        { expectedBaseSha: job.baseSha, actor },
+        job.resultSha,
+        job.externalUrl,
+        job.id,
+      );
+    }
+    return this.advance(job, actor, requestId);
+  }
+
+  private async advance(
+    job: PublishJobRecord,
+    actor: string,
+    requestId: string,
+    preparedClient?: StagingClient,
+    preparedCandidate?: Awaited<ReturnType<typeof buildCandidate>>,
+  ) {
+    const jobs = this.jobs!;
+    const draft = await this.repository.getDraft(String(job.candidate.draftId));
+    if (
+      draft.status !== 'active' ||
+      draft.revision.id !== job.candidate.revisionId ||
+      draft.revision.checksum !== job.candidate.revisionChecksum
+    ) {
+      await jobs.fail(job.id, actor, requestId, 'DRAFT_REVISION_DRIFT');
+      throw new Error('DRAFT_REVISION_DRIFT');
+    }
+    const { token, job: claimed } = await jobs.acquireStep(job.id);
     try {
-      commit = await client.commitFiles({
-        expectedBaseSha: input.expectedBaseSha,
+      const client = preparedClient ?? (await this.client());
+      if (!preparedClient)
+        await client.assertRendererCompatible(job.baseSha, STAGING_RENDERER_CONTRACT);
+      const candidate = preparedCandidate ?? (await buildCandidate(draft, this.media));
+      if (candidate.candidateChecksum !== job.candidateChecksum)
+        throw new Error('PREFLIGHT_CANDIDATE_DRIFT');
+      const progress: StagingUploadProgress = z
+        .object({
+          blobShas: z.array(z.string().regex(/^[a-f0-9]{40}$/)).max(candidate.files.length),
+          commit: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/), url: z.url() }).optional(),
+        })
+        .parse(claimed.evidence.upload ?? { blobShas: [] });
+      await jobs.guardStep(job.id, token);
+      const result = await client.advanceCommit({
+        expectedBaseSha: job.baseSha,
         message: `Publish builder revision ${draft.revision.sequence} to staging`,
         files: candidate.files,
+        requestedAt: job.requestedAt,
+        progress,
+        checkpoint: (next) => jobs.checkpoint(job.id, token, next),
+        guard: () => jobs.guardStep(job.id, token),
       });
-      await this.jobs.succeed(job.id, input.actor, input.requestId, commit);
-    } catch (error) {
-      await this.jobs.fail(
+      if (result.status === 'running')
+        return {
+          environment: 'staging' as const,
+          jobId: job.id,
+          status: 'running' as const,
+          uploaded: result.uploaded,
+          total: result.total,
+          candidateChecksum: job.candidateChecksum,
+        };
+      await jobs.succeed(job.id, actor, requestId, result.commit);
+      return this.result(
+        draft,
+        candidate.candidateChecksum,
+        { expectedBaseSha: job.baseSha, actor },
+        result.commit.sha,
+        result.commit.url,
         job.id,
-        input.actor,
-        input.requestId,
+      );
+    } catch (error) {
+      await jobs.failStep(
+        job.id,
+        token,
+        actor,
+        requestId,
         error instanceof Error ? error.message.slice(0, 100) : 'UNKNOWN',
       );
       throw error;
+    } finally {
+      await jobs.releaseStep(job.id, token);
     }
-    return this.result(draft, candidate.candidateChecksum, input, commit.sha, commit.url, job.id);
   }
 
   private result(

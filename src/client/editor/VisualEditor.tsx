@@ -42,6 +42,7 @@ import { getGridBreakpoint, setGridBreakpoint, useGridBreakpoint } from './GridB
 import { breakpointForWidth } from './grid-breakpoint';
 import { GridPlacementInspector } from './GridPlacementInspector';
 import { SectionInspector, type SectionSettings } from './SectionInspector';
+import { draftDisplayDocument } from '../media/draft-display-document';
 import { useEditorDocument, type useEditor } from './EditorProvider';
 import { usePointPuck } from './puck-store';
 import { useGridInteraction } from './grid-interaction-store';
@@ -820,15 +821,21 @@ function rootElementToSection(item: ComponentData): SectionBlock {
 }
 
 function VisualEditorImpl({
+  draftId,
   pageId,
   structureRevision,
   onEditFooter,
 }: {
+  draftId: string;
   pageId: string;
   structureRevision: number;
   onEditFooter: () => void;
 }) {
   const { document, updateDocument, stageDocument, completeDocument } = useEditorDocument();
+  const displayDocument = useMemo(
+    () => draftDisplayDocument(document, draftId),
+    [document, draftId],
+  );
   const [interactionRevision, setInteractionRevision] = useState(0);
   const page = document.pages.find((candidate) => candidate.id === pageId);
   const data = useMemo<Data>(
@@ -862,7 +869,7 @@ function VisualEditorImpl({
         content: [],
       },
       render: (props: SectionProps & { id?: string }) => (
-        <SectionComponent {...props} kind={kind} document={document} />
+        <SectionComponent {...props} kind={kind} document={displayDocument} />
       ),
     };
   }
@@ -1036,7 +1043,7 @@ function VisualEditorImpl({
             {parsed.success ? (
               renderBlock(
                 parsed.data,
-                document,
+                displayDocument,
                 undefined,
                 hero
                   ? (kind) => (
@@ -1076,7 +1083,7 @@ function VisualEditorImpl({
         <>
           <style>{`${siteCss}\n${editorCanvasCss}`}</style>
           <CanvasBreakpointReporter />
-          <SiteFrame document={document} page={page} editing onEditFooter={onEditFooter}>
+          <SiteFrame document={displayDocument} page={page} editing onEditFooter={onEditFooter}>
             {children}
           </SiteFrame>
         </>

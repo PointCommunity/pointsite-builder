@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -11,6 +12,11 @@ import {
 import type { SiteDocument } from '../../site-kit/types';
 import type { DraftCheckout, DraftRecord } from '../../server/repositories/contracts';
 import { api } from '../api';
+import type {
+  LibraryMutationContext,
+  LibraryMutationResult,
+  LibrarySnapshot,
+} from '../../shared/library';
 import {
   ActionAutosaveController,
   type AutosaveMutation,
@@ -34,6 +40,9 @@ interface EditorValue {
   copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
   renameDraft: (name: string) => Promise<void>;
+  runLibraryMutation: (
+    operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
+  ) => Promise<LibrarySnapshot>;
 }
 
 type EditorDocumentValue = Pick<
@@ -72,6 +81,64 @@ export function EditorProvider({
     controller.subscribe,
     () => controller.snapshot,
     () => controller.snapshot,
+  );
+  const libraryMutationPending = useRef(false);
+  const runLibraryMutation = useCallback(
+    async (
+      operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
+    ): Promise<LibrarySnapshot> => {
+      const before = controller.snapshot;
+      if (!checkout || before.draft.status !== 'active')
+        throw new Error(
+          'An active draft checkout is required. Reopen this draft to edit its Library.',
+        );
+      if (libraryMutationPending.current)
+        throw new Error('Wait for the current Library change to finish.');
+      if (
+        before.state !== 'saved' ||
+        !before.canLeave ||
+        JSON.stringify(before.document) !== JSON.stringify(before.draft.document)
+      ) {
+        controller.flushTextAction();
+        throw new Error(
+          'Wait until all draft changes are saved, then try again. Your pending edits are preserved.',
+        );
+      }
+      libraryMutationPending.current = true;
+      try {
+        await api.validateCheckout(before.draft.id, checkout.token);
+        if (controller.snapshot !== before)
+          throw new Error(
+            'The draft changed while preparing this action. Wait for autosave, then try again.',
+          );
+        const result = await operation({
+          draftId: before.draft.id,
+          expectedChecksum: before.draft.revision.checksum,
+          expectedRevisionId: before.draft.latestRevisionId,
+          checkoutToken: checkout.token,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        if (controller.snapshot !== before)
+          throw new Error(
+            'The Library change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
+          );
+        if (
+          result.draft.id !== before.draft.id ||
+          result.library.draftId !== before.draft.id ||
+          result.library.revisionId !== result.draft.latestRevisionId ||
+          result.draft.revision.id !== result.draft.latestRevisionId ||
+          result.library.revisionChecksum !== result.draft.revision.checksum
+        )
+          throw new Error(
+            'The Library response could not be verified. Reload the latest draft before continuing.',
+          );
+        controller.replaceWithLatest(result.draft);
+        return result.library;
+      } finally {
+        libraryMutationPending.current = false;
+      }
+    },
+    [checkout, controller],
   );
 
   useEffect(() => {
@@ -147,8 +214,9 @@ export function EditorProvider({
       copyRecoveryData,
       reloadLatest,
       renameDraft,
+      runLibraryMutation,
     }),
-    [autosave, controller, copyRecoveryData, reloadLatest, renameDraft],
+    [autosave, controller, copyRecoveryData, reloadLatest, renameDraft, runLibraryMutation],
   );
 
   const documentValue = useMemo<EditorDocumentValue>(

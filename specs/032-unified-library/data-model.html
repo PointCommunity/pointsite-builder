@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Data and API contracts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      li {
+        margin-block: 10px;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 12px;
+        border: 1px solid #435263;
+        vertical-align: top;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Data ownership and mutation contracts</h1>
+    <p><a href="spec.html">Specification</a> · Proposed implementation contract</p>
+    <h2>Ownership model</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Record</th>
+          <th>Ownership and lifetime</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Draft and revisions</td>
+          <td>
+            The draft owns full document snapshots, labels, editor/checkouts, and private preflight
+            state. Archive preserves them together; purge removes them together.
+          </td>
+        </tr>
+        <tr>
+          <td>Library item</td>
+          <td>
+            Compound owner/item identity, image/video/YouTube type, managed/uploaded/linked origin,
+            display and accessibility metadata, creation/update timestamps, archive timestamp, and
+            current binary binding where applicable.
+          </td>
+        </tr>
+        <tr>
+          <td>Binary version</td>
+          <td>
+            Draft owner, immutable version identity, source-path binding, private object key,
+            checksum, MIME, dimensions, byte size, and chunks. Replacement creates a new version;
+            duplication copies into another owner. Retained revisions keep their existing bindings.
+          </td>
+        </tr>
+        <tr>
+          <td>Operation receipt</td>
+          <td>
+            Draft/operation identity and request hash, with no retained draft payload after purge.
+            Deleted operation keys cannot replay a stale document. Purge retries report completion
+            safely.
+          </td>
+        </tr>
+        <tr>
+          <td>Published snapshot</td>
+          <td>
+            Destination-owned document, manifest, renderer-compatible file paths, and binary files.
+            Minimal immutable publication receipts remain independent of private draft storage.
+          </td>
+        </tr>
+        <tr>
+          <td>Deletion audit</td>
+          <td>
+            Content-free actor/action/time/request and opaque deleted identity. No document, image,
+            name, alt text, link, or private object key survives in the tombstone.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>API contract</h2>
+    <ul>
+      <li>
+        Library listing is scoped to <code>/api/drafts/:draftId/library</code> and returns the
+        complete item set, active/archived counts, item usage and safe blockers, plus the draft's
+        current revision identity.
+      </li>
+      <li>
+        Every Library mutation includes the owning draft, current checkout, exact revision
+        precondition, and idempotency key. Authorization, same-origin headers, rate limits, body
+        bounds, and schema validation remain server-enforced.
+      </li>
+      <li>
+        Upload and replacement accept multipart image bytes and fresh accessibility metadata. Upload
+        becomes visible in the unified Library immediately. Replacement submission carries the final
+        confirmation; no storage mutation occurs during local preview.
+      </li>
+      <li>
+        Archive, unarchive, metadata update, and individual deletion address one item under its
+        draft. Deletion independently validates archive state, final confirmation, references, and
+        retention at commit time.
+      </li>
+      <li>
+        A successful mutation returns the committed draft/revision and canonical Library state. The
+        client adopts it only after pending autosave is settled; it never overwrites newer local
+        changes with a stale response.
+      </li>
+      <li>
+        Private image reads resolve a draft-owned immutable version. A cross-owner reference or
+        purged version returns Not Found. Published documents use destination-relative asset paths
+        and need no Builder session.
+      </li>
+      <li>
+        Whole-draft DELETE retains archive-first and typed DELETE confirmation, returns only a
+        content-free deletion receipt, and performs no GitHub or public-site mutation.
+      </li>
+      <li>
+        OpenAPI must document owner paths, payloads, safe response DTOs, conflict/precondition
+        responses, confirmation rules, pagination/completeness, and deletion semantics before
+        endpoint implementation.
+      </li>
+    </ul>
+    <h2>Transactions and invariants</h2>
+    <p>
+      Changes to a document, Library state, private chunks, version bindings, idempotency receipt,
+      and audit are committed together. Guard owner, archive state, checkout, current revision,
+      capacity, and publication lease within the transaction. Do not perform a storage delete before
+      committing its metadata transaction. Never overwrite a referenced binary in place.
+    </p>
+    <p>
+      All retained versions of a surviving draft remain protected. Individual media deletion cannot
+      bypass those references. Whole-draft purge removes the entire ownership graph; completed
+      publications are separate owners and remain valid. Any failed guard leaves all bytes and
+      metadata unchanged.
+    </p>
+    <h2>Migration and rollback</h2>
+    <ol>
+      <li>
+        Inventory all drafts, retained revisions, assets, chunks, pending jobs, idempotency
+        payloads, and foreign-key dependencies. Record aggregate counts and checksums without
+        exposing draft contents.
+      </li>
+      <li>
+        Add ownership/version metadata without dropping existing content. Bind every historical
+        reference to an owned immutable copy. For assets shared by legacy drafts, create separate
+        copies for each owner. Preserve revision JSON and checksums.
+      </li>
+      <li>
+        Preserve legacy uploads with no provable draft owner in an explicit archived recovery
+        workspace. Do not silently assign them to every active draft or discard them. Verify copy
+        checksums and capacity before migration commits.
+      </li>
+      <li>
+        Rehearse on synthetic populated databases, including interrupted migration and rerun. Verify
+        ownership, timestamp derivation, unchanged historical checksums, no cross-draft mutation,
+        and exact binary equality.
+      </li>
+      <li>
+        Retire legacy global writes and unsafe orphan cleanup only after the owned data and new read
+        paths are complete. Remove redundant legacy private bytes only after verifying every
+        necessary owned copy. No automatic purge of previously soft-deleted user data is part of
+        deployment.
+      </li>
+      <li>
+        Verify the recorded application rollback version against the migrated schema and paths. If
+        it would restore shared mutable behavior or cannot read new versions, establish and verify a
+        compatible recovery build before enabling lifecycle mutations. Never treat rolling back to
+        an incompatible worker as recovery.
+      </li>
+      <li>
+        Application rollback must not restore purged draft content. A confirmed purge is
+        irreversible. Preserve independent published copies and content-free audit evidence during
+        recovery.
+      </li>
+    </ol>
+  </body>
+</html>

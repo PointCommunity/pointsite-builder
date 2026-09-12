@@ -7,6 +7,7 @@ import type {
   AuditEventRecord,
   CheckoutCommand,
   CreateDraftInput,
+  DeletedDraftReceipt,
   DraftRecord,
   DraftCheckout,
   DraftCheckoutAvailability,
@@ -39,7 +40,7 @@ function clone<T>(value: T): T {
 export class InMemoryRepository implements DraftRepository {
   readonly #drafts = new Map<string, DraftRecord>();
   readonly #revisions = new Map<string, RevisionRecord[]>();
-  readonly #idempotency = new Map<string, DraftRecord>();
+  readonly #idempotency = new Map<string, DraftRecord | null>();
   readonly #audit: AuditEventRecord[] = [];
   readonly #checkouts = new Map<
     string,
@@ -75,6 +76,8 @@ export class InMemoryRepository implements DraftRepository {
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
     const operationKey = `draft.create:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
+    if (prior === null)
+      throw new ConflictError('This request belongs to a permanently deleted draft');
     if (prior) return clone(prior);
 
     const now = new Date().toISOString();
@@ -121,13 +124,16 @@ export class InMemoryRepository implements DraftRepository {
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
     if (input.checkoutToken)
       await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
-    const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
-    const prior = this.#idempotency.get(operationKey);
-    if (prior) return clone(prior);
-
     const current = this.#drafts.get(input.draftId);
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
+    if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
+      throw new ConflictError('The draft has a newer revision');
+    const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
+    const prior = this.#idempotency.get(operationKey);
+    if (prior === null) throw new NotFoundError(`Draft ${input.draftId} was not found`);
+    if (prior) return clone(prior);
+
     if (current.revision.checksum !== input.expectedChecksum) {
       throw new ConflictError('The draft has a newer revision');
     }
@@ -211,6 +217,8 @@ export class InMemoryRepository implements DraftRepository {
     actor: string,
     requestId: string,
   ): Promise<RevisionRecord> {
+    if ((await this.getDraft(draftId)).status !== 'active')
+      throw new ConflictError('Only active drafts can be edited');
     const revisions = this.#revisions.get(draftId);
     const index = revisions?.findIndex((revision) => revision.id === revisionId) ?? -1;
     if (!revisions || index < 0) throw new NotFoundError(`Revision ${revisionId} was not found`);
@@ -234,7 +242,7 @@ export class InMemoryRepository implements DraftRepository {
   ): Promise<DraftRecord> {
     const current = this.#drafts.get(draftId);
     if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
-    if (current.status === 'deleted') throw new ConflictError('Deleted drafts cannot be renamed');
+    if (current.status !== 'active') throw new ConflictError('Only active drafts can be renamed');
     const updated = { ...current, name, updatedAt: new Date().toISOString() };
     this.#drafts.set(draftId, clone(updated));
     this.#recordAudit(actor, 'draft.rename', draftId, requestId, {});
@@ -243,7 +251,7 @@ export class InMemoryRepository implements DraftRepository {
 
   async setDraftStatus(
     draftId: string,
-    status: DraftStatus,
+    status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
   ): Promise<DraftRecord> {
@@ -252,7 +260,7 @@ export class InMemoryRepository implements DraftRepository {
     if (current.status === status) return clone(current);
     const allowed =
       (current.status === 'active' && status === 'archived') ||
-      (current.status === 'archived' && (status === 'active' || status === 'deleted'));
+      (current.status === 'archived' && status === 'active');
     if (!allowed) throw new ConflictError(`Cannot change ${current.status} draft to ${status}`);
 
     const now = new Date().toISOString();
@@ -260,13 +268,51 @@ export class InMemoryRepository implements DraftRepository {
       ...current,
       status,
       updatedAt: now,
-      deletedAt: status === 'deleted' ? now : null,
+      deletedAt: null,
     };
     this.#drafts.set(draftId, clone(updated));
+    if (status === 'archived') this.#clearEditorState(draftId);
     this.#recordAudit(actor, `draft.${status}`, draftId, requestId, {
       previousStatus: current.status,
     });
     return clone(updated);
+  }
+
+  async purgeDraft(
+    draftId: string,
+    actor: string,
+    requestId: string,
+  ): Promise<DeletedDraftReceipt> {
+    const current = await this.getDraft(draftId);
+    if (current.status !== 'archived')
+      throw new ConflictError('Only archived drafts can be deleted');
+    const revisionIds = new Set(
+      (this.#revisions.get(draftId) ?? []).map((revision) => revision.id),
+    );
+    this.#drafts.delete(draftId);
+    this.#revisions.delete(draftId);
+    this.#clearEditorState(draftId);
+    for (const [key, value] of this.#idempotency) {
+      if (value?.id === draftId) this.#idempotency.set(key, null);
+    }
+    for (let index = this.#audit.length - 1; index >= 0; index--) {
+      const event = this.#audit[index];
+      if (
+        event.targetId === draftId ||
+        revisionIds.has(event.targetId) ||
+        event.metadata.draftId === draftId
+      )
+        this.#audit.splice(index, 1);
+    }
+    this.#recordAudit(actor, 'draft.deleted', draftId, requestId, {});
+    return { id: draftId, status: 'deleted', deletedAt: new Date().toISOString() };
+  }
+
+  #clearEditorState(draftId: string): void {
+    this.#checkouts.delete(draftId);
+    for (const [actor, state] of this.#viewStates) {
+      if (state.draftId === draftId) this.#viewStates.delete(actor);
+    }
   }
 
   async listCheckoutAvailability(

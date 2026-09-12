@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 32 — Implementation plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #edf1f5;
+        font: 16px/1.65 system-ui;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 40px 24px;
+      }
+      a {
+        color: #85ccff;
+      }
+      li {
+        margin-block: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Implementation plan</h1>
+    <p><a href="spec.html">Specification</a> · <a href="tasks.html">Verification checklist</a></p>
+    <ol>
+      <li>
+        <strong>Prove existing isolation gaps.</strong> Reproduce stale private data after deletion
+        in both D1 and memory repositories. Add cross-draft media and independent-publication checks
+        before changing behavior.
+      </li>
+      <li>
+        <strong>Define and migrate ownership.</strong> Introduce per-draft Library and immutable
+        binary ownership, complete reference checks, safe timestamps, and idempotency tombstones.
+        Keep retained documents and published evidence intact. Prove atomic rollback and recovery
+        compatibility before enabling mutations.
+      </li>
+      <li>
+        <strong>Create and duplicate complete drafts.</strong> Copy all required local bytes into
+        the new draft's ownership. Enforce owner checks on saves and media reads. Archive freezes
+        the entire workspace; unarchive restores the same content.
+      </li>
+      <li>
+        <strong>Publish independent snapshots.</strong> Package every required local asset, validate
+        paths and checksums, and make the completed snapshot independent of source-draft survival.
+        Coordinate publication and purge with server leases. Use synthetic destinations to test
+        Staging and Production ownership semantics without publishing the public Production site.
+        Read candidate images in bounded bulk queries. Upload Git blobs in resumable steps within
+        the free Worker request budget; revalidate the exact draft, candidate, lease, and
+        destination before each step. Update the destination branch only when the complete snapshot
+        is ready.
+      </li>
+      <li>
+        <strong>Purge an archived draft.</strong> Delete its complete private ownership graph
+        transactionally, including history, binary chunks, preflight payloads, editor state, and
+        cached responses. Retain only content-free receipts. Prove no resurrection and no effect on
+        other owners.
+      </li>
+      <li>
+        <strong>Deliver the unified Library.</strong> Replace the three inventories with one
+        mixed-media list. Connect uploads, timestamps, filtering, sorting, counts, archive
+        navigation, and unarchive to the scoped server API. Preserve the installed design system and
+        existing editor selection controls.
+      </li>
+      <li>
+        <strong>Deliver safe image replacement and item deletion.</strong> Add preview and final
+        confirmation, fresh alternative text, server validation, atomic update, blockers,
+        cancellation, keyboard operation, and focus restoration.
+      </li>
+      <li>
+        <strong>Verify and release.</strong> Run all configured local suites and cleanup, review the
+        exact diff, complete lightweight GitHub checks, merge and deploy the exact Builder
+        candidate, verify live affected behavior, and present the PM Showcase. Keep Issue #32 open
+        until PM acceptance.
+      </li>
+    </ol>
+    <h2>Coordination</h2>
+    <p>
+      Schema, shared contracts, ownership migration, and publication/purge ordering are sequential.
+      Independent reproduction tests may run in parallel. UI work may run in parallel only after its
+      API contract is fixed. No unreviewed intermediate database or UI slice is deployed.
+    </p>
+    <h2>Risks addressed first</h2>
+    <ul>
+      <li>
+        Historical references and a global media uniqueness constraint make simple owner-column
+        addition insufficient.
+      </li>
+      <li>
+        Creating a candidate against a base Git tree does not prove that every image belongs to the
+        candidate; validate complete asset closure explicitly.
+      </li>
+      <li>
+        Purging only visible draft rows leaves private content in revisions, operation caches, or
+        binary chunks. Test each storage location.
+      </li>
+      <li>
+        Old workers and maintenance scripts can bypass new ownership. Verify compatibility and
+        disable unsafe legacy paths before exposing destructive controls.
+      </li>
+      <li>
+        Copying shared images increases storage use. Capacity checks must count the actual private
+        copies and fail atomically.
+      </li>
+    </ul>
+  </body>
+</html>

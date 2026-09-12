@@ -1,6 +1,13 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
+import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord, RevisionRecord, Role } from '../../src/server/repositories/contracts';
+import type {
+  LibraryItem,
+  LibraryLinkInput,
+  LibraryMetadata,
+  LibrarySnapshot,
+} from '../../src/shared/library';
 
 const original = (): DraftRecord => {
   const document = structuredClone(defaultSiteDocument);
@@ -42,6 +49,60 @@ async function installApi(
   const draft = original();
   configureDocument?.(draft.document);
   const drafts = [draft];
+  // Browser interaction fixture only. D1 integration tests prove actual ownership and purge.
+  const libraries = new Map<string, LibraryItem[]>();
+  const libraryRequests: Array<{
+    action: string;
+    draftId: string;
+    headers: Record<string, string>;
+  }> = [];
+  const librarySnapshot = (owner: DraftRecord): LibrarySnapshot => {
+    let items = libraries.get(owner.id);
+    if (!items) {
+      const common = {
+        createdAt: owner.createdAt,
+        updatedAt: owner.updatedAt,
+        archivedAt: null,
+        usageCount: 0,
+        deleteBlockers: [],
+      };
+      items = [
+        ...owner.document.media.map((item): LibraryItem => ({
+          ...common,
+          id: item.id,
+          mediaType: 'image',
+          sourceType: 'managed',
+          displayName: item.displayName || item.alt,
+          filename: item.sourcePath.split('/').at(-1) ?? '',
+          sourcePath: item.sourcePath,
+          url: `/api/drafts/${owner.id}/assets?path=${encodeURIComponent(item.sourcePath)}`,
+          altText: item.alt,
+          tags: item.tags ?? [],
+        })),
+        ...owner.document.linkedMedia.map((item): LibraryItem => ({
+          ...common,
+          id: item.id,
+          mediaType: item.type,
+          sourceType: 'linked',
+          displayName: item.displayName,
+          filename: '',
+          sourcePath: '',
+          url: item.url,
+          altText: item.alternativeText ?? '',
+          tags: item.tags ?? [],
+        })),
+      ];
+      libraries.set(owner.id, items);
+    }
+    return {
+      draftId: owner.id,
+      revisionChecksum: owner.revision.checksum,
+      revisionId: owner.latestRevisionId,
+      items,
+      activeCount: items.filter((item) => !item.archivedAt).length,
+      archivedCount: items.filter((item) => item.archivedAt).length,
+    };
+  };
   const oldRevision: RevisionRecord = {
     ...draft.revision,
     id: '20000000-0000-4000-8000-000000000001',
@@ -181,38 +242,154 @@ async function installApi(
         body = { code: 'VALIDATION_FAILED', message: 'Review the highlighted fields' };
       } else {
         const [deleted] = drafts.splice(index, 1);
-        body = { ...deleted, status: 'deleted', deletedAt: new Date().toISOString() };
+        libraries.delete(deleted.id);
+        body = { id: deleted.id, status: 'deleted', deletedAt: new Date().toISOString() };
       }
     } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'GET') {
       const id = path.split('/').at(-1);
       body = drafts.find((candidate) => candidate.id === id) ?? draft;
     } else if (/\/api\/drafts\/[^/]+$/.test(path)) body = draft;
-    else if (path === '/api/media' && method === 'GET') body = { items: [], nextCursor: null };
-    else if (path === '/api/media' && method === 'POST') {
-      body = {
-        id: '30000000-0000-4000-8000-000000000001',
-        filename: 'gathering.png',
-        displayName: 'Gathering',
-        tags: [],
-        contentType: 'image/png',
-        byteSize: 68,
-        width: 1,
-        height: 1,
-        altText: 'People gathering',
-        status: 'ready',
-        createdAt: '2026-09-05T00:00:00Z',
-      };
-      status = 201;
-    } else if (path.startsWith('/api/media/')) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'image/png',
-        body: Buffer.from(
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII=',
-          'base64',
-        ),
-      });
+    else if (/^\/api\/drafts\/[^/]+\/assets$/.test(path)) {
+      await route.fulfill(draftAssetFixture(request.url()));
       return;
+    } else if (/^\/api\/drafts\/[^/]+\/library(?:\/|$)/.test(path)) {
+      const owner = drafts.find((candidate) => candidate.id === path.split('/')[3]);
+      if (!owner) {
+        status = 404;
+        body = { code: 'NOT_FOUND', message: 'Draft not found' };
+      } else if (method === 'GET') body = librarySnapshot(owner);
+      else if (
+        role === 'viewer' ||
+        owner.status !== 'active' ||
+        request.headers()['x-draft-checkout'] !== '30000000-0000-4000-8000-000000000001' ||
+        request.headers()['if-match'] !== `"${owner.revision.checksum}"` ||
+        request.headers()['x-draft-revision'] !== owner.latestRevisionId ||
+        !request.headers()['idempotency-key']
+      ) {
+        status = 409;
+        body = { code: 'CONFLICT', message: 'Saved draft and active checkout required' };
+      } else {
+        const items = librarySnapshot(owner).items;
+        const itemId = path.split('/')[6];
+        const item = items.find((candidate) => candidate.id === itemId);
+        let action: string;
+        if (path.endsWith('/images') || path.endsWith('/replacement')) {
+          const form = await new Request(request.url(), {
+            method: 'POST',
+            headers: request.headers(),
+            body: Uint8Array.from(request.postDataBuffer() ?? []),
+          }).formData();
+          const file = form.get('file') as File;
+          const textField = (key: string, fallback = '') => {
+            const value = form.get(key);
+            return typeof value === 'string' ? value : fallback;
+          };
+          const replacement = path.endsWith('/replacement');
+          expect(replacement ? form.get('confirmed') : 'true').toBe('true');
+          const id = item?.id ?? crypto.randomUUID();
+          const sourcePath = `/assets/builder/${owner.id}/${crypto.randomUUID()}.png`;
+          const image: LibraryItem = {
+            id,
+            mediaType: 'image',
+            sourceType: 'uploaded',
+            displayName: textField('displayName', file.name),
+            filename: file.name,
+            sourcePath,
+            url: `/api/drafts/${owner.id}/assets?path=${encodeURIComponent(sourcePath)}`,
+            altText: textField('altText'),
+            tags: replacement ? (JSON.parse(textField('tags', '[]')) as string[]) : [],
+            createdAt: item?.createdAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            archivedAt: null,
+            usageCount: item?.usageCount ?? 0,
+            deleteBlockers: [],
+          };
+          if (item) items.splice(items.indexOf(item), 1, image);
+          else items.push(image);
+          const existing = owner.document.media.find((record) => record.id === id);
+          const media = {
+            id,
+            sourcePath,
+            alt: image.altText,
+            displayName: image.displayName,
+            tags: image.tags,
+          };
+          if (existing) Object.assign(existing, media);
+          else owner.document.media.push(media);
+          action = replacement ? 'replace' : 'upload';
+          status = replacement ? 200 : 201;
+        } else if (path.endsWith('/links')) {
+          const input = request.postDataJSON() as LibraryLinkInput;
+          const id = crypto.randomUUID();
+          items.push({
+            ...input,
+            id,
+            sourceType: 'linked',
+            filename: '',
+            sourcePath: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            archivedAt: null,
+            usageCount: 0,
+            deleteBlockers: [],
+          });
+          owner.document.linkedMedia.push({
+            id,
+            type: input.mediaType,
+            displayName: input.displayName,
+            url: input.url,
+            alternativeText: input.altText,
+            tags: input.tags,
+          });
+          action = 'link';
+          status = 201;
+        } else if (method === 'DELETE') {
+          expect(item?.archivedAt).toBeTruthy();
+          expect(request.postDataJSON()).toEqual({ confirmation: true });
+          libraries.set(
+            owner.id,
+            items.filter((candidate) => candidate.id !== itemId),
+          );
+          owner.document.media = owner.document.media.filter((record) => record.id !== itemId);
+          owner.document.linkedMedia = owner.document.linkedMedia.filter(
+            (record) => record.id !== itemId,
+          );
+          action = 'delete';
+        } else {
+          const input = request.postDataJSON() as {
+            action: 'update' | 'archive' | 'unarchive';
+            metadata?: LibraryMetadata;
+          };
+          if (!item) throw new Error('Fixture Library item missing');
+          if (input.action === 'update') {
+            Object.assign(item, input.metadata);
+            const record = owner.document.media.find((media) => media.id === item.id);
+            if (record && input.metadata)
+              Object.assign(record, {
+                displayName: input.metadata.displayName,
+                alt: input.metadata.altText,
+                tags: input.metadata.tags,
+              });
+          } else {
+            item.archivedAt = input.action === 'archive' ? new Date().toISOString() : null;
+            item.deleteBlockers = item.archivedAt
+              ? ['Retained draft revisions contain this item. Unarchive to use it again.']
+              : [];
+          }
+          item.updatedAt = new Date().toISOString();
+          action = input.action;
+        }
+        libraryRequests.push({ action, draftId: owner.id, headers: request.headers() });
+        owner.latestRevisionId = crypto.randomUUID();
+        owner.revision = {
+          ...owner.revision,
+          id: owner.latestRevisionId,
+          sequence: owner.revision.sequence + 1,
+          checksum: (owner.revision.sequence + 1).toString(16).padStart(64, '0'),
+          document: owner.document,
+        };
+        body = { draft: owner, library: librarySnapshot(owner) };
+      }
     } else if (path.endsWith('/admin/roles') && method === 'GET')
       body = { items: roles, nextCursor: null };
     else if (path.endsWith('/admin/roles') && method === 'PUT') {
@@ -273,6 +450,7 @@ async function installApi(
   });
   return {
     saveRequests,
+    libraryRequests,
     setConflictNextSave: () => (conflictNextSave = true),
     holdNextSave: () => {
       nextSaveGate = new Promise<void>((resolve) => {
@@ -2006,22 +2184,25 @@ test('retains focus while typing across every editable workspace', async ({ page
   );
 
   await page.getByRole('button', { name: 'Library' }).click();
-  await expect(page.getByText('19 site images')).toBeVisible();
-  await expect(page.locator('.media-grid--site-assets img')).toHaveCount(19);
+  await expect(page.getByText('19 of 19 items')).toBeVisible();
+  await expect(page.locator('.library-inventory img')).toHaveCount(19);
   await page
-    .locator('.media-grid--site-assets li')
+    .locator('.library-item')
     .filter({ hasText: 'Austin skyline over the Colorado River' })
     .getByText('Edit details')
     .click();
   await expect(page.getByRole('button', { name: 'Save details' })).toBeVisible();
   await replaceSequentially(
-    page.getByLabel('Display name for Austin skyline over the Colorado River'),
+    page.getByRole('dialog').getByLabel('Display name', { exact: true }),
     'Austin skyline hero',
   );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Add linked media' }).click();
   await replaceSequentially(
-    page.getByLabel('Display name', { exact: true }).filter({ visible: true }).first(),
+    page.getByRole('dialog').getByLabel('Display name', { exact: true }),
     'Welcome media',
   );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await page.getByRole('button', { name: 'History' }).click();
   await replaceSequentially(page.getByLabel('Find a revision'), 'homepage');
@@ -2061,13 +2242,17 @@ test('attributes completed actions across Forms, Library, and whole-site setting
   });
 
   await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByRole('button', { name: 'Add linked media' }).click();
   await page.getByLabel('Media type').selectOption('youtube');
   await page.getByLabel('Display name', { exact: true }).fill('Attribution video');
-  await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
-  await expectAction(() => page.getByRole('button', { name: 'Add linked media' }).click(), {
-    category: 'add',
-    context: 'linked-media',
-  });
+  await page.getByLabel('HTTPS URL').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  await page
+    .getByLabel('Alternative text or accessible description')
+    .fill('Attribution video description');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add linked media' }).click();
+  await expect.poll(() => controls.libraryRequests.length).toBe(1);
+  expect(controls.libraryRequests[0]?.action).toBe('link');
+  await expect(page.getByText('All changes saved')).toBeVisible();
 
   await page.getByRole('button', { name: 'Settings' }).click();
   await expectAction(
@@ -2117,7 +2302,32 @@ test('labels history and restores only after confirmation', async ({ page }) => 
   await expect(page.getByText(/restored as a new revision/)).toBeVisible();
 });
 
-test('uploads private media with alternative text and attaches it to the draft library', async ({
+test('uploads one independent image immediately into the unified Library', async ({ page }) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByRole('button', { name: 'Upload image' }).click();
+  await page.getByLabel('Image file').setInputFiles({
+    name: 'gathering.png',
+    mimeType: 'image/png',
+    buffer: previewPng,
+  });
+  await page.getByLabel('Alternative text').fill('People gathering');
+  await page.getByRole('dialog').getByRole('button', { name: 'Upload image' }).click();
+  await expect(page.getByText('20 of 20 items · Image uploaded.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'gathering.png', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Use in Layout' })).toHaveCount(0);
+  expect(controls.libraryRequests).toHaveLength(1);
+  expect(controls.libraryRequests[0]?.action).toBe('upload');
+  expect(controls.libraryRequests[0]?.headers['x-draft-checkout']).toBe(
+    '30000000-0000-4000-8000-000000000001',
+  );
+  expect(controls.saveRequests).toHaveLength(0);
+});
+
+test('reviews image replacement and navigates archived Library items by keyboard', async ({
   page,
 }) => {
   await page.unroute('**/api/**');
@@ -2125,22 +2335,67 @@ test('uploads private media with alternative text and attaches it to the draft l
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Library' }).click();
-  await page.getByLabel('Image file').setInputFiles({
-    name: 'gathering.png',
+  const item = page.locator('.library-item').filter({
+    has: page.getByRole('heading', {
+      name: 'Austin skyline over the Colorado River',
+      exact: true,
+    }),
+  });
+  await item.getByRole('button', { name: 'Replace image' }).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Alternative text or accessible description')).toHaveValue('');
+  await dialog.getByLabel('Image file').setInputFiles({
+    name: 'wrong.png',
     mimeType: 'image/png',
-    buffer: Buffer.from('image-fixture'),
+    buffer: Buffer.from('invalid bytes'),
   });
-  await page.getByLabel('Alternative text').fill('People gathering');
-  await page.getByRole('button', { name: 'Upload image' }).click();
-  await expect(page.getByText('Image uploaded privately.')).toBeVisible();
-  const baseline = controls.saveRequests.length;
-  await page.getByRole('button', { name: 'Use in Layout' }).click();
-  await expect.poll(() => controls.saveRequests.length).toBe(baseline + 1);
-  expect(controls.saveRequests.at(-1)?.action).toEqual({
-    category: 'add',
-    context: 'library-attachment',
-  });
-  await expect(page.getByRole('heading', { name: 'Page structure' })).toBeVisible();
+  await expect(dialog.getByRole('alert')).toHaveText('PNG signature is invalid');
+  await expect(dialog.getByRole('button', { name: 'Review replacement' })).toBeDisabled();
+  await dialog
+    .getByLabel('Image file')
+    .setInputFiles({ name: 'sunset.png', mimeType: 'image/png', buffer: previewPng });
+  await dialog
+    .getByLabel('Alternative text or accessible description')
+    .fill('Austin skyline at sunset');
+  await dialog.getByRole('button', { name: 'Review replacement' }).click();
+  await expect(dialog.getByText(/cannot be undone/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: 'Yes, replace image' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(item.getByRole('button', { name: 'Replace image' })).toBeFocused();
+  expect(controls.libraryRequests).toHaveLength(0);
+  await item.getByRole('button', { name: 'Replace image' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog
+    .getByLabel('Image file')
+    .setInputFiles({ name: 'sunset.png', mimeType: 'image/png', buffer: previewPng });
+  await dialog
+    .getByLabel('Alternative text or accessible description')
+    .fill('Austin skyline at sunset');
+  await dialog.getByRole('button', { name: 'Review replacement' }).click();
+  await dialog.getByRole('button', { name: 'Yes, replace image' }).click();
+  await expect(item.getByText('Austin skyline at sunset', { exact: true })).toBeVisible();
+  expect(controls.libraryRequests.map((request) => request.action)).toEqual(['replace']);
+  await item.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.getByRole('button', { name: 'Archived items (1)' }).click();
+  await expect(page.getByRole('searchbox', { name: 'Search Library' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Delete permanently' })).toBeDisabled();
+  await expect(
+    page.getByText('Retained draft revisions contain this item. Unarchive to use it again.'),
+  ).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search Library' }).fill('missing');
+  await expect(page.getByText('No matching items')).toBeVisible();
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await page.getByRole('button', { name: 'Unarchive', exact: true }).click();
+  await expect(page.getByText('No archived items', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Library' }).click();
+  await expect(item).toBeVisible();
+  expect(controls.libraryRequests.map((request) => request.action)).toEqual([
+    'replace',
+    'archive',
+    'unarchive',
+  ]);
 });
 
 test('builds a form and places linked YouTube media without code', async ({
@@ -2163,11 +2418,15 @@ test('builds a form and places linked YouTube media without code', async ({
   await expect(page.getByText('2. New field')).toBeVisible();
 
   await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByRole('button', { name: 'Add linked media' }).click();
   await page.getByLabel('Media type').selectOption('youtube');
   await page.getByLabel('Display name', { exact: true }).fill('Point welcome video');
-  await page.getByLabel('HTTPS link').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
-  await page.getByRole('button', { name: 'Add linked media' }).click();
-  await expect(page.getByText('Linked media added to this draft.')).toBeVisible();
+  await page.getByLabel('HTTPS URL').fill('https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  await page
+    .getByLabel('Alternative text or accessible description')
+    .fill('Welcome to Point Community Church');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add linked media' }).click();
+  await expect(page.getByText(/Linked media added\./)).toBeVisible();
   await page.getByRole('button', { name: 'Layout' }).click();
   await expect(page.getByText('All changes saved')).toBeVisible();
 

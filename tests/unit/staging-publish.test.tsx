@@ -143,6 +143,39 @@ describe('guided Staging publishing', () => {
     vi.restoreAllMocks();
   });
 
+  it('resumes an uploading job after reload through explicit POST continuation', async () => {
+    const uploading: StagingWorkflowSnapshot = {
+      ...ready,
+      availability: {
+        state: 'busy',
+        phase: 'running',
+        retryAt: new Date(Date.now() + 900_000).toISOString(),
+      },
+      job: {
+        ...job,
+        status: 'running',
+        requestedAt: new Date().toISOString(),
+        completedAt: null,
+        stagingCommitSha: null,
+        commitUrl: null,
+      },
+    };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(uploading)
+      .mockResolvedValue(verifying);
+    const continuation = vi.spyOn(api, 'continueStagingPublication').mockResolvedValue(published);
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    expect(await screen.findByText('Publishing to protected Staging')).toBeVisible();
+    expect(continuation).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(continuation).toHaveBeenCalledWith(job.id);
+    expect(publish).not.toHaveBeenCalled();
+    expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
+  });
+
   it('runs private preflight and publication from one intentional action', async () => {
     const load = vi
       .spyOn(api, 'getStagingWorkflow')

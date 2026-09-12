@@ -164,7 +164,7 @@ describe('revision and lifecycle API', () => {
     });
   });
 
-  it('archives, recovers, and soft deletes without making deleted drafts active', async () => {
+  it('archives, recovers, and permanently purges without returning deleted contents', async () => {
     const repository = new InMemoryRepository();
     const app = createApp({
       repository,
@@ -219,12 +219,18 @@ describe('revision and lifecycle API', () => {
       headers: mutationHeaders('delete-draft-00002'),
       body: JSON.stringify({ confirmation: 'DELETE' }),
     });
-    expect(await json<{ status: string }>(deleted)).toMatchObject({ status: 'deleted' });
+    const receipt = await json<{ id: string; status: string; deletedAt: string }>(deleted);
+    expect(Object.keys(receipt).sort()).toEqual(['deletedAt', 'id', 'status']);
+    expect(receipt).toMatchObject({
+      id: created.id,
+      status: 'deleted',
+    });
+    expect(typeof receipt.deletedAt).toBe('string');
     const denied = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PATCH',
       headers: mutationHeaders('undelete-draft-001'),
       body: JSON.stringify({ status: 'active' }),
     });
-    expect(denied.status).toBe(409);
+    expect(denied.status).toBe(404);
   });
 });
