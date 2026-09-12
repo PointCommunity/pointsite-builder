@@ -59,7 +59,11 @@ export class D1OwnershipMigration {
         legacyBytes: number;
         recoveredUploads: number;
       }>();
-    return { ...state, ...counts };
+    return {
+      ...state,
+      ...counts,
+      remainingDrafts: state.state === 'complete' ? 0 : counts?.remainingDrafts,
+    };
   }
 
   async step(actor: string, requestId: string) {

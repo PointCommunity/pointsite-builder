@@ -7,6 +7,7 @@ import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1MediaRepository, D1PrivateBucket, MediaService } from '../../src/server/media/service';
 import { D1OwnershipMigration } from '../../src/server/maintenance/asset-migration';
+import { D1DraftAssets } from '../../src/server/media/draft-assets';
 import { RetentionService } from '../../src/server/maintenance/retention';
 import { createApp } from '../../src/server/index';
 import type { Actor } from '../../src/server/auth/roles';
@@ -180,6 +181,43 @@ it('resumes verified ownership conversion, recovers unassigned uploads, then rem
   expect((await repository.getDraft(recovery!.id)).document.media).toHaveLength(2);
   await expect(resumed.step('administrator', 'safe-repeat')).resolves.toMatchObject({
     state: 'complete',
+  });
+});
+
+it('keeps completed migration status clear after creating a new independent draft', async () => {
+  const { database, drafts, migration } = await setup();
+  for (let step = 0; step < 12 && (await migration.status()).state !== 'complete'; step++) {
+    await migration.step('administrator', `complete-${step}`);
+  }
+  const assets = new D1DraftAssets(database, {
+    read: () => Promise.reject(new Error('Shared storage is retired')),
+  });
+  const repository = new D1DraftRepository(database, assets);
+  const created = await repository.createDraft({
+    name: 'After migration',
+    document: drafts[0].document,
+    sourceDraftId: drafts[0].id,
+    actor: 'editor',
+    idempotencyKey: 'post-migration-draft-0001',
+    requestId: 'post-migration-create',
+  });
+  expect(
+    await database
+      .prepare('SELECT COUNT(*) FROM draft_asset_versions WHERE draft_id=?')
+      .bind(created.id)
+      .first('COUNT(*)'),
+  ).toBeGreaterThan(0);
+  expect(
+    await database
+      .prepare('SELECT COUNT(*) FROM draft_asset_migration_verified WHERE draft_id=?')
+      .bind(created.id)
+      .first('COUNT(*)'),
+  ).toBe(0);
+  await expect(migration.status()).resolves.toMatchObject({
+    state: 'complete',
+    remainingDrafts: 0,
+    legacyAssets: 0,
+    legacyBytes: 0,
   });
 });
 
