@@ -456,10 +456,13 @@
       </li>
       <li>
         Provider telemetry uses a read-only runtime credential. If absent, show unknown; do not
-        substitute local audit counts. Existing local CLI access can read D1 usage but cannot read
-        subscriptions. The Cloudflare browser is signed out. Live plan and credential configuration
-        are release prerequisites, not permission to weaken application checks or claim missing
-        measurements passed.
+        substitute local audit counts. Existing local CLI access can read D1 usage. Direct API
+        checks on 12 September 2026 returned HTTP 200 for Worker settings, database metadata and a
+        read-only SELECT 1 query (zero rows written). Subscription readback returned HTTP 403.
+        Dashboard access is not required to continue implementation or those operational checks.
+        Current plan confirmation and runtime credential configuration remain release evidence
+        prerequisites. Cloudflare credentials do not replace the Builder's authenticated user
+        session, and missing measurements must remain unknown.
       </li>
     </ul>
 
