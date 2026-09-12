@@ -226,26 +226,20 @@ test.beforeEach(async ({ page }) => {
                               ? { items: [] }
                               : path.endsWith('/admin/capacity')
                                 ? {
-                                    privateMedia: {
-                                      used: 0,
-                                      limit: 1,
-                                      percent: 0,
-                                      warning: false,
-                                      unit: 'bytes',
+                                    storage: {
+                                      allocatedBytes: null,
+                                      privateMediaBytes: 0,
+                                      revisionPayloadBytes: 0,
+                                      receiptPayloadBytes: 0,
                                     },
-                                    revisionData: {
-                                      used: 0,
-                                      limit: 1,
-                                      percent: 0,
-                                      warning: false,
-                                      unit: 'bytes',
+                                    activity: {
+                                      auditEvents: 0,
+                                      periodStart: '2026-09-05T00:00:00Z',
+                                      periodEnd: '2026-09-05T00:00:00Z',
                                     },
-                                    writesToday: {
-                                      used: 0,
-                                      limit: 100000,
-                                      percent: 0,
-                                      warning: false,
-                                      unit: 'operations',
+                                    providerUsage: {
+                                      state: 'unknown',
+                                      reason: 'Provider counters unavailable.',
                                     },
                                     measuredAt: '2026-09-05T00:00:00Z',
                                   }

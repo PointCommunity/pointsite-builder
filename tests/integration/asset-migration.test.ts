@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
@@ -24,7 +24,7 @@ async function setup() {
   });
   const database = await miniflare.getD1Database('DB');
   for (const file of (await readdir('migrations'))
-    .filter((name) => name.endsWith('.sql') && name < '0013')
+    .filter((name) => name.endsWith('.sql') && !name.startsWith('0013'))
     .sort()) {
     await database.exec((await readFile(`migrations/${file}`, 'utf8')).replace(/\s+/g, ' ').trim());
   }
@@ -213,12 +213,17 @@ it('keeps completed migration status clear after creating a new independent draf
       .bind(created.id)
       .first('COUNT(*)'),
   ).toBe(0);
+  const queries = vi.spyOn(database, 'prepare');
   await expect(migration.status()).resolves.toMatchObject({
     state: 'complete',
     remainingDrafts: 0,
     legacyAssets: 0,
     legacyBytes: 0,
   });
+  expect(queries.mock.calls.flat().join(' ')).not.toMatch(
+    /revisions|json_each|media_object_chunks/,
+  );
+  queries.mockRestore();
 });
 
 it('fails closed on corrupt legacy bytes and retains original storage', async () => {

@@ -64,11 +64,13 @@
       completion report.
     </p>
     <p class="status">
-      <strong>T1 is in progress. Contracts are not frozen.</strong> No application code, database
-      migration, permission setting, or deployed content has changed. GitHub installation details
-      require the account holder to complete its “Confirm access” screen. Finish that inventory and
-      the storage rehearsal before dependent implementation. All T2–T14 acceptance evidence remains
-      pending.
+      <strong
+        >T1 contracts below are fixed for implementation; delivery evidence remains pending.</strong
+      >
+      GitHub installation access is verified after account-holder reauthentication. The forward
+      encoding fixture passes. Provider plan confirmation, narrowly scoped runtime credentials,
+      migration rehearsal and actual allocated-storage measurements remain explicit release gates.
+      No permission setting or deployed content has changed. T2–T14 are not complete.
     </p>
 
     <h2>Objective and preserved boundaries</h2>
@@ -203,10 +205,12 @@
       </tbody>
     </table>
 
-    <h2>Proposed workload and numeric gates</h2>
+    <h2>Workload and numeric gates</h2>
     <p>
-      These are declared test scenarios, not claims about real usage. Fix their final values after
-      T1 rehearsal; any revision must retain the observed high-activity case and explain the change.
+      These are fixed declared test scenarios, not claims about real usage. Any revision must retain
+      the observed high-activity case and explain the change. Free allowances are the PM's operating
+      constraint; missing live plan access cannot authorize paid resources or a claim of verified
+      suitability.
     </p>
     <ul>
       <li>
@@ -246,7 +250,7 @@
       </li>
     </ul>
 
-    <h2>State and data contracts to freeze in T1</h2>
+    <h2>State and data contracts</h2>
     <table>
       <thead>
         <tr>
@@ -395,12 +399,118 @@
       </tbody>
     </table>
 
+    <h2>T1 decisions and rollout gates</h2>
+    <ul>
+      <li>
+        Verified installation: checks and metadata read; code read/write; all organization
+        repositories. Use repository_dispatch, which requires existing Contents write, rather than
+        requesting Actions write. Mint installation tokens for only the selected repository and
+        necessary permissions. Preserve installation settings.
+      </li>
+      <li>
+        The runnable forward fixture is
+        <code>npx tsx tests/performance/editorial-workload.ts</code>. All 400 reconstructions
+        passed, including Unicode. Modeled storage averaged 1,565 bytes/action, projecting 56.34 MB
+        of 90-day revisions and 190.34 MB including declared media/metadata budgets. This supports
+        prototyping; it does not replace real D1 allocation or CPU evidence. The 1,600-action growth
+        case projects 359.36 MB including those budgets, exceeding the reference headroom target.
+      </li>
+      <li>
+        Encoding references one full checkpoint directly, never an unbounded delta chain. Create a
+        checkpoint at most every 32 revisions; each read needs its own record and at most one
+        checkpoint. Validate lengths, offsets, codec version, ownership and canonical checksum
+        before returning data. Use a full snapshot when it is smaller. Retention pins required
+        checkpoints; retain conservative references until reconstruction and bounded projection
+        rebuilding succeed. A reader-compatible bridge precedes enabling encoding.
+      </li>
+      <li>
+        Library projections contain retained item signatures/dates and source paths per draft, not
+        one row per item per revision. Changed signatures update dates; unchanged signatures add no
+        item writes. Each save advances one sequence cursor. Backfill processes at most eight
+        revisions per call (25 statements including its concurrency guard). Retention invalidates
+        coverage and rebuilds it before Library deletion can resume; missing coverage fails closed
+        without a GET-time backfill.
+      </li>
+      <li>
+        Save requests carry expected revision ID, checksum, ordered action ID and current checkout.
+        The transactional receipt binds actor, draft, complete request hash and result revision.
+        Reuse with different input fails. Replay is resolved before stale-base rejection but after
+        current authority validation. Compact receipts are retained for 90 days; older requests
+        still fail their immutable expected revision. No-op receipts prevent uncertain
+        acknowledgement from creating revisions.
+      </li>
+      <li>
+        Cloud endpoints accept only short-lived GitHub OIDC credentials plus a dispatch nonce. Pin
+        repository, workflow path, workflow commit, event, audience, run ID and attempt. A
+        compare-and-swap claim allows one runner. Candidate read endpoints expose only the job's
+        immutable revision and pinned media. Runner callbacks are claims to verify against exact
+        run, commit, manifest and live output, never arbitrary success authority.
+      </li>
+      <li>
+        Store content-free deletion receipts and recovery coordination in a separate small D1
+        database, outside the workspace Time Travel rewind. This uses the existing D1 service and
+        free account allowance; no paid resource is permitted. Write a receipt before purge and fail
+        closed on receipt-store failure. Recovery closes workspace access, restores a selected
+        bookmark, reapplies receipts in bounded batches, verifies, then reopens. Runtime D1 recovery
+        credentials and the extra binding require explicit configuration review before deployment.
+      </li>
+      <li>
+        Provider telemetry uses a read-only runtime credential. If absent, show unknown; do not
+        substitute local audit counts. Existing local CLI access can read D1 usage but cannot read
+        subscriptions. The Cloudflare browser is signed out. Live plan and credential configuration
+        are release prerequisites, not permission to weaken application checks or claim missing
+        measurements passed.
+      </li>
+    </ul>
+
+    <h2>Current implementation evidence and migration sequence</h2>
+    <p>
+      Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
+    </p>
+    <ul>
+      <li>
+        T2: Additive migration 0014 creates per-draft item/date/path summaries. Draft saves update
+        these in the same transaction. Library GET performs no writes or JSON history expansion.
+        Coverage and retention generation checks fail closed during a rebuild. The existing catalog
+        continues to own archive and attachment metadata.
+      </li>
+      <li>
+        Explicit backfill: after applying schema 0014, use the existing account-checked migration
+        operator with <code>npx tsx scripts/migrate-draft-assets.ts --library-index --apply</code>.
+        Each batch visits eight revisions, checks its starting cursor/generation atomically, and can
+        resume after interruption. The status form uses <code>--library-index --status</code> and
+        emits no document contents. Keep the old application available during the initial backfill;
+        switch only after coverage catches up, then run one final catch-up before admitting Library
+        traffic.
+      </li>
+      <li>
+        Migration 0015 restores retention's foreign-key parent detachment while rejecting content
+        changes and manual detachment from a surviving parent. Migration 0008 previously blocked
+        that foreign-key action. The projection invalidates after deletion and must be rebuilt
+        before Library reads resume.
+      </li>
+      <li>
+        T3 partial: completed asset-migration status skips retained revisions. Authenticated
+        <code>/api/ready</code> checks database reachability separately from public process
+        liveness. Operations reports allocated storage where D1 supplies it, draft-owned and legacy
+        media payloads, revision and request-receipt bytes, and a precisely bounded UTC
+        audit-activity period. Provider quotas remain unknown. Periodic provider sampling is not
+        implemented yet.
+      </li>
+      <li>
+        Focused tests cover existing Library flows, independent draft assets, bounded restartable
+        backfill, retention invalidation, no-write/no-history-expansion reads, completed migration
+        status, and readiness failure privacy. Full acceptance, larger D1 read-cost measurements,
+        cloud execution, encoding, recovery and deployment remain pending.
+      </li>
+    </ul>
+
     <h2>Implementation order and verification</h2>
     <ol>
       <li>
-        <strong>T1:</strong> complete App installation, plan and provider permission inventory;
-        validate workload/encoding and cloud recovery strategy; freeze contracts and numeric gates.
-        No dependent product implementation before this gate.
+        <strong>T1:</strong> contracts and reference workload fixed above; forward feasibility
+        passes. Carry unresolved runtime configuration and actual D1/CPU measurements as explicit
+        rollout gates.
       </li>
       <li>
         <strong>T2–T4:</strong> Library projection, bounded migration/readiness, compact responses

@@ -46,6 +46,39 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('reports unavailable readiness when the authentication role database is down', async () => {
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.reject(new Error('private role query')),
+      environment: 'test',
+      version: 'test',
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const response = await app.request(`${origin}/api/ready`);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ ready: false });
+  });
+
+  it('keeps liveness available while authenticated database readiness fails without leaking provider errors', async () => {
+    let available = false;
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.resolve({ email: 'viewer@pointatx.org', role: 'viewer' }),
+      environment: 'test',
+      version: 'test',
+      readiness: () => (available ? Promise.resolve() : Promise.reject(new Error('private SQL'))),
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const failed = await app.request(`${origin}/api/ready`);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get('Cache-Control')).toBe('no-store');
+    await expect(failed.json()).resolves.toEqual({ ready: false });
+    available = true;
+    const ready = await app.request(`${origin}/api/ready`);
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toEqual({ ready: true });
+  });
+
   it('exposes public process health without private state', async () => {
     const { app } = appFor({ email: 'viewer@pointatx.org', role: 'viewer' });
     const response = await app.request(`${origin}/api/health`);

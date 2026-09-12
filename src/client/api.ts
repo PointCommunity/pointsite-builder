@@ -48,12 +48,8 @@ export interface AuditItem {
   metadata: Record<string, string | number | boolean | null>;
 }
 
-export interface CapacityReport {
-  privateMedia: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  revisionData: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  writesToday: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  measuredAt: string;
-}
+export type { CapacityReport } from '../server/admin/service';
+import type { CapacityReport } from '../server/admin/service';
 
 export interface CandidateTuple {
   siteId: 'pointsite';

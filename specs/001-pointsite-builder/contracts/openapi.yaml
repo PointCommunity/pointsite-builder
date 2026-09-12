@@ -79,6 +79,32 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
+  /ready:
+    get:
+      operationId: readiness
+      description: Authenticated, uncached database reachability check. Liveness remains independently available at /health. No SQL or provider error details are returned.
+      responses:
+        '200':
+          description: Database check succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready]
+                additionalProperties: false
+                properties:
+                  ready: { type: boolean, const: true }
+        '401': { $ref: '#/components/responses/Error' }
+        '503':
+          description: Database check unavailable or failed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready]
+                additionalProperties: false
+                properties:
+                  ready: { type: boolean, const: false }
   /me:
     get:
       operationId: getMe
@@ -850,7 +876,11 @@ paths:
     get:
       operationId: getCapacity
       responses:
-        '200': { description: Storage and operation estimates with warning thresholds }
+        '200':
+          description: >-
+            Allocated storage when supplied by D1, media/revision/receipt payload bytes,
+            UTC audit activity period, and explicitly unknown provider usage.
+            Audit activity is not billed database writes.
   /admin/asset-migration:
     get:
       operationId: getAssetOwnershipMigrationStatus

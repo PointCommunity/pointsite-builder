@@ -429,9 +429,18 @@ async function installApi(
       };
     else if (path.endsWith('/admin/capacity'))
       body = {
-        privateMedia: { used: 1, limit: 10, percent: 10, warning: false, unit: 'bytes' },
-        revisionData: { used: 8, limit: 10, percent: 80, warning: true, unit: 'bytes' },
-        writesToday: { used: 1, limit: 100000, percent: 0, warning: false, unit: 'operations' },
+        storage: {
+          allocatedBytes: 10485760,
+          privateMediaBytes: 1048576,
+          revisionPayloadBytes: 8388608,
+          receiptPayloadBytes: 0,
+        },
+        activity: {
+          auditEvents: 1,
+          periodStart: '2026-09-05T00:00:00Z',
+          periodEnd: '2026-09-05T00:00:00Z',
+        },
+        providerUsage: { state: 'unknown', reason: 'Provider counters unavailable.' },
         measuredAt: '2026-09-05T00:00:00Z',
       };
     else if (path.endsWith('/publish/staging/workflow'))
@@ -2474,11 +2483,17 @@ test('builds a form and places linked YouTube media without code', async ({
   );
 });
 
-test('manages roles and exposes capacity warnings to administrators', async ({ page }) => {
+test('manages roles and distinguishes measured storage from unknown provider usage', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Admin' }).click();
-  await expect(page.getByText('80% — action recommended')).toBeVisible();
+  await expect(
+    page.getByText('Provider usage: unknown. Provider counters unavailable.'),
+  ).toBeVisible();
+  await expect(page.getByText('8.0 MiB')).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
   await page.getByLabel('GitHub username').fill('point-publisher');
   await page.locator('.inline-editor select').selectOption('publisher');
   await page.getByRole('button', { name: 'Add person' }).click();

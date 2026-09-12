@@ -2,6 +2,7 @@ import { checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
 import type { D1DraftAssets } from '../media/draft-assets';
+import { D1LibraryProjection } from '../media/library-projection';
 import type {
   AuditEventRecord,
   CheckoutCommand,
@@ -236,6 +237,7 @@ export class D1DraftRepository implements DraftRepository {
       this.database
         .prepare(`UPDATE drafts SET latest_revision_id = ? WHERE id = ?`)
         .bind(revisionId, draftId),
+      ...new D1LibraryProjection(this.database).statements(record.revision, 0),
       this.auditStatement(input.actor, 'draft.create', draftId, input.requestId, {
         revisionId,
         sequence: 1,
@@ -373,6 +375,7 @@ export class D1DraftRepository implements DraftRepository {
           )
           .bind(current.id, current.revision.id, checkoutHash, input.actor, checkoutHash, now),
         revisionInsert,
+        ...new D1LibraryProjection(this.database).statements(revision, current.revision.sequence),
         ...assetStatements,
         ...additionalStatements,
         this.database

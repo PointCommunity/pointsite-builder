@@ -54,6 +54,9 @@ export default {
       authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles, auth),
       environment: config.environment,
       version: config.appVersion,
+      readiness: async () => {
+        await env.DB.prepare('SELECT id FROM drafts LIMIT 1').first();
+      },
       ...(feedbackConfig
         ? {
             feedback: new FeedbackService(

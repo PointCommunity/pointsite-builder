@@ -29,6 +29,7 @@ export interface AppDependencies {
   authenticate(request: Request): Promise<Actor>;
   environment: string;
   version: string;
+  readiness?: () => Promise<void>;
   publisher?: StagingPublisher;
   media?: MediaService;
   library?: D1LibraryService;
@@ -65,6 +66,17 @@ export function createApp(dependencies: AppDependencies) {
     }),
   );
   app.get('/api/me', (context) => context.json(context.get('actor')));
+  app.get('/api/ready', async (context) => {
+    context.header('Cache-Control', 'no-store');
+    try {
+      if (!dependencies.readiness) throw new Error('READINESS_NOT_CONFIGURED');
+      await dependencies.readiness();
+      return context.json({ ready: true });
+    } catch {
+      // Provider errors can contain private SQL or bindings; expose only state.
+      return context.json({ ready: false }, 503);
+    }
+  });
   app.get('/auth/login', (context) => {
     if (!dependencies.auth) throw new AuthenticationError();
     return dependencies.auth.beginLogin(context.req.raw);
@@ -124,6 +136,15 @@ export function createApp(dependencies: AppDependencies) {
     }
     if (error instanceof AuthorizationError) {
       return secured(errorResponse(new ApiError(403, 'FORBIDDEN', error.message), requestId));
+    }
+    if (context.req.path === '/api/ready') {
+      // Role lookup also uses D1; an outage can fail before the readiness handler.
+      return secured(
+        new Response(JSON.stringify({ ready: false }), {
+          status: 503,
+          headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+        }),
+      );
     }
     if (error instanceof NotFoundError) {
       return secured(errorResponse(new ApiError(404, 'NOT_FOUND', error.message), requestId));

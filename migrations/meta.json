@@ -80,6 +80,17 @@
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null,
       "rollout": "../docs/draft-asset-migration.html"
+    },
+    {
+      "id": "0014_library_projection",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0015_revision_retention_integrity",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
     }
   ]
 }
