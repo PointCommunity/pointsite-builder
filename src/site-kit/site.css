@@ -23,6 +23,11 @@
   font-display: swap;
 }
 
+/* Canvas, standalone preview, and the published page share the full CSS viewport. */
+body:has(.point-site) {
+  margin: 0;
+}
+
 @scope (.point-site) {
   :scope {
     --ink: #171a17;
@@ -33,6 +38,8 @@
     --green-deep: #29381f;
     --line: #d9d9d2;
     --shell: min(1160px, calc(100vw - 48px));
+    /* Fluid content stops growing at the authored Desktop viewport. */
+    --point-layout-vw: min(1vw, 12.8px);
     --font-sans: 'Point Lato';
     --font-serif: 'Point Libre Baskerville';
   }
@@ -286,7 +293,7 @@
   }
   .home-hero h1 {
     margin: 0;
-    font-size: clamp(2.7rem, 5.5vw, 5.25rem);
+    font-size: clamp(2.7rem, calc(5.5 * var(--point-layout-vw)), 5.25rem);
     font-weight: 700;
     letter-spacing: -0.055em;
     text-align: center;
@@ -332,7 +339,7 @@
     justify-content: flex-start;
   }
   .home-intro h2 {
-    font-size: clamp(2.2rem, 4vw, 3.6rem);
+    font-size: clamp(2.2rem, calc(4 * var(--point-layout-vw)), 3.6rem);
   }
   .home-intro h2 span {
     white-space: nowrap;
@@ -369,7 +376,7 @@
     max-width: 570px;
   }
   .feature-copy h2 {
-    font-size: clamp(2.5rem, 4.5vw, 4.5rem);
+    font-size: clamp(2.5rem, calc(4.5 * var(--point-layout-vw)), 4.5rem);
   }
   .feature-copy > p:not(.eyebrow) {
     font-family: var(--font-serif), Georgia, serif;
@@ -382,7 +389,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     align-items: center;
-    gap: clamp(50px, 8vw, 110px);
+    gap: clamp(50px, calc(8 * var(--point-layout-vw)), 110px);
     padding-block: 120px;
   }
   .feature-image {
@@ -399,7 +406,7 @@
     color: #dce5d1;
   }
   .gathering-section h2 {
-    font-size: clamp(2.4rem, 4vw, 4rem);
+    font-size: clamp(2.4rem, calc(4 * var(--point-layout-vw)), 4rem);
   }
   .gathering-section > div > p:not(.eyebrow) {
     font-family: var(--font-serif), Georgia, serif;
@@ -449,7 +456,7 @@
   }
   .page-hero h1 {
     margin-bottom: 0;
-    font-size: clamp(3rem, 7vw, 6.4rem);
+    font-size: clamp(3rem, calc(7 * var(--point-layout-vw)), 6.4rem);
   }
   .page-hero .point-hero-text-box--body {
     max-width: 760px;
@@ -458,7 +465,7 @@
   .page-hero .point-hero-text-box--body > p {
     margin: 0;
     font-family: var(--font-serif), Georgia, serif;
-    font-size: clamp(1rem, 2vw, 1.3rem);
+    font-size: clamp(1rem, calc(2 * var(--point-layout-vw)), 1.3rem);
   }
   .page-hero.point-align--center .point-hero-text-box {
     margin-inline: auto;
@@ -486,7 +493,7 @@
     border-top: 1px solid var(--line);
   }
   .content-section h2 {
-    font-size: clamp(2rem, 3.5vw, 3.2rem);
+    font-size: clamp(2rem, calc(3.5 * var(--point-layout-vw)), 3.2rem);
   }
   .content-section p {
     color: #33372f;
@@ -502,7 +509,7 @@
   .split-section {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: clamp(40px, 7vw, 100px);
+    gap: clamp(40px, calc(7 * var(--point-layout-vw)), 100px);
   }
   .split-section > div > p:not(.eyebrow) {
     font-family: var(--font-serif), Georgia, serif;
@@ -537,7 +544,7 @@
   }
   .belief-list h2 {
     margin-bottom: 14px;
-    font-size: clamp(1.7rem, 3vw, 2.6rem);
+    font-size: clamp(1.7rem, calc(3 * var(--point-layout-vw)), 2.6rem);
     text-transform: capitalize;
   }
   .belief-list p {
@@ -649,7 +656,7 @@
     padding-top: 34px;
   }
   .contact-grid h2 {
-    font-size: clamp(2rem, 3.5vw, 3rem);
+    font-size: clamp(2rem, calc(3.5 * var(--point-layout-vw)), 3rem);
   }
   .contact-grid a {
     overflow-wrap: anywhere;
@@ -666,11 +673,11 @@
     padding-block: 120px;
   }
   .not-found h1 {
-    font-size: clamp(3rem, 8vw, 7rem);
+    font-size: clamp(3rem, calc(8 * var(--point-layout-vw)), 7rem);
   }
 
   .form-panel {
-    padding: clamp(38px, 6vw, 70px);
+    padding: clamp(38px, calc(6 * var(--point-layout-vw)), 70px);
     background: var(--soft);
   }
   .form-panel h2 {
@@ -1204,7 +1211,7 @@
 }
 .point-site .point-feature {
   display: grid;
-  max-width: 90rem;
+  max-width: min(90rem, 1280px);
   margin-inline: auto;
   grid-template-columns: 1fr 1fr;
 }
@@ -1557,6 +1564,10 @@
   width: min(48rem, calc(100% - 3rem));
   margin-inline: auto;
 }
+.point-site .point-layout-section--full > .point-layout-section__grid {
+  width: min(100%, 1280px);
+  margin-inline: auto;
+}
 .point-site .point-layout-section--canvas {
   background: var(--point-canvas);
 }
@@ -1583,7 +1594,7 @@
   min-height: 3rem;
 }
 .point-site .point-layout-section--grid {
-  --point-grid-inline-size: 100cqi;
+  --point-grid-inline-size: min(100cqi, 1280px);
   container-type: inline-size;
 }
 .point-site--editing .point-layout-section--grid {
@@ -1663,7 +1674,7 @@
   grid-column: var(--point-grid-desktop-column) / span var(--point-grid-desktop-column-span);
   grid-row: var(--point-grid-desktop-row) / span var(--point-grid-desktop-row-span);
 }
-.point-site .point-layout-item--grid > * {
+.point-site .point-layout-section--grid .point-layout-item--grid > * {
   max-width: 100%;
 }
 /* Navigation menus extend beyond their fixed grid placement. */
@@ -1691,7 +1702,7 @@
   white-space: pre-line;
 }
 .point-site .point-text--lead {
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  font-size: clamp(1.05rem, calc(2 * var(--point-layout-vw)), 1.35rem);
   line-height: 1.55;
 }
 .point-site .point-text--eyebrow {

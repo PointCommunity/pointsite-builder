@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 53: Preserve authored Desktop composition</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem;
+        background: #111827;
+        color: #e5e7eb;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      a {
+        color: #93c5fd;
+      }
+      code {
+        color: #c4b5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 53: Preserve authored Desktop composition</h1>
+    <h2>Objective and requirements</h2>
+    <p>
+      Keep the same saved page's authored 1280 CSS pixel Desktop composition when the viewport
+      widens. Retain exactly Desktop, Tablet, and Mobile. Preserve heading wrapping, element widths,
+      placement, alignment, spacing, hierarchy, and independent smaller layouts. Backgrounds and
+      surrounding margins may expand. Existing drafts must not require reauthoring.
+    </p>
+    <p>
+      The Issue supplies the approved scope. Screenshot pixel dimensions do not establish CSS
+      viewport dimensions, zoom, or device scale. Reproduction must measure loaded fonts and
+      viewport geometry. No fourth breakpoint or forced no-wrap rule is authorized.
+    </p>
+    <h2>Research</h2>
+    <p>
+      Initial source inspection finds viewport-relative typography and spacing in
+      <code>src/site-kit/site.css</code>, alongside capped content shells. The hypothesis is that
+      text continues growing after its box stops growing. Full-width grid sizing and page Hero
+      breakout rules also require measurement. Canvas and preview use the same site-kit renderer.
+      Protected Staging vendors this renderer and compares exact Git blob identities.
+    </p>
+    <p>
+      <a href="https://www.w3.org/TR/css-values-4/#viewport-relative-lengths">CSS Values Level 4</a>
+      defines viewport-relative units; its
+      <a href="https://www.w3.org/TR/css-values-4/#calc-notation">comparison functions</a> permit
+      bounding fluid sizing. Preserve relative text minima and ordinary wrapping for accessibility.
+    </p>
+    <h2>Measured cause and correction</h2>
+    <p>
+      The initial Chromium regression fails: the home introduction stays 790px wide while its font
+      grows from 51.2px at 1280 to 57.6px at 1440; its height increases from 57.34375px to 129px as
+      it wraps. The Hero text box stays 928px wide while its font grows from 70.4px to 79.2px, then
+      84px. Fonts were loaded and the document had zero horizontal overflow at all four measured
+      widths.
+    </p>
+    <p>
+      Bound fluid typography and spacing to the authored 1280px viewport through one CSS length
+      variable. Keep viewport units for full-bleed backgrounds and outer margins. Bound full-width
+      authored grid/flow content and its grid-cell calculation to 1280px, centered in the wider
+      section. Keep existing shell/narrow limits and smaller breakpoints. No renderer version or
+      document migration is needed because the document format is unchanged; synchronize the changed
+      CSS blob and retain exact compatibility checks.
+    </p>
+    <h2>Plan and verification tasks</h2>
+    <p>
+      Reproduced independently against the currently published Staging document: the Hero first
+      wraps at 1338 CSS pixels (single-line at 1337), and the introduction first wraps at 1392
+      (single-line at 1391). Both fit at 1280 and wrap at 1440, 1920, and 2560, with unchanged
+      text-box widths and no horizontal overflow. The Staging regression covers these measured
+      boundaries using the unchanged published content.
+    </p>
+    <p>
+      Canvas parity testing also found that the editor wraps compatibility elements in a grid-item
+      container. Its generic max-width rule overrides the introduction's 790px maximum, producing
+      1160px in the canvas while preview uses 790px. Restrict the grid-child constraint to actual
+      grid sections so compatibility elements retain the shared renderer's own widths. Both iframe
+      surfaces also retain the browser's default 8px body margins while Staging resets them. Reset
+      the body margin when it contains the renderer so a 1280px canvas actually supplies 1280px to
+      full-width content, matching the published page.
+    </p>
+    <ol>
+      <li>
+        Measure a representative saved document containing both reported headings, Hero content,
+        navigation, and grid sections at 1280, 1440, 1920, and 2560 CSS pixels. Locate the first
+        failure and inspect nearby widths. Record baseline evidence before changing renderer code.
+      </li>
+      <li>
+        Add a regression that fails on the current renderer. Specify the measured cause and smallest
+        shared correction here before implementation.
+      </li>
+      <li>
+        Correct the shared rendering behavior. Keep authored desktop geometry stable while
+        permitting full-screen backgrounds. Preserve Tablet/Mobile settings and natural text reflow.
+      </li>
+      <li>
+        Verify canvas/preview equivalence, saved settings after reload, width transitions, keyboard
+        navigation, text enlargement, and no horizontal overflow. Run Chromium, Firefox, WebKit, and
+        the configured mobile suite.
+      </li>
+      <li>
+        Synchronize reviewed renderer files through protected Staging's workflow before updating
+        Builder's renderer contract. Preserve existing content and the unrelated dirty Staging
+        checkout. Never publish public PointSite Production.
+      </li>
+      <li>
+        Complete exact-source QA, review, merge, Builder deployment, live verification, and
+        task-owned cleanup. Present the released candidate for PM acceptance; keep the Issue open
+        and In Review until explicit completion approval.
+      </li>
+    </ol>
+    <h2>Implementation conventions and commands</h2>
+    <p>
+      Reuse React, TypeScript, CSS, and existing Playwright/Vitest tests. Renderer code lives in
+      <code>src/site-kit/</code>; editor viewport selection lives in
+      <code>src/client/editor/VisualEditor.tsx</code>; browser regressions live in
+      <code>tests/e2e/</code>. Use existing selectors and formatted CSS, for example
+      <code>width: min(72rem, calc(100% - 3rem));</code>. No new dependency or schema migration is
+      planned.
+    </p>
+    <p>
+      Run <code>npm run check</code>, <code>npm run test:performance</code>,
+      <code>npm run test:e2e</code>, <code>npm audit --audit-level=high</code>, and
+      <code>git diff --check</code> locally. Prepare and clean the fresh worktree with
+      <code>node scripts/local-qa.mjs prepare</code> and
+      <code>node scripts/local-qa.mjs cleanup</code>. Focused tests run with
+      <code>npx playwright test tests/e2e/authoring.spec.ts --grep "wider Desktop" --workers=1</code
+      >.
+    </p>
+    <h2>Boundaries and risks</h2>
+    <p>
+      Always preserve authentication, publishing permissions, compatibility checks, existing
+      content, and unrelated work. Do not commit private drafts, media, credentials, or logs. Do not
+      bypass Staging guards. Preserve both existing workflows: Builder QA runs locally; protected
+      Staging uses its existing GitHub and Cloudflare pipeline, as clarified by the PM. Do not
+      change either workflow. Changes to scope, dependencies, or destructive data operations require
+      explicit direction. Final PM acceptance applies only to the unchanged released candidate.
+    </p>
+  </body>
+</html>

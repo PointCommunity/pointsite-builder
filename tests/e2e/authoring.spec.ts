@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord, RevisionRecord, Role } from '../../src/server/repositories/contracts';
 
@@ -813,6 +813,100 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
     await expect(preview.locator(landmark).first()).toBeVisible();
     await expect(preview.locator('.site-footer')).toBeAttached();
   }
+});
+
+test('preserves authored headings on wider Desktop viewports', async ({ page }) => {
+  await installApi(page, 'administrator', 'admin', (document) => {
+    const hero = document.pages[0].blocks
+      .flatMap((section) => section.items)
+      .map((item) => item.element)
+      .find((element) => element.type === 'hero');
+    if (!hero || hero.type !== 'hero') throw new Error('Expected home Hero');
+    hero.heading = 'Point Community Church';
+    hero.headingWidth = { desktop: 70, tablet: 90, mobile: 100 };
+    const header = document.pages[0].blocks.find((section) => section.name === 'Site header');
+    if (!header) throw new Error('Expected site header');
+    header.width = 'full';
+  });
+  const measure = (surface: FrameLocator) =>
+    surface.locator('body').evaluate(async () => {
+      await document.fonts.ready;
+      const geometry = (element: Element) => {
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const pixels = (value: number) => Number(value.toFixed(3));
+        return {
+          width: pixels(bounds.width),
+          height: pixels(bounds.height),
+          centerOffset: pixels(bounds.left + bounds.width / 2 - innerWidth / 2),
+          fontSize: style.fontSize,
+        };
+      };
+      return {
+        viewport: innerWidth,
+        overflow: document.documentElement.scrollWidth - innerWidth,
+        headings: Array.from(document.querySelectorAll('.home-hero h1, .home-intro h2')).map(
+          (element) => ({
+            ...geometry(element),
+            lines: Math.round(
+              element.getBoundingClientRect().height /
+                Number.parseFloat(getComputedStyle(element).lineHeight),
+            ),
+          }),
+        ),
+        grid: Array.from(
+          document.querySelectorAll('section[aria-label="Site header"] .point-layout-item--grid'),
+        ).map(geometry),
+      };
+    });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  const authored = await measure(canvas);
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  expect(await measure(canvas)).toEqual(authored);
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Preview at desktop width' }).click();
+  const frame = page.locator('iframe.preview-frame');
+  const preview = frame.contentFrame();
+  const samples = [];
+  for (const width of [1280, 1281, 1360, 1440, 1920, 2560, 1280]) {
+    await frame.evaluate((element, value) => {
+      element.style.width = `${value}px`;
+    }, width);
+    samples.push(await measure(preview));
+  }
+  expect(samples[0].headings.map((heading) => heading.lines)).toEqual([1, 1]);
+  expect(samples[0].headings).toEqual(authored.headings);
+  expect(samples[0].grid).toEqual(authored.grid);
+  for (const sample of samples) {
+    expect(sample.overflow).toBe(0);
+    expect(sample.headings).toEqual(samples[0].headings);
+    expect(sample.grid).toEqual(samples[0].grid);
+  }
+  for (const width of [900, 901, 768, 520, 521, 360, 320, 1280]) {
+    await frame.evaluate((element, value) => {
+      element.style.width = `${value}px`;
+    }, width);
+    const sample = await measure(preview);
+    expect(sample.overflow).toBe(0);
+    await expect(preview.locator('.home-hero .point-hero-text-box--heading')).toHaveCSS(
+      '--point-hero-text-width',
+      width <= 520 ? '100%' : width <= 900 ? '90%' : '70%',
+    );
+  }
+  await frame.evaluate((element) => {
+    element.style.width = '640px';
+  });
+  await preview.locator('html').evaluate((element) => {
+    element.style.fontSize = '200%';
+  });
+  expect((await measure(preview)).overflow).toBe(0);
+  await preview.getByRole('button', { name: 'Menu', exact: true }).press('Enter');
+  await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
 test('keeps a non-auto desktop grid position identical in canvas and Preview', async ({ page }) => {
