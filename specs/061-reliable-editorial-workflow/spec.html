@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 61 — Reliable editorial workflow: contracts and research</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #101218;
+        color: #edf0f8;
+      }
+      body {
+        max-width: 1080px;
+        margin: auto;
+        padding: 32px 24px 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 40px;
+        color: #a8c9ff;
+      }
+      a {
+        color: #9fd7ff;
+      }
+      code {
+        overflow-wrap: anywhere;
+        color: #d5c0ff;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #424957;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #242b39;
+      }
+      .status {
+        border-left: 4px solid #ffc770;
+        padding: 16px;
+        background: #25221c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #61: Reliable autosave and cloud publishing</h1>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/61"
+        >Owning Issue and approved product requirements</a
+      >. Research captured September 12, 2026; this is the implementation specification, not a
+      completion report.
+    </p>
+    <p class="status">
+      <strong>T1 is in progress. Contracts are not frozen.</strong> No application code, database
+      migration, permission setting, or deployed content has changed. GitHub installation details
+      require the account holder to complete its “Confirm access” screen. Finish that inventory and
+      the storage rehearsal before dependent implementation. All T2–T14 acceptance evidence remains
+      pending.
+    </p>
+
+    <h2>Objective and preserved boundaries</h2>
+    <p>
+      Deliver browser-only editorial operation: independent remote drafts, logical-action autosave,
+      pending-only refresh recovery, cloud Staging jobs, exact Staging acceptance,
+      Administrator-only Production promotion, and cloud retry/rollback. Builder itself keeps its
+      single Production environment and local software QA. Actual public content publication still
+      requires an explicitly selected and approved candidate.
+    </p>
+    <ul>
+      <li>
+        Keep Cloudflare Workers/D1 and GitHub. No paid capacity, new paid service, homelab, or
+        public private-data backup.
+      </li>
+      <li>
+        Preserve the existing 90-day automatic revision minimum, named history, immutable checksums,
+        attribution, and immediate whole-draft purge. Do not shorten retention to make a forecast
+        pass.
+      </li>
+      <li>
+        Preserve foreground checkout availability within five seconds, warning at 25 minutes, expiry
+        at 30 minutes, and safe device transfer. Passive traffic must not renew authority.
+      </li>
+      <li>
+        Only pending editing payloads and minimum non-secret recovery metadata persist in the
+        browser. Browser storage cannot grant a role, lease, or revision authority.
+      </li>
+      <li>
+        Keep Issue #57 and unrelated repository changes outside this work. Do not publish fixture
+        content to Staging or Production merely to test the implementation.
+      </li>
+    </ul>
+
+    <h2>Live baseline and source findings</h2>
+    <p>
+      Builder source: <code>2b829836da1934266dcafb83f44c5ac381e71596</code>. Remote content heads:
+      Staging <code>e8fb73de2c6218ed258707b8e866411dbdecd29d</code>; Production
+      <code>0187c95c8a9d3441049616a801f66f6f6d11050e</code>. The inspected latest Builder deployment
+      sends 100% to Worker version <code>d991ce3a-e06b-4a04-95ee-4b7db1532537</code>. Recheck all
+      identities before release.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Evidence</th>
+          <th>Observed result and implication</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>D1 list and read-only aggregate SQL</td>
+          <td>
+            11 drafts; 782 retained revisions; 55,785,910 bytes of revision JSON; 226 asset versions
+            totaling 42,377,030 bytes; database allocation 214,228,992 bytes. Three active role
+            records. D1 queries succeeded during this inspection.
+          </td>
+        </tr>
+        <tr>
+          <td>Idempotency sizing</td>
+          <td>
+            782 records contain 112,152,964 bytes of response JSON. The response duplicates the
+            document in the draft and revision. Expired-record cleanup and compact receipts require
+            compatibility and retry tests; expiry alone does not physically reclaim records.
+          </td>
+        </tr>
+        <tr>
+          <td>Audit aggregates, September 6–12 UTC</td>
+          <td>
+            Daily save counts: 30, 61, 151, 143, 28, 0, 354. September 12 is incomplete and includes
+            two actors. These are observed audit actions, not measured session durations or provider
+            write counts. Earlier specs assumed 50 saves/day.
+          </td>
+        </tr>
+        <tr>
+          <td>Provider calendar-day analytics</td>
+          <td>
+            September 12 Builder dataset reports 7,439,666 rows read and 11,208 written at
+            inspection. This does not reconcile a hard 5-million free allowance by itself; do not
+            call it an audited billing total or infer the current plan. Another account database
+            exists and must remain in aggregate budgets. The subscription endpoint returned HTTP
+            403.
+          </td>
+        </tr>
+        <tr>
+          <td>Compression sizing in memory</td>
+          <td>
+            The latest 20 documents averaged 81,730 raw bytes and 12,848 gzip bytes. A separate
+            200-row sample yielded 198 same-draft adjacent pairs averaging 168 bytes for a gzip
+            splice with 128 bytes of modeled metadata; maximum 543 bytes. The splice probe
+            reconstructed every sampled document exactly, but ran in reverse sequence. It is not a
+            migration, forward-chain test, storage forecast, or performance proof.
+          </td>
+        </tr>
+        <tr>
+          <td>Library and migration status</td>
+          <td>
+            <code>src/server/media/library.ts</code> reconstructs history on each listing and can
+            materialize items during GET.
+            <code>src/server/maintenance/asset-migration.ts</code> scans historical media even after
+            reading a completed state.
+          </td>
+        </tr>
+        <tr>
+          <td>Save and recovery</td>
+          <td>
+            <code>action-autosave.ts</code> keeps its queue in memory. <code>d1.ts</code> returns
+            idempotency responses without checking the stored request hash; expected-revision
+            validation can precede replay lookup. Checkout and role enforcement must be rechecked
+            across all committing paths.
+          </td>
+        </tr>
+        <tr>
+          <td>Publication</td>
+          <td>
+            <code>publish/service.ts</code> advances upload from browser continuation and rereads
+            the latest draft. Job guards require the pinned revision to remain latest. Commit
+            success is stored as job success before live verification. Production route is disabled.
+            These behaviors do not satisfy R8–R11.
+          </td>
+        </tr>
+        <tr>
+          <td>Repository and access inventory</td>
+          <td>
+            Both content repositories are public and their main branches report no protection.
+            Existing hosted workflows deploy Staging and Pages. CLI access has repository
+            administrator permissions, which does not establish Builder App permissions. The
+            PointSite Builder installation exists; its configuration page is behind GitHub
+            reauthentication. Preserve dirty files in the existing Staging checkout.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Proposed workload and numeric gates</h2>
+    <p>
+      These are declared test scenarios, not claims about real usage. Fix their final values after
+      T1 rehearsal; any revision must retain the observed high-activity case and explain the change.
+    </p>
+    <ul>
+      <li>
+        Reference day: two editors, two 45-minute sessions each, 100 completed actions per session:
+        400 saves/day. Per session: 20 Library listings, ten dashboard refreshes, four history
+        visits, continuous foreground checkout observation. Ten Staging jobs/day, two Production
+        promotions/day, and one rollback rehearsal in an isolated fixture.
+      </li>
+      <li>
+        Reference corpus: 12 drafts, 100 media entries/draft, 800 starting revisions, then 36,000
+        additional revisions for a 90-day projection. Published candidates include more than the old
+        upload batch size. Model 10% request retries, uncertain acknowledgements, two duplicate
+        dispatches, one runner interruption, and maintenance separately.
+      </li>
+      <li>
+        Growth case: four editors, four such sessions each: 1,600 saves/day. Measure and report
+        whether this fits; do not silently redefine it as the supported reference workload or
+        promise unlimited use.
+      </li>
+      <li>
+        Account targets: at most 3,500,000 D1 reads/day, 70,000 writes/day, 70,000 Worker
+        requests/day, and 350 MB allocated in the Builder database. Reserve at least 30% of
+        documented allowances; include other account consumers, monitoring, Staging authentication,
+        retries, indexes, and maintenance. Use 500,000,000 bytes conservatively for the documented
+        500 MB database limit.
+      </li>
+      <li>
+        GitHub target: below 70% of the verified installation's actual primary rate limit, honoring
+        secondary limits and Retry-After. Standard public-repository runners only. Proposed artifact
+        retention: one day for transient output; published Git content and verified reproducible
+        manifests provide durable candidate inputs. No Actions cache is required by this design.
+      </li>
+      <li>
+        Storage feasibility is a gate: 400 × 90 × 81,730 is 2.94 GB before overhead. Even
+        independent gzip snapshots project 462.5 MB before media and indexes. Merely deleting
+        duplicate retry responses does not establish 90-day suitability.
+      </li>
+    </ul>
+
+    <h2>State and data contracts to freeze in T1</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Requirements</th>
+          <th>Proposed invariant and transition</th>
+          <th>Verification gate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>R2–R5, R12–R13</td>
+          <td>
+            Editing writes an ordered pending journal, then marks local persistence complete. A
+            completed action enters the single remote queue; the receipt removes only that
+            acknowledged action. Recovery authenticates, obtains current backend authority,
+            reconciles exact action receipts, then sends unchanged identities. Remote drift or lost
+            checkout blocks replay. Acknowledgements never replace newer pending content.
+          </td>
+          <td>
+            Refresh before/after storage commit, before/after remote commit and acknowledgement;
+            storage denied, corrupt data, wrong user/draft, old client, newer revision, and lost
+            acknowledgement. Prove one revision and audit event per changed logical action.
+          </td>
+        </tr>
+        <tr>
+          <td>R2–R5, R13</td>
+          <td>
+            Use native IndexedDB. Proposed bounds: 250 actions, 32 MiB total pending payload,
+            seven-day recovery eligibility. Never silently discard expired or incompatible data:
+            show blocked recovery and explicit discard. Successful acknowledgements remove payloads.
+            Sign-out requires settlement or explicit discard. No session secret or checkout token
+            enters the journal.
+          </td>
+          <td>
+            Browser tests for text, controls, unfinished drag, eviction/denial, account switching,
+            acknowledged cleanup, and sign-out. Bound retries to the existing schedule; expiry
+            cannot turn replay into a new action.
+          </td>
+        </tr>
+        <tr>
+          <td>R1–R2, R5–R7</td>
+          <td>
+            Maintain indexed Library item dates and retained item/path protection transactionally.
+            Backfill once in resumable batches; deletion fails closed until coverage is complete.
+            Completed ownership migration status does no historical expansion. Load document
+            payloads only for operations that need them; skip unchanged editor-state writes and
+            inactive polling.
+          </td>
+          <td>
+            Equivalent metadata/blockers for legacy and current fixtures, restores, replacement,
+            archival, deletion and retention; tenfold unrelated history growth does not produce
+            proportional listing reads. Target at least 90% fewer reads on the diagnosed
+            large-history fixture.
+          </td>
+        </tr>
+        <tr>
+          <td>R1–R2, R5–R6, R12</td>
+          <td>
+            First eliminate duplicated save responses with exact request-hash receipts. Prototype
+            lossless, bounded revision encoding using native gzip and a byte splice against a pinned
+            base, with full checkpoints at most 32 revisions apart and fallback to a full snapshot.
+            Preserve canonical checksums, readable old rows, named history, reference metadata, and
+            deletion semantics. Do not adopt this format unless whole-flow measurements justify it.
+          </td>
+          <td>
+            Forward reconstruction, Unicode, corruption, missing base, retention at checkpoints,
+            restore, purge and migration interruption tests. Target at most 6 KiB average retained
+            bytes/action for the reference fixture, with actual index and page allocation measured.
+            Inventory every raw document reader. Deploy a reader-compatible bridge before enabling
+            new encoding; never roll back to an incompatible reader.
+          </td>
+        </tr>
+        <tr>
+          <td>R7</td>
+          <td>
+            Keep runtime liveness distinct from authenticated workspace readiness. Provider metrics
+            include period, captured-at time, source and freshness. Missing counters remain unknown.
+            Proposed server sampling at most every 15 minutes; foreground UI observes that snapshot,
+            not a provider query per render.
+          </td>
+          <td>
+            D1 unavailable/exhausted, stale snapshot, missing provider permissions, and account
+            aggregation tests. Verify actual counters rather than using audit events as writes.
+          </td>
+        </tr>
+        <tr>
+          <td>R8–R9, R12</td>
+          <td>
+            Freeze saved revision, media bindings, renderer/source/base identities and manifest
+            before dispatch. Durable states distinguish dispatch pending/uncertain, queued, running,
+            verifying, review-ready, failed and cancelled. Trusted GitHub workflow owns execution.
+            Proposed claim: five minutes, renewable; attempt: at most 30 minutes and three explicit
+            retries. A job-scoped GitHub OIDC identity cannot access other drafts or editing routes.
+          </td>
+          <td>
+            Trusted repository/workflow/ref/run/attempt/audience verification; replay, expired
+            claim, duplicate run, lost dispatch response, browser closure, later draft edits, runner
+            death and callback loss. No URL carries credentials or private data.
+          </td>
+        </tr>
+        <tr>
+          <td>R9–R10</td>
+          <td>
+            One Staging slot remains reserved through human review. Explicit replacement or
+            rejection releases it. Acceptance binds the exact successfully deployed and
+            independently checked candidate plus current Staging identity; missing checks or stale
+            identity blocks acceptance.
+          </td>
+          <td>
+            Two-user races; wrong/revoked candidate; deployment replaced during review; substituted
+            workflow run; Publisher/Admin role matrix; durable cross-device readback.
+          </td>
+        </tr>
+        <tr>
+          <td>R10–R12</td>
+          <td>
+            Production requires a fresh Administrator check at request and execution boundaries,
+            exact unrevoked acceptance, expected Production base, trusted workflow source, and
+            serialized deployment. Prefer reviewed artifact reuse; otherwise verify canonical output
+            and explicit environment differences. Published means live routes/assets match, not
+            merely dispatched or committed. Rollback is a separately authorized Admin job targeting
+            the recorded previous release.
+          </td>
+          <td>
+            Direct API and altered workflow inputs, role revocation, stale base, concurrent
+            promotion, exact output manifest, callback loss, safe retries and previous-release
+            restoration. Public fixture promotion stays unauthorized until the PM selects a
+            candidate.
+          </td>
+        </tr>
+        <tr>
+          <td>R1, R12–R14</td>
+          <td>
+            Use supported seven-day D1 Time Travel for provider recovery; it is not an independent
+            backup. Recovery must preserve deletion receipts outside the database rewind, quarantine
+            access, reapply purges, and verify before reopening. Resolve the secure no-cost receipt
+            location and recovery authorization in T1; never restore deleted private content
+            silently.
+          </td>
+          <td>
+            Interrupted maintenance, missing rollback inputs, deletion after backup, restore before
+            deletion and cleanup protection. If existing no-cost services cannot satisfy this
+            contract, return the measured conflict to the PM.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Implementation order and verification</h2>
+    <ol>
+      <li>
+        <strong>T1:</strong> complete App installation, plan and provider permission inventory;
+        validate workload/encoding and cloud recovery strategy; freeze contracts and numeric gates.
+        No dependent product implementation before this gate.
+      </li>
+      <li>
+        <strong>T2–T4:</strong> Library projection, bounded migration/readiness, compact responses
+        and request overhead. Rehearse additive migrations and rollback compatibility.
+      </li>
+      <li>
+        <strong>T5–T7:</strong> journal, checkout reconciliation, action receipts and no-op
+        correctness. Preserve old autosave, Library, undo/redo and five-second checkout tests.
+      </li>
+      <li>
+        <strong>T8–T12:</strong> pinned jobs, trusted remote runner, checked Staging, exact
+        acceptance, Administrator Production, retry and rollback. Coordinate focused PRs in all
+        three repositories under this Issue.
+      </li>
+      <li>
+        <strong>T13–T14:</strong> retention/recovery, real D1 cost fixture, full local sequential
+        QA, exact-tree release, live verification, representative usage window and PM testing. Mark
+        unexercised live content promotion explicitly incomplete.
+      </li>
+    </ol>
+    <p>
+      Reuse TypeScript, strict schemas, D1 prepared statements/transactions, native browser storage
+      and installed libraries. Source lives under <code>src/client/editor</code>,
+      <code>src/client/publish</code>, <code>src/server</code> and <code>worker</code>; database
+      changes under <code>migrations</code>; tests under existing unit/integration/e2e/performance
+      directories. Use existing patterns such as <code>database.prepare(sql).bind(...values)</code>;
+      never interpolate user content into SQL or shell commands.
+    </p>
+    <p>
+      Fresh task worktree: <code>node scripts/local-qa.mjs prepare</code>, then <code>npm ci</code>.
+      Iterate focused tests, then run sequentially <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, and <code>git diff --check</code>. Stop task
+      servers, verify ports, then <code>node scripts/local-qa.mjs cleanup</code>. No application QA
+      has run in this initial research pass.
+    </p>
+    <p>
+      Before release, record reviewed commit/tree, exact-head GitHub checks, previous Worker
+      identity, rehearsed migration and rollback sequence. Builder rollout does not publish
+      public-site content. Keep Issue open through the final Production Showcase and PM acceptance.
+    </p>
+
+    <h2>References and remaining evidence</h2>
+    <ul>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a>: read/write
+        accounting and UTC quota windows.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a>:
+        per-database/account storage, query constraints and recovery retention.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/observability/metrics-analytics/"
+          >D1 analytics</a
+        >: provider periods and precise per-query metadata.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a>
+        and
+        <a href="https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+          >Actions billing</a
+        >: verify actual plan, runner and storage before claiming suitability.
+      </li>
+      <li>
+        <a href="https://docs.github.com/en/actions/reference/security/oidc">GitHub OIDC</a>: bind
+        cloud calls to trusted workflow/run claims.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/reference/time-travel/">D1 Time Travel</a>:
+        recovery limitations.
+      </li>
+      <li>
+        Pending: authenticated installation permissions/repository selection; account plan readback;
+        safe metrics/recovery permissions; forward storage and migration proof; final numeric
+        budgets. These are unresolved evidence dependencies, not implied approvals or completed
+        acceptance.
+      </li>
+    </ul>
+  </body>
+</html>
