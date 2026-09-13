@@ -1,6 +1,7 @@
 import type { AuditEventRecord, Role } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
 import { unboundFetch } from '../github/app-auth';
+import { readProviderUsage, type ProviderUsage } from './provider-usage';
 
 export interface AdminRoleRecord {
   githubLogin: string;
@@ -55,7 +56,7 @@ export interface CapacityReport {
     receiptPayloadBytes: number;
   };
   activity: { auditEvents: number; periodStart: string; periodEnd: string };
-  providerUsage: { state: 'unknown'; reason: string };
+  providerUsage: ProviderUsage;
   measuredAt: string;
 }
 
@@ -219,11 +220,7 @@ export class D1AdminService {
         receiptPayloadBytes: counts.receiptPayloadBytes,
       },
       activity: { auditEvents: counts.auditEvents, periodStart, periodEnd: measuredAt },
-      providerUsage: {
-        state: 'unknown',
-        reason:
-          'Account-wide provider counters and current plan have not been verified. Audit events are application activity, not billed database writes.',
-      },
+      providerUsage: await readProviderUsage(this.database),
       measuredAt,
     };
   }

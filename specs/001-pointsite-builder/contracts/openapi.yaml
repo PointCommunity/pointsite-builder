@@ -1002,8 +1002,11 @@ paths:
         '200':
           description: >-
             Allocated storage when supplied by D1, media/revision/receipt payload bytes,
-            UTC audit activity period, and explicitly unknown provider usage.
-            Audit activity is not billed database writes.
+            UTC audit activity period, and a read-only provider analytics snapshot.
+            Provider state is reported, stale or unknown. Known snapshots include requested UTC
+            period, collection and refresh timestamps, account-wide and Builder D1 row reads/writes,
+            and provider-reported Builder storage. Missing data never becomes zero. Analytics may
+            arrive late and do not verify plan allowance; audit activity is not billed writes.
   /admin/asset-migration:
     get:
       operationId: getAssetOwnershipMigrationStatus

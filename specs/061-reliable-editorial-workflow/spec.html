@@ -643,6 +643,29 @@
 
     <h2>Current implementation evidence and migration sequence</h2>
     <p>
+      Provider telemetry contract: the existing schedule may refresh one content-free D1 snapshot
+      every five minutes using a separately configured read-only Analytics/D1 credential. An atomic
+      database-clock claim limits refreshes across Worker instances. Query account-wide and
+      workspace row reads/writes for the current UTC day through the requested observation time;
+      fetch actual workspace allocation from database metadata. These are provider analytics, not an
+      audited bill or a verified plan allowance. Administrative GET requests read only the stored
+      snapshot. Show the requested period and collection time. Missing configuration, empty or
+      partial data, denied access and provider errors remain unknown; retain a clearly stale last
+      successful sample after refresh failure. Never convert absent counters to zero or expose
+      provider error bodies. Use the documented
+      <a href="https://developers.cloudflare.com/d1/observability/metrics-analytics/"
+        >D1 analytics</a
+      >
+      and
+      <a
+        href="https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/get/"
+        >database metadata</a
+      >
+      endpoints. Budget at most 288 refresh attempts and 576 provider requests per day when enabled,
+      plus bounded schedule lookups and snapshot writes. Credential installation and live readback
+      remain configuration gates; no billing permission or paid service is required.
+    </p>
+    <p>
       Queued-job recovery contract: an authorized Publisher or Administrator can retry exhausted
       dispatch or cancel a job before any native run reserves it. Retry retains the exact job, nonce
       and captured inputs; it resets only bounded dispatch state. Cancellation atomically changes

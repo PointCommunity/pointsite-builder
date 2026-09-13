@@ -36,7 +36,36 @@ function Capacity({ report }: { report: CapacityReport }) {
         {report.activity.auditEvents.toLocaleString()} audit events since{' '}
         {new Date(report.activity.periodStart).toUTCString()}.
       </p>
-      <p>Provider usage: unknown. {report.providerUsage.reason}</p>
+      {report.providerUsage.state === 'unknown' ? (
+        <p>Provider usage: unknown. {report.providerUsage.reason}</p>
+      ) : (
+        <div>
+          <h4>Provider analytics{report.providerUsage.state === 'stale' ? ' — stale' : ''}</h4>
+          <p>
+            Requested period: {new Date(report.providerUsage.sample.periodStart).toUTCString()} to{' '}
+            {new Date(report.providerUsage.sample.periodEnd).toUTCString()}.
+          </p>
+          <dl>
+            <dt>Account-wide D1 rows read / written</dt>
+            <dd>
+              {report.providerUsage.sample.account.rowsRead.toLocaleString()} /{' '}
+              {report.providerUsage.sample.account.rowsWritten.toLocaleString()}
+            </dd>
+            <dt>Builder D1 rows read / written</dt>
+            <dd>
+              {report.providerUsage.sample.workspace.rowsRead.toLocaleString()} /{' '}
+              {report.providerUsage.sample.workspace.rowsWritten.toLocaleString()}
+            </dd>
+            <dt>Provider-reported Builder storage</dt>
+            <dd>{bytes(report.providerUsage.sample.workspaceStorageBytes)}</dd>
+          </dl>
+          <p>{report.providerUsage.reason}</p>
+          <small>
+            Collected {new Date(report.providerUsage.collectedAt).toLocaleString()}. Last refresh
+            attempt {new Date(report.providerUsage.checkedAt).toLocaleString()}.
+          </small>
+        </div>
+      )}
       <small>
         Measured {new Date(report.measuredAt).toLocaleString()}. Payload sizes exclude indexes and
         other database records.

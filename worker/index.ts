@@ -18,6 +18,7 @@ import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/ser
 import { PUBLICATION_WORKFLOW_REVISION } from '../src/server/publish/renderer-contract';
 import { dispatchPendingPublication } from '../src/server/publish/dispatch';
 import { D1PublicationRunner } from '../src/server/publish/runner';
+import { refreshProviderUsage } from '../src/server/admin/provider-usage';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
 declare const __BUILDER_SOURCE_CLEAN__: boolean;
@@ -38,6 +39,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     if (config.github) await dispatchPendingPublication(env.DB, config.github);
+    await refreshProviderUsage(env.DB, config.analyticsToken);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
