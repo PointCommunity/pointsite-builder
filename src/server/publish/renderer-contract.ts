@@ -24,6 +24,6 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = 'a397e2f61aac7bbc88cf3672765eb9572a957dc5';
-export const PUBLICATION_CALLER_BLOB = 'd6a171baf3ebe19403844498ef13c15811998896';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'c676a836a9191bc034a7bbd2a19be300fa7fa5af';
+export const PUBLICATION_WORKFLOW_REVISION = '9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818';
+export const PUBLICATION_CALLER_BLOB = '7e5bc570c1dbb9e8b7a27d2bee732084c6a3a31a';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = '76db851e2a31cc0d275fd1ed0a3df81eb9695bb2';

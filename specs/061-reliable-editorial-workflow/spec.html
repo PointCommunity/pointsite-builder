@@ -345,8 +345,8 @@
           <td>
             Keep runtime liveness distinct from authenticated workspace readiness. Provider metrics
             include period, captured-at time, source and freshness. Missing counters remain unknown.
-            Proposed server sampling at most every 15 minutes; foreground UI observes that snapshot,
-            not a provider query per render.
+            Server sampling at most every five minutes; foreground UI observes that snapshot, not a
+            provider query per render.
           </td>
           <td>
             D1 unavailable/exhausted, stale snapshot, missing provider permissions, and account
@@ -486,6 +486,24 @@
 
     <h2>Cloud runner contract</h2>
     <p>
+      Each content build must pass rendered candidate checks before Git write authorization. Reuse
+      the locked Playwright Chromium and Axe dependencies at 360, 768 and 1280 pixels for every
+      visible captured route: main/heading, loaded images, missing first-party files, JavaScript
+      failures, horizontal overflow, keyboard menu/skip-link operation and serious or critical
+      accessibility violations. Render exact exported files through Playwright request interception;
+      block external requests, downloads, service workers and WebSockets. This checks candidate
+      rendering, not third-party availability or real hosting behavior. Full local Builder browser
+      suites remain separate. A credential-free subprocess has a ten-minute ceiling; runner cleanup
+      removes its browser installation. Compare output hashes before and after checks. Live
+      verification independently reads every deployed file between matching identities, retrying the
+      complete read-only proof at most three times with two- and five-second delays. A retry never
+      repeats a Git write or deployment. These APIs follow the
+      <a href="https://playwright.dev/docs/api/class-route#route-fulfill"
+        >Playwright route contract</a
+      >
+      and <a href="https://playwright.dev/docs/accessibility-testing">Axe integration</a>.
+    </p>
+    <p>
       Implemented foundation: migration 0020 pins each captured revision, media binding and image
       chunk set; one durable destination slot survives editor disconnects. Capture, first signed
       runner claim and subsequent input reads check current database authority. Input preparation
@@ -619,7 +637,7 @@
       disabled while previous-good release capture and the recovery flow are unfinished.
     </p>
     <p>
-      The separate Pages runtime at <code>a397e2f61aac7bbc88cf3672765eb9572a957dc5</code>
+      The separate Pages runtime at <code>9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818</code>
       keeps Pages write permission out of the Staging caller. It rebuilds the accepted inputs,
       uploads their verified static output with one-day retention, checks fresh Builder authority
       immediately before native Pages deployment and verifies every public file before reporting.
