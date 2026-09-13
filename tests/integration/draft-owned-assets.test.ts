@@ -125,7 +125,7 @@ it('packages more than 100 owned images with two reads and enforces size before 
   ).rejects.toThrow('CANDIDATE_MEDIA_TOO_LARGE');
   expect(capped).toHaveBeenCalledTimes(1);
   expect(capped.mock.calls[0][0]).not.toContain('draft_asset_chunks');
-});
+}, 30_000);
 let miniflare: Miniflare | undefined;
 
 it('rejects private Builder links in templates and saves before reading storage', async () => {

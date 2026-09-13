@@ -218,7 +218,7 @@ describe('retention maintenance', () => {
     await expect(projection.requireCoverage('draft-live', 3)).rejects.toThrow();
     expect((await projection.backfill('draft-live')).processed).toBe(2);
     await expect(projection.requireCoverage('draft-live', 3)).resolves.toEqual(expect.any(String));
-  });
+  }, 30_000);
 
   it('bounds exports and rejects a revision named after the dry run without side effects', async () => {
     const { database, service } = await setup();

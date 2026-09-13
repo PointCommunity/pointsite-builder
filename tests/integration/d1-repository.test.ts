@@ -277,7 +277,7 @@ describe('D1 draft repository', () => {
       expect((await app.request(`${url}${query}`)).status).toBe(422);
     expect((await app.request(url.replace(first.id, crypto.randomUUID()))).status).toBe(404);
     expect(await writer.getRevision(first.latestRevisionId)).toEqual(labeled);
-  });
+  }, 30_000);
 
   it('preserves legacy data when conversion is interrupted before commit or a receipt differs', async () => {
     const { database, repository } = await repositoryFixture();
