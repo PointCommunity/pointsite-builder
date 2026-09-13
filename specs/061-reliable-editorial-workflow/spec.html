@@ -746,6 +746,20 @@
     <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
     </p>
+    <p>
+      Release-ledger implementation contract: record a Production release in the same transaction as
+      verified job success, including reconciliation after callback loss. Store immutable source,
+      artifact and native deployment evidence plus the preceding recorded release. Seed the
+      previously verified public capture as historical baseline evidence, with its exact immutable
+      Git archive references; this does not assert that it is still the current deployment. Do not
+      create a synthetic draft for that baseline. Preserve inputs for the two most recent recorded
+      releases. Older release metadata may retain a historical job identifier after its inputs
+      expire; such missing inputs cannot authorize rollback. Keep metadata for 90 days and always
+      retain the two most recent releases. No Staging completion or unverified deployment creates a
+      Production release. Duplicate completion receipts create no duplicate ledger entry. Admin
+      rollback must subsequently bind a selected retained release, fresh authority and current
+      destination evidence, and verify restored output before recording another release.
+    </p>
     <ul>
       <li>
         T2: Additive migration 0014 creates per-draft item/date/path summaries. Draft saves update

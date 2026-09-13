@@ -14,6 +14,7 @@ import type { PublisherConfig } from './service';
 import { PublicationBuildSchema, commitPublicationBuild, publicationJson } from './build-proof';
 import { PublicationEvidenceSchema, verifyDeploymentProof } from './deployment-proof';
 import { currentPromotion } from './promotion';
+import { verifiedReleaseStatement } from './releases';
 
 // Every call checks the live role, draft lifecycle, slot and signed run. The
 // selected revision deliberately need not remain the editor's latest revision.
@@ -343,6 +344,7 @@ export class D1PublicationRunner {
         completed_at=COALESCE(completed_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id=?`,
           )
           .bind(JSON.stringify(evidence), jobId),
+        verifiedReleaseStatement(this.database, jobId),
         this.database
           .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
           .bind(jobId),

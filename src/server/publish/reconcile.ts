@@ -3,6 +3,7 @@ import { checksumDocument } from '../../site-kit/canonicalize';
 import { PublicationBuildSchema } from './build-proof';
 import { verifyDeploymentProof } from './deployment-proof';
 import { QueuedRecoverySchema, verifyTerminalRun, type QueuedRecoveryInput } from './recovery';
+import { verifiedReleaseStatement } from './releases';
 
 /** Record an already completed deployment. This path never authorizes or performs publication. */
 export async function reconcileCompletedPublication(
@@ -137,6 +138,7 @@ export async function reconcileCompletedPublication(
           `UPDATE publish_jobs SET status='succeeded',evidence_json=?,completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
         )
         .bind(JSON.stringify(evidence), input.jobId),
+      verifiedReleaseStatement(database, input.jobId),
       database
         .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
         .bind(input.jobId),

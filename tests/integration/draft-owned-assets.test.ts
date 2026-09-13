@@ -480,6 +480,22 @@ it.each(['staging', 'production'] as const)(
       recovered: true,
     });
     expect(reads).toBe(previousReads);
+    expect(
+      await database
+        .prepare("SELECT count(*) AS n FROM publication_releases WHERE kind='publication'")
+        .first('n'),
+    ).toBe(target === 'production' ? 1 : 0);
+    if (target === 'production') {
+      const recorded = await database
+        .prepare('SELECT job_id,artifact_digest,evidence_json FROM publication_releases WHERE id=?')
+        .bind(jobId)
+        .first<{ job_id: string; artifact_digest: string; evidence_json: string }>();
+      expect(recorded).toMatchObject({ job_id: jobId, artifact_digest: build.artifactDigest });
+      expect(JSON.parse(recorded!.evidence_json)).toMatchObject({
+        verificationStatus: 'passed',
+        checkRunId: '34567',
+      });
+    }
     await expect(
       recoverQueuedPublication(database, { ...input, action: 'cancel' }, fetcher),
     ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
@@ -2226,6 +2242,51 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
           .bind(promoted.id)
           .first('status'),
       ).toBe('succeeded');
+      const releases = await database
+        .prepare('SELECT * FROM publication_releases ORDER BY sequence')
+        .all();
+      expect(releases.results).toHaveLength(2);
+      const [baseline, released] = releases.results;
+      expect(baseline).toMatchObject({
+        kind: 'baseline',
+        job_id: null,
+        artifact_digest: '45562c9e111136f631c901892d2f1058e45050e93fa8d507f5beb0858eb68894',
+      });
+      expect(released).toMatchObject({
+        id: promoted.id,
+        job_id: promoted.id,
+        kind: 'publication',
+        previous_release_id: baseline.id,
+        artifact_digest: github.build.artifactDigest,
+      });
+      expect(JSON.parse(String(released.source_json))).toMatchObject({
+        repository: 'PointCommunity/pointsite',
+        commitSha: github.build.commitSha,
+        workflowRevision: expectedTuple.workflowRevision,
+        candidateChecksum: job.candidateChecksum,
+      });
+      expect(JSON.parse(String(released.evidence_json))).toMatchObject({
+        deploymentId: '2',
+        verificationStatus: 'passed',
+      });
+      await expect(
+        database
+          .prepare('UPDATE publication_releases SET artifact_digest=? WHERE id=?')
+          .bind('0'.repeat(64), promoted.id)
+          .run(),
+      ).rejects.toThrow('PUBLICATION_RELEASE_IMMUTABLE');
+      await expect(
+        database.prepare('DELETE FROM publication_releases WHERE id=?').bind(promoted.id).run(),
+      ).rejects.toThrow('PUBLICATION_RELEASE_RETAINED');
+      await expect(
+        database.prepare('DELETE FROM publication_inputs WHERE job_id=?').bind(promoted.id).run(),
+      ).rejects.toThrow('PUBLICATION_RELEASE_INPUTS_RETAINED');
+      await expect(
+        database
+          .prepare('DELETE FROM publication_asset_pins WHERE job_id=?')
+          .bind(promoted.id)
+          .run(),
+      ).rejects.toThrow('PUBLICATION_RELEASE_INPUTS_RETAINED');
       const noRequests = vi.fn<typeof fetch>(() =>
         Promise.reject(new Error('No provider request expected for a receipt')),
       );
