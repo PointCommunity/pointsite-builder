@@ -5,13 +5,20 @@ import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import { PublicationBuildSchema, publicationJson } from './build-proof';
 import { PublicationEvidenceSchema, verifyDeploymentProof } from './deployment-proof';
 import type { PublisherConfig } from './service';
+import { retryCapturedPublication } from './retry';
+import { QueuedRecoverySchema, type QueuedRecoveryInput } from './recovery';
 
 /** Shared by dispatch and every signed runner boundary; aliases belong to their job queries. */
 export const currentPromotion = `EXISTS (
   SELECT 1 FROM publication_promotions promotion JOIN approvals accepted ON accepted.id=promotion.approval_id
   WHERE promotion.job_id=j.id AND accepted.decision='approved'
     AND accepted.publish_job_id=promotion.staging_job_id
-    AND accepted.candidate_checksum=j.candidate_checksum AND accepted.production_base_sha=j.base_sha
+    AND accepted.candidate_checksum=j.candidate_checksum
+    AND ((accepted.production_base_sha=j.base_sha AND NOT EXISTS (
+      SELECT 1 FROM publication_retries WHERE job_id=j.id)) OR EXISTS (
+      SELECT 1 FROM publication_retries lineage JOIN publication_promotions parent ON parent.job_id=lineage.parent_job_id
+      WHERE lineage.job_id=j.id AND parent.approval_id=promotion.approval_id
+        AND parent.staging_job_id=promotion.staging_job_id AND parent.artifact_digest=promotion.artifact_digest))
     AND json_extract(accepted.candidate_json,'$.workflowRevision')=pi.workflow_revision
     AND json_extract(accepted.candidate_json,'$.artifactDigest')=promotion.artifact_digest
     AND accepted.id=(SELECT id FROM approvals WHERE gate='staging-acceptance'
@@ -34,6 +41,82 @@ export class D1ProductionPublisher {
     private readonly callerBlob: string,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
+
+  async retryCaptured(value: QueuedRecoveryInput) {
+    const input = QueuedRecoverySchema.parse(value);
+    return retryCapturedPublication(
+      this.database,
+      input,
+      this.config.workflowRevision,
+      async (baseSha) => {
+        const source = await this.database
+          .prepare(
+            `SELECT u.github_login,a.evidence_json
+        FROM publication_promotions p JOIN approvals a ON a.id=p.approval_id
+        JOIN user_roles u ON u.email=? WHERE p.job_id=? AND u.active=1 AND u.role='administrator'`,
+          )
+          .bind(input.actor, input.jobId)
+          .first<{ github_login: string; evidence_json: string }>();
+        if (!source) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+        const evidence = PublicationEvidenceSchema.parse(JSON.parse(source.evidence_json));
+        const request: typeof fetch = (url, init) =>
+          this.fetcher(url, {
+            ...init,
+            redirect: 'error',
+            signal: AbortSignal.timeout(10_000),
+          });
+        await this.verifyDestination(baseSha, input.actor, source.github_login, request);
+        const live = await verifyDeploymentProof(
+          {
+            target: 'staging',
+            runId: evidence.runId,
+            checkRunId: evidence.checkRunId,
+            dispatchRevision: evidence.dispatchRevision,
+            commitSha: evidence.commitSha,
+            workflowRevision: evidence.workflowRevision,
+            candidateChecksum: evidence.candidateChecksum,
+            artifactDigest: evidence.artifactDigest,
+            workerVersionId: evidence.workerVersionId,
+          },
+          request,
+        );
+        if (live.deploymentId !== evidence.deploymentId)
+          throw new Error('PRODUCTION_ACCEPTANCE_CHANGED');
+      },
+      'production',
+    );
+  }
+
+  private async verifyDestination(
+    baseSha: string,
+    subject: string,
+    login: string,
+    request: typeof fetch,
+  ) {
+    z.string()
+      .regex(/^[a-f0-9]{40}$/)
+      .parse(this.callerBlob);
+    const token = await createPublisherToken({
+      ...this.config,
+      repository: 'pointsite',
+      subject,
+      login,
+      fetcher: request,
+    });
+    const api = 'https://api.github.com/repos/PointCommunity/pointsite';
+    const headers = githubHeaders(token);
+    z.object({ object: z.object({ sha: z.literal(baseSha) }) }).parse(
+      await publicationJson(await request(`${api}/git/ref/heads/main`, { headers }), 8192),
+    );
+    z.object({ type: z.literal('file'), sha: z.literal(this.callerBlob) }).parse(
+      await publicationJson(
+        await request(`${api}/contents/.github/workflows/publish-candidate.yml?ref=${baseSha}`, {
+          headers,
+        }),
+        32768,
+      ),
+    );
+  }
 
   async capture(value: z.infer<typeof CaptureSchema>) {
     const input = CaptureSchema.parse(value);
@@ -130,26 +213,11 @@ export class D1ProductionPublisher {
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       });
-    const token = await createPublisherToken({
-      ...this.config,
-      repository: 'pointsite',
-      subject: input.actor,
-      login: account.github_login,
-      fetcher: request,
-    });
-    const api = 'https://api.github.com/repos/PointCommunity/pointsite';
-    const headers = githubHeaders(token);
-    z.object({ object: z.object({ sha: z.literal(input.tuple.productionBaseSha) }) }).parse(
-      await publicationJson(await request(`${api}/git/ref/heads/main`, { headers }), 8192),
-    );
-    z.object({ type: z.literal('file'), sha: z.literal(this.callerBlob) }).parse(
-      await publicationJson(
-        await request(
-          `${api}/contents/.github/workflows/publish-candidate.yml?ref=${input.tuple.productionBaseSha}`,
-          { headers },
-        ),
-        32768,
-      ),
+    await this.verifyDestination(
+      input.tuple.productionBaseSha,
+      input.actor,
+      account.github_login,
+      request,
     );
     const live = await verifyDeploymentProof(
       {

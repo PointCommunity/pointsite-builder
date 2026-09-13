@@ -17,7 +17,7 @@ import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { D1ProductionPublisher } from '../../src/server/publish/promotion';
 import { recoverQueuedPublication } from '../../src/server/publish/recovery';
-import { retryCapturedStaging } from '../../src/server/publish/retry';
+import { retryCapturedPublication as retryCapturedStaging } from '../../src/server/publish/retry';
 import { reconcileCompletedPublication } from '../../src/server/publish/reconcile';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
@@ -1319,7 +1319,7 @@ it('rechecks cloud preflight authority atomically and rejects changed preflight 
   expect(await jobs.cloudAvailability()).toEqual({ state: 'available' });
 }, 30_000);
 
-it.each(['revoked', 'verified'] as const)(
+it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'] as const)(
   'production %s',
   async (productionOutcome) => {
     const { database, repository, assets, createInput } = await fixture();
@@ -1772,6 +1772,317 @@ it.each(['revoked', 'verified'] as const)(
         tuple: { ...expectedTuple, artifactDigest: '0'.repeat(64) },
       }),
     ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    if (productionOutcome.startsWith('retry-')) {
+      // Model a stopped run already reconciled before deployment authorization.
+      // The separate terminal-run tests prove that cancellation boundary.
+      const retryBase = productionOutcome === 'retry-commit' ? 'd'.repeat(40) : productionBase;
+      await database.batch([
+        database
+          .prepare("UPDATE publish_jobs SET status='cancelled',result_sha=? WHERE id=?")
+          .bind(productionOutcome === 'retry-commit' ? retryBase : null, promoted.id),
+        database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(promoted.id),
+      ]);
+      const recovery = {
+        jobId: promoted.id,
+        action: 'retry-captured' as const,
+        expectedAttempts: 0,
+        actor: subject,
+        idempotencyKey: 'production-captured-retry',
+        requestId: 'retry-production',
+      };
+      for (const role of ['viewer', 'editor', 'publisher']) {
+        await database
+          .prepare('UPDATE user_roles SET role=? WHERE email=?')
+          .bind(role, subject)
+          .run();
+        await expect(production.retryCaptured(recovery)).rejects.toThrow(
+          'PUBLISH_AUTHORITY_CHANGED',
+        );
+      }
+      await database
+        .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+        .bind(subject)
+        .run();
+      productionBase = '0'.repeat(40);
+      await expect(production.retryCaptured(recovery)).rejects.toThrow();
+      productionBase = retryBase;
+      publishedWorkerVersion = crypto.randomUUID();
+      await expect(production.retryCaptured(recovery)).rejects.toThrow(
+        'PUBLICATION_VERIFICATION_UNCONFIRMED',
+      );
+      publishedWorkerVersion = workerVersionId;
+      github.state.beforePermission = async () => {
+        await database
+          .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+          .bind(subject)
+          .run();
+      };
+      await expect(production.retryCaptured(recovery)).rejects.toThrow(
+        'PUBLICATION_RECOVERY_CHANGED',
+      );
+      github.state.beforePermission = () => Promise.resolve();
+      await database
+        .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+        .bind(subject)
+        .run();
+
+      if (productionOutcome === 'retry-revocation') {
+        github.state.beforePermission = async () => {
+          github.state.beforePermission = () => Promise.resolve();
+          await approvals.record({
+            ...decision,
+            decision: 'revoked',
+            expectedApprovalId: acceptedAgain.id,
+            idempotencyKey: 'revoke-during-production-retry',
+          });
+        };
+        await expect(production.retryCaptured(recovery)).rejects.toThrow(
+          'PUBLICATION_RECOVERY_CHANGED',
+        );
+        expect(
+          await database.prepare('SELECT COUNT(*) n FROM publication_retries').first('n'),
+        ).toBe(0);
+        expect(await database.prepare('SELECT COUNT(*) n FROM publication_slots').first('n')).toBe(
+          0,
+        );
+        await expect(production.retryCaptured(recovery)).rejects.toThrow(
+          'PUBLICATION_RECOVERY_CHANGED',
+        );
+        return;
+      }
+      await database
+        .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('production',?)")
+        .bind(job.id)
+        .run();
+      await expect(production.retryCaptured(recovery)).rejects.toThrow(
+        'PUBLICATION_RECOVERY_CHANGED',
+      );
+      expect(
+        await database
+          .prepare("SELECT job_id FROM publication_slots WHERE target='production'")
+          .first('job_id'),
+      ).toBe(job.id);
+      await database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(job.id).run();
+      await database
+        .prepare("UPDATE publication_runs SET deploy_authorized_at='fixture' WHERE job_id=?")
+        .bind(promoted.id)
+        .run();
+      await expect(production.retryCaptured(recovery)).rejects.toThrow(
+        'PUBLICATION_RECOVERY_CHANGED',
+      );
+      await database
+        .prepare('UPDATE publication_runs SET deploy_authorized_at=NULL WHERE job_id=?')
+        .bind(promoted.id)
+        .run();
+
+      for (const substituted of ['base', 'artifact', 'approval'] as const) {
+        const forged = crypto.randomUUID();
+        await expect(
+          database.batch([
+            database
+              .prepare(
+                `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+            SELECT ?,?,'production-merge','queued',candidate_json,candidate_checksum,repository,?,requested_by,requested_at FROM publish_jobs WHERE id=?`,
+              )
+              .bind(
+                forged,
+                forged,
+                substituted === 'base' ? '0'.repeat(40) : retryBase,
+                promoted.id,
+              ),
+            database
+              .prepare(
+                `INSERT INTO publication_inputs(job_id,draft_id,revision_id,workflow_revision)
+            SELECT ?,draft_id,revision_id,workflow_revision FROM publication_inputs WHERE job_id=?`,
+              )
+              .bind(forged, promoted.id),
+            database
+              .prepare(
+                'INSERT INTO publication_retries(job_id,parent_job_id,attempt,request_hash) VALUES (?,?,1,?)',
+              )
+              .bind(forged, promoted.id, 'a'.repeat(64)),
+            database
+              .prepare(
+                `INSERT INTO publication_promotions(job_id,staging_job_id,approval_id,artifact_digest,request_hash)
+            VALUES (?,?,?,?,?)`,
+              )
+              .bind(
+                forged,
+                job.id,
+                substituted === 'approval' ? revoked.id : acceptedAgain.id,
+                substituted === 'artifact' ? '0'.repeat(64) : expectedTuple.artifactDigest,
+                'a'.repeat(64),
+              ),
+          ]),
+        ).rejects.toThrow(
+          substituted === 'base' ? 'PUBLICATION_RETRY_MISMATCH' : 'PUBLICATION_PROMOTION_MISMATCH',
+        );
+        expect(
+          await database.prepare('SELECT id FROM publish_jobs WHERE id=?').bind(forged).first(),
+        ).toBeNull();
+      }
+      let loseResponse = true;
+      const lostResponse = new Proxy(database, {
+        get: (target, property) =>
+          property === 'batch'
+            ? async (statements: D1PreparedStatement[]) => {
+                const result = await target.batch(statements);
+                if (loseResponse) {
+                  loseResponse = false;
+                  throw new Error('Lost committed retry response');
+                }
+                return result;
+              }
+            : (Reflect.get(target, property) as unknown),
+      });
+      const retrying = new D1ProductionPublisher(
+        lostResponse,
+        { ...config, workflowRevision: expectedTuple.workflowRevision },
+        productionCaller,
+        productionProvider,
+      );
+      const [retried, duplicateRetry] = await Promise.all([
+        retrying.retryCaptured(recovery),
+        production.retryCaptured(recovery),
+      ]);
+      expect(retried).toEqual(duplicateRetry);
+      expect(retried.jobId).not.toBe(promoted.id);
+      const child = await database
+        .prepare(
+          `SELECT j.candidate_json,j.base_sha,pi.revision_id,pr.nonce,
+        promotion.approval_id,promotion.artifact_digest FROM publish_jobs j
+        JOIN publication_inputs pi ON pi.job_id=j.id JOIN publication_runs pr ON pr.job_id=j.id
+        JOIN publication_promotions promotion ON promotion.job_id=j.id WHERE j.id=?`,
+        )
+        .bind(retried.jobId)
+        .first<{
+          candidate_json: string;
+          base_sha: string;
+          revision_id: string;
+          nonce: string;
+          approval_id: string;
+          artifact_digest: string;
+        }>();
+      expect(child).toMatchObject({
+        base_sha: retryBase,
+        revision_id: draft.revision.id,
+        approval_id: acceptedAgain.id,
+        artifact_digest: expectedTuple.artifactDigest,
+      });
+      expect(JSON.parse(child!.candidate_json)).toEqual((await jobs.getById(job.id))!.candidate);
+      expect(
+        await database
+          .prepare('SELECT source_path FROM publication_asset_pins WHERE job_id=?')
+          .bind(retried.jobId)
+          .first('source_path'),
+      ).toBe(draft.document.media[0].sourcePath);
+      expect(child!.nonce).not.toBe(
+        await database
+          .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+          .bind(promoted.id)
+          .first('nonce'),
+      );
+      await expect(
+        production.retryCaptured({ ...recovery, idempotencyKey: 'second-production-retry' }),
+      ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+      expect(
+        await database
+          .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='publish.captured-retry'")
+          .first('n'),
+      ).toBe(1);
+
+      const noRequests = vi.fn<typeof fetch>(() =>
+        Promise.reject(new Error('Receipt must not call provider')),
+      );
+      const receipts = new D1ProductionPublisher(
+        database,
+        { ...config, workflowRevision: expectedTuple.workflowRevision },
+        productionCaller,
+        noRequests,
+      );
+      expect(await receipts.retryCaptured(recovery)).toEqual(retried);
+      expect(noRequests).not.toHaveBeenCalled();
+      await expect(
+        recoverQueuedPublication(database, { ...recovery, action: 'cancel' }),
+      ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+      let latestRetry = retried;
+      for (let attempt = 2; attempt <= 4; attempt++) {
+        await recoverQueuedPublication(database, {
+          ...recovery,
+          jobId: latestRetry.jobId,
+          action: 'cancel',
+          idempotencyKey: `cancel-production-retry-${attempt}`,
+        });
+        const again = {
+          ...recovery,
+          jobId: latestRetry.jobId,
+          idempotencyKey: `retry-production-number-${attempt}`,
+        };
+        if (attempt === 4) {
+          await expect(production.retryCaptured(again)).rejects.toThrow(
+            'PUBLICATION_RECOVERY_CHANGED',
+          );
+        } else {
+          latestRetry = await production.retryCaptured(again);
+        }
+      }
+      expect(await database.prepare('SELECT COUNT(*) n FROM publication_retries').first('n')).toBe(
+        3,
+      );
+      // Test the last permitted child's signed execution without manufacturing another retry.
+      await database.batch([
+        database
+          .prepare("UPDATE publish_jobs SET status='queued' WHERE id=?")
+          .bind(latestRetry.jobId),
+        database
+          .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('production',?)")
+          .bind(latestRetry.jobId),
+      ]);
+      const lastNonce = await database
+        .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+        .bind(latestRetry.jobId)
+        .first<string>('nonce');
+      const signedRetry = (checkRunId: string) =>
+        new SignJWT({
+          ...publicationClaims({
+            target: 'production',
+            jobId: latestRetry.jobId,
+            nonce: lastNonce!,
+            workflowRevision: expectedTuple.workflowRevision,
+            dispatchRevision: retryBase,
+          }),
+          check_run_id: checkRunId,
+        })
+          .setProtectedHeader({ alg: 'RS256' })
+          .sign(keys.privateKey);
+      await runner.reserve(latestRetry.jobId, await signedRetry('99999'));
+      const retryToken = await signedRetry('99998');
+      await runner.claim(latestRetry.jobId, retryToken);
+      expect((await runner.inputs(latestRetry.jobId, retryToken)).document).toEqual(draft.document);
+      await expect(
+        runner.authorizeBuild(latestRetry.jobId, retryToken, {
+          ...github.build,
+          artifactDigest: '0'.repeat(64),
+        }),
+      ).rejects.toThrow('PUBLICATION_OUTPUT_MISMATCH');
+      // A newer decision fences the retry's signed execution as well as its original parent.
+      await approvals.record({
+        ...decision,
+        decision: 'revoked',
+        expectedApprovalId: acceptedAgain.id,
+        idempotencyKey: 'revoke-production-retry',
+      });
+      await expect(runner.inputs(latestRetry.jobId, retryToken)).rejects.toThrow(
+        'PUBLISH_RUNNER_UNAUTHORIZED',
+      );
+      expect(await receipts.retryCaptured(recovery)).toEqual(retried);
+      await database
+        .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+        .bind(subject)
+        .run();
+      await expect(receipts.retryCaptured(recovery)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+      return;
+    }
     const productionNonce = await database
       .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
       .bind(promoted.id)

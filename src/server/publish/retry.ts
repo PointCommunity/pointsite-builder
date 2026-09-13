@@ -1,15 +1,21 @@
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { QueuedRecoverySchema, type QueuedRecoveryInput } from './recovery';
+import { currentPromotion } from './promotion';
 
 /** A new job copies immutable pins; it never reads the editor's current revision. */
-export async function retryCapturedStaging(
+export async function retryCapturedPublication(
   database: D1Database,
   value: QueuedRecoveryInput,
   workflowRevision: string,
   verifyBase: (baseSha: string) => Promise<void>,
+  target: 'staging' | 'production' = 'staging',
 ) {
   const input = QueuedRecoverySchema.parse(value);
   if (input.action !== 'retry-captured') throw new Error('PUBLICATION_RECOVERY_CHANGED');
+  const environment = target === 'staging' ? 'staging' : 'production-merge';
+  const role =
+    target === 'staging' ? "u.role IN ('publisher','administrator')" : "u.role='administrator'";
+  const accepted = target === 'staging' ? '1' : currentPromotion;
   const requestHash = await checksumDocument({
     jobId: input.jobId,
     action: input.action,
@@ -19,9 +25,9 @@ export async function retryCapturedStaging(
   const authority = database
     .prepare(
       `SELECT 1 FROM user_roles u JOIN publish_jobs j ON j.id=?
-    WHERE u.email=? AND u.active=1 AND u.role IN ('publisher','administrator') AND j.environment='staging'`,
+    WHERE u.email=? AND u.active=1 AND ${role} AND j.environment=?`,
     )
-    .bind(input.jobId, input.actor);
+    .bind(input.jobId, input.actor, environment);
   if (!(await authority.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
   const receipt = async () => {
     const row = await database
@@ -47,12 +53,12 @@ export async function retryCapturedStaging(
     FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id
     JOIN publication_runs pr ON pr.job_id=j.id JOIN drafts d ON d.id=pi.draft_id
     LEFT JOIN publication_retries r ON r.job_id=j.id
-    WHERE j.id=? AND j.environment='staging' AND j.status='cancelled'
+    WHERE j.id=? AND j.environment=? AND j.status='cancelled'
       AND pr.deploy_authorized_at IS NULL AND pr.dispatch_count=? AND d.status='active'
-      AND pi.workflow_revision=? AND COALESCE(r.attempt,0)<3
+      AND pi.workflow_revision=? AND COALESCE(r.attempt,0)<3 AND ${accepted}
       AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)`,
     )
-    .bind(input.jobId, input.expectedAttempts, workflowRevision)
+    .bind(input.jobId, environment, input.expectedAttempts, workflowRevision)
     .first<{ base_sha: string; attempt: number }>();
   if (!source) throw new Error('PUBLICATION_RECOVERY_CHANGED');
   await verifyBase(source.base_sha);
@@ -68,22 +74,25 @@ export async function retryCapturedStaging(
         SELECT 1 FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id
         JOIN publication_runs pr ON pr.job_id=j.id JOIN drafts d ON d.id=pi.draft_id
         JOIN user_roles u ON u.email=? LEFT JOIN publication_retries r ON r.job_id=j.id
-        WHERE j.id=? AND j.environment='staging' AND j.status='cancelled'
+        WHERE j.id=? AND j.environment=? AND j.status='cancelled'
           AND pr.deploy_authorized_at IS NULL AND pr.dispatch_count=? AND d.status='active'
           AND pi.workflow_revision=? AND COALESCE(j.result_sha,j.base_sha)=?
-          AND COALESCE(r.attempt,0)+1=? AND u.active=1 AND u.role IN ('publisher','administrator')
+          AND COALESCE(r.attempt,0)+1=? AND u.active=1 AND ${role} AND ${accepted}
           AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)
-        ) AND NOT EXISTS(SELECT 1 FROM publication_slots WHERE target='staging')
-          AND NOT EXISTS(SELECT 1 FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running'))
+        ) AND NOT EXISTS(SELECT 1 FROM publication_slots WHERE target=?)
+          AND NOT EXISTS(SELECT 1 FROM publish_jobs WHERE environment=? AND status IN ('queued','running'))
         THEN 'true' ELSE 'publication retry changed' END)`,
         )
         .bind(
           input.actor,
           input.jobId,
+          environment,
           input.expectedAttempts,
           workflowRevision,
           source.base_sha,
           source.attempt,
+          target,
+          environment,
         ),
       database
         .prepare(
@@ -93,7 +102,7 @@ export async function retryCapturedStaging(
       database
         .prepare(
           `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
-        SELECT ?,?,'staging','queued',candidate_json,candidate_checksum,repository,?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        SELECT ?,?,environment,'queued',candidate_json,candidate_checksum,repository,?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')
         FROM publish_jobs WHERE id=?`,
         )
         .bind(id, input.idempotencyKey, source.base_sha, input.actor, input.jobId),
@@ -108,6 +117,16 @@ export async function retryCapturedStaging(
           `INSERT INTO publication_retries(job_id,parent_job_id,attempt,request_hash) VALUES (?,?,?,?)`,
         )
         .bind(id, input.jobId, source.attempt, requestHash),
+      ...(target === 'production'
+        ? [
+            database
+              .prepare(
+                `INSERT INTO publication_promotions(job_id,staging_job_id,approval_id,artifact_digest,request_hash)
+        SELECT ?,staging_job_id,approval_id,artifact_digest,? FROM publication_promotions WHERE job_id=?`,
+              )
+              .bind(id, requestHash, input.jobId),
+          ]
+        : []),
       database
         .prepare(
           `INSERT INTO publication_asset_pins(job_id,draft_id,source_path,asset_id)
@@ -115,8 +134,8 @@ export async function retryCapturedStaging(
         )
         .bind(id, input.jobId),
       database
-        .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('staging',?)")
-        .bind(id),
+        .prepare('INSERT INTO publication_slots(target,job_id) VALUES (?,?)')
+        .bind(target, id),
       database
         .prepare('INSERT INTO publication_runs(job_id,nonce,dispatch_revision) VALUES (?,?,?)')
         .bind(id, nonce, source.base_sha),

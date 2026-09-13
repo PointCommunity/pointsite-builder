@@ -715,8 +715,20 @@
       unrelated Git changes fail closed. A transaction rechecks source state and authority before
       copying pins. Migration 0027 binds each child to one cancelled parent and allows at most three
       captured retries. Request-bound receipts reconcile duplicate/lost responses without another
-      provider request or job. Any job with deployment authorization remains ineligible. Production
-      retries retain their separate exact-acceptance requirements and remain pending.
+      provider request or job. Any job with deployment authorization remains ineligible.
+    </p>
+    <p>
+      Production retry implementation contract: reuse the bounded captured-retry transaction with
+      Administrator authority and the original, still-current acceptance. Recheck live Staging
+      evidence, Production repository permission, reviewed caller and exact destination base before
+      copying inputs. Migration 0028 permits only an immutable retry lineage with the same
+      acceptance, Staging job and artifact. Its new base must equal the cancelled parent's recorded
+      commit, or its unchanged base when no commit was recorded. This does not approve unrelated
+      destination changes. Every signed runner boundary continues to require the latest unrevoked
+      acceptance. Tests must cover both base cases, later editorial changes, Publisher denial,
+      revocation during provider reads, stale evidence, duplicate/lost responses, bounded lineage,
+      occupied slots and a new signed execution. Production UI and schedule activation remain gated
+      on the release ledger and cloud rollback.
     </p>
     <p>
       Missing final callbacks can be reconciled from Builder after the runner recorded its native

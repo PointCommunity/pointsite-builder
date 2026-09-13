@@ -3,7 +3,7 @@ import type { DraftRecord } from '../repositories/contracts';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
 import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
-import { retryCapturedStaging } from './retry';
+import { retryCapturedPublication } from './retry';
 import { reconcileCompletedPublication } from './reconcile';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -82,7 +82,7 @@ export class D1PublishJobStore {
     workflowRevision: string,
     verifyBase: (sha: string) => Promise<void>,
   ) {
-    return retryCapturedStaging(this.database, input, workflowRevision, verifyBase);
+    return retryCapturedPublication(this.database, input, workflowRevision, verifyBase);
   }
 
   /** Capture once. Browser closure and later edits cannot substitute these inputs. */
