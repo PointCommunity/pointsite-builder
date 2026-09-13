@@ -23,10 +23,15 @@ import type { FeedbackService } from './feedback/service';
 import { createFeedbackRoutes } from './routes/feedback';
 import type { D1OwnershipMigration } from './maintenance/asset-migration';
 import { createAssetMigrationRoutes } from './routes/asset-migration';
-import { createPublicationRunnerRoutes } from './routes/publication-runner';
+import {
+  createPublicationRunnerRoutes,
+  createPublicationVerificationRoutes,
+} from './routes/publication-runner';
 import type { D1PublicationRunner } from './publish/runner';
+import type { D1PublicationVerifier } from './publish/verification';
 import type { D1ProductionPublisher } from './publish/promotion';
 import { createProductionRoutes } from './routes/production';
+import { createVerificationSessionRoutes } from './routes/publication-verification';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -51,6 +56,7 @@ export interface AppDependencies {
   feedback?: FeedbackService;
   ownershipMigration?: D1OwnershipMigration;
   publicationRunner?: D1PublicationRunner;
+  publicationVerifier?: D1PublicationVerifier;
   production?: D1ProductionPublisher;
 }
 
@@ -70,6 +76,10 @@ export function createApp(dependencies: AppDependencies) {
   // Only these exact machine operations use the pinned GitHub OIDC identity.
   // Unknown runner paths continue through normal user authentication below.
   app.route('/api/publish/runner', createPublicationRunnerRoutes(dependencies.publicationRunner));
+  app.route(
+    '/api/publish/verification',
+    createPublicationVerificationRoutes(dependencies.publicationVerifier),
+  );
   app.use('/api/*', async (context, next) => {
     if (context.req.path !== '/api/health')
       context.set('actor', await dependencies.authenticate(context.req.raw));
@@ -124,6 +134,13 @@ export function createApp(dependencies: AppDependencies) {
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
   app.route('/api/publish', createProductionRoutes(dependencies.production));
+  app.route(
+    '/api/publish',
+    createVerificationSessionRoutes(
+      dependencies.publicationVerifier,
+      Boolean(dependencies.production),
+    ),
+  );
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
   app.route(
     '/api/admin/asset-migration',

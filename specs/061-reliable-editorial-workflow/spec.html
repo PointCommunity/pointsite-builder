@@ -771,22 +771,26 @@
       this credential. The live site's version must match that independent capture. Recheck native
       traffic before finalization. A distinct nonce, OIDC audience, immutable verification workflow,
       run and check bind the recovery; deployment tokens cannot call verification endpoints or vice
-      versa. The verification job uses read-only repository permissions and no deployment
-      credential, rebuild, Git write or native deployment record. Fetch the retained output manifest
-      by its immutable Git blob identity, check every live output hash and native release identity
-      before and after, then record a signed acknowledgement. A separate finalizer requires the
-      verification execution check to have succeeded and rereads current destination/native
-      evidence. Preserve the original execution conclusion and deployment status; do not relabel a
-      failed deployment check as successful. Only this independently verified recovery proof may
-      reconcile a terminal failed original check. Unrecovered publication continues to require
-      successful native execution. Pending, replaced, changed, unauthorized or incomplete evidence
-      fails closed. Permit at most three verification attempts per original job and six throttled
-      dispatches per attempt, preserving request receipts after lost responses. A terminal
-      verification attempt can be retired only after native completion; no timeout alone releases
-      it. Reopening the draft shows the durable recovery state. Extend acceptance, promotion and
-      rollback proof readers to retain recovery provenance. Test nonce/scope substitution, failed
-      original execution, missing acknowledgement, changed output/deployment, duplicate dispatch,
-      lost replies, role revocation and transaction rollback before enabling this path. GitHub's
+      versa. The verification runtime has its own reviewed immutable pin and caller blobs; advancing
+      it does not change the original build runtime, captured artifact or deployment callers. Report
+      acknowledgements may retry the same bounded metadata at most three times; this never retries
+      deployment or changes the captured source. The verification job uses read-only repository
+      permissions and no deployment credential, rebuild, Git write or native deployment record.
+      Fetch the retained output manifest by its immutable Git blob identity, check every live output
+      hash and native release identity before and after, then record a signed acknowledgement. A
+      separate finalizer requires the verification execution check to have succeeded and rereads
+      current destination/native evidence. Preserve the original execution conclusion and deployment
+      status; do not relabel a failed deployment check as successful. Only this independently
+      verified recovery proof may reconcile a terminal failed original check. Unrecovered
+      publication continues to require successful native execution. Pending, replaced, changed,
+      unauthorized or incomplete evidence fails closed. Permit at most three verification attempts
+      per original job and six throttled dispatches per attempt, preserving request receipts after
+      lost responses. A terminal verification attempt can be retired only after native completion;
+      no timeout alone releases it. Reopening the draft shows the durable recovery state. Extend
+      acceptance, promotion and rollback proof readers to retain recovery provenance. Test
+      nonce/scope substitution, failed original execution, missing acknowledgement, changed
+      output/deployment, duplicate dispatch, lost replies, role revocation and transaction rollback
+      before enabling this path. GitHub's
       <a
         href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
         >deployment: false environment contract</a

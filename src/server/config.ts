@@ -18,6 +18,7 @@ const RuntimeConfigSchema = z
     PRODUCTION_ENABLED: z.literal('false'),
     DRAFT_STORAGE_FORMAT: z.enum(['legacy', 'compact-v1']).default('legacy'),
     CLOUDFLARE_ANALYTICS_TOKEN: z.string().min(20).optional(),
+    CLOUDFLARE_WORKER_READ_TOKEN: z.string().min(20).optional(),
   })
   .superRefine((value, context) => {
     if (value.ENVIRONMENT !== 'local' && value.DEV_AUTH_EMAIL) {
@@ -60,6 +61,7 @@ export interface RuntimeConfig {
   productionEnabled: false;
   draftStorageFormat: 'legacy' | 'compact-v1';
   analyticsToken?: string;
+  workerReadToken?: string;
   github?: {
     appId: string;
     installationId: string;
@@ -101,6 +103,9 @@ export function parseConfig(input: Record<string, unknown>): RuntimeConfig {
     draftStorageFormat: value.DRAFT_STORAGE_FORMAT,
     ...(value.CLOUDFLARE_ANALYTICS_TOKEN
       ? { analyticsToken: value.CLOUDFLARE_ANALYTICS_TOKEN }
+      : {}),
+    ...(value.CLOUDFLARE_WORKER_READ_TOKEN
+      ? { workerReadToken: value.CLOUDFLARE_WORKER_READ_TOKEN }
       : {}),
     ...(github ? { github } : {}),
   };

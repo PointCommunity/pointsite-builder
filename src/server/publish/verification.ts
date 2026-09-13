@@ -12,6 +12,7 @@ import { verifiedReleaseStatement } from './releases';
 import { verifyTerminalRun } from './recovery';
 import { verifyPublicationRunner, type PublicationRunnerScope } from './runner-auth';
 import type { PublisherConfig } from './service';
+import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const identifier = z.string().regex(/^[1-9][0-9]{0,19}$/);
@@ -88,6 +89,148 @@ export class D1PublicationVerifier {
     const fetcher = this.fetcher;
     return fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
   };
+
+  async status(jobId: string, target: 'staging' | 'production', actor: string) {
+    z.uuid().parse(jobId);
+    targetSchema.parse(target);
+    const allowed = this.database
+      .prepare(
+        `SELECT 1 FROM publish_jobs j JOIN user_roles u ON u.email=? WHERE j.id=? AND ${authority}`,
+      )
+      .bind(actor, jobId, target, target);
+    if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+    const row = await this.database
+      .prepare(
+        `SELECT id,status,attempt,dispatch_count,dispatch_after,dispatch_error,
+      reserved_run_id,report_json IS NOT NULL AS reported FROM publication_verifications WHERE job_id=? AND target=? ORDER BY attempt DESC LIMIT 1`,
+      )
+      .bind(jobId, target)
+      .first<{
+        id: string;
+        status: 'queued' | 'running' | 'passed' | 'failed';
+        attempt: number;
+        dispatch_count: number;
+        dispatch_after: string;
+        dispatch_error: string | null;
+        reserved_run_id: string | null;
+        reported: number;
+      }>();
+    if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+    if (!row) return null;
+    return {
+      id: row.id,
+      status: row.status,
+      attempt: row.attempt,
+      dispatchAttempts: row.dispatch_count,
+      retryAt: row.dispatch_after,
+      reported: row.reported === 1,
+      needsAttention:
+        row.status === 'failed' ||
+        (row.status === 'queued' &&
+          !row.reserved_run_id &&
+          row.dispatch_count >= MAX_DISPATCH_ATTEMPTS),
+      ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
+      ...(row.reserved_run_id && identifier.safeParse(row.reserved_run_id).success
+        ? {
+            workflowUrl: `https://github.com/PointCommunity/${target === 'staging' ? 'pointsite-staging' : 'pointsite'}/actions/runs/${row.reserved_run_id}`,
+          }
+        : {}),
+    };
+  }
+
+  /** Durable retries reuse the same verification identity and never execute deployment. */
+  async dispatch(id: string): Promise<void> {
+    z.uuid().parse(id);
+    const eligible = `${verificationFrom} AND v.status='queued' AND v.reserved_run_id IS NULL`;
+    const row = await this.database
+      .prepare(`SELECT v.*,u.github_login ${eligible}`)
+      .bind(id)
+      .first<VerificationRow>();
+    if (!row) throw new Error('PUBLICATION_VERIFICATION_DISPATCH_UNAVAILABLE');
+    const reserved = await this.database
+      .prepare(
+        `UPDATE publication_verifications SET dispatch_after=strftime('%Y-%m-%dT%H:%M:%fZ','now','+' || (60 << dispatch_count) || ' seconds'),
+      dispatch_count=dispatch_count+1,dispatch_error=NULL WHERE id=? AND dispatch_count<${MAX_DISPATCH_ATTEMPTS}
+      AND dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now') AND EXISTS(SELECT 1 ${eligible} AND u.github_login=?)`,
+      )
+      .bind(id, id, row.github_login)
+      .run();
+    if (!reserved.meta.changes) throw new Error('PUBLICATION_VERIFICATION_BACKOFF');
+    try {
+      const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
+      const repository = row.target === 'staging' ? 'pointsite-staging' : 'pointsite';
+      const token = await createPublisherToken({
+        ...this.config,
+        repository,
+        subject: row.requested_by,
+        login: row.github_login,
+        fetcher: this.request,
+      });
+      const headers = { ...githubHeaders(token), 'content-type': 'application/json' };
+      const api = `https://api.github.com/repos/PointCommunity/${repository}`;
+      z.object({ object: z.object({ sha: z.literal(source.build.commitSha) }) }).parse(
+        await publicationJson(await this.request(`${api}/git/ref/heads/main`, { headers }), 8192),
+      );
+      // Local revocation or another signed run reservation wins after provider reads.
+      const current = await this.database
+        .prepare(`SELECT 1 ${eligible} AND u.github_login=? AND v.nonce=? AND v.source_json=?`)
+        .bind(id, row.github_login, row.nonce, row.source_json)
+        .first();
+      if (!current) throw new Error('PUBLICATION_VERIFICATION_DISPATCH_UNAVAILABLE');
+      const response = await this.request(`${api}/dispatches`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          event_type: 'verify-publication',
+          client_payload: { verificationId: id, nonce: row.nonce },
+        }),
+      });
+      if (response.status !== 204) {
+        const retry = Number(response.headers.get('retry-after'));
+        const seconds = Number.isFinite(retry)
+          ? Math.min(3600, Math.max(60, Math.ceil(retry)))
+          : 60;
+        await this.database
+          .prepare(
+            "UPDATE publication_verifications SET dispatch_after=MAX(dispatch_after,strftime('%Y-%m-%dT%H:%M:%fZ','now',?)) WHERE id=?",
+          )
+          .bind(`+${seconds} seconds`, id)
+          .run();
+        throw new Error('PUBLICATION_VERIFICATION_DISPATCH_UNCONFIRMED');
+      }
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message === 'PUBLICATION_VERIFICATION_DISPATCH_UNAVAILABLE'
+          ? error.message
+          : 'PUBLICATION_VERIFICATION_DISPATCH_UNCONFIRMED';
+      await this.database
+        .prepare('UPDATE publication_verifications SET dispatch_error=? WHERE id=?')
+        .bind(code, id)
+        .run();
+      throw new Error(code);
+    }
+  }
+
+  async dispatchPending(): Promise<void> {
+    // At most two held publication slots; do not scan retained job history.
+    const pending = await this.database
+      .prepare(
+        `SELECT v.id FROM publication_slots ps JOIN publication_verifications v ON v.job_id=ps.job_id
+      JOIN publish_jobs j ON j.id=v.job_id JOIN user_roles u ON u.email=v.requested_by
+      WHERE v.status='queued' AND v.reserved_run_id IS NULL AND j.status='running' AND v.target=ps.target
+      AND v.dispatch_count<${MAX_DISPATCH_ATTEMPTS} AND v.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      AND u.active=1 AND ((v.target='staging' AND u.role IN ('publisher','administrator')) OR (v.target='production' AND u.role='administrator'))
+      ORDER BY v.dispatch_after,v.id LIMIT 1`,
+      )
+      .first<{ id: string }>();
+    if (!pending) return;
+    try {
+      await this.dispatch(pending.id);
+    } catch (error) {
+      if (!(error instanceof Error && /^PUBLICATION_VERIFICATION_[A-Z_]+$/.test(error.message)))
+        throw new Error('PUBLICATION_VERIFICATION_DISPATCH_UNCONFIRMED');
+    }
+  }
 
   private async authenticate(id: string, token: string) {
     if (!z.uuid().safeParse(id).success) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');

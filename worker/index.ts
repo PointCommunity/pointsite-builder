@@ -15,7 +15,12 @@ import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
 import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration';
 import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
-import { PUBLICATION_WORKFLOW_REVISION } from '../src/server/publish/renderer-contract';
+import {
+  PUBLICATION_WORKFLOW_REVISION,
+  VERIFICATION_WORKFLOW_REVISION,
+  VERIFICATION_CALLER_BLOBS,
+} from '../src/server/publish/renderer-contract';
+import { D1PublicationVerifier } from '../src/server/publish/verification';
 import { dispatchPendingPublication } from '../src/server/publish/dispatch';
 import { D1PublicationRunner } from '../src/server/publish/runner';
 import { refreshProviderUsage } from '../src/server/admin/provider-usage';
@@ -40,6 +45,13 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     if (config.github) await dispatchPendingPublication(env.DB, config.github);
+    if (config.github)
+      await new D1PublicationVerifier(
+        env.DB,
+        { ...config.github, workflowRevision: VERIFICATION_WORKFLOW_REVISION },
+        VERIFICATION_CALLER_BLOBS,
+        config.workerReadToken,
+      ).dispatchPending();
     await refreshProviderUsage(env.DB, config.analyticsToken);
     await retirePublicationMetadata(env.DB);
   },
@@ -92,6 +104,12 @@ export default {
               media,
               new D1PublishJobStore(env.DB),
               new D1PublishPreflightStore(env.DB),
+            ),
+            publicationVerifier: new D1PublicationVerifier(
+              env.DB,
+              { ...config.github, workflowRevision: VERIFICATION_WORKFLOW_REVISION },
+              VERIFICATION_CALLER_BLOBS,
+              config.workerReadToken,
             ),
           }
         : {}),

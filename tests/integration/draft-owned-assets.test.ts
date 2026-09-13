@@ -3421,8 +3421,17 @@ it.each(['staging', 'production'] as const)(
     let verificationSucceeded = false;
     let callerChanged = false;
     let revoke = false;
+    let revokeBeforeDispatch = false;
+    let dispatchStatus = 204;
+    const dispatches: unknown[] = [];
     const fetcher = vi.fn<typeof fetch>(async (value, init) => {
       const url = typeof value === 'string' ? value : value instanceof URL ? value.href : value.url;
+      if (url.endsWith(`/repos/PointCommunity/${repositoryName}/dispatches`)) {
+        dispatches.push(JSON.parse(typeof init?.body === 'string' ? init.body : 'null'));
+        return new Response(null, { status: dispatchStatus, headers: { 'retry-after': '3600' } });
+      }
+      if (revokeBeforeDispatch && url.endsWith('/git/ref/heads/main'))
+        await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
       if (url.includes('/actions/runs/12345'))
         return Response.json({
           id: 12345,
@@ -3594,6 +3603,63 @@ it.each(['staging', 'production'] as const)(
       build: provider.build,
     });
     expect(String(record?.source_json)).not.toContain(draft.document.media[0].sourcePath);
+    expect(await verifier.status(job.id, target, subject)).toMatchObject({
+      id: captured.verificationId,
+      status: 'queued',
+      attempt: 1,
+      dispatchAttempts: 0,
+      reported: false,
+      needsAttention: false,
+    });
+    await expect(verifier.status(job.id, target, 'github:99999')).rejects.toThrow(
+      'PUBLISH_AUTHORITY_CHANGED',
+    );
+    await Promise.all([verifier.dispatchPending(), verifier.dispatchPending()]);
+    expect(dispatches).toEqual([
+      {
+        event_type: 'verify-publication',
+        client_payload: { verificationId: captured.verificationId, nonce: record?.nonce },
+      },
+    ]);
+    await expect(verifier.dispatch(captured.verificationId)).rejects.toThrow(
+      'PUBLICATION_VERIFICATION_BACKOFF',
+    );
+    const readyDispatch = () =>
+      database
+        .prepare("UPDATE publication_verifications SET dispatch_after='1970' WHERE id=?")
+        .bind(captured.verificationId)
+        .run();
+    await readyDispatch();
+    revokeBeforeDispatch = true;
+    await expect(verifier.dispatch(captured.verificationId)).rejects.toThrow(
+      'PUBLICATION_VERIFICATION_DISPATCH_UNAVAILABLE',
+    );
+    expect(dispatches).toHaveLength(1);
+    revokeBeforeDispatch = false;
+    await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
+    dispatchStatus = 503;
+    for (let attempt = 3; attempt <= 6; attempt++) {
+      await readyDispatch();
+      await expect(verifier.dispatch(captured.verificationId)).rejects.toThrow(
+        'PUBLICATION_VERIFICATION_DISPATCH_UNCONFIRMED',
+      );
+    }
+    expect(dispatches).toHaveLength(5);
+    expect(
+      await database
+        .prepare(
+          "SELECT dispatch_count,dispatch_after>strftime('%Y-%m-%dT%H:%M:%fZ','now','+59 minutes') AS delayed FROM publication_verifications WHERE id=?",
+        )
+        .bind(captured.verificationId)
+        .first(),
+    ).toMatchObject({ dispatch_count: 6, delayed: 1 });
+    await readyDispatch();
+    await verifier.dispatchPending();
+    await expect(verifier.dispatch(captured.verificationId)).rejects.toThrow(
+      'PUBLICATION_VERIFICATION_BACKOFF',
+    );
+    expect(dispatches).toHaveLength(5);
+    fetcher.mockClear();
     const verificationClaims = {
       ...publicationClaims({
         target,
@@ -3636,6 +3702,12 @@ it.each(['staging', 'production'] as const)(
     await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
     expect(await verifier.claim(captured.verificationId, verifyToken)).toEqual({ claimed: true });
     expect(await verifier.claim(captured.verificationId, verifyToken)).toEqual({ claimed: true });
+    expect(await verifier.status(job.id, target, subject)).toMatchObject({
+      status: 'running',
+      dispatchAttempts: 6,
+      reported: false,
+      workflowUrl: `https://github.com/PointCommunity/${repositoryName}/actions/runs/56789`,
+    });
     expect(await verifier.inputs(captured.verificationId, verifyToken)).toEqual(
       JSON.parse(String(record?.source_json)),
     );
@@ -3747,6 +3819,10 @@ it.each(['staging', 'production'] as const)(
       .bind(job.id)
       .first();
     expect(completed?.status).toBe('succeeded');
+    expect(await verifier.status(job.id, target, subject)).toMatchObject({
+      status: 'passed',
+      reported: true,
+    });
     expect(JSON.parse(String(completed?.evidence_json))).toMatchObject({
       runId: '12345',
       checkRunId: '34567',

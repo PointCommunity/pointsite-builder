@@ -27,3 +27,10 @@ export type StagingRendererContract = Record<string, string>;
 export const PUBLICATION_WORKFLOW_REVISION = '9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818';
 export const PUBLICATION_CALLER_BLOB = '7e5bc570c1dbb9e8b7a27d2bee732084c6a3a31a';
 export const PUBLICATION_PRODUCTION_CALLER_BLOB = '76db851e2a31cc0d275fd1ed0a3df81eb9695bb2';
+
+/** Verification advances independently from the original deployment runtime. */
+export const VERIFICATION_WORKFLOW_REVISION = '79d887468a80f24663851af1224f82bb3806ac97';
+export const VERIFICATION_CALLER_BLOBS = Object.freeze({
+  staging: 'ae5def5a570d2171e188458695545ffd7e50db28',
+  production: 'd2a284c1a12acd8683329926363e6013783d0a25',
+});

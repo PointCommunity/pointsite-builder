@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { ApiError, errorResponse } from '../http/errors';
 import type { ApiVariables } from './drafts';
 import type { D1PublicationRunner } from '../publish/runner';
+import type { D1PublicationVerifier } from '../publish/verification';
 import { publicationJson } from '../publish/build-proof';
 
-export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
+function machineRoutes(configured: boolean) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   const credential = (context: Context<{ Variables: ApiVariables }>) => {
-    if (!runner)
+    if (!configured)
       throw new ApiError(503, 'PUBLISH_RUNNER_NOT_CONFIGURED', 'Publication runner unavailable');
     const header = context.req.header('authorization') ?? '';
     if (
@@ -34,6 +35,11 @@ export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
           );
     return errorResponse(safe, context.get('requestId'));
   });
+  return { routes, credential };
+}
+
+export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
+  const { routes, credential } = machineRoutes(Boolean(runner));
   routes.post('/:jobId/claim', async (context) => {
     // This operation has no client-supplied scope or claim body.
     if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
@@ -80,6 +86,29 @@ export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
       Number(index),
     );
     return new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
+  });
+  return routes;
+}
+
+export function createPublicationVerificationRoutes(verifier?: D1PublicationVerifier) {
+  const { routes, credential } = machineRoutes(Boolean(verifier));
+  for (const operation of ['reserve', 'claim', 'finalize'] as const) {
+    routes.post(`/:jobId/${operation}`, async (context) => {
+      const token = credential(context);
+      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      return context.json(await verifier![operation](context.req.param('jobId'), token));
+    });
+  }
+  routes.get('/:jobId/inputs', async (context) => {
+    const token = credential(context);
+    return context.json(await verifier!.inputs(context.req.param('jobId'), token));
+  });
+  routes.post('/:jobId/report', async (context) => {
+    const token = credential(context);
+    if (context.req.header('content-type') !== 'application/json')
+      throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    const value = await publicationJson(new Response(context.req.raw.body), 8192);
+    return context.json(await verifier!.report(context.req.param('jobId'), token, value));
   });
   return routes;
 }
