@@ -2,7 +2,7 @@
 
 import { acquireDraftProof } from '../fixtures/draft-proof';
 
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
@@ -11,6 +11,13 @@ import { ConflictError, InMemoryRepository } from '../../src/server/repositories
 import type { SaveDraftInput } from '../../src/server/repositories/contracts';
 import { D1StorageCompaction } from '../../src/server/maintenance/storage-compaction';
 import { RetentionService } from '../../src/server/maintenance/retention';
+import { D1DeletionReceipts } from '../../src/server/maintenance/deletion-receipts';
+import {
+  quarantineWorkspace,
+  openRecoveryDatabase,
+} from '../../src/server/maintenance/recovery-control';
+import { meterDatabase } from '../fixtures/d1-meter';
+import { D1WorkspaceRecovery } from '../../src/server/maintenance/workspace-recovery';
 import { D1LibraryProjection } from '../../src/server/media/library-projection';
 import { AuthorizationError } from '../../src/server/auth/roles';
 import { createApp } from '../../src/server/index';
@@ -23,9 +30,19 @@ async function repositoryFixture() {
     compatibilityDate: '2026-09-05',
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
-    d1Databases: { DB: crypto.randomUUID() },
+    d1Databases: { DB: crypto.randomUUID(), CONTROL: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
+  const control = await miniflare.getD1Database('CONTROL');
+  for (const migration of (await readdir('recovery-migrations'))
+    .filter((name) => name.endsWith('.sql'))
+    .sort())
+    await control.exec(
+      (await readFile(`recovery-migrations/${migration}`, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
   for (const migration of (await readdir('migrations'))
     .filter((name) => name.endsWith('.sql'))
     .sort()) {
@@ -50,7 +67,7 @@ async function repositoryFixture() {
       )
       .bind(actor)
       .run();
-  return { database, repository: new D1DraftRepository(database) };
+  return { database, control, repository: new D1DraftRepository(database) };
 }
 
 afterEach(async () => {
@@ -60,6 +77,236 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('requires deletion settlement and replay, and never repeats an uncertain native restore', async () => {
+    const { database, control, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Deletion recovery',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const receipts = new D1DeletionReceipts(database, control);
+    const receipt = await receipts.prepare({ kind: 'draft', draftId: draft.id });
+    await database.batch([receipts.proof(receipt)]);
+    const id = crypto.randomUUID();
+    await quarantineWorkspace(control, 1, id);
+    const recovery = new D1WorkspaceRecovery(database, control);
+    const target = '00000001-00000001-00000001-' + 'a'.repeat(32);
+    const previous = '00000002-00000001-00000001-' + 'b'.repeat(32);
+    await expect(recovery.prepare(2, id, target, previous)).rejects.toThrow(
+      'WORKSPACE_RECOVERY_PENDING_DELETION',
+    );
+    await receipts.settlePending(2, id);
+    await recovery.prepare(2, id, target, previous);
+    await recovery.restore(2, id, () =>
+      Promise.resolve({ bookmark: target, previous_bookmark: previous }),
+    );
+    await expect(recovery.reopen(2, id)).rejects.toThrow('WORKSPACE_RECOVERY_PENDING_DELETION');
+    expect(await recovery.replayNext(2, id)).toEqual({ replayed: 1 });
+    expect(await recovery.replayNext(2, id)).toEqual({ replayed: 0 });
+    await expect(repository.getDraft(draft.id)).rejects.toThrow();
+    await recovery.reopen(2, id);
+    await recovery.reopen(2, id);
+    const second = crypto.randomUUID();
+    await quarantineWorkspace(control, 3, second);
+    await recovery.prepare(4, second, target, previous);
+    const uncertain = vi.fn(() => Promise.reject(new Error('lost native response')));
+    await expect(recovery.restore(4, second, uncertain)).rejects.toThrow('lost native response');
+    await expect(recovery.restore(4, second, uncertain)).rejects.toThrow(
+      'WORKSPACE_RECOVERY_PHASE',
+    );
+    expect(uncertain).toHaveBeenCalledTimes(1);
+    await expect(recovery.reopen(4, second)).rejects.toThrow('WORKSPACE_RECOVERY_PHASE');
+    await expect(openRecoveryDatabase(database, control)).rejects.toThrow(
+      'WORKSPACE_ACCESS_UNAVAILABLE',
+    );
+  });
+
+  it('keeps incompatible authority quarantined and reopens compatible recovery with fresh checkouts', async () => {
+    const { database, control, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Recovery fixture',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    await acquireDraftProof(repository, draft.id, actor);
+    const recoveryId = crypto.randomUUID();
+    await quarantineWorkspace(control, 1, recoveryId);
+    const recovery = new D1WorkspaceRecovery(database, control);
+    const target = '00000001-00000001-00000001-' + 'a'.repeat(32);
+    const previous = '00000002-00000001-00000001-' + 'b'.repeat(32);
+    await recovery.prepare(2, recoveryId, target, previous);
+    await expect(recovery.reopen(2, recoveryId)).rejects.toThrow('WORKSPACE_RECOVERY_PHASE');
+    const restore = vi.fn(() => Promise.resolve({ bookmark: target, previous_bookmark: previous }));
+    await recovery.restore(2, recoveryId, restore);
+    await expect(recovery.restore(2, recoveryId, restore)).rejects.toThrow(
+      'WORKSPACE_RECOVERY_PHASE',
+    );
+    expect(restore).toHaveBeenCalledTimes(1);
+    // A restore that resurrected an old role must not grant workspace access.
+    await database
+      .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+      .bind(actor)
+      .run();
+    await expect(recovery.reopen(2, recoveryId)).rejects.toThrow(
+      'WORKSPACE_RECOVERY_PROTECTED_STATE',
+    );
+    await expect(openRecoveryDatabase(database, control)).rejects.toThrow(
+      'WORKSPACE_ACCESS_UNAVAILABLE',
+    );
+    await database.prepare("UPDATE user_roles SET role='editor' WHERE email=?").bind(actor).run();
+    await database.prepare("UPDATE draft_asset_migration SET state='pending' WHERE id=1").run();
+    await expect(recovery.reopen(2, recoveryId)).rejects.toThrow(
+      'WORKSPACE_RECOVERY_PROTECTED_STATE',
+    );
+    await database.prepare("UPDATE draft_asset_migration SET state='complete' WHERE id=1").run();
+    await recovery.reopen(2, recoveryId);
+    expect(await database.prepare('SELECT count(*) n FROM draft_checkouts').first('n')).toBe(0);
+    const guarded = await openRecoveryDatabase(database, control);
+    expect(await guarded.prepare('SELECT id FROM drafts').first('id')).toBe(draft.id);
+    expect(await control.prepare('SELECT phase FROM workspace_recovery_runs').first('phase')).toBe(
+      'complete',
+    );
+  });
+
+  it('keeps guarded create, save, archive and purge within the free invocation query limit', async () => {
+    const { database, control, repository: setup } = await repositoryFixture();
+    const workspaceMeter = meterDatabase(database);
+    const controlMeter = meterDatabase(control);
+    const actor = 'editor@pointatx.org';
+    const costs: Record<string, number> = {};
+    const request = async <T>(name: string, run: (repository: D1DraftRepository) => Promise<T>) => {
+      workspaceMeter.reset();
+      controlMeter.reset();
+      const guarded = await openRecoveryDatabase(workspaceMeter.database, controlMeter.database);
+      // Include the native role lookup used by session authentication.
+      await guarded.prepare('SELECT role,active FROM user_roles WHERE email=?').bind(actor).first();
+      const repository = new D1DraftRepository(
+        guarded,
+        undefined,
+        'compact-v1',
+        new D1DeletionReceipts(guarded, controlMeter.database),
+      );
+      const result = await run(repository);
+      costs[name] = workspaceMeter.totals.queries + controlMeter.totals.queries;
+      expect(costs[name], `${name} native statements`).toBeLessThanOrEqual(50);
+      return result;
+    };
+    const draft = await request('create', (repository) =>
+      repository.createDraft({
+        name: 'Guarded cost fixture',
+        document: defaultSiteDocument,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'create',
+      }),
+    );
+    let proof = await acquireDraftProof(setup, draft.id, actor);
+    const document = structuredClone(draft.document);
+    document.site.shortName = 'Guarded save';
+    await request('save', (repository) =>
+      repository.saveDraft({
+        draftId: draft.id,
+        document,
+        actor,
+        ...proof,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'save',
+        action: { category: 'text-edit', context: 'site-settings' },
+      }),
+    );
+    proof = await acquireDraftProof(setup, draft.id, actor);
+    await request('archive', (repository) =>
+      repository.setDraftStatus(draft.id, 'archived', actor, 'archive', proof),
+    );
+    proof = await acquireDraftProof(setup, draft.id, actor);
+    await request('purge', (repository) => repository.purgeDraft(draft.id, actor, 'purge', proof));
+    await mkdir('artifacts', { recursive: true });
+    await writeFile('artifacts/recovery-query-costs.json', `${JSON.stringify(costs, null, 2)}\n`);
+  });
+
+  it('fails closed before purge when the independent receipt cannot be written', async () => {
+    const { database, control } = await repositoryFixture();
+    let unavailable = true;
+    const receiptControl = new Proxy(control, {
+      get(target, property) {
+        if (property === 'prepare')
+          return (query: string) => {
+            if (unavailable && query.startsWith('INSERT INTO deletion_receipts'))
+              throw new Error('Receipt store unavailable');
+            return target.prepare(query);
+          };
+        return Reflect.get(target, property) as unknown;
+      },
+    });
+    const receipts = new D1DeletionReceipts(database, receiptControl);
+    const repository = new D1DraftRepository(database, undefined, 'legacy', receipts);
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Private deletion fixture',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    const proof = await acquireDraftProof(repository, draft.id, actor);
+    const beforeDraft = await database
+      .prepare('SELECT * FROM drafts WHERE id=?')
+      .bind(draft.id)
+      .first<Record<string, unknown>>();
+    const beforeRevision = await database
+      .prepare('SELECT * FROM revisions WHERE id=?')
+      .bind(draft.latestRevisionId)
+      .first<Record<string, unknown>>();
+    await expect(repository.purgeDraft(draft.id, actor, 'delete', proof)).rejects.toThrow(
+      'Receipt store unavailable',
+    );
+    expect((await repository.getDraft(draft.id)).status).toBe('archived');
+    unavailable = false;
+    await repository.purgeDraft(draft.id, actor, 'delete', proof);
+    await expect(repository.getDraft(draft.id)).rejects.toThrow();
+    const receipt = await control
+      .prepare('SELECT * FROM deletion_receipts')
+      .first<{ id: string; target_json: string; state: string }>();
+    expect(JSON.parse(receipt!.target_json)).toEqual({ kind: 'draft', draftId: draft.id });
+    expect(receipt!.state).toBe('committed');
+    expect(
+      await database.prepare('SELECT receipt_id FROM deletion_commits').first('receipt_id'),
+    ).toBe(receipt!.id);
+    expect(JSON.stringify(receipt)).not.toContain('Private deletion fixture');
+    // Rewind just this fixture to the pre-purge rows; the independent receipt survives.
+    await database.prepare('DELETE FROM deletion_commits').run();
+    for (const [table, row] of [
+      ['drafts', beforeDraft],
+      ['revisions', beforeRevision],
+    ] as const)
+      await database
+        .prepare(
+          `INSERT INTO ${table} (${Object.keys(row!).join(',')}) VALUES (${Object.keys(row!)
+            .map(() => '?')
+            .join(',')})`,
+        )
+        .bind(...Object.values(row!))
+        .run();
+    expect((await repository.getDraft(draft.id)).status).toBe('archived');
+    const recoveryId = crypto.randomUUID();
+    await quarantineWorkspace(control, 1, recoveryId);
+    expect(await receipts.replay(2, recoveryId, receipt!.id)).toEqual({ replayed: true });
+    await expect(repository.getDraft(draft.id)).rejects.toThrow();
+    expect(await receipts.replay(2, recoveryId, receipt!.id)).toEqual({ replayed: true });
+  });
   it('purges large compact history with bounded statements and complete rollback on failure', async () => {
     const { database } = await repositoryFixture();
     const actor = 'editor@pointatx.org';

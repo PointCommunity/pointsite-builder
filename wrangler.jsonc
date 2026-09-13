@@ -32,6 +32,12 @@
       "database_id": "d4f44410-3f61-47bd-976a-5595973fa6f1",
       "migrations_dir": "migrations",
     },
+    {
+      "binding": "RECOVERY_DB",
+      "database_name": "pointsite-builder-recovery",
+      "database_id": "03e12b2e-54ce-4262-a7c3-cf735b341c21",
+      "migrations_dir": "recovery-migrations",
+    },
   ],
   "triggers": { "crons": ["* * * * *"] },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },

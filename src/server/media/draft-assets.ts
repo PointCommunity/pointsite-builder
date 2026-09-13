@@ -336,12 +336,6 @@ export class D1DraftAssets {
     return paths.results.length;
   }
 
-  purgeStatements(draftId: string): D1PreparedStatement[] {
-    return [
-      this.database.prepare('DELETE FROM draft_asset_versions WHERE draft_id=?').bind(draftId),
-    ];
-  }
-
   private async find(draftId: string, sourcePath: string): Promise<AssetRow | null> {
     return this.database
       .prepare(

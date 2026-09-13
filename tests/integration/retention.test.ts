@@ -7,6 +7,7 @@ import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { prepareRevisionPayload } from '../../src/server/repositories/revision-payloads';
 import { D1LibraryProjection } from '../../src/server/media/library-projection';
 import { RetentionService } from '../../src/server/maintenance/retention';
+import { D1DeletionReceipts } from '../../src/server/maintenance/deletion-receipts';
 
 let miniflare: Miniflare;
 afterEach(async () => miniflare?.dispose());
@@ -16,7 +17,7 @@ async function setup() {
     compatibilityDate: '2026-09-05',
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
-    d1Databases: { DB: crypto.randomUUID() },
+    d1Databases: { DB: crypto.randomUUID(), CONTROL: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
   for (const migration of (await readdir('migrations'))
@@ -46,6 +47,38 @@ async function setup() {
 }
 
 describe('retention maintenance', () => {
+  it('records legacy deleted drafts in the independent receipt store before retention', async () => {
+    const { database } = await setup();
+    const control = await miniflare.getD1Database('CONTROL');
+    for (const name of (await readdir('recovery-migrations'))
+      .filter((name) => name.endsWith('.sql'))
+      .sort())
+      await control.exec(
+        (await readFile(`recovery-migrations/${name}`, 'utf8'))
+          .replace(/--[^\n]*/g, '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
+    await database
+      .prepare("UPDATE drafts SET status='archived',deleted_at=NULL WHERE id='draft-deleted'")
+      .run();
+    const id = crypto.randomUUID();
+    await database
+      .prepare(
+        "INSERT INTO drafts VALUES (?,'pointsite','Deleted',NULL,'deleted','admin','2025-01-01','2025-01-01','2025-01-01')",
+      )
+      .bind(id)
+      .run();
+    const service = new RetentionService(database, new D1DeletionReceipts(database, control));
+    const plan = await service.plan();
+    await service.apply(plan, plan.exportChecksum, 'admin@pointatx.org', 'delete-legacy');
+    expect(await database.prepare('SELECT 1 FROM drafts WHERE id=?').bind(id).first()).toBeNull();
+    const receipt = await control
+      .prepare('SELECT target_json,state FROM deletion_receipts')
+      .first<{ target_json: string; state: string }>();
+    expect(receipt?.state).toBe('committed');
+    expect(JSON.parse(receipt!.target_json)).toEqual({ kind: 'draft', draftId: id });
+  });
   it('skips retained deleted history without blocking the next eligible draft', async () => {
     const { database, service } = await setup();
     await database.batch([

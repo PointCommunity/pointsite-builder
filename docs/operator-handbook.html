@@ -271,44 +271,91 @@
     </section>
 
     <section class="runbook" id="backup-restore">
-      <h2>Backup &amp; restore</h2>
+      <h2>Database recovery</h2>
       <dl>
         <dt>Prerequisites</dt>
         <dd>
-          Authenticated Wrangler, intended Cloudflare account confirmed, encrypted destination,
-          maintenance window, and retention dry-run. Retention requires completed draft-media
-          ownership migration. Each pass exports at most six historical revisions and four old audit
-          rows. Save that exact export before applying; repeat with a fresh export to drain
-          additional eligible history. A changed role, label, revision pointer, recovery pin, or
-          deletion state aborts the transaction. Current/named revisions and publication references
-          remain protected. Retired shared media cleanup belongs to the ownership migration.
+          An approved infrastructure incident, an exact selected Time Travel bookmark, a maintenance
+          window with no other database operator or deployment, the clean deployed Builder source,
+          and a scoped Cloudflare credential retrieved through the native 1Password CLI. This is
+          infrastructure recovery; routine publication retry and verification remain inside Builder.
+          Both workspace and independent recovery migrations must already be deployed, and media
+          ownership migration must be complete. Resolve all active or uncertain publication
+          executions before preparing a database restore.
         </dd>
         <dt>Safe command</dt>
         <dd>
           <code
-            >npx wrangler d1 export pointsite-builder --remote --output
-            ./backups/pointsite-builder.sql</code
+            >npx tsx scripts/workspace-recovery.ts --action status --credential-ref
+            op://VAULT/ITEM/credential</code
           >
         </dd>
         <dt>Expected result</dt>
         <dd class="expected">
-          A non-empty export exists outside source control and its SHA-256 checksum is recorded with
-          the maintenance event.
+          Native account/database identities and the deployed source match. Status reports the
+          independent epoch, quarantine state and recovery phase without draft contents or secrets.
+          The helper uses the native Cloudflare D1 HTTP API with atomic statement batches; it never
+          starts a local server or saves a local database, credential or private backup.
         </dd>
         <dt>Stop condition</dt>
         <dd class="stop">
-          Wrong account/database, missing encryption, incomplete export, or checksum mismatch.
+          Wrong source/account/database, unreadable independent receipts, unresolved publication,
+          undrained access, pending deletion settlement, incompatible schema/authority/publication
+          history, referenced deleted content, integrity failure, or an uncertain native restore
+          response. Keep workspace access closed. Never bypass a failed check by editing a role,
+          receipt, recovery phase or stored hash.
         </dd>
         <dt>Recovery</dt>
         <dd class="recovery">
-          Validate restore into a new/local database first. A surviving draft can restore content
-          through its immutable revision history; never rewrite that history. Permanently purged
-          drafts have no recovery path. Preserve content-free deletion receipts and apply them to
-          any database recovery before reopening traffic so old exports cannot resurrect deleted
-          private content. Provider backups follow provider retention; Builder retains no
-          recoverable private copy after confirmed draft purge.
+          Cloudflare Free provides seven days of in-place Time Travel. It is not an independent
+          backup and does not clone a database. Rehearse the protocol using synthetic fixtures.
+          Never rewind the separate recovery database together with the workspace.
         </dd>
       </dl>
+      <ol>
+        <li>
+          Record status, a new incident UUID and the current epoch. Run the helper with
+          <code>--action quarantine --epoch CURRENT --id INCIDENT</code>, retaining the credential
+          reference on each command. Use the returned quarantine epoch for subsequent actions.
+        </li>
+        <li>
+          Run <code>--action settle --epoch QUARANTINE --id INCIDENT</code>. The native clock must
+          show all old invocation leases expired. Each successful call settles at most 20 uncertain
+          deletions from atomic commit proofs. Repeat until it reports zero. An unreadable workspace
+          cannot safely resolve unknown deletion outcomes and must remain closed.
+        </li>
+        <li>
+          Run <code>--action prepare --epoch QUARANTINE --id INCIDENT --bookmark TARGET</code>. This
+          records hashes of the schema, roles, approvals and publication records plus the native
+          pre-restore bookmark. Retain that bookmark with the incident record.
+        </li>
+        <li>
+          After incident-specific approval of the destructive target, run
+          <code>--action restore --epoch QUARANTINE --id INCIDENT --allow-restore</code> once. A
+          lost or ambiguous response stays in the restoring phase and cannot automatically retry.
+          Native provider reconciliation is required before any further destructive operation.
+        </li>
+        <li>
+          Run <code>--action replay --epoch QUARANTINE --id INCIDENT</code> until it reports zero.
+          Each call reapplies one committed deletion atomically and advances a durable cursor.
+          Interrupted calls can resume. Historical references to deleted Library content block the
+          incompatible bookmark instead of returning the deleted content to users.
+        </li>
+        <li>
+          Run <code>--action reopen --epoch QUARANTINE --id INCIDENT</code>. Reopening requires
+          identical protected state, complete deletion replay, integrity checks and removal of old
+          checkout tokens. Read status again, verify readiness with real authorized access, and
+          require editors to acquire fresh checkouts. An incompatible bookmark needs a separately
+          reviewed native recovery to a compatible later bookmark or the recorded pre-restore point;
+          this helper deliberately provides no force-open action.
+        </li>
+      </ol>
+      <p>
+        Provider retention expires; no unlimited recovery guarantee exists. Deliberate deletion
+        prevents Builder access and is reapplied before any supported restore reopens. Provider Time
+        Travel may retain old bytes until its own retention expires. Never place private database
+        exports in public GitHub repositories, Actions artifacts or unencrypted local files.
+      </p>
     </section>
 
     <section class="runbook" id="credential-rotation">

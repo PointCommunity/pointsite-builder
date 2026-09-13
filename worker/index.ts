@@ -25,6 +25,9 @@ import { dispatchPendingPublication } from '../src/server/publish/dispatch';
 import { D1PublicationRunner } from '../src/server/publish/runner';
 import { refreshProviderUsage } from '../src/server/admin/provider-usage';
 import { retirePublicationMetadata } from '../src/server/publish/releases';
+import { openRecoveryDatabase } from '../src/server/maintenance/recovery-control';
+import { D1DeletionReceipts } from '../src/server/maintenance/deletion-receipts';
+import { applySecurityHeaders } from '../src/server/http/security';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
 declare const __BUILDER_SOURCE_CLEAN__: boolean;
@@ -44,30 +47,57 @@ class D1RoleDirectory implements RoleDirectory {
 export default {
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
-    if (config.github) await dispatchPendingPublication(env.DB, config.github);
+    const database = await openRecoveryDatabase(env.DB, env.RECOVERY_DB);
+    if (config.github) await dispatchPendingPublication(database, config.github);
     if (config.github)
       await new D1PublicationVerifier(
-        env.DB,
+        database,
         { ...config.github, workflowRevision: VERIFICATION_WORKFLOW_REVISION },
         VERIFICATION_CALLER_BLOBS,
         config.workerReadToken,
       ).dispatchPending();
-    await refreshProviderUsage(env.DB, config.analyticsToken);
-    await retirePublicationMetadata(env.DB);
+    await refreshProviderUsage(database, config.analyticsToken);
+    await retirePublicationMetadata(database);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
+    const url = new URL(request.url);
+    let database = env.DB;
+    if (url.pathname !== '/api/health') {
+      try {
+        database = await openRecoveryDatabase(env.DB, env.RECOVERY_DB);
+      } catch {
+        return applySecurityHeaders(
+          Response.json(
+            {
+              code: 'WORKSPACE_ACCESS_UNAVAILABLE',
+              message: 'Workspace access is temporarily unavailable.',
+              requestId: crypto.randomUUID(),
+            },
+            { status: 503, headers: { 'cache-control': 'no-store' } },
+          ),
+        );
+      }
+    }
+    const deletionReceipts = env.RECOVERY_DB
+      ? new D1DeletionReceipts(database, env.RECOVERY_DB)
+      : undefined;
     const feedbackConfig =
       config.environment === 'production'
         ? parseFeedbackConfig(env as unknown as Record<string, unknown>)
         : undefined;
-    const roles = new D1RoleDirectory(env.DB);
-    const legacy = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
-    const draftAssets = new D1DraftAssets(env.DB, legacy, env.ASSETS);
-    const repository = new D1DraftRepository(env.DB, draftAssets, config.draftStorageFormat);
+    const roles = new D1RoleDirectory(database);
+    const legacy = new MediaService(new D1MediaRepository(database), new D1PrivateBucket(database));
+    const draftAssets = new D1DraftAssets(database, legacy, env.ASSETS);
+    const repository = new D1DraftRepository(
+      database,
+      draftAssets,
+      config.draftStorageFormat,
+      deletionReceipts,
+    );
     const media = new MediaService(
-      new D1MediaRepository(env.DB),
-      new D1PrivateBucket(env.DB),
+      new D1MediaRepository(database),
+      new D1PrivateBucket(database),
       undefined,
       draftAssets,
       false,
@@ -85,7 +115,7 @@ export default {
         storageWriteFormat: config.draftStorageFormat,
       },
       readiness: async () => {
-        await env.DB.prepare('SELECT id FROM drafts LIMIT 1').first();
+        await database.prepare('SELECT id FROM drafts LIMIT 1').first();
       },
       ...(feedbackConfig
         ? {
@@ -102,11 +132,11 @@ export default {
               repository,
               { ...config.github, workflowRevision: PUBLICATION_WORKFLOW_REVISION },
               media,
-              new D1PublishJobStore(env.DB),
-              new D1PublishPreflightStore(env.DB),
+              new D1PublishJobStore(database),
+              new D1PublishPreflightStore(database),
             ),
             publicationVerifier: new D1PublicationVerifier(
-              env.DB,
+              database,
               { ...config.github, workflowRevision: VERIFICATION_WORKFLOW_REVISION },
               VERIFICATION_CALLER_BLOBS,
               config.workerReadToken,
@@ -114,16 +144,15 @@ export default {
           }
         : {}),
       media,
-      library: new D1LibraryService(env.DB, repository, draftAssets),
-      admin: new D1AdminService(env.DB),
-      approvals: new D1ApprovalService(env.DB, config.github),
+      library: new D1LibraryService(database, repository, draftAssets, deletionReceipts),
+      admin: new D1AdminService(database),
+      approvals: new D1ApprovalService(database, config.github),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
-      retention: new RetentionService(env.DB),
-      ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),
-      publicationRunner: new D1PublicationRunner(env.DB, undefined, config.github),
+      retention: new RetentionService(database, deletionReceipts),
+      ownershipMigration: new D1OwnershipMigration(database, env.ASSETS),
+      publicationRunner: new D1PublicationRunner(database, undefined, config.github),
       ...(auth ? { auth } : {}),
     });
-    const url = new URL(request.url);
     const owner = /^\/assets\/builder\/([a-f0-9-]{36})\//.exec(url.pathname)?.[1];
     if (owner) {
       const path = url.pathname;

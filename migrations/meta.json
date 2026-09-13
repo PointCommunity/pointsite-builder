@@ -187,6 +187,12 @@
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null,
       "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0032_deletion_commits",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
     }
   ]
 }

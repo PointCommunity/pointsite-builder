@@ -30,6 +30,8 @@ import type {
 import { ConflictError, NotFoundError } from './memory';
 import { createRequestHash, saveRequestHash } from './request-hash';
 import { AuthorizationError } from '../auth/roles';
+import type { D1DeletionReceipts } from '../maintenance/deletion-receipts';
+import { draftDeletionStatements } from '../maintenance/draft-deletion';
 
 interface DraftRow {
   id: string;
@@ -148,6 +150,7 @@ export class D1DraftRepository implements DraftRepository {
     private readonly database: D1Database,
     private readonly assets?: D1DraftAssets,
     private readonly storageFormat: 'legacy' | 'compact-v1' = 'legacy',
+    private readonly deletionReceipts?: D1DeletionReceipts,
   ) {}
 
   private async assertEditor(actor: string): Promise<void> {
@@ -714,6 +717,7 @@ export class D1DraftRepository implements DraftRepository {
       .first();
     if (activePublication)
       throw new ConflictError('Wait for the active publication before deleting this draft');
+    const deletion = await this.deletionReceipts?.prepare({ kind: 'draft', draftId });
     try {
       await this.commitMetadata(actor, guard, [
         // The CHECK constraint aborts the entire batch if lifecycle or lease state changed.
@@ -727,35 +731,8 @@ export class D1DraftRepository implements DraftRepository {
            ) THEN 'deleted' ELSE 'purge-blocked' END,deleted_at=?,latest_revision_id=NULL WHERE id=?`,
           )
           .bind(now, now, draftId),
-        this.database
-          .prepare(
-            `UPDATE idempotency_keys SET status_code=410,response_json='{"deleted":true}',
-           expires_at='9999-12-31T23:59:59.999Z' WHERE json_extract(response_json,'$.id')=?`,
-          )
-          .bind(draftId),
-        this.database.prepare('DELETE FROM publish_preflights WHERE draft_id=?').bind(draftId),
-        this.database.prepare('DELETE FROM draft_checkouts WHERE draft_id=?').bind(draftId),
-        this.database.prepare('DELETE FROM editor_view_states WHERE draft_id=?').bind(draftId),
-        ...(this.assets?.purgeStatements(draftId) ?? []),
-        this.database
-          .prepare(
-            `DELETE FROM audit_events WHERE target_id=? OR json_extract(metadata_json,'$.draftId')=?
-           OR target_id IN (SELECT id FROM revisions WHERE draft_id=?)`,
-          )
-          .bind(draftId, draftId, draftId),
-        this.database
-          .prepare(
-            'DELETE FROM revision_labels WHERE revision_id IN (SELECT id FROM revisions WHERE draft_id=?)',
-          )
-          .bind(draftId),
-        // Remove splice references before checkpoints cascade; keep statement count independent of history.
-        this.database
-          .prepare(
-            'DELETE FROM revision_payloads WHERE base_revision_id IS NOT NULL AND revision_id IN (SELECT id FROM revisions WHERE draft_id=?)',
-          )
-          .bind(draftId),
-        this.database.prepare('DELETE FROM revisions WHERE draft_id=?').bind(draftId),
-        this.database.prepare('DELETE FROM drafts WHERE id=?').bind(draftId),
+        ...draftDeletionStatements(this.database, draftId),
+        ...(deletion ? [this.deletionReceipts!.proof(deletion)] : []),
         this.auditStatement(actor, 'draft.deleted', draftId, requestId, {}),
       ]);
     } catch (error) {
@@ -767,6 +744,10 @@ export class D1DraftRepository implements DraftRepository {
         throw new ConflictError('Draft state changed or a publication still needs it; try again');
       throw error;
     }
+    if (deletion)
+      await this.deletionReceipts!.confirm(deletion).catch(() => {
+        // Prepared receipt and atomic commit proof let quarantined recovery settle a lost reply.
+      });
     return { id: draftId, status: 'deleted', deletedAt: now };
   }
 

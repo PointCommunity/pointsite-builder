@@ -661,6 +661,43 @@
 
     <h2>Current implementation evidence and migration sequence</h2>
     <p>
+      Database recovery is a scoped infrastructure operation, separate from routine publication
+      recovery in Builder. Before a rewind, quarantine must drain, pending deletion receipts must
+      settle, and active or uncertain publication executions must be resolved. Keep only a hash of
+      the current schema, roles, approvals and publication records in the independent database.
+      Reopening requires the same protected state, successful replay of every committed deletion
+      receipt, database integrity checks, and removal of old checkout tokens. A bookmark with older
+      permissions or publication records remains quarantined; use a compatible later bookmark or the
+      recorded pre-restore bookmark. Never infer success from an interrupted restore call or
+      automatically repeat a destructive restore. This deliberately limits recovery to compatible
+      bookmarks rather than silently reinstating revoked authority or changing publication history.
+    </p>
+    <p>
+      Database recovery coordination uses the independent control database. Each runtime invocation
+      binds the current epoch, then obtains one nonrenewable 60-second lease at its first workspace
+      query using the workspace database clock. Invalid sessions do not consume a lease write. Every
+      workspace read or transaction includes an expiry guard in its native D1 batch. Quarantine
+      increments the independent epoch and stops issuing leases; restoration waits until the
+      workspace clock passes the latest issued deadline. This fences delayed requests even when
+      restoration rewinds workspace rows. Missing control state fails closed. The operator uses
+      explicit raw database access while quarantined; normal request code cannot bypass the guarded
+      prepare/batch API. Recovery remains closed until deletion receipts are reconciled and
+      reapplied and integrity verification succeeds. Test late lease issuance, delayed writes across
+      restoration, missing control state, batch rollback and fresh access only after a new recovery
+      epoch. Account for the extra control write and batch guards in the full workload before
+      activation.
+    </p>
+    <p>
+      Purge coordination uses a prepared content-free receipt in the independent database before
+      deleting any bytes. The actual workspace transaction records its matching receipt hash beside
+      the deletion. Confirmation advances the independent receipt only after that proof exists.
+      Failed transactions leave a pending receipt, never a false deletion. Before any rewind, the
+      operator quarantines and drains requests, then settles pending receipts against the current
+      workspace proofs. An unreadable workspace or unresolved receipt blocks restoration. Receipt
+      replay uses only confirmed draft/item/asset identifiers; no private content or credentials
+      enter the control store. Delayed confirmation and duplicate requests remain safe.
+    </p>
+    <p>
       Provider telemetry contract: the existing schedule may refresh one content-free D1 snapshot
       every five minutes using a separately configured read-only Analytics/D1 credential. An atomic
       database-clock claim limits refreshes across Worker instances. Query account-wide and
@@ -1171,9 +1208,30 @@
         analytics sample, not an audited bill or a plan allowance. Worker telemetry installation is
         pending. Forward compact-storage and migration guards have local proof; activation and
         provider CPU measurements remain pending. Complete workload budgets, cloud rollback,
-        independent deletion receipts, quarantined restore, live publication and the final release
-        gates remain unfinished. Billing details are not a prerequisite for these read-only
+        deletion-receipt retention, native Time Travel rehearsal, live publication and the final
+        release gates remain unfinished. Billing details are not a prerequisite for these read-only
         operations.
+      </li>
+      <li>
+        Recovery implementation checkpoint: independent deletion receipts cover draft purge, Library
+        deletion and deleted-draft retention. Native-clock access guards fence delayed requests; the
+        operator protocol settles uncertain deletes, restores once, replays receipts, checks
+        schema/roles/publication/media-migration identity and integrity, then invalidates old
+        checkouts before reopening. Synthetic rewind and lost-response tests exercise these
+        transitions. Guarded create/save/archive/purge use 18/26/18/35 native statements including
+        the session role lookup and independent control database, below the 50-query invocation
+        ceiling. This does not yet measure every publishing or maintenance request.
+      </li>
+      <li>
+        Native September 13 preparation: created the empty independent database
+        <code>pointsite-builder-recovery</code> with ID
+        <code>03e12b2e-54ce-4262-a7c3-cf735b341c21</code>. It is the third database in the account;
+        Cloudflare's current Free limit is ten. Direct HTTP multi-statement reads and parameter
+        encoding passed. An injected late SQL failure rolled back an earlier test insert; the
+        task-owned test table was removed. The operator helper uses this native HTTP API. No
+        workspace restore, application deployment or production migration was performed. Provision
+        both migration directories with the full reviewed release; the live Worker does not yet have
+        the recovery binding. Independent receipt retention remains a separate release gate.
       </li>
     </ul>
   </body>

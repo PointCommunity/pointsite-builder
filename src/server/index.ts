@@ -186,6 +186,18 @@ export function createApp(dependencies: AppDependencies) {
         }),
       );
     }
+    if (error.message === 'WORKSPACE_ACCESS_UNAVAILABLE') {
+      const response = errorResponse(
+        new ApiError(
+          503,
+          'WORKSPACE_ACCESS_UNAVAILABLE',
+          'Workspace access is temporarily unavailable.',
+        ),
+        requestId,
+      );
+      response.headers.set('cache-control', 'no-store');
+      return secured(response);
+    }
     if (error instanceof NotFoundError) {
       return secured(errorResponse(new ApiError(404, 'NOT_FOUND', error.message), requestId));
     }

@@ -8,6 +8,8 @@ import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1DraftAssets } from '../../src/server/media/draft-assets';
 import { D1LibraryService } from '../../src/server/media/library';
 import { D1LibraryProjection } from '../../src/server/media/library-projection';
+import { D1DeletionReceipts } from '../../src/server/maintenance/deletion-receipts';
+import { quarantineWorkspace } from '../../src/server/maintenance/recovery-control';
 import { createApp } from '../../src/server';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
@@ -40,7 +42,7 @@ beforeEach(async () => {
     compatibilityDate: '2026-09-05',
     modules: true,
     script: 'export default {fetch(){return new Response("ok")}}',
-    d1Databases: { DB: crypto.randomUUID() },
+    d1Databases: { DB: crypto.randomUUID(), CONTROL: crypto.randomUUID() },
   });
   database = await miniflare.getD1Database('DB');
   for (const name of (await readdir('migrations')).filter((name) => name.endsWith('.sql')).sort())
@@ -79,6 +81,121 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await miniflare.dispose();
+});
+
+it('records a content-free receipt before deleting archived Library bytes', async () => {
+  const control = await miniflare.getD1Database('CONTROL');
+  for (const name of (await readdir('recovery-migrations'))
+    .filter((name) => name.endsWith('.sql'))
+    .sort())
+    await control.exec(
+      (await readFile(`recovery-migrations/${name}`, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+  const assets = new D1DraftAssets(database, {
+    read: vi.fn().mockRejectedValue(new Error('Unexpected legacy read')),
+  });
+  const image = await assets.prepareImage(draft.id, png(), {
+    filename: 'private-unused.png',
+    contentType: 'image/png',
+    altText: 'Private deleted image',
+    actor,
+    now: new Date().toISOString(),
+  });
+  const item = {
+    id: crypto.randomUUID(),
+    mediaType: 'image',
+    sourceType: 'uploaded',
+    filename: 'private-unused.png',
+    sourcePath: image.sourcePath,
+    url: image.sourcePath,
+    displayName: 'Private unused image',
+    altText: 'Private deleted image',
+    tags: [],
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+    archivedAt: draft.updatedAt,
+    usageCount: 0,
+    deleteBlockers: [],
+  };
+  const restoredRows = [
+    ...image.statements,
+    database
+      .prepare(
+        'INSERT INTO draft_library_items(draft_id,item_id,item_json,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?)',
+      )
+      .bind(
+        draft.id,
+        item.id,
+        JSON.stringify(item),
+        draft.createdAt,
+        draft.updatedAt,
+        draft.updatedAt,
+      ),
+    database
+      .prepare('INSERT INTO draft_library_asset_versions(draft_id,item_id,asset_id) VALUES (?,?,?)')
+      .bind(draft.id, item.id, image.assetId),
+  ];
+  await database.batch(restoredRows);
+  const receipts = new D1DeletionReceipts(database, control);
+  library = new D1LibraryService(database, repository, assets, receipts);
+  const result = await library.mutate(context(), { action: 'delete', itemId: item.id });
+  expect(result.library.items.some((row) => row.id === item.id)).toBe(false);
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).toBeNull();
+  const receipt = await control
+    .prepare('SELECT id,target_json,state FROM deletion_receipts')
+    .first<{ id: string; target_json: string; state: string }>();
+  expect(receipt?.state).toBe('committed');
+  expect(JSON.parse(receipt!.target_json)).toEqual({
+    kind: 'library',
+    draftId: draft.id,
+    itemId: item.id,
+    assetIds: [image.assetId],
+  });
+  expect(receipt!.target_json).not.toContain('private-unused');
+  await database.batch(restoredRows);
+  const recoveryId = crypto.randomUUID();
+  await quarantineWorkspace(control, 1, recoveryId);
+  await receipts.replay(2, recoveryId, receipt!.id);
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).toBeNull();
+  expect((await library.list(draft.id)).items.some((row) => row.id === item.id)).toBe(false);
+  await database.batch(restoredRows);
+  await database
+    .prepare(
+      'INSERT INTO draft_library_history(draft_id,item_id,signature,created_at,updated_at) VALUES (?,?,?,?,?)',
+    )
+    .bind(draft.id, item.id, 'history', draft.createdAt, draft.updatedAt)
+    .run();
+  await control
+    .prepare("UPDATE workspace_recovery SET mode='active',recovery_id=NULL,epoch=3 WHERE id=1")
+    .run();
+  const olderRecovery = crypto.randomUUID();
+  await quarantineWorkspace(control, 3, olderRecovery);
+  await expect(receipts.replay(4, olderRecovery, receipt!.id)).rejects.toThrow();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).not.toBeNull();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM deletion_replays WHERE recovery_id=?')
+      .bind(olderRecovery)
+      .first(),
+  ).toBeNull();
 });
 
 it('reads Library without history scans or writes, rebuilds in bounded batches, and invalidates on retention', async () => {

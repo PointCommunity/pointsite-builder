@@ -137,6 +137,22 @@ describe('draft API', () => {
     await expect(response.json()).resolves.toEqual({ ready: false });
   });
 
+  it('reports an expired recovery lease as unavailable without logging a private database error', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.reject(new Error('WORKSPACE_ACCESS_UNAVAILABLE')),
+      environment: 'test',
+      version: 'test',
+    });
+    const response = await app.request(`${origin}/api/drafts`);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ code: 'WORKSPACE_ACCESS_UNAVAILABLE' });
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
   it('keeps liveness available while authenticated database readiness fails without leaking provider errors', async () => {
     let available = false;
     const app = createApp({

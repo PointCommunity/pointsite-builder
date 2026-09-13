@@ -1,4 +1,5 @@
 import { readRevisionDocument } from '../repositories/revision-payloads';
+import type { D1DeletionReceipts } from './deletion-receipts';
 
 interface RevisionRow extends Record<string, unknown> {
   id: string;
@@ -69,7 +70,10 @@ const report = (data: RetentionPlan['export']): RetentionPlan['report'] => ({
 });
 
 export class RetentionService {
-  constructor(private readonly database: D1Database) {}
+  constructor(
+    private readonly database: D1Database,
+    private readonly deletionReceipts?: D1DeletionReceipts,
+  ) {}
 
   private async requireMigration() {
     const state = await this.database
@@ -269,6 +273,14 @@ export class RetentionService {
       );
     for (const row of data.auditEvents)
       statements.push(audit('retention.audit.delete', 'audit-event', row.id));
+    const deletions = this.deletionReceipts
+      ? await Promise.all(
+          deletedDraftIds.map((draftId) =>
+            this.deletionReceipts!.prepare({ kind: 'draft', draftId }),
+          ),
+        )
+      : [];
+    statements.push(...deletions.map((receipt) => this.deletionReceipts!.proof(receipt)));
     try {
       await this.database.batch(statements);
     } catch (error) {
@@ -276,6 +288,10 @@ export class RetentionService {
         throw new Error('RETENTION_STATE_CHANGED');
       throw error;
     }
+    for (const receipt of deletions)
+      await this.deletionReceipts!.confirm(receipt).catch(() => {
+        // Quarantined recovery settles a prepared receipt from its atomic workspace commit proof.
+      });
     return { applied: true as const, exportChecksum: plan.exportChecksum, report: report(data) };
   }
 

@@ -16,6 +16,7 @@ import type { D1DraftAssets } from './draft-assets';
 import { validateImageUpload } from './policy';
 import { defaultSiteDocument } from '../../site-kit/default-site';
 import { D1LibraryProjection } from './library-projection';
+import type { D1DeletionReceipts } from '../maintenance/deletion-receipts';
 
 const managedIds = new Set(defaultSiteDocument.media.map((item) => item.id));
 
@@ -97,6 +98,7 @@ export class D1LibraryService {
     private readonly database: D1Database,
     private readonly repository: D1DraftRepository,
     private readonly assets: D1DraftAssets,
+    private readonly deletionReceipts?: D1DeletionReceipts,
   ) {}
 
   async list(draftId: string): Promise<LibrarySnapshot> {
@@ -246,6 +248,7 @@ export class D1LibraryService {
     const document = structuredClone(draft.document);
     const now = new Date().toISOString();
     const statements: D1PreparedStatement[] = [];
+    let deletion: Awaited<ReturnType<D1DeletionReceipts['prepare']>> | undefined;
     const preparedPaths = new Set<string>();
     if (command.action === 'upload' || command.action === 'replace') {
       if (command.action === 'replace' && (item?.mediaType !== 'image' || item.archivedAt))
@@ -363,6 +366,48 @@ export class D1LibraryService {
       if (command.action === 'delete') {
         if (!item.archivedAt) throw new ConflictError('Archive this item before deleting it');
         if (item.deleteBlockers.length) throw new ConflictError(item.deleteBlockers.join(' '));
+        if (this.deletionReceipts) {
+          const versions = item.sourcePath
+            ? (
+                await this.database
+                  .prepare(
+                    `SELECT id FROM draft_asset_versions WHERE draft_id=?
+                AND (id IN (SELECT asset_id FROM draft_asset_bindings WHERE draft_id=? AND source_path=?)
+                  OR id IN (SELECT asset_id FROM draft_library_asset_versions WHERE draft_id=? AND item_id=?))
+                ORDER BY id LIMIT 501`,
+                  )
+                  .bind(draft.id, draft.id, item.sourcePath, draft.id, item.id)
+                  .all<{ id: string }>()
+              ).results
+            : [];
+          deletion = await this.deletionReceipts.prepare({
+            kind: 'library',
+            draftId: draft.id,
+            itemId: item.id,
+            assetIds: versions.map((row) => row.id),
+          });
+          statements.push(this.deletionReceipts.proof(deletion));
+          // Bind deletion to exactly the versions described by the independent receipt.
+          statements.push(
+            this.database
+              .prepare(
+                `SELECT json(CASE WHEN
+            (SELECT COUNT(*) FROM draft_asset_versions WHERE draft_id=?
+              AND (id IN (SELECT asset_id FROM draft_asset_bindings WHERE draft_id=? AND source_path=?)
+                OR id IN (SELECT asset_id FROM draft_library_asset_versions WHERE draft_id=? AND item_id=?))
+              AND id NOT IN (SELECT value FROM json_each(?)))=0
+            THEN 'true' ELSE 'library-deletion-changed' END)`,
+              )
+              .bind(
+                draft.id,
+                draft.id,
+                item.sourcePath,
+                draft.id,
+                item.id,
+                JSON.stringify(versions.map((row) => row.id)),
+              ),
+          );
+        }
         statements.push(
           this.database
             .prepare('DELETE FROM draft_library_items WHERE draft_id=? AND item_id=?')
@@ -487,6 +532,10 @@ export class D1LibraryService {
       statements,
       preparedPaths,
     );
+    if (deletion)
+      await this.deletionReceipts!.confirm(deletion).catch(() => {
+        // Recovery settles the prepared receipt from the atomic workspace proof before rewinding.
+      });
     return { draft: saved, library: await this.list(draft.id) };
   }
 
