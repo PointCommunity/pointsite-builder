@@ -259,7 +259,7 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
       await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
     );
     if (!body.success || !z.uuid().safeParse(context.req.param('jobId')).success)
-      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the queued publication to recover');
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to recover');
     try {
       return context.json(
         await publisher.recoverQueued({

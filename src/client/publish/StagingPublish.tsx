@@ -181,7 +181,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     }
   };
 
-  const recoverQueued = async (action: 'retry' | 'cancel' | 'reconcile') => {
+  const recoverQueued = async (action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured') => {
     const job = snapshot?.job;
     if (
       !job ||
@@ -189,7 +189,8 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       !job.dispatch ||
       !(
         (job.status === 'queued' && job.dispatch.reserved === false) ||
-        (action === 'reconcile' && job.dispatch.canReconcileStopped === true)
+        (action === 'reconcile' && job.dispatch.canReconcileStopped === true) ||
+        (action === 'retry-captured' && job.dispatch.canRetryCaptured === true)
       )
     )
       return;
@@ -206,7 +207,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         recoveryRequest.current.key,
       );
       recoveryRequest.current = null;
-      setMonitoringStartedAt(action === 'retry' ? Date.now() : null);
+      setMonitoringStartedAt(action.startsWith('retry') ? Date.now() : null);
       setMonitoringPaused(false);
       await loadWorkflow();
       nextActionHeading.current?.focus();
@@ -499,6 +500,22 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               onClick={() => void recoverQueued('reconcile')}
             >
               Recover stopped publication
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 && snapshot.job.dispatch?.canRetryCaptured ? (
+          <div className="publish-actions">
+            <p>
+              Retry this publication's captured revision. Later edits stay in your draft. Builder
+              checks that the destination has not changed before starting a new job.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('retry-captured')}
+            >
+              Retry captured candidate
             </button>
           </div>
         ) : null}

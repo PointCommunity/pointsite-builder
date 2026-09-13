@@ -708,6 +708,17 @@
       authorization and previous-release restoration remain separate implementation gates.
     </p>
     <p>
+      Captured Staging retries create a new job and nonce after explicit cancellation, copying the
+      original revision and media pins without reading later editor changes. Fresh publishing
+      authority, an active draft, the unchanged reviewed runtime/caller, and a free Staging slot
+      remain required. The destination must equal the original base or that job's recorded commit;
+      unrelated Git changes fail closed. A transaction rechecks source state and authority before
+      copying pins. Migration 0027 binds each child to one cancelled parent and allows at most three
+      captured retries. Request-bound receipts reconcile duplicate/lost responses without another
+      provider request or job. Any job with deployment authorization remains ineligible. Production
+      retries retain their separate exact-acceptance requirements and remain pending.
+    </p>
+    <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
     </p>
     <ul>

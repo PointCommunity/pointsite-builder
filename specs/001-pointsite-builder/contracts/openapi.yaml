@@ -855,6 +855,9 @@ paths:
         the job and releases only its slot atomically. Reconcile a reserved job only with verified
         terminal native execution and no deployment authorization; concurrent authorization prevents
         release. A confirmed Git commit stays recorded. Exact receipt replay never repeats the action.
+        Retry-captured copies a cancelled Staging candidate into a new job and nonce, at most three
+        times, after fresh role, runtime, slot and destination-base checks. Later draft edits are
+        not substituted. Jobs with deployment authorization are ineligible.
       parameters:
         - name: jobId
           in: path
@@ -870,7 +873,7 @@ paths:
               additionalProperties: false
               required: [action, expectedAttempts]
               properties:
-                action: { type: string, enum: [retry, cancel, reconcile] }
+                action: { type: string, enum: [retry, cancel, reconcile, retry-captured] }
                 expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
       responses:
         '200':
@@ -883,6 +886,7 @@ paths:
                 required: [recovered]
                 properties:
                   recovered: { type: boolean, const: true }
+                  jobId: { type: string, format: uuid }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }

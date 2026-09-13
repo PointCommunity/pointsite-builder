@@ -17,6 +17,7 @@ import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { D1ProductionPublisher } from '../../src/server/publish/promotion';
 import { recoverQueuedPublication } from '../../src/server/publish/recovery';
+import { retryCapturedStaging } from '../../src/server/publish/retry';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { D1ApprovalService } from '../../src/server/approvals/service';
@@ -239,6 +240,269 @@ afterEach(async () => {
   miniflare = undefined;
   vi.restoreAllMocks();
 });
+
+it.each([false, true])(
+  'retries pinned Staging inputs after cancellation with recorded commit=%s',
+  async (committed) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database);
+    const parent = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'captured-retry-parent',
+      requestId: 'capture',
+    });
+    const document = structuredClone(draft.document);
+    document.pages[0].title = 'A later edit must not be published by this retry';
+    await repository.saveDraft({
+      draftId: draft.id,
+      document,
+      actor: subject,
+      ...(await acquireDraftProof(repository, draft.id, subject)),
+      idempotencyKey: 'captured-retry-later-edit',
+      requestId: 'later',
+      action: { category: 'text-edit', context: 'draft' },
+    });
+    const input = {
+      jobId: parent.id,
+      action: 'retry-captured' as const,
+      expectedAttempts: 0,
+      actor: subject,
+      idempotencyKey: 'captured-retry-request',
+      requestId: 'retry',
+    };
+    const verifyBase = vi.fn(async () => {});
+    await expect(retryCapturedStaging(database, input, 'a'.repeat(40), verifyBase)).rejects.toThrow(
+      'PUBLICATION_RECOVERY_CHANGED',
+    );
+    expect(verifyBase).not.toHaveBeenCalled();
+    await recoverQueuedPublication(database, {
+      ...input,
+      action: 'cancel',
+      idempotencyKey: 'captured-retry-cancel',
+    });
+    await expect(
+      retryCapturedStaging(
+        database,
+        { ...input, idempotencyKey: 'captured-retry-cancel' },
+        'a'.repeat(40),
+        verifyBase,
+      ),
+    ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    if (committed)
+      await database
+        .prepare('UPDATE publish_jobs SET result_sha=? WHERE id=?')
+        .bind('c'.repeat(40), parent.id)
+        .run();
+    const pins = await database
+      .prepare(
+        'SELECT draft_id,source_path,asset_id FROM publication_asset_pins WHERE job_id=? ORDER BY source_path',
+      )
+      .bind(parent.id)
+      .all();
+    const oldNonce = await database
+      .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+      .bind(parent.id)
+      .first<string>('nonce');
+    await expect(retryCapturedStaging(database, input, 'd'.repeat(40), verifyBase)).rejects.toThrow(
+      'PUBLICATION_RECOVERY_CHANGED',
+    );
+    const lostResponse = new Proxy(database, {
+      get: (target, property) =>
+        property === 'batch'
+          ? async (statements: D1PreparedStatement[]) => {
+              await database.batch(statements);
+              throw new Error('response lost after committed transaction');
+            }
+          : (Reflect.get(target, property) as unknown),
+    });
+    const [first, duplicate] = await Promise.all([
+      retryCapturedStaging(lostResponse, input, 'a'.repeat(40), verifyBase),
+      retryCapturedStaging(database, input, 'a'.repeat(40), verifyBase),
+    ]);
+    expect(duplicate).toEqual(first);
+    expect(verifyBase).toHaveBeenCalledWith((committed ? 'c' : 'b').repeat(40));
+    const child = await store.getById(first.jobId);
+    if (!child) throw new Error('Missing captured retry');
+    expect(child.candidate).toEqual(parent.candidate);
+    expect(child.candidateChecksum).toBe(parent.candidateChecksum);
+    expect(child.baseSha).toBe((committed ? 'c' : 'b').repeat(40));
+    expect(child.resultSha).toBeNull();
+    expect(
+      (
+        await database
+          .prepare(
+            'SELECT draft_id,source_path,asset_id FROM publication_asset_pins WHERE job_id=? ORDER BY source_path',
+          )
+          .bind(child.id)
+          .all()
+      ).results,
+    ).toEqual(pins.results);
+    expect(
+      await database
+        .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+        .bind(child.id)
+        .first<string>('nonce'),
+    ).not.toBe(oldNonce);
+    expect(
+      await database
+        .prepare("SELECT count(*) AS count FROM audit_events WHERE action='publish.captured-retry'")
+        .first<number>('count'),
+    ).toBe(1);
+    verifyBase.mockClear();
+    expect(await retryCapturedStaging(database, input, 'd'.repeat(40), verifyBase)).toEqual(first);
+    expect(verifyBase).not.toHaveBeenCalled();
+    await expect(
+      retryCapturedStaging(
+        database,
+        { ...input, idempotencyKey: 'another-retry-request' },
+        'a'.repeat(40),
+        verifyBase,
+      ),
+    ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    await database.prepare("UPDATE user_roles SET role='viewer' WHERE email=?").bind(subject).run();
+    await expect(retryCapturedStaging(database, input, 'a'.repeat(40), verifyBase)).rejects.toThrow(
+      'PUBLISH_AUTHORITY_CHANGED',
+    );
+    await database
+      .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+      .bind(subject)
+      .run();
+    let current = child;
+    for (let attempt = 2; attempt <= 4; attempt++) {
+      const recovery = {
+        ...input,
+        jobId: current.id,
+        idempotencyKey: `captured-retry-number-${attempt}`,
+      };
+      await recoverQueuedPublication(database, {
+        ...recovery,
+        action: 'cancel',
+        idempotencyKey: `captured-cancel-number-${attempt}`,
+      });
+      if (attempt === 4) {
+        await expect(
+          retryCapturedStaging(database, recovery, 'a'.repeat(40), verifyBase),
+        ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+        expect((await store.dispatchStatus(current.id))?.canRetryCaptured).toBe(false);
+      } else {
+        const next = await store.getById(
+          (await retryCapturedStaging(database, recovery, 'a'.repeat(40), verifyBase)).jobId,
+        );
+        if (!next) throw new Error('Missing captured retry');
+        current = next;
+      }
+    }
+  },
+);
+
+it.each(['base', 'role', 'deployment', 'slot'] as const)(
+  'does not create a retry when %s changes during the provider check',
+  async (failure) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database);
+    const parent = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'retry-race-parent',
+      requestId: 'capture',
+    });
+    const input = {
+      jobId: parent.id,
+      action: 'retry-captured' as const,
+      expectedAttempts: 0,
+      actor: subject,
+      idempotencyKey: 'retry-race-request',
+      requestId: 'retry',
+    };
+    await recoverQueuedPublication(database, {
+      ...input,
+      action: 'cancel',
+      idempotencyKey: 'retry-race-cancel',
+    });
+    const client = {
+      currentMainSha: async () => {
+        if (failure === 'base') return 'd'.repeat(40);
+        if (failure === 'role')
+          await database
+            .prepare("UPDATE user_roles SET role='viewer' WHERE email=?")
+            .bind(subject)
+            .run();
+        if (failure === 'deployment')
+          await database
+            .prepare("UPDATE publication_runs SET deploy_authorized_at='fixture' WHERE job_id=?")
+            .bind(parent.id)
+            .run();
+        if (failure === 'slot')
+          await store.captureStaging({
+            draft,
+            actor: subject,
+            workflowRevision: 'a'.repeat(40),
+            baseSha: 'b'.repeat(40),
+            idempotencyKey: 'concurrent-capture',
+            requestId: 'other',
+          });
+        return 'b'.repeat(40);
+      },
+      assertPublicationCaller: vi.fn((base: string, blob: string) => {
+        expect(base).toBe('b'.repeat(40));
+        expect(blob).toBe(PUBLICATION_CALLER_BLOB);
+        return Promise.resolve();
+      }),
+      assertRendererCompatible: vi.fn(async () => {}),
+      advanceCommit: vi.fn(),
+      verificationForCommit: vi.fn(),
+    };
+    const publisher = new StagingPublisher(
+      repository,
+      {
+        appId: '123',
+        installationId: '456',
+        privateKey: 'unused fixture',
+        workflowRevision: 'a'.repeat(40),
+      },
+      undefined,
+      store,
+      undefined,
+      () => Promise.resolve(client),
+    );
+    await expect(publisher.recoverQueued(input)).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    expect(client.assertPublicationCaller).toHaveBeenCalledTimes(failure === 'base' ? 0 : 1);
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+    expect(
+      await database
+        .prepare('SELECT count(*) AS count FROM publication_retries')
+        .first<number>('count'),
+    ).toBe(0);
+    expect(
+      await database
+        .prepare("SELECT count(*) AS count FROM audit_events WHERE action='publish.captured-retry'")
+        .first<number>('count'),
+    ).toBe(0);
+  },
+);
 
 it.each(['reserved', 'claimed', 'committed', 'authorization-race'] as const)(
   'reconciles terminal %s execution only before deployment authorization',

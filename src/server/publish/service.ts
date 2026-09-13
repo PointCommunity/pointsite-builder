@@ -75,6 +75,16 @@ export class StagingPublisher {
 
   recoverQueued(input: QueuedRecoveryInput) {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    if (input.action === 'retry-captured') {
+      if (!this.config.workflowRevision) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+      return this.jobs.retryCaptured(input, this.config.workflowRevision, async (baseSha) => {
+        const client = await this.client();
+        if ((await client.currentMainSha()) !== baseSha || !client.assertPublicationCaller)
+          throw new Error('PUBLICATION_RECOVERY_CHANGED');
+        await client.assertPublicationCaller(baseSha, PUBLICATION_CALLER_BLOB);
+        await client.assertRendererCompatible(baseSha, STAGING_RENDERER_CONTRACT);
+      });
+    }
     return this.jobs.recoverQueued(input);
   }
 

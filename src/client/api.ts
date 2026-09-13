@@ -331,11 +331,11 @@ export const api = {
     }),
   recoverQueuedPublication: (
     jobId: string,
-    action: 'retry' | 'cancel' | 'reconcile',
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured',
     expectedAttempts: number,
     requestKey: string,
   ) =>
-    request<{ recovered: true }>(`/publish/jobs/${jobId}/recovery`, {
+    request<{ recovered: true; jobId?: string }>(`/publish/jobs/${jobId}/recovery`, {
       method: 'POST',
       headers: mutationHeaders(requestKey),
       body: JSON.stringify({ action, expectedAttempts }),

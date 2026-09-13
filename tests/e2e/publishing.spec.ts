@@ -254,18 +254,25 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/publish/staging/workflow') return route.fulfill({ json: workflow });
-    if (path === `/api/publish/jobs/${jobId}/recovery`) {
+    if (path === `/api/publish/jobs/${workflow.job!.id}/recovery`) {
       const body = request.postDataJSON() as { action: string; expectedAttempts: number };
       expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
       actions.push(body.action);
       expect(body.expectedAttempts).toBe(body.action === 'retry' ? 6 : 0);
       if (body.action === 'retry')
         workflow.job!.dispatch = { ...workflow.job!.dispatch!, attempts: 0, needsAttention: false };
-      else {
+      else if (body.action === 'retry-captured') {
+        expect(workflow.job!.id).toBe(jobId);
+        workflow.job!.id = '30000000-0000-4000-8000-000000000012';
+        workflow.job!.status = 'queued';
+        workflow.job!.dispatch!.canRetryCaptured = false;
+        workflow.availability = { state: 'busy', phase: 'running' };
+      } else {
         workflow.job!.status = 'cancelled';
+        workflow.job!.dispatch!.canRetryCaptured = true;
         workflow.availability = { state: 'available' };
       }
-      return route.fulfill({ json: { recovered: true } });
+      return route.fulfill({ json: { recovered: true, jobId: workflow.job!.id } });
     }
     if (path === '/api/publish/staging') {
       published.push(request.postDataJSON() as unknown);
@@ -273,7 +280,7 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
       workflow.availability = { state: 'busy', phase: 'running' };
       return route.fulfill({
         status: 202,
-        json: { jobId, status: 'queued', publicationProtocol: 2 },
+        json: { jobId: workflow.job!.id, status: 'queued', publicationProtocol: 2 },
       });
     }
     throw new Error(`Unexpected cloud browser operation: ${path}`);
@@ -292,6 +299,20 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(cancel).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  const captured = page.getByRole('button', { name: 'Retry captured candidate' });
+  await expect(captured).toBeEnabled();
+  expect((await new AxeBuilder({ page }).include('.publish-panel').analyze()).violations).toEqual(
+    [],
+  );
+  await captured.focus();
+  await page.keyboard.press('Enter');
+  await expect(captured).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await expect(cancel).toBeEnabled();
+  await cancel.focus();
+  await page.keyboard.press('Enter');
+  await expect(cancel).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
   await page.getByRole('button', { name: 'Try publishing again' }).click();
   await expect.poll(() => published.length).toBe(1);
   expect(published[0]).toMatchObject({
@@ -300,7 +321,7 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
     expectedRevisionChecksum: draft.revision.checksum,
     expectedBaseSha: 'c'.repeat(40),
   });
-  expect(actions).toEqual(['retry', 'cancel']);
+  expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel']);
 });
 
 test('automatically advances an immediate exact verification', async ({ page }) => {

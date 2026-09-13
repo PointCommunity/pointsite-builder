@@ -13,6 +13,7 @@ export interface StagingWorkflowJob {
     needsAttention: boolean;
     reserved?: boolean;
     canReconcileStopped?: boolean;
+    canRetryCaptured?: boolean;
     failureCode?: string;
     workflowUrl?: string;
   };

@@ -3,6 +3,7 @@ import type { DraftRecord } from '../repositories/contracts';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
 import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
+import { retryCapturedStaging } from './retry';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -71,6 +72,14 @@ export class D1PublishJobStore {
 
   recoverQueued(input: QueuedRecoveryInput) {
     return recoverQueuedPublication(this.database, input);
+  }
+
+  retryCaptured(
+    input: QueuedRecoveryInput,
+    workflowRevision: string,
+    verifyBase: (sha: string) => Promise<void>,
+  ) {
+    return retryCapturedStaging(this.database, input, workflowRevision, verifyBase);
   }
 
   /** Capture once. Browser closure and later edits cannot substitute these inputs. */
@@ -281,7 +290,10 @@ export class D1PublishJobStore {
         `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,
       COALESCE(run_id,reserved_run_id) AS run_id,
       (reserved_run_id IS NOT NULL AND deploy_authorized_at IS NULL
-        AND j.status IN ('queued','running')) AS can_reconcile
+        AND j.status IN ('queued','running')) AS can_reconcile,
+      (j.environment='staging' AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
+        AND COALESCE((SELECT attempt FROM publication_retries WHERE job_id=j.id),0)<3
+        AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured
       FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
       )
       .bind(id)
@@ -292,6 +304,7 @@ export class D1PublishJobStore {
         run_id: string | null;
         environment: string;
         can_reconcile: number;
+        can_retry_captured: number;
       }>();
     if (!row) return undefined;
     return {
@@ -299,6 +312,7 @@ export class D1PublishJobStore {
       retryAt: row.dispatch_after,
       reserved: row.run_id !== null,
       canReconcileStopped: row.can_reconcile === 1,
+      canRetryCaptured: row.can_retry_captured === 1,
       needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)

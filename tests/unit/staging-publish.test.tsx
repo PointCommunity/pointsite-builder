@@ -181,6 +181,35 @@ describe('guided Staging publishing', () => {
     expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
   });
 
+  it('retries the selected capture with a stable receipt instead of publishing the latest editor revision', async () => {
+    const cancelled: StagingWorkflowSnapshot = {
+      ...ready,
+      job: {
+        ...queuedCloud.job!,
+        status: 'cancelled',
+        revisionId: '20000000-0000-4000-8000-000000000002',
+        dispatch: { ...queuedCloud.job!.dispatch!, canRetryCaptured: true },
+      },
+    };
+    const load = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(cancelled);
+    const publish = vi.spyOn(api, 'publishStaging');
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockRejectedValueOnce(new Error('lost response'))
+      .mockResolvedValue({ recovered: true, jobId: '30000000-0000-4000-8000-000000000002' });
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry captured candidate' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Retry captured candidate' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry captured candidate' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(recover.mock.calls[0]).toEqual([job.id, 'retry-captured', 6, expect.any(String)]);
+    expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it('offers an explicit native recovery check without claiming the cloud run stopped', async () => {
     vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
       ...queuedCloud,
