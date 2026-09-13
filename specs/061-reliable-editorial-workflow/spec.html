@@ -606,6 +606,29 @@
       edits do not change the captured tuple or inherit its approval.
     </p>
 
+    <p>
+      Production capture copies the accepted job's immutable revision and image pins through SQL; it
+      never reads the latest editor document or image bytes. Migration 0024 binds the new job to the
+      exact approval, expected Production base, runtime revision and artifact digest. Capture
+      verifies Administrator and GitHub repository permission, the reviewed caller blob, current
+      Production base and unchanged live Staging evidence. Its transaction rechecks authority,
+      latest acceptance, evidence and the exclusive Production slot. Dispatch and every signed
+      runner boundary require that acceptance to remain current and unrevoked. Production build
+      authorization requires the exact accepted static artifact digest. Duplicate capture receipts
+      remain historical and cannot reinstate revoked authority. The direct Production route remains
+      disabled while the native Pages runtime, previous-good release and recovery flow are
+      unfinished.
+    </p>
+    <p>
+      Initial public recovery evidence: native Pages deployment 6276181817 identifies source
+      <code>0187c95c8a9d3441049616a801f66f6f6d11050e</code>. Its transient artifact expired. A
+      bounded HTTP capture obtained 97 public files totaling 2,792,441 bytes, including the eleven
+      active routes, linked assets and navigation payloads. Two complete reads matched byte hashes
+      while the same successful native deployment remained current. This is a captured public-file
+      baseline, not the original expired archive. Browser request-closure verification and durable
+      rollback packaging remain required before using it as the initial previous-good release.
+    </p>
+
     <h2>Current implementation evidence and migration sequence</h2>
     <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.

@@ -20,7 +20,7 @@ const LegacyCandidateTupleSchema = z.strictObject({
   productionBaseSha: Sha40,
 });
 
-const CloudCandidateTupleSchema = LegacyCandidateTupleSchema.extend({
+export const CloudCandidateTupleSchema = LegacyCandidateTupleSchema.extend({
   publicationProtocol: z.literal(2),
   workflowRevision: Sha40,
   artifactDigest: Sha256,

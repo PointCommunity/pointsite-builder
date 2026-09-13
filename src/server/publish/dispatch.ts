@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
+import { currentPromotion } from './promotion';
 
 const DispatchSchema = z.object({
   job_id: z.uuid(),
@@ -15,7 +16,8 @@ const eligible = `FROM publication_runs pr JOIN publication_slots ps ON ps.job_i
   JOIN drafts d ON d.id=pi.draft_id JOIN user_roles u ON u.email=j.requested_by
   WHERE pr.job_id=? AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL AND d.status='active' AND u.active=1
     AND ((ps.target='staging' AND j.environment='staging' AND u.role IN ('publisher','administrator'))
-      OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'))`;
+      OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'
+        AND ${currentPromotion}))`;
 
 /** Dispatch only captured jobs. A lost response leaves the same job and nonce retryable. */
 export const MAX_DISPATCH_ATTEMPTS = 6;

@@ -13,6 +13,7 @@ import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
 import { PublicationBuildSchema, commitPublicationBuild, publicationJson } from './build-proof';
 import { verifyDeploymentProof } from './deployment-proof';
+import { currentPromotion } from './promotion';
 
 // Every call checks the live role, draft lifecycle, slot and signed run. The
 // selected revision deliberately need not remain the editor's latest revision.
@@ -24,7 +25,8 @@ const authorizedFrom = `FROM publication_runs pr
   JOIN user_roles u ON u.email=j.requested_by AND u.active=1
   WHERE pr.job_id=? AND d.status='active'
     AND ((ps.target='staging' AND j.environment='staging' AND u.role IN ('publisher','administrator'))
-      OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'))`;
+      OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'
+        AND ${currentPromotion}))`;
 
 type RunnerRow = {
   nonce: string;
@@ -172,11 +174,9 @@ export class D1PublicationRunner {
 
   private async publisher(row: RunnerRow) {
     if (!this.config) throw new Error('PUBLISH_RUNNER_NOT_CONFIGURED');
-    // Production requires the separate exact acceptance gate before enabling mutation.
-    if (row.target !== 'staging') throw new Error('PUBLICATION_PRODUCTION_NOT_AUTHORIZED');
     return createPublisherToken({
       ...this.config,
-      repository: 'pointsite-staging',
+      repository: row.target === 'staging' ? 'pointsite-staging' : 'pointsite',
       subject: row.requested_by,
       login: row.github_login,
       fetcher: this.request,
@@ -189,6 +189,13 @@ export class D1PublicationRunner {
     const { scope, identity, row } = await this.authenticate(jobId, token);
     if (build.candidateChecksum !== row.candidate_checksum)
       throw new Error('PUBLICATION_INPUT_MISMATCH');
+    if (row.target === 'production') {
+      const digest = await this.database
+        .prepare('SELECT artifact_digest FROM publication_promotions WHERE job_id=?')
+        .bind(jobId)
+        .first<string>('artifact_digest');
+      if (digest !== build.artifactDigest) throw new Error('PUBLICATION_OUTPUT_MISMATCH');
+    }
     await this.guard(scope, identity).first();
     await this.publisher(row);
     await this.database.batch([
@@ -213,7 +220,7 @@ export class D1PublicationRunner {
       .bind(jobId)
       .all<{ source_path: string }>();
     await commitPublicationBuild({
-      repository: 'pointsite-staging',
+      repository: row.target === 'staging' ? 'pointsite-staging' : 'pointsite',
       jobId,
       baseSha: row.base_sha,
       build,
@@ -233,7 +240,7 @@ export class D1PublicationRunner {
       )
       .bind(
         build.commitSha,
-        `https://github.com/PointCommunity/pointsite-staging/commit/${build.commitSha}`,
+        `https://github.com/PointCommunity/${row.target === 'staging' ? 'pointsite-staging' : 'pointsite'}/commit/${build.commitSha}`,
         jobId,
         jobId,
         JSON.stringify(build),
@@ -251,7 +258,7 @@ export class D1PublicationRunner {
     z.object({ object: z.object({ sha: z.literal(build.commitSha) }) }).parse(
       await publicationJson(
         await this.request(
-          'https://api.github.com/repos/PointCommunity/pointsite-staging/git/ref/heads/main',
+          `https://api.github.com/repos/PointCommunity/${row.target === 'staging' ? 'pointsite-staging' : 'pointsite'}/git/ref/heads/main`,
           { headers: githubHeaders(installation) },
         ),
         16_384,

@@ -15,6 +15,7 @@ import { preparePublicationInputs } from '../../src/server/publish/inputs';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
+import { D1ProductionPublisher } from '../../src/server/publish/promotion';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { D1ApprovalService } from '../../src/server/approvals/service';
@@ -516,7 +517,7 @@ it('rechecks cloud preflight authority atomically and rejects changed preflight 
 }, 30_000);
 
 it('authorizes immutable builds, commits with fresh authority, and holds the slot through native deployment verification', async () => {
-  const { database, repository, createInput } = await fixture();
+  const { database, repository, assets, createInput } = await fixture();
   const subject = 'github:12345';
   await database
     .prepare(
@@ -825,6 +826,184 @@ it('authorizes immutable builds, commits with fresh authority, and holds the slo
     ),
   ).toMatchObject({ eligible: false, reason: 'CANDIDATE_DRIFT' });
   expect(github.state.mutations).toBe(1);
+  const productionCaller = 'e'.repeat(40);
+  const productionProvider: typeof fetch = (url, init) => {
+    const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+    if (path.includes('/pointsite/contents/.github/workflows/publish-candidate.yml'))
+      return Promise.resolve(Response.json({ type: 'file', sha: productionCaller }));
+    return provider(url, init);
+  };
+  const prepare = vi.fn((query: string) => database.prepare(query));
+  const tracked = new Proxy(database, {
+    get: (target, property) =>
+      property === 'prepare' ? prepare : (Reflect.get(target, property) as unknown),
+  });
+  const production = new D1ProductionPublisher(
+    tracked,
+    { ...config, workflowRevision: expectedTuple.workflowRevision },
+    productionCaller,
+    productionProvider,
+  );
+  const promotion = {
+    stagingJobId: job.id,
+    approvalId: acceptedAgain.id,
+    tuple: expectedTuple,
+    actor: subject,
+    requestId: 'promote-cloud',
+    idempotencyKey: 'production-capture-fixture',
+  };
+  for (const role of ['viewer', 'editor', 'publisher']) {
+    await database.prepare('UPDATE user_roles SET role=? WHERE email=?').bind(role, subject).run();
+    await expect(production.capture(promotion)).rejects.toThrow('PRODUCTION_AUTHORITY_CHANGED');
+  }
+  await database
+    .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+    .bind(subject)
+    .run();
+  await expect(production.capture({ ...promotion, approvalId: revoked.id })).rejects.toThrow(
+    'PRODUCTION_ACCEPTANCE_CHANGED',
+  );
+  await expect(
+    production.capture({
+      ...promotion,
+      tuple: { ...expectedTuple, artifactDigest: '0'.repeat(64) },
+    }),
+  ).rejects.toThrow('PRODUCTION_ACCEPTANCE_CHANGED');
+  github.state.permission = 'read';
+  await expect(production.capture(promotion)).rejects.toThrow('PUBLISH_GITHUB_AUTHORITY_CHANGED');
+  github.state.permission = 'write';
+  productionBase = '0'.repeat(40);
+  await expect(production.capture(promotion)).rejects.toThrow();
+  productionBase = expectedTuple.productionBaseSha;
+  publishedWorkerVersion = crypto.randomUUID();
+  await expect(production.capture(promotion)).rejects.toThrow(
+    'PUBLICATION_VERIFICATION_UNCONFIRMED',
+  );
+  publishedWorkerVersion = workerVersionId;
+  github.state.beforePermission = async () => {
+    await database
+      .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+      .bind(subject)
+      .run();
+  };
+  await expect(production.capture(promotion)).rejects.toThrow('PRODUCTION_CAPTURE_CHANGED');
+  github.state.beforePermission = () => Promise.resolve();
+  await database
+    .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+    .bind(subject)
+    .run();
+  const laterDocument = structuredClone(draft.document);
+  laterDocument.pages[0].title = 'Later editorial changes';
+  const replacement = await assets.prepareImage(draft.id, png, {
+    filename: 'later.png',
+    contentType: 'image/png',
+    altText: 'Replacement',
+    actor: subject,
+  });
+  await database.batch(replacement.statements);
+  laterDocument.media[0].sourcePath = replacement.sourcePath;
+  const later = await repository.saveDraft({
+    draftId: draft.id,
+    document: laterDocument,
+    actor: subject,
+    ...(await acquireDraftProof(repository, draft.id, subject)),
+    action: { category: 'text-edit', context: 'draft' },
+    idempotencyKey: 'later-production-editorial-change',
+    requestId: 'later-edit',
+  });
+  expect(later.revision.id).not.toBe(draft.revision.id);
+  prepare.mockClear();
+  const [promoted, repeated] = await Promise.all([
+    production.capture(promotion),
+    production.capture(promotion),
+  ]);
+  expect(promoted).toEqual(repeated);
+  expect(promoted.status).toBe('queued');
+  expect(prepare.mock.calls.some(([query]) => /document_json|draft_asset_chunks/.test(query))).toBe(
+    false,
+  );
+  expect(
+    await database
+      .prepare('SELECT revision_id FROM publication_inputs WHERE job_id=?')
+      .bind(promoted.id)
+      .first('revision_id'),
+  ).toBe(draft.revision.id);
+  expect(
+    await database
+      .prepare('SELECT COUNT(*) n FROM publication_asset_pins WHERE job_id=?')
+      .bind(promoted.id)
+      .first('n'),
+  ).toBe(new Set(draft.document.media.map((media) => media.sourcePath)).size);
+  expect(
+    await database
+      .prepare('SELECT source_path FROM publication_asset_pins WHERE job_id=?')
+      .bind(promoted.id)
+      .first('source_path'),
+  ).toBe(draft.document.media[0].sourcePath);
+  await expect(
+    production.capture({ ...promotion, idempotencyKey: 'second-production-capture' }),
+  ).rejects.toThrow('PRODUCTION_CAPTURE_CHANGED');
+  await expect(
+    production.capture({
+      ...promotion,
+      tuple: { ...expectedTuple, artifactDigest: '0'.repeat(64) },
+    }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  const productionNonce = await database
+    .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+    .bind(promoted.id)
+    .first<string>('nonce');
+  const productionClaims = publicationClaims({
+    target: 'production',
+    jobId: promoted.id,
+    nonce: productionNonce!,
+    workflowRevision: expectedTuple.workflowRevision,
+    dispatchRevision: productionBase,
+  });
+  const signProduction = (change = {}) =>
+    new SignJWT({ ...productionClaims, ...change })
+      .setProtectedHeader({ alg: 'RS256' })
+      .sign(keys.privateKey);
+  const productionToken = await signProduction();
+  await runner.reserve(promoted.id, await signProduction({ check_run_id: '99999' }));
+  await runner.claim(promoted.id, productionToken);
+  expect((await runner.inputs(promoted.id, productionToken)).document).toEqual(draft.document);
+  await expect(
+    runner.authorizeBuild(promoted.id, productionToken, {
+      ...github.build,
+      artifactDigest: '0'.repeat(64),
+    }),
+  ).rejects.toThrow('PUBLICATION_OUTPUT_MISMATCH');
+  await runner.authorizeBuild(promoted.id, productionToken, github.build);
+  await database
+    .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+    .bind(subject)
+    .run();
+  await expect(runner.inputs(promoted.id, productionToken)).rejects.toThrow(
+    'PUBLISH_RUNNER_UNAUTHORIZED',
+  );
+  await database
+    .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+    .bind(subject)
+    .run();
+  await approvals.record({
+    ...decision,
+    decision: 'revoked',
+    expectedApprovalId: acceptedAgain.id,
+    idempotencyKey: 'revoke-captured-production',
+  });
+  await expect(runner.authorizeBuild(promoted.id, productionToken, github.build)).rejects.toThrow(
+    'PUBLISH_RUNNER_UNAUTHORIZED',
+  );
+  await expect(
+    dispatchPublication(database, config, promoted.id, productionProvider),
+  ).rejects.toThrow('PUBLISH_DISPATCH_UNAVAILABLE');
+  expect(await production.capture(promotion)).toEqual({ ...promoted, status: 'running' });
+  expect(
+    await database
+      .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='publish.production-captured'")
+      .first('n'),
+  ).toBe(1);
 }, 30_000);
 
 it('captures once, rejects duplicate runners, and serves pinned inputs after further editing', async () => {
