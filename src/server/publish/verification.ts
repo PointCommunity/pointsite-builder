@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import { PublicationBuildSchema, publicationJson } from './build-proof';
-import { verifyStagingDeployment } from './deployment-proof';
+import {
+  PublicationEvidenceSchema,
+  verifyDeploymentProof,
+  verifyStagingDeployment,
+} from './deployment-proof';
+import { verifiedReleaseStatement } from './releases';
 import { verifyTerminalRun } from './recovery';
 import { verifyPublicationRunner, type PublicationRunnerScope } from './runner-auth';
 import type { PublisherConfig } from './service';
@@ -54,6 +59,7 @@ type VerificationRow = {
   job_id: string;
   target: 'staging' | 'production';
   requested_by: string;
+  github_login: string;
   nonce: string;
   workflow_revision: string;
   source_json: string;
@@ -86,7 +92,7 @@ export class D1PublicationVerifier {
   private async authenticate(id: string, token: string) {
     if (!z.uuid().safeParse(id).success) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const row = await this.database
-      .prepare(`SELECT v.* ${verificationFrom}`)
+      .prepare(`SELECT v.*,u.github_login ${verificationFrom}`)
       .bind(id)
       .first<VerificationRow>();
     if (!row) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
@@ -108,15 +114,15 @@ export class D1PublicationVerifier {
 
   private guard(
     context: Awaited<ReturnType<D1PublicationVerifier['authenticate']>>,
-    claim = false,
+    mode: 'execute' | 'claim' | 'finalize' = 'execute',
   ) {
     const { row, scope, identity } = context;
     return this.database
       .prepare(
         `SELECT json(CASE WHEN EXISTS(SELECT 1 ${verificationFrom}
       AND v.nonce=? AND v.workflow_revision=? AND v.source_json=? AND v.reserved_run_id=? AND v.reserved_run_attempt=?
-      AND v.reserved_check_run_id!=? AND (v.check_run_id=? ${claim ? 'OR v.check_run_id IS NULL' : ''})
-      ${claim ? '' : "AND v.status='running'"}
+      AND v.reserved_check_run_id!=? AND (v.check_run_id${mode === 'finalize' ? '!=' : '='}? ${mode === 'claim' ? 'OR v.check_run_id IS NULL' : ''})
+      ${mode === 'claim' ? '' : "AND v.status='running'"}
       ) THEN 'true' ELSE 'publication verification no longer authorized' END)`,
       )
       .bind(
@@ -163,7 +169,7 @@ export class D1PublicationVerifier {
   async claim(id: string, token: string) {
     const context = await this.authenticate(id, token);
     await this.database.batch([
-      this.guard(context, true),
+      this.guard(context, 'claim'),
       this.database
         .prepare("UPDATE publication_verifications SET status='running',check_run_id=? WHERE id=?")
         .bind(context.identity.checkRunId, id),
@@ -196,6 +202,172 @@ export class D1PublicationVerifier {
         .bind(JSON.stringify(report), id),
     ]);
     return { recorded: true as const };
+  }
+
+  /** The report is provisional until a separate signed check verifies native completion. */
+  async finalize(id: string, token: string) {
+    if (await this.completedReceipt(id, token)) return { verified: true as const };
+    try {
+      const context = await this.authenticate(id, token);
+      const { row, source, scope } = context;
+      const report = z
+        .strictObject({
+          artifactDigest: z.literal(source.build.artifactDigest),
+          deploymentId: z.literal(source.deploymentId),
+          ...(source.target === 'staging'
+            ? { workerVersionId: z.literal(source.workerVersionId!) }
+            : {}),
+        })
+        .parse(JSON.parse(row.report_json ?? 'null'));
+      await this.guard(context, 'finalize').first();
+      const githubToken = await createPublisherToken({
+        ...this.config,
+        repository: source.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+        subject: row.requested_by,
+        login: row.github_login,
+        fetcher: this.request,
+      });
+      await verifyTerminalRun(
+        {
+          target: source.target,
+          run_id: source.runId,
+          run_attempt: row.original_run_attempt,
+          dispatch_revision: source.dispatchRevision,
+          workflow_revision: source.workflowRevision,
+        },
+        this.request,
+        githubToken,
+      );
+      if (source.target === 'staging') {
+        const native = await verifyStagingDeployment(
+          source.build.commitSha,
+          source.build.candidateChecksum,
+          this.nativeReadToken ?? '',
+          this.request,
+        );
+        if (
+          native.deploymentId !== row.native_worker_deployment_id ||
+          native.workerVersionId !== source.workerVersionId
+        )
+          throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
+      }
+      const evidence = PublicationEvidenceSchema.parse({
+        ...(await verifyDeploymentProof(
+          {
+            target: source.target,
+            runId: source.runId,
+            checkRunId: source.checkRunId,
+            dispatchRevision: source.dispatchRevision,
+            workflowRevision: source.workflowRevision,
+            commitSha: source.build.commitSha,
+            candidateChecksum: source.build.candidateChecksum,
+            artifactDigest: report.artifactDigest,
+            ...(source.workerVersionId ? { workerVersionId: source.workerVersionId } : {}),
+            verification: {
+              runId: row.reserved_run_id!,
+              checkRunId: row.check_run_id!,
+              dispatchRevision: scope.dispatchRevision,
+              workflowRevision: scope.workflowRevision,
+            },
+          },
+          this.request,
+          githubToken,
+        )),
+        verificationStatus: 'passed',
+      });
+      if (evidence.deploymentId !== source.deploymentId)
+        throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
+      const deployment =
+        source.target === 'staging'
+          ? { workerVersionId: source.workerVersionId }
+          : { artifactDigest: source.build.artifactDigest };
+      await this.database.batch([
+        this.guard(context, 'finalize'),
+        this.database
+          .prepare(
+            'UPDATE publication_runs SET deployment_json=COALESCE(deployment_json,?) WHERE job_id=?',
+          )
+          .bind(JSON.stringify(deployment), row.job_id),
+        this.database
+          .prepare(
+            "UPDATE publication_verifications SET status='passed',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+          )
+          .bind(id),
+        this.database
+          .prepare(
+            "UPDATE publish_jobs SET status='succeeded',evidence_json=?,completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+          )
+          .bind(JSON.stringify(evidence), row.job_id),
+        verifiedReleaseStatement(this.database, row.job_id),
+        this.database
+          .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
+          .bind(row.job_id),
+        this.database
+          .prepare(
+            `INSERT INTO audit_events(id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
+          VALUES (?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'publish.verification-completed','publish-job',?,'succeeded',?,?)`,
+          )
+          .bind(
+            crypto.randomUUID(),
+            row.requested_by,
+            row.job_id,
+            crypto.randomUUID(),
+            JSON.stringify({ verificationId: id }),
+          ),
+      ]);
+      return { verified: true as const };
+    } catch (error) {
+      if (await this.completedReceipt(id, token)) return { verified: true as const };
+      throw error;
+    }
+  }
+
+  private async completedReceipt(id: string, token: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT v.*,j.evidence_json FROM publication_verifications v
+      JOIN publish_jobs j ON j.id=v.job_id JOIN user_roles u ON u.email=v.requested_by
+      WHERE v.id=? AND v.status='passed' AND j.status='succeeded' AND u.active=1
+        AND ((v.target='staging' AND j.environment='staging' AND u.role IN ('publisher','administrator'))
+          OR (v.target='production' AND j.environment='production-merge' AND u.role='administrator'))`,
+      )
+      .bind(id)
+      .first<VerificationRow & { evidence_json: string }>();
+    if (!row) return false;
+    const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
+    const identity = await verifyPublicationRunner(
+      token,
+      {
+        purpose: 'verification',
+        jobId: id,
+        target: row.target,
+        nonce: row.nonce,
+        workflowRevision: row.workflow_revision,
+        dispatchRevision: source.build.commitSha,
+        run: { id: row.reserved_run_id!, attempt: row.reserved_run_attempt! },
+      },
+      this.keys,
+    );
+    const evidence = PublicationEvidenceSchema.parse(JSON.parse(row.evidence_json));
+    if (
+      identity.checkRunId === row.reserved_check_run_id ||
+      identity.checkRunId === row.check_run_id ||
+      evidence.runId !== source.runId ||
+      evidence.checkRunId !== source.checkRunId ||
+      evidence.workflowRevision !== source.workflowRevision ||
+      evidence.dispatchRevision !== source.dispatchRevision ||
+      evidence.commitSha !== source.build.commitSha ||
+      evidence.artifactDigest !== source.build.artifactDigest ||
+      evidence.candidateChecksum !== source.build.candidateChecksum ||
+      evidence.deploymentId !== source.deploymentId ||
+      evidence.workerVersionId !== source.workerVersionId ||
+      evidence.verification?.runId !== row.reserved_run_id ||
+      evidence.verification.checkRunId !== row.check_run_id ||
+      evidence.verification.workflowRevision !== row.workflow_revision ||
+      evidence.verification.dispatchRevision !== source.build.commitSha
+    )
+      throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    return true;
   }
 
   async capture(value: z.infer<typeof VerificationRequestSchema>) {

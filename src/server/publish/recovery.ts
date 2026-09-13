@@ -14,7 +14,11 @@ const TerminalRunSchema = z.object({
 });
 
 /** Read native execution, never infer completion from elapsed time or a single finished job. */
-export async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
+export async function verifyTerminalRun(
+  value: unknown,
+  fetcher: typeof fetch,
+  githubToken?: string,
+) {
   try {
     const input = TerminalRunSchema.parse(value);
     const destination = publicationDestinations[input.target];
@@ -26,6 +30,7 @@ export async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
           accept: 'application/vnd.github+json',
           'user-agent': 'PointSite-Builder',
           'cache-control': 'no-cache',
+          ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
         },
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
