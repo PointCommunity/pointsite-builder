@@ -282,3 +282,30 @@ it('preserves edits completed while a History restore is in flight', async () =>
   expect(editor.autosave.pendingCount).toBe(1);
   expect(editor.draft.revision.checksum).toBe('before');
 });
+
+it('sends metadata proof without replacing pending document edits', async () => {
+  const { draft } = setup();
+  const rename = vi.spyOn(api, 'renameDraft').mockResolvedValue({ ...draft, name: 'Renamed' });
+  const label = vi
+    .spyOn(api, 'labelRevision')
+    .mockResolvedValue({ ...draft.revision, label: 'Named' });
+  act(() => {
+    const next = structuredClone(editor.document);
+    next.site.mission = 'Keep pending';
+    editor.stageDocument(next);
+  });
+  await act(async () => {
+    await editor.renameDraft('Renamed');
+    await editor.labelRevision('revision', 'Named');
+  });
+  const proof: unknown = expect.objectContaining({
+    draftId: 'draft',
+    expectedRevisionId: 'revision',
+    expectedChecksum: 'before',
+    checkoutToken: 'token',
+  });
+  expect(rename).toHaveBeenCalledWith(proof, 'Renamed');
+  expect(label).toHaveBeenCalledWith(proof, 'revision', 'Named');
+  expect(editor.document.site.mission).toBe('Keep pending');
+  expect(editor.draft.name).toBe('Renamed');
+});

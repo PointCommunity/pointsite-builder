@@ -11,6 +11,7 @@ import type {
   CreateDraftInput,
   DeletedDraftReceipt,
   DraftRecord,
+  DraftMutationProof,
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRepository,
@@ -229,9 +230,15 @@ export class InMemoryRepository implements DraftRepository {
     label: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<RevisionRecord> {
-    if ((await this.getDraft(draftId)).status !== 'active')
-      throw new ConflictError('Only active drafts can be edited');
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
+    if (current.status !== 'active') throw new ConflictError('Only active drafts can be edited');
     const revisions = this.#revisions.get(draftId);
     const index = revisions?.findIndex((revision) => revision.id === revisionId) ?? -1;
     if (!revisions || index < 0) throw new NotFoundError(`Revision ${revisionId} was not found`);
@@ -252,9 +259,14 @@ export class InMemoryRepository implements DraftRepository {
     name: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = this.#drafts.get(draftId);
-    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be renamed');
     const updated = { ...current, name, updatedAt: new Date().toISOString() };
     this.#drafts.set(draftId, clone(updated));
@@ -267,9 +279,14 @@ export class InMemoryRepository implements DraftRepository {
     status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = this.#drafts.get(draftId);
-    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status === status) return clone(current);
     const allowed =
       (current.status === 'active' && status === 'archived') ||
@@ -284,7 +301,7 @@ export class InMemoryRepository implements DraftRepository {
       deletedAt: null,
     };
     this.#drafts.set(draftId, clone(updated));
-    if (status === 'archived') this.#clearEditorState(draftId);
+    this.#clearEditorState(draftId);
     this.#recordAudit(actor, `draft.${status}`, draftId, requestId, {
       previousStatus: current.status,
     });
@@ -295,8 +312,14 @@ export class InMemoryRepository implements DraftRepository {
     draftId: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DeletedDraftReceipt> {
-    const current = await this.getDraft(draftId);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status !== 'archived')
       throw new ConflictError('Only archived drafts can be deleted');
     const revisionIds = new Set(
@@ -319,6 +342,23 @@ export class InMemoryRepository implements DraftRepository {
     }
     this.#recordAudit(actor, 'draft.deleted', draftId, requestId, {});
     return { id: draftId, status: 'deleted', deletedAt: new Date().toISOString() };
+  }
+
+  #metadataCurrent(
+    draftId: string,
+    actor: string,
+    proof: DraftMutationProof,
+    tokenHash: string,
+  ): DraftRecord {
+    const current = this.#drafts.get(draftId);
+    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    if (
+      current.latestRevisionId !== proof.expectedRevisionId ||
+      current.revision.checksum !== proof.expectedChecksum
+    )
+      throw new ConflictError('The draft has a newer revision');
+    this.#checkedCheckout(draftId, actor, tokenHash, undefined, current.status);
+    return current;
   }
 
   #clearEditorState(draftId: string): void {
@@ -354,7 +394,9 @@ export class InMemoryRepository implements DraftRepository {
     const tokenHash = await hashToken(token);
     const draft = this.#drafts.get(input.draftId);
     if (!draft) throw new NotFoundError(`Draft ${input.draftId} was not found`);
-    if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
+    const expectedStatus = input.expectedStatus ?? 'active';
+    if (draft.status !== expectedStatus || (input.resumeOnly && expectedStatus !== 'active'))
+      throw new ConflictError('The draft status changed; refresh before continuing');
     const now = input.now ?? new Date().toISOString();
     const current = this.#checkouts.get(input.draftId);
     if (
@@ -440,7 +482,13 @@ export class InMemoryRepository implements DraftRepository {
     const tokenHash = await hashToken(input.token);
     const current = this.#checkouts.get(input.draftId);
     if (!current) return;
-    this.#checkedCheckout(input.draftId, input.actor, tokenHash, input.now);
+    this.#checkedCheckout(
+      input.draftId,
+      input.actor,
+      tokenHash,
+      input.now,
+      this.#drafts.get(input.draftId)?.status,
+    );
     if (current.clientId !== input.clientId)
       throw new ConflictError('This editing client no longer owns the draft checkout');
     this.#checkouts.delete(input.draftId);
@@ -456,9 +504,14 @@ export class InMemoryRepository implements DraftRepository {
     actor: string,
     tokenHash: string,
     now = new Date().toISOString(),
+    expectedStatus: DraftStatus = 'active',
   ) {
     const current = this.#checkouts.get(draftId);
-    if (!current || current.expiresAt <= now || this.#drafts.get(draftId)?.status !== 'active')
+    if (
+      !current ||
+      current.expiresAt <= now ||
+      this.#drafts.get(draftId)?.status !== expectedStatus
+    )
       throw new ConflictError('The draft checkout expired');
     if (current.actor.toLowerCase() !== actor.toLowerCase() || current.tokenHash !== tokenHash)
       throw new ConflictError('This editing client no longer owns the draft checkout');

@@ -198,6 +198,9 @@ paths:
       operationId: updateDraftLifecycle
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -206,6 +209,7 @@ paths:
               type: object
               additionalProperties: false
               minProperties: 1
+              maxProperties: 1
               properties:
                 name: { type: string, minLength: 1, maxLength: 100 }
                 status: { type: string, enum: [active, archived] }
@@ -215,6 +219,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
     delete:
       operationId: purgeArchivedDraft
       description: >-
@@ -225,6 +236,9 @@ paths:
         lease blocks purge. Retains only a content-free deletion receipt; no recovery window.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -237,16 +251,21 @@ paths:
                 confirmation: { type: string, const: DELETE }
       responses:
         '200':
-          description: Complete archived workspace purged, or content-free receipt from a prior purge
+          description: Complete archived workspace purged
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DeletedDraftReceipt' }
         '409':
-          description: Draft is not archived, has an active checkout, or publication is in progress
+          description: Draft is not archived, checkout proof is stale, or publication is in progress
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '422': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
   /drafts/{draftId}/revisions:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -340,6 +359,9 @@ paths:
       operationId: labelRevision
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -356,6 +378,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Revision' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
   /drafts/{draftId}/restore:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -1025,7 +1054,12 @@ components:
         resumeOnly:
           type: boolean
           default: false
-          description: Automatic recovery uses true. It rotates only the same actor and active client's token, preserves inactivity expiry, and cannot acquire or transfer a checkout. False is reserved for explicit Open editor.
+          description: Automatic recovery uses true. It rotates only the same actor and active client's token, preserves inactivity expiry, and cannot acquire or transfer a checkout. False is reserved for explicit editor or lifecycle actions.
+        expectedStatus:
+          type: string
+          enum: [active, archived]
+          default: active
+          description: Status displayed when explicitly starting the action. Archived checkouts permit unarchive or purge only. Automatic resume requires active.
     CheckoutTouch:
       type: object
       additionalProperties: false

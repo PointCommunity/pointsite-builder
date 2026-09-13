@@ -10,6 +10,7 @@ import type {
   CreateDraftInput,
   DeletedDraftReceipt,
   DraftRecord,
+  DraftMutationProof,
   DraftCheckout,
   DraftCheckoutAvailability,
   EditorViewState,
@@ -332,7 +333,7 @@ export class D1DraftRepository implements DraftRepository {
     if (checksum === current.revision.checksum && !additionalStatements.length) {
       try {
         await this.commit(input.actor, [
-          this.saveGuard(current, input, checkoutHash),
+          this.mutationGuard(current, input.actor, checkoutHash),
           this.idempotencyStatement(
             'draft.save',
             input.idempotencyKey,
@@ -410,7 +411,7 @@ export class D1DraftRepository implements DraftRepository {
       );
     try {
       const [, revisionWrite] = await this.commit(input.actor, [
-        this.saveGuard(current, input, checkoutHash),
+        this.mutationGuard(current, input.actor, checkoutHash),
         revisionInsert,
         ...new D1LibraryProjection(this.database).statements(revision, current.revision.sequence),
         ...assetStatements,
@@ -455,21 +456,50 @@ export class D1DraftRepository implements DraftRepository {
     }
   }
 
-  private saveGuard(
+  private mutationGuard(
     current: DraftRecord,
-    input: SaveDraftInput,
+    actor: string,
     checkoutHash: string,
   ): D1PreparedStatement {
     // Invalid JSON aborts the transaction before any queued Library, asset or receipt writes.
     return this.database
       .prepare(
         `SELECT json(CASE WHEN EXISTS (
-      SELECT 1 FROM drafts d WHERE d.id=? AND d.latest_revision_id=? AND d.status='active'
+      SELECT 1 FROM drafts d WHERE d.id=? AND d.latest_revision_id=? AND d.status=?
       AND EXISTS (SELECT 1 FROM draft_checkouts c WHERE c.draft_id=d.id
         AND lower(c.actor)=lower(?) AND c.token_hash=? AND c.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     ) THEN 'true' ELSE 'draft-write-conflict' END)`,
       )
-      .bind(current.id, current.revision.id, input.actor, checkoutHash);
+      .bind(current.id, current.revision.id, current.status, actor, checkoutHash);
+  }
+
+  private async prepareMetadataMutation(draftId: string, actor: string, proof: DraftMutationProof) {
+    const current = await this.getDraft(draftId);
+    if (
+      current.latestRevisionId !== proof.expectedRevisionId ||
+      current.revision.checksum !== proof.expectedChecksum
+    )
+      throw new ConflictError('The draft has a newer revision');
+    return {
+      current,
+      guard: this.mutationGuard(current, actor, await hashToken(proof.checkoutToken)),
+    };
+  }
+
+  private async commitMetadata(
+    actor: string,
+    guard: D1PreparedStatement,
+    statements: D1PreparedStatement[],
+  ): Promise<void> {
+    try {
+      await this.commit(actor, [guard, ...statements]);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('malformed JSON'))
+        throw new ConflictError(
+          'The draft changed or this editing client no longer owns its checkout',
+        );
+      throw error;
+    }
   }
 
   private async replayAfterSaveRace(
@@ -526,15 +556,16 @@ export class D1DraftRepository implements DraftRepository {
     label: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<RevisionRecord> {
-    if ((await this.getDraft(draftId)).status !== 'active')
-      throw new ConflictError('Only active drafts can be edited');
+    const { current, guard } = await this.prepareMetadataMutation(draftId, actor, proof);
+    if (current.status !== 'active') throw new ConflictError('Only active drafts can be edited');
     const source = await this.database
       .prepare('SELECT * FROM revisions WHERE id = ? AND draft_id = ?')
       .bind(revisionId, draftId)
       .first<RevisionRow>();
     if (!source) throw new NotFoundError(`Revision ${revisionId} was not found`);
-    await this.commit(actor, [
+    await this.commitMetadata(actor, guard, [
       this.database
         .prepare(
           'INSERT INTO revision_labels (id,revision_id,label,created_by,created_at) VALUES (?, ?, ?, ?, ?)',
@@ -550,11 +581,12 @@ export class D1DraftRepository implements DraftRepository {
     name: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = await this.getDraft(draftId);
+    const { current, guard } = await this.prepareMetadataMutation(draftId, actor, proof);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be renamed');
     const now = new Date().toISOString();
-    await this.commit(actor, [
+    await this.commitMetadata(actor, guard, [
       this.database
         .prepare('UPDATE drafts SET name = ?, updated_at = ? WHERE id = ? AND status = ?')
         .bind(name, now, draftId, 'active'),
@@ -568,27 +600,27 @@ export class D1DraftRepository implements DraftRepository {
     status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = await this.getDraft(draftId);
-    if (current.status === status) return current;
+    const { current, guard } = await this.prepareMetadataMutation(draftId, actor, proof);
+    if (current.status === status) {
+      await this.commitMetadata(actor, guard, []);
+      return current;
+    }
     const allowed =
       (current.status === 'active' && status === 'archived') ||
       (current.status === 'archived' && status === 'active');
     if (!allowed) throw new ConflictError(`Cannot change ${current.status} draft to ${status}`);
     const now = new Date().toISOString();
     const deletedAt = null;
-    await this.commit(actor, [
+    await this.commitMetadata(actor, guard, [
       this.database
         .prepare(
           `UPDATE drafts SET status = ?, updated_at = ?, deleted_at = ? WHERE id = ? AND status = ?`,
         )
         .bind(status, now, deletedAt, draftId, current.status),
-      ...(status === 'archived'
-        ? [
-            this.database.prepare('DELETE FROM draft_checkouts WHERE draft_id=?').bind(draftId),
-            this.database.prepare('DELETE FROM editor_view_states WHERE draft_id=?').bind(draftId),
-          ]
-        : []),
+      this.database.prepare('DELETE FROM draft_checkouts WHERE draft_id=?').bind(draftId),
+      this.database.prepare('DELETE FROM editor_view_states WHERE draft_id=?').bind(draftId),
       this.auditStatement(actor, `draft.${status}`, draftId, requestId, {
         previousStatus: current.status,
       }),
@@ -600,8 +632,9 @@ export class D1DraftRepository implements DraftRepository {
     draftId: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DeletedDraftReceipt> {
-    const current = await this.getDraft(draftId);
+    const { current, guard } = await this.prepareMetadataMutation(draftId, actor, proof);
     if (current.status !== 'archived')
       throw new ConflictError('Only archived drafts can be deleted');
     const now = new Date().toISOString();
@@ -619,7 +652,7 @@ export class D1DraftRepository implements DraftRepository {
       .bind(draftId)
       .all<{ id: string }>();
     try {
-      await this.commit(actor, [
+      await this.commitMetadata(actor, guard, [
         // The CHECK constraint aborts the entire batch if lifecycle or lease state changed.
         this.database
           .prepare(
@@ -696,7 +729,9 @@ export class D1DraftRepository implements DraftRepository {
 
   async acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout> {
     const draft = await this.getDraft(input.draftId);
-    if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
+    const expectedStatus = input.expectedStatus ?? 'active';
+    if (draft.status !== expectedStatus || (input.resumeOnly && expectedStatus !== 'active'))
+      throw new ConflictError('The draft status changed; refresh before continuing');
     const now = input.now ?? new Date().toISOString();
     const prior = await this.checkoutRow(input.draftId);
     const token = crypto.randomUUID();
@@ -753,7 +788,7 @@ export class D1DraftRepository implements DraftRepository {
       this.database
         .prepare(
           `INSERT INTO draft_checkouts (draft_id,actor,client_id,token_hash,acquired_at,last_activity_at,expires_at,updated_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id=? AND status='active'
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id=? AND status=?
          ON CONFLICT(draft_id) DO UPDATE SET actor=excluded.actor, client_id=excluded.client_id,
            token_hash=excluded.token_hash, acquired_at=excluded.acquired_at,
            last_activity_at=excluded.last_activity_at, expires_at=excluded.expires_at, updated_at=excluded.updated_at
@@ -769,6 +804,7 @@ export class D1DraftRepository implements DraftRepository {
           expiresAt,
           now,
           input.draftId,
+          expectedStatus,
           now,
           input.actor,
         ),

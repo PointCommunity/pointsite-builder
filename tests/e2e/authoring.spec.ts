@@ -922,6 +922,17 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   page,
 }) => {
   test.setTimeout(60_000);
+  const lifecycleProofs: Record<string, string>[] = [];
+  const lifecycleStatuses: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/drafts\/[^/]+$/.test(path) && ['PATCH', 'DELETE'].includes(request.method()))
+      lifecycleProofs.push(request.headers());
+    if (path.endsWith('/checkout') && request.method() === 'POST') {
+      const input = request.postDataJSON() as { expectedStatus?: string };
+      if (input.expectedStatus) lifecycleStatuses.push(input.expectedStatus);
+    }
+  });
   await page.goto('/');
   await page.getByLabel('New draft name').fill('Fall launch');
   await page.getByRole('button', { name: 'Create draft' }).click();
@@ -959,6 +970,13 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   await dialog.getByLabel('Type DELETE to confirm').fill('DELETE');
   await dialog.getByRole('button', { name: 'Delete draft' }).click();
   await expect(page.getByRole('heading', { name: 'Sunday update', exact: true })).toHaveCount(0);
+  expect(lifecycleStatuses).toEqual(['active', 'archived', 'active', 'archived']);
+  expect(lifecycleProofs).toHaveLength(4);
+  for (const proof of lifecycleProofs) {
+    expect(proof['x-draft-checkout']).toBe('30000000-0000-4000-8000-000000000001');
+    expect(proof['x-draft-revision']).toMatch(/^[a-f0-9-]{36}$/);
+    expect(proof['if-match']).toMatch(/^"[a-f0-9]{64}"$/);
+  }
 });
 
 test('operates page modules by keyboard and announces the result', async ({ page }) => {
@@ -1366,9 +1384,11 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await expect.poll(() => canvas.locator('body').evaluate(() => innerWidth)).toBe(1280);
   const authored = await measure(canvas);
   await page.reload();
   await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await expect.poll(() => canvas.locator('body').evaluate(() => innerWidth)).toBe(1280);
   expect(await measure(canvas)).toEqual(authored);
   await page.getByRole('button', { name: 'Preview' }).click();
   await page.getByRole('button', { name: 'Preview at desktop width' }).click();

@@ -166,7 +166,7 @@ describe('archived draft lifecycle controls', () => {
 
     const alert = await within(dialog).findByRole('alert');
     expect(alert).toHaveTextContent(
-      'The draft could not be deleted. Nothing was removed. Try again.',
+      'Deletion could not be confirmed. Refresh the draft list before trying again.',
     );
     expect(dialog).toBeInTheDocument();
     expect(confirmation).toHaveFocus();

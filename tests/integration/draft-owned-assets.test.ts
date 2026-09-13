@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -297,8 +299,19 @@ it('creates physically independent image copies and purges one draft without cha
       action: { category: 'replace', context: 'library-attachment' },
     }),
   ).rejects.toBeInstanceOf(ConflictError);
-  await repository.setDraftStatus(source.id, 'archived', actor, 'archive');
-  await repository.purgeDraft(source.id, actor, 'purge');
+  await repository.setDraftStatus(
+    source.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, source.id, actor),
+  );
+  await repository.purgeDraft(
+    source.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, source.id, actor),
+  );
   await expect(assets.readForDraft(source.id, sourcePath)).rejects.toBeInstanceOf(NotFoundError);
   expect((await assets.readForDraft(duplicate.id, duplicatePath)).bytes).toEqual(png);
   expect(
@@ -410,8 +423,19 @@ it('commits queued asset writes with a forced revision even when the document ch
   expect(saved.revision.sequence).toBe(2);
   expect(saved.revision.checksum).toBe(draft.revision.checksum);
   expect((await assets.readForDraft(draft.id, prepared.sourcePath)).bytes).toEqual(png);
-  await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
-  await repository.purgeDraft(draft.id, actor, 'purge');
+  await repository.setDraftStatus(
+    draft.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
+  await repository.purgeDraft(
+    draft.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
   expect(
     await database
       .prepare('SELECT COUNT(*) AS count FROM draft_asset_chunks')

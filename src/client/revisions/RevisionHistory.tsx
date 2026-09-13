@@ -4,8 +4,8 @@ import { draftActionCategoryLabel, draftActionContextLabel } from '../../shared/
 import { api } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 
-export function RevisionHistory() {
-  const { draft, restoreRevision } = useEditor();
+export function RevisionHistory({ editable }: { editable: boolean }) {
+  const { draft, restoreRevision, labelRevision } = useEditor();
   const [items, setItems] = useState<RevisionRecord[]>([]);
   const [error, setError] = useState('');
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -89,8 +89,7 @@ export function RevisionHistory() {
                   const label = labels[revision.id]?.trim();
                   if (!label) return;
                   setStatus('Saving revision label…');
-                  void api
-                    .labelRevision(draft.id, revision.id, label)
+                  void labelRevision(revision.id, label)
                     .then((updated) => {
                       setItems((current) =>
                         current.map((item) => (item.id === updated.id ? updated : item)),
@@ -103,6 +102,7 @@ export function RevisionHistory() {
                 <label>
                   <span className="visually-hidden">Label for revision {revision.sequence}</span>
                   <input
+                    disabled={!editable}
                     maxLength={100}
                     name={`revision-label-${revision.id}`}
                     autoComplete="off"
@@ -113,7 +113,7 @@ export function RevisionHistory() {
                     }
                   />
                 </label>
-                <button className="button" type="submit">
+                <button className="button" type="submit" disabled={!editable}>
                   Save label
                 </button>
               </form>
@@ -122,6 +122,7 @@ export function RevisionHistory() {
               <button
                 className="button"
                 type="button"
+                disabled={!editable}
                 onClick={() => {
                   if (window.confirm(`Restore revision ${revision.sequence} as a new revision?`))
                     void restoreRevision(revision.id)

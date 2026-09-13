@@ -18,7 +18,7 @@ const LifecycleSchema = z
     name: z.string().trim().min(1).max(100).optional(),
     status: z.enum(['active', 'archived']).optional(),
   })
-  .refine((value) => value.name || value.status, 'A name or status change is required');
+  .refine((value) => Boolean(value.name) !== Boolean(value.status), 'Change either name or status');
 const DeleteDraftSchema = z.strictObject({
   confirmation: z.literal(DELETE_DRAFT_CONFIRMATION),
 });
@@ -62,6 +62,7 @@ export function createRevisionRoutes(
         body.label,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       ),
     );
   });
@@ -108,6 +109,7 @@ export function createRevisionRoutes(
         body.status,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       );
     }
     if (body.name) {
@@ -116,6 +118,7 @@ export function createRevisionRoutes(
         body.name,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       );
     }
     return context.json(draft);
@@ -133,7 +136,12 @@ export function createRevisionRoutes(
       throw new ConflictError('Only archived drafts can be deleted');
     }
     return context.json(
-      await repository.purgeDraft(draft.id, actor.email, context.get('requestId')),
+      await repository.purgeDraft(
+        draft.id,
+        actor.email,
+        context.get('requestId'),
+        draftMutationProof(context.req.raw),
+      ),
     );
   });
 

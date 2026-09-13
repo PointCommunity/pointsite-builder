@@ -74,7 +74,9 @@ function DeleteDraftDialog({
             setError('');
             void onConfirm().catch(() => {
               setDeleting(false);
-              setError('The draft could not be deleted. Nothing was removed. Try again.');
+              setError(
+                'Deletion could not be confirmed. Refresh the draft list before trying again.',
+              );
               inputRef.current?.focus();
             });
           }}
@@ -142,6 +144,25 @@ export function DraftList({
   checkouts?: DraftCheckoutAvailability[];
 }) {
   const [name, setName] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const actionPending = useRef(false);
+  const runAction = async (operation: () => void | Promise<void>) => {
+    if (actionPending.current) return;
+    actionPending.current = true;
+    setBusy(true);
+    setActionError('');
+    try {
+      await operation();
+    } catch {
+      setActionError(
+        'The action could not be confirmed. Refresh the draft list before trying again.',
+      );
+    } finally {
+      actionPending.current = false;
+      setBusy(false);
+    }
+  };
   const [deleteTarget, setDeleteTarget] = useState<DraftRecord | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const canEdit = role !== 'viewer';
@@ -161,7 +182,11 @@ export function DraftList({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (name.trim()) void onCreate(name.trim()).then(() => setName(''));
+              if (name.trim())
+                void runAction(async () => {
+                  await onCreate(name.trim());
+                  setName('');
+                });
             }}
             className="create-draft"
           >
@@ -174,12 +199,13 @@ export function DraftList({
                 required
               />
             </label>
-            <button className="button button--primary" type="submit">
+            <button className="button button--primary" type="submit" disabled={busy}>
               Create draft
             </button>
           </form>
         ) : null}
       </div>
+      {actionError ? <p role="alert">{actionError}</p> : null}
       {drafts.length === 0 ? (
         <div className="empty-state">
           <h2>No drafts yet</h2>
@@ -189,6 +215,7 @@ export function DraftList({
         <ul className="draft-grid">
           {drafts.map((draft) => {
             const checkout = checkouts.find((item) => item.draftId === draft.id);
+            const mutationUnavailable = checkout?.state === 'unavailable';
             const unavailable =
               canEdit && draft.status === 'active' && checkout?.state === 'unavailable';
             const owned = canEdit && checkout?.state === 'owned';
@@ -211,24 +238,39 @@ export function DraftList({
                 <div className="draft-card__actions">
                   <button
                     className="button button--primary"
-                    disabled={unavailable}
+                    disabled={unavailable || busy}
                     aria-describedby={unavailable ? descriptionId : undefined}
-                    onClick={(event) => void onOpen(draft, event.currentTarget)}
+                    onClick={(event) => {
+                      const trigger = event.currentTarget;
+                      void runAction(() => onOpen(draft, trigger));
+                    }}
                   >
                     {owned ? 'Resume editing' : `Open ${canEdit ? 'editor' : 'preview'}`}
                   </button>
                   {canEdit ? (
                     <>
                       <div className="draft-card__secondary-actions">
-                        <button className="button" onClick={() => void onDuplicate(draft)}>
+                        <button
+                          className="button"
+                          disabled={busy}
+                          onClick={() => void runAction(() => onDuplicate(draft))}
+                        >
                           Duplicate
                         </button>
                         {draft.status === 'active' ? (
-                          <button className="button" onClick={() => void onArchive(draft)}>
+                          <button
+                            className="button"
+                            disabled={busy || mutationUnavailable}
+                            onClick={() => void runAction(() => onArchive(draft))}
+                          >
                             Archive
                           </button>
                         ) : draft.status === 'archived' ? (
-                          <button className="button" onClick={() => void onUnarchive(draft)}>
+                          <button
+                            className="button"
+                            disabled={busy || mutationUnavailable}
+                            onClick={() => void runAction(() => onUnarchive(draft))}
+                          >
                             Unarchive
                           </button>
                         ) : null}
@@ -238,6 +280,7 @@ export function DraftList({
                           ref={(element) => {
                             if (deleteTarget?.id === draft.id) deleteTrigger.current = element;
                           }}
+                          disabled={busy || mutationUnavailable}
                           className="button button--danger"
                           onClick={(event) => {
                             deleteTrigger.current = event.currentTarget;

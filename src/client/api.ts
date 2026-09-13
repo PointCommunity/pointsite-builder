@@ -212,11 +212,15 @@ export const api = {
     (await request<{ items: DraftCheckoutAvailability[] }>('/drafts/checkouts')).items,
   ownedCheckout: () =>
     request<{ draftId: string; expiresAt: string } | null>('/drafts/checkout/owned'),
-  acquireCheckout: (id: string, clientId: string, resumeOnly = false) =>
+  acquireCheckout: (
+    id: string,
+    clientId: string,
+    options: { resumeOnly?: boolean; expectedStatus?: 'active' | 'archived' } = {},
+  ) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ clientId, ...(resumeOnly ? { resumeOnly } : {}) }),
+      body: JSON.stringify({ clientId, ...options }),
     }),
   validateCheckout: (id: string, token: string) =>
     request<{ active: true }>(`/drafts/${id}/checkout`, {
@@ -240,30 +244,30 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
       body: JSON.stringify({ clientId }),
     }),
-  renameDraft: (id: string, name: string) =>
-    request<DraftRecord>(`/drafts/${id}`, {
+  renameDraft: (context: LibraryMutationContext, name: string) =>
+    request<DraftRecord>(`/drafts/${context.draftId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ name }),
     }),
-  setDraftStatus: (id: string, action: 'archive' | 'recover') =>
-    request<DraftRecord>(`/drafts/${id}`, {
+  setDraftStatus: (context: LibraryMutationContext, action: 'archive' | 'recover') =>
+    request<DraftRecord>(`/drafts/${context.draftId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ status: action === 'archive' ? 'archived' : 'active' }),
     }),
-  deleteDraft: (id: string) =>
-    request<DeletedDraftReceipt>(`/drafts/${id}`, {
+  deleteDraft: (context: LibraryMutationContext) =>
+    request<DeletedDraftReceipt>(`/drafts/${context.draftId}`, {
       method: 'DELETE',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION }),
     }),
   listRevisions: async (id: string) =>
     (await request<{ items: RevisionRecord[] }>(`/drafts/${id}/revisions`)).items,
-  labelRevision: (draftId: string, revisionId: string, label: string) =>
-    request<RevisionRecord>(`/drafts/${draftId}/revisions/${revisionId}`, {
+  labelRevision: (context: LibraryMutationContext, revisionId: string, label: string) =>
+    request<RevisionRecord>(`/drafts/${context.draftId}/revisions/${revisionId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ label }),
     }),
   restoreRevision: (context: LibraryMutationContext, revisionId: string) =>

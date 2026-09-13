@@ -562,16 +562,50 @@
       The editor stops sends and retries after access or checkout failure, retains pending work for
       copying, and allows explicitly discarding its local journal without a successful remote read.
       Browser storage failures stay latched until explicit retry instead of retrying on each
-      keystroke. Full checkout and expected-revision enforcement on restore, labels and lifecycle
-      operations remains pending; this increment does not complete R4 or authorize release.
+      keystroke. Save, restore, label and lifecycle requests carry current checkout and revision
+      proof; remaining acceptance and release evidence stays pending.
     </p>
     <p>
-      Next enforcement step: require expected revision and current checkout for every save and
-      History restore, including repository callers. Missing HTTP proof fails closed and asks the
-      editor to reopen; receipt matching still precedes stale-base rejection after current checkout
-      validation. Restore uses the same saved-state mutation guard as Library: an in-flight response
-      must never replace newer local edits. The source revision remains immutable; restore creates a
-      new revision through the ordinary guarded save transaction.
+      Expected revision and current checkout are required for every save and History restore,
+      including repository callers. Missing HTTP proof fails closed and asks the editor to reopen;
+      receipt matching still precedes stale-base rejection after current checkout validation.
+      Restore uses the same saved-state mutation guard as Library: an in-flight response must never
+      replace newer local edits. The source revision remains immutable; restore creates a new
+      revision through the ordinary guarded save transaction.
+    </p>
+    <p>
+      Metadata and lifecycle enforcement: labels, rename, archive, unarchive and purge carry the
+      same exact revision, checksum and current checkout proof. The transaction checks current role,
+      draft status and unexpired token before any write or audit. Explicit lifecycle actions acquire
+      a checkout against the displayed active or archived status, then release it after the action;
+      archive and unarchive invalidate the lease atomically. This permits safe unarchive/purge
+      without granting editing access to archived content. Automatic recovery remains active-only
+      and cannot acquire or transfer a checkout. Stale dashboard actions fail instead of adopting a
+      newer base. Combined name/status requests are rejected rather than partially applying two
+      mutations.
+    </p>
+    <p>
+      Compaction implementation order: (1) verify a native gzip codec over canonical UTF-8 bytes,
+      with a single prefix/suffix splice against a full checkpoint, never a delta chain; (2) add
+      immutable payload storage and readers, then replace all raw JSON readers; (3) store receipt
+      references to immutable revisions with exact response metadata and a 90-day retention pin; (4)
+      rehearse backfill, retention, purge and rollback and measure actual D1 allocation/read/write
+      costs before activating compact writes. Checkpoints occur at most 32 revisions apart; a splice
+      is used only when smaller than a full gzip snapshot after its base-reference overhead.
+      Decoding rejects missing or wrong bases, corrupt gzip, invalid offsets, checksum mismatch and
+      output above the existing 1,500,000-byte document limit. Named revisions and all referenced
+      checkpoints remain protected.
+    </p>
+    <p>
+      Deploy compatible readers while retaining legacy writes first. Compact writes are a separately
+      activated storage-format transition after bridge verification, not a user-facing option.
+      Rollback retains a reader that understands both formats. Native
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/web-standards/"
+        >Workers compression streams</a
+      >
+      avoid a new dependency;
+      <a href="https://developers.cloudflare.com/d1/worker-api/">D1 binary bindings</a> avoid base64
+      expansion. Actual codec CPU and D1 page allocation remain release gates.
     </p>
     <ol>
       <li>

@@ -51,6 +51,7 @@ export interface CheckoutCommand {
 
 export interface AcquireCheckoutCommand extends Omit<CheckoutCommand, 'token' | 'activity'> {
   resumeOnly?: boolean;
+  expectedStatus?: Exclude<DraftStatus, 'deleted'>;
 }
 
 export interface RevisionRecord {
@@ -110,25 +111,25 @@ export interface DeletedDraftReceipt {
   deletedAt: string;
 }
 
-export interface SaveDraftInput {
-  draftId: string;
+export interface DraftMutationProof {
   expectedRevisionId: string;
   expectedChecksum: string;
+  checkoutToken: string;
+}
+
+export interface SaveDraftInput extends DraftMutationProof {
+  draftId: string;
   document: SiteDocument;
   actor: string;
   idempotencyKey: string;
   requestId: string;
   action: DraftAction;
-  checkoutToken: string;
   label?: string;
 }
 
-export interface RestoreRevisionInput {
-  expectedRevisionId: string;
-  checkoutToken: string;
+export interface RestoreRevisionInput extends DraftMutationProof {
   draftId: string;
   revisionId: string;
-  expectedChecksum: string;
   actor: string;
   idempotencyKey: string;
   requestId: string;
@@ -148,20 +149,28 @@ export interface DraftRepository {
     label: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<RevisionRecord>;
   renameDraft(
     draftId: string,
     name: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord>;
   setDraftStatus(
     draftId: string,
     status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord>;
-  purgeDraft(draftId: string, actor: string, requestId: string): Promise<DeletedDraftReceipt>;
+  purgeDraft(
+    draftId: string,
+    actor: string,
+    requestId: string,
+    proof: DraftMutationProof,
+  ): Promise<DeletedDraftReceipt>;
   listCheckoutAvailability(actor: string, now?: string): Promise<DraftCheckoutAvailability[]>;
   acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout>;
   touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout>;

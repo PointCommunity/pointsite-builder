@@ -1,4 +1,6 @@
 // @vitest-environment node
+
+import { acquireDraftProof } from '../fixtures/draft-proof';
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -331,8 +333,19 @@ it('purges archived Library rows, operation records and all image versions with 
     action: 'upload',
     image: { filename: 'private.png', contentType: 'image/png', bytes: png(), altText: 'Private' },
   });
-  await repository.setDraftStatus(added.draft.id, 'archived', actor, 'archive');
-  await repository.purgeDraft(added.draft.id, actor, 'purge');
+  await repository.setDraftStatus(
+    added.draft.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, added.draft.id, actor),
+  );
+  await repository.purgeDraft(
+    added.draft.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, added.draft.id, actor),
+  );
   for (const table of ['draft_library_items', 'draft_library_operations', 'draft_asset_versions'])
     expect(await database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first('count')).toBe(0);
   expect(

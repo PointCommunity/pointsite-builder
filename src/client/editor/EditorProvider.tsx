@@ -10,7 +10,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
-import type { DraftCheckout, DraftRecord } from '../../server/repositories/contracts';
+import type {
+  DraftCheckout,
+  DraftRecord,
+  RevisionRecord,
+} from '../../server/repositories/contracts';
 import { api } from '../api';
 import { PendingJournal } from './pending-journal';
 import type {
@@ -47,6 +51,7 @@ interface EditorValue {
   discardLocal: () => Promise<void>;
   stopAutosave: () => void;
   renameDraft: (name: string) => Promise<void>;
+  labelRevision: (revisionId: string, label: string) => Promise<RevisionRecord>;
   restoreRevision: (revisionId: string) => Promise<void>;
   runLibraryMutation: (
     operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
@@ -101,6 +106,18 @@ export function EditorProvider({
     () => controller.snapshot,
   );
   const savedMutationPending = useRef(false);
+  const mutationContext = useCallback((): LibraryMutationContext => {
+    const { draft } = controller.snapshot;
+    if (!checkout || draft.status !== 'active')
+      throw new Error('Reopen this draft before continuing.');
+    return {
+      draftId: draft.id,
+      expectedChecksum: draft.revision.checksum,
+      expectedRevisionId: draft.latestRevisionId,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }, [checkout, controller]);
   const runSavedMutation = useCallback(
     async <T,>(
       operation: (context: LibraryMutationContext) => Promise<{ draft: DraftRecord; result: T }>,
@@ -129,13 +146,7 @@ export function EditorProvider({
           throw new Error(
             'The draft changed while preparing this action. Wait for autosave, then try again.',
           );
-        const result = await operation({
-          draftId: before.draft.id,
-          expectedChecksum: before.draft.revision.checksum,
-          expectedRevisionId: before.draft.latestRevisionId,
-          checkoutToken: checkout.token,
-          idempotencyKey: crypto.randomUUID(),
-        });
+        const result = await operation(mutationContext());
         if (controller.snapshot !== before)
           throw new Error(
             'The change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
@@ -153,7 +164,7 @@ export function EditorProvider({
         savedMutationPending.current = false;
       }
     },
-    [checkout, controller],
+    [checkout, controller, mutationContext],
   );
 
   const runLibraryMutation = useCallback(
@@ -214,10 +225,14 @@ export function EditorProvider({
 
   const renameDraft = useCallback(
     async (name: string) => {
-      const renamed = await api.renameDraft(initialDraft.id, name);
+      const renamed = await api.renameDraft(mutationContext(), name);
       controller.updateDraftName(renamed);
     },
-    [controller, initialDraft.id],
+    [controller, mutationContext],
+  );
+  const labelRevision = useCallback(
+    (revisionId: string, label: string) => api.labelRevision(mutationContext(), revisionId, label),
+    [mutationContext],
   );
 
   const copyRecoveryData = useCallback(async () => {
@@ -256,6 +271,7 @@ export function EditorProvider({
       discardLocal: () => controller.discardAndReplace(),
       stopAutosave: controller.stopForAuthority,
       renameDraft,
+      labelRevision,
       restoreRevision,
       runLibraryMutation,
     }),
@@ -265,6 +281,7 @@ export function EditorProvider({
       copyRecoveryData,
       reloadLatest,
       renameDraft,
+      labelRevision,
       restoreRevision,
       runLibraryMutation,
     ],

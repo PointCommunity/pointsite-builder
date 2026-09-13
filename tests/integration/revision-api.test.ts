@@ -1,7 +1,9 @@
 // @vitest-environment node
 
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
 import type { SiteDocument } from '../../src/site-kit/types';
-import type { DraftRecord, Role } from '../../src/server/repositories/contracts';
+import type { DraftRecord, DraftRepository, Role } from '../../src/server/repositories/contracts';
 import { createApp } from '../../src/server/index';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 
@@ -13,12 +15,113 @@ const mutationHeaders = (key: string) => ({
   'idempotency-key': key,
 });
 
+async function proofHeaders(repository: DraftRepository, draftId: string, key: string) {
+  const proof = await acquireDraftProof(repository, draftId, 'editor@pointatx.org');
+  return {
+    ...mutationHeaders(key),
+    'x-draft-checkout': proof.checkoutToken,
+    'x-draft-revision': proof.expectedRevisionId,
+    'if-match': `"${proof.expectedChecksum}"`,
+  };
+}
+
 async function json<T>(response: Response): Promise<T> {
   const value: unknown = JSON.parse(await response.text());
   return value as T;
 }
 
 describe('revision and lifecycle API', () => {
+  it.each(['label', 'rename', 'archive', 'unarchive', 'purge'] as const)(
+    'requires current proof for %s without partial writes',
+    async (operation) => {
+      const repository = new InMemoryRepository();
+      const actor = 'editor@pointatx.org';
+      const app = createApp({
+        repository,
+        authenticate: () => Promise.resolve({ email: actor, role: 'editor' }),
+        environment: 'test',
+        version: 'test',
+      });
+      const draft = await repository.createDraft({
+        name: 'Proof required',
+        document: (await import('../../src/site-kit/default-site')).defaultSiteDocument,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'create',
+      });
+      if (operation === 'unarchive' || operation === 'purge')
+        await repository.setDraftStatus(
+          draft.id,
+          'archived',
+          actor,
+          'archive',
+          await acquireDraftProof(repository, draft.id, actor),
+        );
+      const headers = await proofHeaders(repository, draft.id, crypto.randomUUID());
+      const before = await repository.getDraft(draft.id);
+      const audits = structuredClone(repository.auditEvents);
+      for (const [header, value, status] of [
+        ['x-draft-checkout', null, 428],
+        ['x-draft-revision', null, 428],
+        ['if-match', null, 428],
+        ['x-draft-checkout', crypto.randomUUID(), 409],
+        ['x-draft-revision', crypto.randomUUID(), 409],
+      ] as const) {
+        const proof = new Headers(headers);
+        if (value === null) proof.delete(header);
+        else proof.set(header, value);
+        const response = await app.request(
+          `${origin}/api/drafts/${draft.id}${operation === 'label' ? `/revisions/${draft.latestRevisionId}` : ''}`,
+          {
+            method: operation === 'purge' ? 'DELETE' : 'PATCH',
+            headers: proof,
+            body: JSON.stringify(
+              operation === 'label'
+                ? { label: 'Denied' }
+                : operation === 'rename'
+                  ? { name: 'Denied' }
+                  : operation === 'purge'
+                    ? { confirmation: 'DELETE' }
+                    : { status: operation === 'archive' ? 'archived' : 'active' },
+            ),
+          },
+        );
+        expect(response.status).toBe(status);
+        expect(await repository.getDraft(draft.id)).toEqual(before);
+        expect(repository.auditEvents).toEqual(audits);
+      }
+      const combined = await app.request(`${origin}/api/drafts/${draft.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ name: 'Partial rename', status: 'active' }),
+      });
+      expect(combined.status).toBe(422);
+      expect(await repository.getDraft(draft.id)).toEqual(before);
+      if (before.status === 'archived') {
+        await expect(
+          repository.acquireCheckout({
+            draftId: draft.id,
+            actor,
+            clientId: 'metadata-fixture-client',
+            requestId: 'resume',
+            resumeOnly: true,
+            expectedStatus: 'archived',
+          }),
+        ).rejects.toThrow();
+        await expect(
+          repository.assertCheckout(draft.id, actor, headers['x-draft-checkout']),
+        ).rejects.toThrow();
+        await repository.releaseCheckout({
+          draftId: draft.id,
+          actor,
+          clientId: 'metadata-fixture-client',
+          requestId: 'release',
+          token: headers['x-draft-checkout'],
+        });
+      }
+    },
+  );
+
   it('renames by stable ID, validates names and roles, and preserves history through recovery', async () => {
     const repository = new InMemoryRepository();
     let role: Role = 'editor';
@@ -43,10 +146,10 @@ describe('revision and lifecycle API', () => {
       requestId: 'other',
     });
     const revisions = await repository.listRevisions(created.id);
-    const rename = (name: string) =>
+    const rename = async (name: string) =>
       app.request(`${origin}/api/drafts/${created.id}`, {
         method: 'PATCH',
-        headers: mutationHeaders(crypto.randomUUID()),
+        headers: await proofHeaders(repository, created.id, crypto.randomUUID()),
         body: JSON.stringify({ name }),
       });
     for (const nextRole of ['editor', 'publisher', 'administrator'] as const) {
@@ -71,12 +174,19 @@ describe('revision and lifecycle API', () => {
     expect(await repository.getDraft(created.id)).toEqual(beforeInvalid);
     role = 'editor';
     expect((await rename('x'.repeat(100))).status).toBe(200);
-    await repository.setDraftStatus(created.id, 'archived', 'editor@pointatx.org', 'archive');
+    await repository.setDraftStatus(
+      created.id,
+      'archived',
+      'editor@pointatx.org',
+      'archive',
+      await acquireDraftProof(repository, created.id, 'editor@pointatx.org'),
+    );
     const recovered = await repository.setDraftStatus(
       created.id,
       'active',
       'editor@pointatx.org',
       'recover',
+      await acquireDraftProof(repository, created.id, 'editor@pointatx.org'),
     );
     expect(recovered.id).toBe(created.id);
     expect(recovered.name).toBe('x'.repeat(100));
@@ -131,7 +241,12 @@ describe('revision and lifecycle API', () => {
       `${origin}/api/drafts/${created.id}/revisions/${created.revision.id}`,
       {
         method: 'PATCH',
-        headers: mutationHeaders('label-revision-001'),
+        headers: {
+          ...mutationHeaders('label-revision-001'),
+          'x-draft-checkout': checkout.token,
+          'x-draft-revision': saved.revision.id,
+          'if-match': `"${saved.revision.checksum}"`,
+        },
         body: JSON.stringify({ label: 'Before homepage refresh' }),
       },
     );
@@ -227,41 +342,42 @@ describe('revision and lifecycle API', () => {
 
     const archived = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PATCH',
-      headers: mutationHeaders('archive-draft-0001'),
+      headers: await proofHeaders(repository, created.id, 'archive-draft-0001'),
       body: JSON.stringify({ status: 'archived' }),
     });
     expect(await json<{ status: string }>(archived)).toMatchObject({ status: 'archived' });
     const recovered = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PATCH',
-      headers: mutationHeaders('recover-draft-0001'),
-      body: JSON.stringify({ status: 'active', name: 'Recovered draft' }),
+      headers: await proofHeaders(repository, created.id, 'recover-draft-0001'),
+      body: JSON.stringify({ status: 'active' }),
     });
     expect(await json<{ status: string; name: string }>(recovered)).toMatchObject({
       status: 'active',
-      name: 'Recovered draft',
+      name: 'Lifecycle flow',
     });
     const activeDelete = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'DELETE',
-      headers: mutationHeaders('delete-draft-00001'),
+      headers: await proofHeaders(repository, created.id, 'delete-draft-00001'),
       body: JSON.stringify({ confirmation: 'DELETE' }),
     });
     expect(activeDelete.status).toBe(409);
 
     await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PATCH',
-      headers: mutationHeaders('rearchive-draft-001'),
+      headers: await proofHeaders(repository, created.id, 'rearchive-draft-001'),
       body: JSON.stringify({ status: 'archived' }),
     });
     const wrongCase = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'DELETE',
-      headers: mutationHeaders('delete-draft-wrong1'),
+      headers: await proofHeaders(repository, created.id, 'delete-draft-wrong1'),
       body: JSON.stringify({ confirmation: 'delete' }),
     });
     expect(wrongCase.status).toBe(422);
 
+    const deleteProof = await proofHeaders(repository, created.id, 'delete-draft-00002');
     const deleted = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'DELETE',
-      headers: mutationHeaders('delete-draft-00002'),
+      headers: deleteProof,
       body: JSON.stringify({ confirmation: 'DELETE' }),
     });
     const receipt = await json<{ id: string; status: string; deletedAt: string }>(deleted);
@@ -273,7 +389,7 @@ describe('revision and lifecycle API', () => {
     expect(typeof receipt.deletedAt).toBe('string');
     const denied = await app.request(`${origin}/api/drafts/${created.id}`, {
       method: 'PATCH',
-      headers: mutationHeaders('undelete-draft-001'),
+      headers: { ...deleteProof, 'idempotency-key': 'undelete-draft-001' },
       body: JSON.stringify({ status: 'active' }),
     });
     expect(denied.status).toBe(404);

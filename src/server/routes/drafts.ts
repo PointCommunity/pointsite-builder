@@ -27,7 +27,10 @@ const SaveDraftSchema = z.strictObject({
   label: z.string().trim().max(100).optional(),
 });
 const ClientSchema = z.strictObject({ clientId: z.string().min(16).max(100) });
-const AcquireCheckoutSchema = ClientSchema.extend({ resumeOnly: z.boolean().optional() });
+const AcquireCheckoutSchema = ClientSchema.extend({
+  resumeOnly: z.boolean().optional(),
+  expectedStatus: z.enum(['active', 'archived']).optional(),
+});
 const ViewStateSchema = z.strictObject({
   draftId: z.uuid(),
   panel: z.enum(['layout', 'forms', 'library', 'preview', 'history', 'settings', 'admin']),
@@ -126,6 +129,7 @@ export function createDraftRoutes(
         actor: actor.email,
         clientId: parsed.data.clientId,
         resumeOnly: parsed.data.resumeOnly,
+        expectedStatus: parsed.data.expectedStatus,
         requestId: context.get('requestId'),
       }),
     );

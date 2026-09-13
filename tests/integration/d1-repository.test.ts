@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -114,6 +116,95 @@ describe('D1 draft repository', () => {
     },
   );
 
+  it.each(['label', 'rename', 'archive', 'unarchive', 'purge'] as const)(
+    'rejects a changed revision or expired or superseded lease at metadata commit (%s)',
+    async (operation) => {
+      const { database, repository } = await repositoryFixture();
+      const actor = 'editor@pointatx.org';
+      for (const race of ['revision', 'expiry', 'token'] as const) {
+        const draft = await repository.createDraft({
+          name: 'Metadata authority',
+          document: defaultSiteDocument,
+          actor,
+          idempotencyKey: crypto.randomUUID(),
+          requestId: 'create',
+        });
+        if (operation === 'unarchive' || operation === 'purge')
+          await repository.setDraftStatus(
+            draft.id,
+            'archived',
+            actor,
+            'archive',
+            await acquireDraftProof(repository, draft.id, actor),
+          );
+        const proof = await acquireDraftProof(repository, draft.id, actor);
+        const before = await repository.getDraft(draft.id);
+        const counts = () =>
+          database
+            .prepare(
+              `SELECT (SELECT COUNT(*) FROM revisions) AS revisions, (SELECT COUNT(*) FROM revision_labels) AS labels, (SELECT COUNT(*) FROM audit_events) AS audits`,
+            )
+            .first();
+        const beforeCounts = await counts();
+        const delayed = new D1DraftRepository({
+          prepare: (sql: string) => database.prepare(sql),
+          batch: async (statements: D1PreparedStatement[]) => {
+            if (race === 'revision')
+              await database
+                .prepare('UPDATE drafts SET latest_revision_id=NULL WHERE id=?')
+                .bind(draft.id)
+                .run();
+            if (race === 'expiry')
+              await database
+                .prepare(
+                  "UPDATE draft_checkouts SET expires_at='2000-01-01T00:00:00.000Z' WHERE draft_id=?",
+                )
+                .bind(draft.id)
+                .run();
+            if (race === 'token')
+              await database
+                .prepare('UPDATE draft_checkouts SET token_hash=? WHERE draft_id=?')
+                .bind('f'.repeat(64), draft.id)
+                .run();
+            try {
+              return await database.batch(statements);
+            } finally {
+              if (race === 'revision')
+                await database
+                  .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+                  .bind(draft.latestRevisionId, draft.id)
+                  .run();
+            }
+          },
+        } as unknown as D1Database);
+        const execute = () => {
+          if (operation === 'label')
+            return delayed.labelRevision(
+              draft.id,
+              draft.latestRevisionId,
+              'Denied',
+              actor,
+              'label',
+              proof,
+            );
+          if (operation === 'rename')
+            return delayed.renameDraft(draft.id, 'Denied', actor, 'rename', proof);
+          if (operation === 'purge') return delayed.purgeDraft(draft.id, actor, 'purge', proof);
+          return delayed.setDraftStatus(
+            draft.id,
+            operation === 'archive' ? 'archived' : 'active',
+            actor,
+            'status',
+            proof,
+          );
+        };
+        await expect(execute()).rejects.toBeInstanceOf(ConflictError);
+        expect(await repository.getDraft(draft.id)).toEqual(before);
+        expect(await counts()).toEqual(beforeCounts);
+      }
+    },
+  );
+
   it.each(['create', 'save', 'no-op', 'label', 'rename', 'archive', 'purge', 'touch'])(
     'rejects role revocation at the committing boundary (%s)',
     async (operation) => {
@@ -133,7 +224,21 @@ describe('D1 draft repository', () => {
         requestId: 'checkout',
       });
       if (operation === 'purge')
-        await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
+        await repository.setDraftStatus(
+          draft.id,
+          'archived',
+          actor,
+          'archive',
+          await acquireDraftProof(repository, draft.id, actor),
+        );
+      const proof =
+        operation === 'purge'
+          ? await acquireDraftProof(repository, draft.id, actor)
+          : {
+              expectedRevisionId: draft.latestRevisionId,
+              expectedChecksum: draft.revision.checksum,
+              checkoutToken: checkout.token,
+            };
       const counts = () =>
         database
           .prepare(
@@ -168,12 +273,13 @@ describe('D1 draft repository', () => {
             'Denied label',
             actor,
             'label',
+            proof,
           );
         if (operation === 'rename')
-          return delayed.renameDraft(draft.id, 'Denied rename', actor, 'rename');
+          return delayed.renameDraft(draft.id, 'Denied rename', actor, 'rename', proof);
         if (operation === 'archive')
-          return delayed.setDraftStatus(draft.id, 'archived', actor, 'archive');
-        if (operation === 'purge') return delayed.purgeDraft(draft.id, actor, 'purge');
+          return delayed.setDraftStatus(draft.id, 'archived', actor, 'archive', proof);
+        if (operation === 'purge') return delayed.purgeDraft(draft.id, actor, 'purge', proof);
         if (operation === 'touch')
           return delayed.touchCheckout({
             draftId: draft.id,
@@ -656,7 +762,7 @@ describe('D1 draft repository', () => {
       idempotencyKey: 'rename-d1-create',
       requestId: 'create',
     });
-    await repository.acquireCheckout({
+    const acquired = await repository.acquireCheckout({
       draftId: draft.id,
       actor: 'editor@pointatx.org',
       clientId: 'rename-browser-01',
@@ -665,7 +771,17 @@ describe('D1 draft repository', () => {
     const revisions = await repository.listRevisions(draft.id);
     const checkout = await repository.ownedCheckout('editor@pointatx.org');
     for (const name of ['Renamed once', 'Renamed twice']) {
-      const renamed = await repository.renameDraft(draft.id, name, 'editor@pointatx.org', 'rename');
+      const renamed = await repository.renameDraft(
+        draft.id,
+        name,
+        'editor@pointatx.org',
+        'rename',
+        {
+          expectedRevisionId: draft.latestRevisionId,
+          expectedChecksum: draft.revision.checksum,
+          checkoutToken: acquired.token,
+        },
+      );
       expect(renamed).toEqual({ ...draft, name, updatedAt: renamed.updatedAt });
       expect(await repository.getDraft(draft.id)).toEqual(renamed);
       expect(await repository.listRevisions(draft.id)).toEqual(revisions);
@@ -850,6 +966,11 @@ describe('D1 draft repository', () => {
           'Original',
           'editor@pointatx.org',
           'd1-request-4',
+          {
+            expectedRevisionId: saved.latestRevisionId,
+            expectedChecksum: saved.revision.checksum,
+            checkoutToken: saveCheckout.token,
+          },
         )
       ).label,
     ).toBe('Original');
@@ -875,6 +996,7 @@ describe('D1 draft repository', () => {
           'Renamed D1 draft',
           'editor@pointatx.org',
           'd1-request-6',
+          await acquireDraftProof(repository, created.id, 'editor@pointatx.org'),
         )
       ).name,
     ).toBe('Renamed D1 draft');
@@ -885,11 +1007,19 @@ describe('D1 draft repository', () => {
           'archived',
           'editor@pointatx.org',
           'd1-request-7',
+          await acquireDraftProof(repository, created.id, 'editor@pointatx.org'),
         )
       ).status,
     ).toBe('archived');
     expect(
-      (await repository.purgeDraft(created.id, 'editor@pointatx.org', 'd1-request-8')).status,
+      (
+        await repository.purgeDraft(
+          created.id,
+          'editor@pointatx.org',
+          'd1-request-8',
+          await acquireDraftProof(repository, created.id, 'editor@pointatx.org'),
+        )
+      ).status,
     ).toBe('deleted');
     expect(await repository.listDrafts()).toEqual([]);
     expect(await repository.listDrafts('deleted')).toEqual([]);

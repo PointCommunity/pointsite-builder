@@ -526,7 +526,7 @@ function Workspace({
       ) : null}
       {panel === 'history' ? (
         <main id="main-content" className="single-panel">
-          <RevisionHistory />
+          <RevisionHistory editable={editable} />
         </main>
       ) : null}
       {panel === 'admin' ? (
