@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { DraftRecord } from '../repositories/contracts';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
+import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -67,6 +68,10 @@ const activeCandidate = `COALESCE(json_extract(candidate_json,'$.publicationProt
 
 export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
+
+  recoverQueued(input: QueuedRecoveryInput) {
+    return recoverQueuedPublication(this.database, input);
+  }
 
   /** Capture once. Browser closure and later edits cannot substitute these inputs. */
   async captureStaging(input: {
@@ -287,6 +292,7 @@ export class D1PublishJobStore {
     return {
       attempts: row.dispatch_count,
       retryAt: row.dispatch_after,
+      reserved: row.run_id !== null,
       needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ClientApiError, type CandidateTuple } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 import {
@@ -47,6 +47,8 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
   const [monitoringPaused, setMonitoringPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<DisplayActionFailure | null>(null);
+  const publishRequest = useRef<{ scope: string; key: string } | null>(null);
+  const recoveryRequest = useRef<{ scope: string; key: string } | null>(null);
 
   const loadWorkflow = useCallback(async () => {
     try {
@@ -148,13 +150,57 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         current = refreshed;
       }
       if (current.availability.state === 'busy') return;
+      const scope = JSON.stringify([
+        draft.id,
+        draft.revision.id,
+        draft.revision.checksum,
+        current.currentStagingSha,
+        current.job?.id,
+        current.job?.status,
+      ]);
+      if (publishRequest.current?.scope !== scope)
+        publishRequest.current = { scope, key: crypto.randomUUID() };
       await api.publishStaging(
         draft.id,
         draft.revision.id,
         draft.revision.checksum,
         current.currentStagingSha,
+        publishRequest.current.key,
       );
+      publishRequest.current = null;
       setMonitoringStartedAt(Date.now());
+      setMonitoringPaused(false);
+      await loadWorkflow();
+    } catch (error) {
+      setActionError(actionFailure(error));
+      await loadWorkflow();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recoverQueued = async (action: 'retry' | 'cancel') => {
+    const job = snapshot?.job;
+    if (
+      job?.status !== 'queued' ||
+      job.publicationProtocol !== 2 ||
+      job.dispatch?.reserved !== false
+    )
+      return;
+    const scope = JSON.stringify([job.id, action, job.dispatch.attempts, job.dispatch.retryAt]);
+    if (recoveryRequest.current?.scope !== scope)
+      recoveryRequest.current = { scope, key: crypto.randomUUID() };
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.recoverQueuedPublication(
+        job.id,
+        action,
+        job.dispatch.attempts,
+        recoveryRequest.current.key,
+      );
+      recoveryRequest.current = null;
+      setMonitoringStartedAt(action === 'retry' ? Date.now() : null);
       setMonitoringPaused(false);
       await loadWorkflow();
     } catch (error) {
@@ -406,6 +452,30 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <strong>What this means: </strong>
           {nextStep.effect}
         </p>
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.status === 'queued' &&
+        snapshot.job.dispatch?.reserved === false ? (
+          <div className="publish-actions">
+            {snapshot.job.dispatch.needsAttention ? (
+              <button
+                className="button"
+                type="button"
+                disabled={busy || Date.parse(snapshot.job.dispatch.retryAt) > Date.now()}
+                onClick={() => void recoverQueued('retry')}
+              >
+                Retry queued publication
+              </button>
+            ) : null}
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('cancel')}
+            >
+              Cancel queued publication
+            </button>
+          </div>
+        ) : null}
         {lifecycle.phase === 'accepted' ? (
           <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
             Open accepted Staging site

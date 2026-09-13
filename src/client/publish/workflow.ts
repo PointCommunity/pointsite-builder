@@ -11,6 +11,7 @@ export interface StagingWorkflowJob {
     attempts: number;
     retryAt: string;
     needsAttention: boolean;
+    reserved?: boolean;
     failureCode?: string;
     workflowUrl?: string;
   };
@@ -157,12 +158,14 @@ export function deriveStagingWorkflow(input: {
   );
 
   const captured = job?.publicationProtocol === 2;
-  if (captured && job.dispatch?.needsAttention)
+  if (captured && job.status === 'queued' && job.dispatch?.needsAttention)
     return state(
       'paused',
       2,
       'Publication needs attention',
-      'Automatic dispatch retries stopped. Your captured version is saved. Ask a site maintainer to reconcile this job before trying again.',
+      job.dispatch.reserved === false
+        ? 'Automatic dispatch retries stopped. Your captured version is saved. Retry after the recorded wait, or cancel this queued publication.'
+        : 'Automatic dispatch retries stopped. Your captured version is saved. Check status to reconcile its native execution.',
       { canRefresh: true },
     );
   if (

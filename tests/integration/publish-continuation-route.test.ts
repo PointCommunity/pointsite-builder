@@ -25,6 +25,7 @@ function setup(role: Role = 'publisher') {
     continuePublication: vi.fn().mockResolvedValue(running),
     getJob: vi.fn().mockResolvedValue({ id: jobId, status: 'running' }),
     publish: vi.fn().mockResolvedValue(running),
+    recoverQueued: vi.fn().mockResolvedValue({ recovered: true }),
   };
   const app = createApp({
     repository: new InMemoryRepository(),
@@ -37,6 +38,57 @@ function setup(role: Role = 'publisher') {
   return { app, publisher };
 }
 describe('publication continuation API', () => {
+  it('protects queued recovery and binds its request to the authenticated actor', async () => {
+    const { app, publisher } = setup();
+    const url = `https://builder.pointatx.org/api/publish/jobs/${jobId}/recovery`;
+    const body = JSON.stringify({ action: 'cancel', expectedAttempts: 6 });
+    expect((await app.request(url, { method: 'POST', headers, body })).status).toBe(200);
+    expect(publisher.recoverQueued).toHaveBeenCalledWith({
+      jobId,
+      action: 'cancel',
+      expectedAttempts: 6,
+      actor: 'publisher@pointatx.org',
+      requestId: expect.any(String) as string,
+      idempotencyKey: headers['idempotency-key'],
+    });
+    publisher.recoverQueued.mockClear();
+    expect((await app.request(url)).status).toBe(404);
+    expect(
+      (
+        await app.request(url, {
+          method: 'POST',
+          headers: { ...headers, origin: 'https://attacker.invalid' },
+          body,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await app.request(url, {
+          method: 'POST',
+          headers: { ...headers, 'idempotency-key': '' },
+          body,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await app.request(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ action: 'cancel', expectedAttempts: 6, actor: 'github:1' }),
+        })
+      ).status,
+    ).toBe(422);
+    expect((await setup('viewer').app.request(url, { method: 'POST', headers, body })).status).toBe(
+      403,
+    );
+    expect(publisher.recoverQueued).not.toHaveBeenCalled();
+    publisher.recoverQueued.mockRejectedValueOnce(new Error('PUBLICATION_RECOVERY_CHANGED'));
+    expect((await app.request(url, { method: 'POST', headers, body })).status).toBe(409);
+    publisher.recoverQueued.mockRejectedValueOnce(new Error('PUBLISH_AUTHORITY_CHANGED'));
+    expect((await app.request(url, { method: 'POST', headers, body })).status).toBe(403);
+  });
   it('uses explicit protected POSTs and returns accepted progress', async () => {
     const { app, publisher } = setup();
     const response = await app.request(

@@ -232,6 +232,12 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Your draft is safe. Ask a Builder Administrator or site maintainer to restore the publishing connection, then try again.',
       };
+    case 'PUBLICATION_RECOVERY_CHANGED':
+      return {
+        title: 'Publication changed while you were recovering it',
+        guidance:
+          'Builder refreshed the saved status. Check the current publication before choosing another recovery action.',
+      };
     case 'PUBLISH_IN_PROGRESS':
     case 'PUBLISH_SLOT_BUSY':
     case 'PUBLISH_JOB_NOT_VERIFIABLE':

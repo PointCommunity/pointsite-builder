@@ -643,6 +643,19 @@
 
     <h2>Current implementation evidence and migration sequence</h2>
     <p>
+      Queued-job recovery contract: an authorized Publisher or Administrator can retry exhausted
+      dispatch or cancel a job before any native run reserves it. Retry retains the exact job, nonce
+      and captured inputs; it resets only bounded dispatch state. Cancellation atomically changes
+      status and releases its slot, fencing any delayed dispatch before native reservation. A
+      concurrent reservation wins or loses in the same transaction; time alone never cancels a
+      reserved execution. Each recovery action has a request-bound receipt and one audit event;
+      replay cannot reset backoff twice or cancel a later job. Retry requires the original actor's
+      current publication authority and unrevoked Production acceptance. Cancellation requires the
+      acting user's destination role but does not reinstate revoked publishing authority. Reserved
+      or running jobs require native terminal-state reconciliation before slot release; that path
+      and previous-release restoration remain separate implementation gates.
+    </p>
+    <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
     </p>
     <ul>

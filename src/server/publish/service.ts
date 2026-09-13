@@ -14,6 +14,7 @@ import type { D1PublishJobStore, PublishJobRecord } from './jobs';
 import type { D1PublishPreflightStore } from './preflights';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { z } from 'zod';
+import type { QueuedRecoveryInput } from './recovery';
 
 export interface PublisherConfig {
   appId: string;
@@ -70,6 +71,11 @@ export class StagingPublisher {
   async getJob(id: string) {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     return this.jobs.getById(id);
+  }
+
+  recoverQueued(input: QueuedRecoveryInput) {
+    if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    return this.jobs.recoverQueued(input);
   }
 
   async workflowForDraft(draftId: string) {

@@ -16,6 +16,7 @@ import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { D1ProductionPublisher } from '../../src/server/publish/promotion';
+import { recoverQueuedPublication } from '../../src/server/publish/recovery';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { D1ApprovalService } from '../../src/server/approvals/service';
@@ -360,6 +361,130 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
     attempts: 6,
     needsAttention: true,
   });
+  const recovery = {
+    jobId: job.id,
+    action: 'retry' as const,
+    expectedAttempts: 6,
+    actor: subject,
+    idempotencyKey: 'manual-dispatch-retry',
+    requestId: 'manual-retry',
+  };
+  await expect(
+    recoverQueuedPublication(database, { ...recovery, expectedAttempts: 5 }),
+  ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+  await database.prepare("UPDATE user_roles SET role='editor' WHERE email=?").bind(subject).run();
+  await expect(recoverQueuedPublication(database, recovery)).rejects.toThrow(
+    'PUBLISH_AUTHORITY_CHANGED',
+  );
+  await database
+    .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+    .bind(subject)
+    .run();
+  await Promise.all([
+    recoverQueuedPublication(database, recovery),
+    recoverQueuedPublication(database, recovery),
+  ]);
+  expect(await new D1PublishJobStore(database).dispatchStatus(job.id)).toMatchObject({
+    attempts: 0,
+    needsAttention: false,
+  });
+  expect(
+    await database
+      .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+      .bind(job.id)
+      .first('nonce'),
+  ).toBe(nonce);
+  responseStatus = 204;
+  await dispatchPendingPublication(database, config, fetcher);
+  expect(await new D1PublishJobStore(database).dispatchStatus(job.id)).toMatchObject({
+    attempts: 1,
+  });
+  await recoverQueuedPublication(database, recovery);
+  expect(await new D1PublishJobStore(database).dispatchStatus(job.id)).toMatchObject({
+    attempts: 1,
+  });
+  expect(
+    await database
+      .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='publish.retry-requested'")
+      .first('n'),
+  ).toBe(1);
+  await expect(
+    recoverQueuedPublication(database, { ...recovery, action: 'cancel' }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  const cancel = {
+    ...recovery,
+    action: 'cancel' as const,
+    expectedAttempts: 1,
+    idempotencyKey: 'cancel-queued-publication',
+  };
+  await Promise.all([
+    recoverQueuedPublication(database, cancel),
+    recoverQueuedPublication(database, cancel),
+  ]);
+  expect((await new D1PublishJobStore(database).getById(job.id))?.status).toBe('cancelled');
+  expect(await new D1PublishJobStore(database).cloudAvailability()).toEqual({ state: 'available' });
+  const runner = new D1PublicationRunner(database, () => Promise.resolve(keys.publicKey));
+  const signed = (id: string, jobNonce: string) =>
+    new SignJWT(
+      publicationClaims({
+        target: 'staging',
+        jobId: id,
+        nonce: jobNonce,
+        workflowRevision: 'a'.repeat(40),
+        dispatchRevision: 'b'.repeat(40),
+      }),
+    )
+      .setProtectedHeader({ alg: 'RS256' })
+      .sign(keys.privateKey);
+  await expect(runner.reserve(job.id, await signed(job.id, nonce!))).rejects.toThrow(
+    'PUBLISH_RUNNER_UNAUTHORIZED',
+  );
+  const next = await new D1PublishJobStore(database).captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    idempotencyKey: 'next-after-cancellation',
+    requestId: 'next',
+  });
+  await recoverQueuedPublication(database, cancel);
+  expect(
+    await database
+      .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")
+      .first('job_id'),
+  ).toBe(next.id);
+  const nextNonce = await database
+    .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+    .bind(next.id)
+    .first<string>('nonce');
+  const nextCancel = {
+    ...cancel,
+    jobId: next.id,
+    expectedAttempts: 0,
+    idempotencyKey: 'cancel-reservation-race',
+  };
+  const race = await Promise.allSettled([
+    runner.reserve(next.id, await signed(next.id, nextNonce!)),
+    recoverQueuedPublication(database, nextCancel),
+  ]);
+  expect(race.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+  if (race[0].status === 'fulfilled') {
+    await expect(recoverQueuedPublication(database, nextCancel)).rejects.toThrow(
+      'PUBLICATION_RECOVERY_CHANGED',
+    );
+    expect(
+      await database
+        .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")
+        .first('job_id'),
+    ).toBe(next.id);
+  } else {
+    await expect(runner.reserve(next.id, await signed(next.id, nextNonce!))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    expect(await new D1PublishJobStore(database).cloudAvailability()).toEqual({
+      state: 'available',
+    });
+  }
 }, 30_000);
 
 it('captures cloud inputs without reading image bytes and polls only metadata after later edits', async () => {

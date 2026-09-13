@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { QueuedRecoverySchema } from '../publish/recovery';
 import { requirePublishAccess } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest } from '../http/security';
@@ -247,6 +248,44 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
     } catch (error) {
       if (error instanceof Error && error.message === 'PUBLISH_JOB_NOT_VERIFIABLE')
         throw new ApiError(409, error.message, 'The publish job is not ready for verification');
+      throw error;
+    }
+  });
+  routes.post('/jobs/:jobId/recovery', async (context) => {
+    const actor = requirePublishAccess(context.get('actor'));
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Publishing is not configured');
+    const body = QueuedRecoverySchema.pick({ action: true, expectedAttempts: true }).safeParse(
+      await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
+    );
+    if (!body.success || !z.uuid().safeParse(context.req.param('jobId')).success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the queued publication to recover');
+    try {
+      return context.json(
+        await publisher.recoverQueued({
+          ...body.data,
+          jobId: context.req.param('jobId'),
+          actor: actor.email,
+          requestId: context.get('requestId'),
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing authority changed; refresh your session',
+        );
+      if (
+        error instanceof Error &&
+        ['PUBLICATION_RECOVERY_CHANGED', 'IDEMPOTENCY_CONFLICT'].includes(error.message)
+      )
+        throw new ApiError(
+          409,
+          error.message,
+          'Publication state changed; refresh its status before recovering it',
+        );
       throw error;
     }
   });

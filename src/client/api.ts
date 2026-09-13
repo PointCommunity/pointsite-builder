@@ -311,10 +311,11 @@ export const api = {
     expectedRevisionId: string,
     expectedRevisionChecksum: string,
     expectedBaseSha: string,
+    requestKey?: string,
   ) =>
     request<StagingPublishResponse>('/publish/staging', {
       method: 'POST',
-      headers: mutationHeaders(`staging-${expectedRevisionId}-${expectedBaseSha}`),
+      headers: mutationHeaders(requestKey ?? `staging-${expectedRevisionId}-${expectedBaseSha}`),
       body: JSON.stringify({
         draftId,
         expectedRevisionId,
@@ -327,6 +328,17 @@ export const api = {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
       body: '{}',
+    }),
+  recoverQueuedPublication: (
+    jobId: string,
+    action: 'retry' | 'cancel',
+    expectedAttempts: number,
+    requestKey: string,
+  ) =>
+    request<{ recovered: true }>(`/publish/jobs/${jobId}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ action, expectedAttempts }),
     }),
   refreshStagingVerification: (jobId: string) =>
     request<PublishJobResponse>(`/publish/jobs/${jobId}/verification`, {
