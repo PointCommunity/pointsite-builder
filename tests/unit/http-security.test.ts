@@ -85,6 +85,17 @@ describe('HTTP security controls', () => {
     expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
   });
 
+  it('explains the publication media limit without masking it as an internal error', async () => {
+    const response = errorResponse(new Error('CANDIDATE_MEDIA_TOO_LARGE'), 'request-media-limit');
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      code: 'CANDIDATE_MEDIA_TOO_LARGE',
+      message:
+        'Draft media exceeds the 20 MiB publishing limit. Reduce image sizes before publishing.',
+      requestId: 'request-media-limit',
+    });
+  });
+
   it('limits repeated actor mutations in a bounded window', () => {
     const limiter = new SlidingWindowRateLimiter(2, 60_000);
     expect(limiter.consume('editor@pointatx.org', 1_000)).toBe(true);

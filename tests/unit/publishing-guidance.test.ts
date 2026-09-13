@@ -86,6 +86,11 @@ describe('non-technical publishing guidance', () => {
       /draft is safe/i,
     ],
     ['INTERNAL_ERROR', 'The publishing service needs attention', /support reference/i],
+    [
+      'CANDIDATE_MEDIA_TOO_LARGE',
+      'Draft media exceeds the publishing limit',
+      /20 MiB.*reduce image sizes/i,
+    ],
     ['REQUEST_FAILED', 'Builder could not complete that action', /try the same action once/i],
   ])('maps %s to a plain-language recovery', (code, title, guidance) => {
     const recovery = getActionFailureGuidance(code);

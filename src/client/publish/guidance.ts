@@ -265,6 +265,12 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Your draft and Staging are unchanged. Use Check and publish again so Builder can validate the exact saved revision.',
       };
+    case 'CANDIDATE_MEDIA_TOO_LARGE':
+      return {
+        title: 'Draft media exceeds the publishing limit',
+        guidance:
+          'The total media in this draft must fit within 20 MiB. Reduce image sizes, save the draft, then check and publish again.',
+      };
     case 'INTERNAL_ERROR':
       return {
         title: 'The publishing service needs attention',
