@@ -87,7 +87,7 @@ export const QueuedRecoverySchema = z.strictObject({
 });
 export type QueuedRecoveryInput = z.infer<typeof QueuedRecoverySchema>;
 
-/** Reserved execution additionally needs terminal proof before any external-write authorization. */
+/** A stopped run may retain a confirmed Git commit, but must never have authorized deployment. */
 export async function recoverQueuedPublication(
   database: D1Database,
   value: z.infer<typeof QueuedRecoverySchema>,
@@ -129,7 +129,7 @@ export async function recoverQueuedPublication(
     FROM publication_runs pr JOIN publication_inputs pi ON pi.job_id=pr.job_id
     JOIN publication_slots ps ON ps.job_id=pr.job_id JOIN publish_jobs j ON j.id=pr.job_id
     WHERE pr.job_id=? AND pr.reserved_run_id IS NOT NULL AND j.status IN ('queued','running')
-      AND pr.commit_authorized_at IS NULL AND pr.deploy_authorized_at IS NULL AND j.result_sha IS NULL
+      AND pr.deploy_authorized_at IS NULL
   `,
           )
           .bind(input.jobId)
@@ -145,10 +145,10 @@ export async function recoverQueuedPublication(
         JOIN publication_slots ps ON ps.job_id=j.id JOIN publication_runs pr ON pr.job_id=j.id
         JOIN user_roles actor ON actor.email=? LEFT JOIN user_roles original ON original.email=j.requested_by
         JOIN drafts d ON d.id=pi.draft_id
-        WHERE j.id=? AND j.result_sha IS NULL
-          AND ((?!='reconcile' AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL) OR
+        WHERE j.id=?
+          AND ((?!='reconcile' AND j.status='queued' AND j.result_sha IS NULL AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL) OR
             (j.status IN ('queued','running') AND pr.reserved_run_id=? AND pr.reserved_run_attempt=?
-              AND pr.commit_authorized_at IS NULL AND pr.deploy_authorized_at IS NULL))
+              AND pr.deploy_authorized_at IS NULL))
           AND pr.dispatch_count=? AND actor.active=1
           AND ((ps.target='staging' AND j.environment='staging' AND actor.role IN ('publisher','administrator'))
             OR (ps.target='production' AND j.environment='production-merge' AND actor.role='administrator'))

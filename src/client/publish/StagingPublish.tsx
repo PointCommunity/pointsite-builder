@@ -489,7 +489,8 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         snapshot.job.dispatch?.canReconcileStopped === true ? (
           <div className="publish-actions">
             <p>
-              If the cloud run stopped before publishing, Builder can check it and release this job.
+              If the cloud run stopped before deployment, Builder can check it and release this job.
+              Any recorded source commit stays in the publication history.
             </p>
             <button
               className="button"

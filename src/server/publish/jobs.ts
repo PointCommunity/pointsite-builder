@@ -280,8 +280,8 @@ export class D1PublishJobStore {
       .prepare(
         `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,
       COALESCE(run_id,reserved_run_id) AS run_id,
-      (reserved_run_id IS NOT NULL AND commit_authorized_at IS NULL AND deploy_authorized_at IS NULL
-        AND j.result_sha IS NULL AND j.status IN ('queued','running')) AS can_reconcile
+      (reserved_run_id IS NOT NULL AND deploy_authorized_at IS NULL
+        AND j.status IN ('queued','running')) AS can_reconcile
       FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
       )
       .bind(id)

@@ -240,8 +240,8 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it.each(['reserved', 'claimed', 'authorization-race'] as const)(
-  'reconciles terminal %s execution only before external-write authorization',
+it.each(['reserved', 'claimed', 'committed', 'authorization-race'] as const)(
+  'reconciles terminal %s execution only before deployment authorization',
   async (mode) => {
     const { database, repository, createInput } = await fixture();
     const subject = 'github:12345';
@@ -283,6 +283,17 @@ it.each(['reserved', 'claimed', 'authorization-race'] as const)(
         .sign(keys.privateKey);
     await runner.reserve(job.id, await signed('23456'));
     if (mode !== 'reserved') await runner.claim(job.id, await signed('34567'));
+    if (mode === 'committed')
+      await database.batch([
+        database
+          .prepare(
+            "UPDATE publication_runs SET commit_authorized_at='fixture-authorized' WHERE job_id=?",
+          )
+          .bind(job.id),
+        database
+          .prepare('UPDATE publish_jobs SET result_sha=? WHERE id=?')
+          .bind('c'.repeat(40), job.id),
+      ]);
     expect(await store.dispatchStatus(job.id)).toMatchObject({
       reserved: true,
       canReconcileStopped: true,
@@ -318,7 +329,7 @@ it.each(['reserved', 'claimed', 'authorization-race'] as const)(
       );
       if (url === root && authorizeDuringRead)
         await database
-          .prepare("UPDATE publication_runs SET commit_authorized_at='raced' WHERE job_id=?")
+          .prepare("UPDATE publication_runs SET deploy_authorized_at='raced' WHERE job_id=?")
           .bind(job.id)
           .run();
       return Response.json({ ...run, ...override, ...(url === root ? latestOverride : {}) });
@@ -366,6 +377,9 @@ it.each(['reserved', 'claimed', 'authorization-race'] as const)(
       recoverQueuedPublication(database, input, fetcher),
     ]);
     expect((await store.getById(job.id))?.status).toBe('cancelled');
+    expect((await store.getById(job.id))?.resultSha).toBe(
+      mode === 'committed' ? 'c'.repeat(40) : null,
+    );
     expect((await store.cloudAvailability()).state).toBe('available');
     fetcher.mockClear();
     await recoverQueuedPublication(database, input, fetcher);
