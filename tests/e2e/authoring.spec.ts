@@ -1485,10 +1485,55 @@ test('keeps a non-auto desktop grid position identical in canvas and Preview', a
   expect(previewGeometry.width).toBeCloseTo(canvasGeometry.width, 0);
 });
 
+test('preserves the latest resize when Undo precedes the history timer', async ({ page }) => {
+  await page.clock.install();
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+  const handle = canvas.getByRole('button', { name: 'Resize Hero heading width', exact: true });
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(1);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(2);
+  await page.getByRole('button', { name: 'undo', exact: true }).dispatchEvent('click');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(3);
+  const width = () =>
+    controls.saveRequests
+      .at(-1)
+      ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+      ?.blocks.flatMap((section) => section.items)
+      .map((item) => item.element)
+      .find((element) => element.type === 'hero')?.headingWidth.desktop;
+  expect(width()).toBe(95);
+  await expect(page.getByRole('button', { name: 'redo', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'redo', exact: true }).dispatchEvent('click');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(4);
+  expect(width()).toBe(90);
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(5);
+  await handle.press('Control+z');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(6);
+  expect(width()).toBe(90);
+  expect(controls.saveRequests.at(-1)?.action.category).toBe('undo');
+  await handle.press('Control+y');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(7);
+  expect(width()).toBe(85);
+  expect(controls.saveRequests.at(-1)?.action.category).toBe('redo');
+});
+
 test('keeps every page Hero inside the phone canvas and resizes Hero text by drag or keyboard', async ({
   page,
 }) => {
   test.setTimeout(60_000);
+  await page.clock.install();
   const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -1694,6 +1739,9 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     exact: true,
   });
   const orderedBaseline = controls.saveRequests.length;
+  // These two keystrokes deliberately share Puck's 250 ms history entry.
+  // Keep remote acknowledgement timing from changing that grouping across engines.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   const releaseFirstResize = controls.holdNextSave();
   await reloadedHeadingHandle.press('ArrowLeft');
   await expect.poll(() => controls.saveRequests.length).toBe(orderedBaseline + 1);
@@ -1722,6 +1770,8 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     bodyWidth: { desktop: 100, tablet: 100, mobile: requestedDragWidth },
   });
 
+  await page.clock.runFor(300);
+  await page.clock.resume();
   await expect(page.getByText('All changes saved')).toBeVisible();
   const undoBaseline = controls.saveRequests.length;
   await page.getByRole('button', { name: 'undo' }).click();

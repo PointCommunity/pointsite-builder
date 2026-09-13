@@ -1123,9 +1123,15 @@ function VisualEditorImpl({
           setPuckActionIntent({ category: 'redo', context: 'page-content' });
       }}
       onKeyDownCapture={(event) => {
-        if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+        const key = event.key.toLowerCase();
+        if (
+          !(event.metaKey || event.ctrlKey) ||
+          event.altKey ||
+          (key !== 'z' && (key !== 'y' || event.shiftKey))
+        )
+          return;
         setPuckActionIntent({
-          category: event.shiftKey ? 'redo' : 'undo',
+          category: key === 'y' || event.shiftKey ? 'redo' : 'undo',
           context: 'page-content',
         });
       }}

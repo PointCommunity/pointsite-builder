@@ -586,6 +586,16 @@
       mutations.
     </p>
     <p>
+      Undo regression: a controlled browser clock reproduced Puck 0.23.0 skipping the latest resize
+      when Undo precedes its 250 ms history timer. Apply a version- and full-source-hash checked
+      installation patch to flush pending history before backward, forward or indexed navigation;
+      replacing history cancels the pending record. Retain ordinary input coalescing. Exercise rapid
+      Undo/Redo across browsers and remove the patch when upstream passes that regression. The patch
+      uses Node built-ins; CI dependency scans continue to ignore install scripts, and application
+      tests remain local. Ctrl/Cmd+Y now carries the same explicit Redo action attribution as
+      Ctrl/Cmd+Shift+Z, so its canvas change reaches the save queue.
+    </p>
+    <p>
       Compaction implementation order: (1) verify a native gzip codec over canonical UTF-8 bytes,
       with a single prefix/suffix splice against a full checkpoint, never a delta chain; (2) add
       immutable payload storage and readers, then replace all raw JSON readers; (3) store receipt
