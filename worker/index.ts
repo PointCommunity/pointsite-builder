@@ -15,6 +15,7 @@ import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
 import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration';
 import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
+import { D1PublicationRunner } from '../src/server/publish/runner';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
 declare const __BUILDER_SOURCE_CLEAN__: boolean;
@@ -91,6 +92,7 @@ export default {
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
       retention: new RetentionService(env.DB),
       ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),
+      publicationRunner: new D1PublicationRunner(env.DB),
       ...(auth ? { auth } : {}),
     });
     const url = new URL(request.url);

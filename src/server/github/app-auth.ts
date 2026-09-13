@@ -12,6 +12,7 @@ export async function createInstallationToken(input: {
   installationId: string;
   privateKey: string;
   fetcher?: typeof fetch;
+  repository?: 'pointsite-staging' | 'pointsite';
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1_000);
   const key = await importPKCS8(input.privateKey.replaceAll('\\n', '\n'), 'RS256');
@@ -23,7 +24,18 @@ export async function createInstallationToken(input: {
     .sign(key);
   const response = await (input.fetcher ?? fetch)(
     `https://api.github.com/app/installations/${encodeURIComponent(input.installationId)}/access_tokens`,
-    { method: 'POST', headers: githubHeaders(jwt) },
+    {
+      method: 'POST',
+      headers: { ...githubHeaders(jwt), 'content-type': 'application/json' },
+      ...(input.repository
+        ? {
+            body: JSON.stringify({
+              repositories: [input.repository],
+              permissions: { contents: 'write', checks: 'read', metadata: 'read' },
+            }),
+          }
+        : {}),
+    },
   );
   if (!response.ok) throw new Error(`GitHub App token exchange failed (${response.status})`);
   return TokenResponse.parse(await response.json()).token;

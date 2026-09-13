@@ -184,6 +184,7 @@ export class StagingPublisher {
   async refreshVerification(id: string, actor: string, requestId: string) {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     const job = await this.jobs.getById(id);
+    if (job?.candidate.publicationProtocol === 2) throw new Error('PUBLISH_JOB_NOT_VERIFIABLE');
     if (!job || job.status !== 'succeeded' || !job.resultSha)
       throw new Error('PUBLISH_JOB_NOT_VERIFIABLE');
     const result = await (await this.client()).verificationForCommit(job.resultSha);
@@ -330,6 +331,7 @@ export class StagingPublisher {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     const job = await this.jobs.getById(id);
     if (!job) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
+    if (job.candidate.publicationProtocol === 2) throw new Error('PUBLISH_JOB_NOT_CLAIMABLE');
     if (job.status === 'succeeded' && job.resultSha && job.externalUrl) {
       const draft = await this.repository.getDraft(String(job.candidate.draftId));
       return this.result(
@@ -453,9 +455,15 @@ export class StagingPublisher {
         schemaVersion: z.number().int().positive(),
         rendererVersion: z.string(),
         fileCount: z.number().int().positive().optional(),
+        publicationProtocol: z.literal(2).optional(),
+        workflowRevision: z
+          .string()
+          .regex(/^[a-f0-9]{40}$/)
+          .optional(),
       })
       .parse(job.candidate);
     const leaseExpired =
+      candidate.publicationProtocol !== 2 &&
       (job.status === 'queued' || job.status === 'running') &&
       (!job.leaseExpiresAt || job.leaseExpiresAt <= now);
     return {

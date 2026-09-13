@@ -23,6 +23,8 @@ import type { FeedbackService } from './feedback/service';
 import { createFeedbackRoutes } from './routes/feedback';
 import type { D1OwnershipMigration } from './maintenance/asset-migration';
 import { createAssetMigrationRoutes } from './routes/asset-migration';
+import { createPublicationRunnerRoutes } from './routes/publication-runner';
+import type { D1PublicationRunner } from './publish/runner';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -46,6 +48,7 @@ export interface AppDependencies {
   auth?: GitHubAuthenticator;
   feedback?: FeedbackService;
   ownershipMigration?: D1OwnershipMigration;
+  publicationRunner?: D1PublicationRunner;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -56,12 +59,18 @@ export function createApp(dependencies: AppDependencies) {
   app.use('/api/*', async (context, next) => {
     const requestId = crypto.randomUUID();
     context.set('requestId', requestId);
-    if (context.req.path !== '/api/health') {
-      context.set('actor', await dependencies.authenticate(context.req.raw));
-    }
     await next();
     context.res = applySecurityHeaders(context.res);
     context.res.headers.set('x-request-id', requestId);
+  });
+
+  // Only these exact machine operations use the pinned GitHub OIDC identity.
+  // Unknown runner paths continue through normal user authentication below.
+  app.route('/api/publish/runner', createPublicationRunnerRoutes(dependencies.publicationRunner));
+  app.use('/api/*', async (context, next) => {
+    if (context.req.path !== '/api/health')
+      context.set('actor', await dependencies.authenticate(context.req.raw));
+    await next();
   });
 
   app.get('/api/health', (context) => {

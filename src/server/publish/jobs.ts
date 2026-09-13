@@ -1,3 +1,7 @@
+import { z } from 'zod';
+import type { DraftRecord } from '../repositories/contracts';
+import { preparePublicationInputs } from './inputs';
+
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface PublishJobRecord {
@@ -53,7 +57,7 @@ const selection =
 
 const leaseExpiry = (now: string) => new Date(Date.parse(now) + 15 * 60_000).toISOString();
 
-const activeCandidate = `EXISTS (
+const activeCandidate = `COALESCE(json_extract(candidate_json,'$.publicationProtocol'),1)=1 AND EXISTS (
   SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
   WHERE d.status='active' AND d.id=json_extract(candidate_json,'$.draftId')
     AND r.id=json_extract(candidate_json,'$.revisionId')
@@ -62,6 +66,111 @@ const activeCandidate = `EXISTS (
 
 export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
+
+  /** Capture once. Browser closure and later edits cannot substitute these inputs. */
+  async captureStaging(input: {
+    draft: DraftRecord;
+    workflowRevision: string;
+    baseSha: string;
+    actor: string;
+    idempotencyKey: string;
+    requestId: string;
+  }): Promise<PublishJobRecord> {
+    z.string()
+      .regex(/^[A-Za-z0-9._:-]{16,100}$/)
+      .parse(input.idempotencyKey);
+    z.string()
+      .regex(/^[a-f0-9]{40}$/)
+      .parse(input.baseSha);
+    const id = crypto.randomUUID();
+    const prepared = await preparePublicationInputs(
+      this.database,
+      input.draft,
+      id,
+      input.workflowRevision,
+    );
+    const authority = this.database
+      .prepare(
+        `SELECT json(CASE WHEN EXISTS (
+      SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role IN ('publisher','administrator')
+    ) THEN 'true' ELSE 'publication authority changed' END)`,
+      )
+      .bind(input.actor);
+    const existing = await this.getByKey(input.idempotencyKey);
+    if (existing) {
+      await authority.first();
+      if (
+        existing.candidateChecksum !== prepared.candidateChecksum ||
+        existing.baseSha !== input.baseSha ||
+        existing.requestedBy !== input.actor
+      )
+        throw new Error('IDEMPOTENCY_CONFLICT');
+      return existing;
+    }
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('');
+    const now = new Date().toISOString();
+    try {
+      await this.database.batch([
+        authority,
+        this.database
+          .prepare(
+            `SELECT json(CASE WHEN EXISTS (
+        SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
+        WHERE d.id=? AND d.status='active' AND r.id=? AND r.checksum=?
+      ) THEN 'true' ELSE 'publication revision changed' END)`,
+          )
+          .bind(input.draft.id, input.draft.revision.id, input.draft.revision.checksum),
+        this.database.prepare(`SELECT json(CASE WHEN NOT EXISTS (
+        SELECT 1 FROM publication_slots WHERE target='staging'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running')
+      ) THEN 'true' ELSE 'publication slot occupied' END)`),
+        this.database
+          .prepare(
+            `INSERT INTO publish_jobs
+        (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+        VALUES (?,?,'staging','queued',?,?,'PointCommunity/pointsite-staging',?,?,?)`,
+          )
+          .bind(
+            id,
+            input.idempotencyKey,
+            JSON.stringify(prepared.candidate),
+            prepared.candidateChecksum,
+            input.baseSha,
+            input.actor,
+            now,
+          ),
+        ...prepared.statements,
+        this.database
+          .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('staging',?)")
+          .bind(id),
+        this.database
+          .prepare('INSERT INTO publication_runs(job_id,nonce,dispatch_revision) VALUES (?,?,?)')
+          .bind(id, nonce, input.baseSha),
+        this.audit(input.actor, 'publish.queued', id, input.requestId, {
+          candidateChecksum: prepared.candidateChecksum,
+          baseSha: input.baseSha,
+        }),
+      ]);
+    } catch (error) {
+      // Another identical request may have committed while this one prepared inputs.
+      const committed = await this.getByKey(input.idempotencyKey);
+      if (!committed) throw error;
+      await authority.first();
+      if (
+        committed.candidateChecksum !== prepared.candidateChecksum ||
+        committed.baseSha !== input.baseSha ||
+        committed.requestedBy !== input.actor
+      )
+        throw new Error('IDEMPOTENCY_CONFLICT');
+      return committed;
+    }
+    const created = await this.getById(id);
+    if (!created) throw new Error('PUBLISH_JOB_CREATE_FAILED');
+    return created;
+  }
 
   async getByKey(key: string): Promise<PublishJobRecord | null> {
     const row = await this.database
@@ -377,7 +486,7 @@ export class D1PublishJobStore {
   private async recoverExpiredLease(now: string, actor: string, requestId: string): Promise<void> {
     const expired = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running') AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY requested_at DESC,id DESC LIMIT 1`,
+        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running') AND COALESCE(json_extract(candidate_json,'$.publicationProtocol'),1)=1 AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY requested_at DESC,id DESC LIMIT 1`,
       )
       .bind(now)
       .first<JobRow>();
