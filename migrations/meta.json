@@ -91,6 +91,12 @@
       "id": "0015_revision_retention_integrity",
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null
+    },
+    {
+      "id": "0016_request_receipt_version",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
     }
   ]
 }

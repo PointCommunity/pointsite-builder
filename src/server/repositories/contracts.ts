@@ -46,6 +46,7 @@ export interface CheckoutCommand {
   token: string;
   requestId: string;
   now?: string;
+  activity?: boolean;
 }
 
 export interface RevisionRecord {

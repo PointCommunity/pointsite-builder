@@ -3,10 +3,12 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
-import { ConflictError } from '../../src/server/repositories/memory';
+import { ConflictError, InMemoryRepository } from '../../src/server/repositories/memory';
+import type { SaveDraftInput } from '../../src/server/repositories/contracts';
 
-let miniflare: Miniflare;
+let miniflare: Miniflare | undefined;
 
 async function repositoryFixture() {
   miniflare = new Miniflare({
@@ -33,9 +35,287 @@ async function repositoryFixture() {
 
 afterEach(async () => {
   await miniflare?.dispose();
+  miniflare = undefined;
 });
 
 describe('D1 draft repository', () => {
+  it('persists passive view changes without renewing checkout or rewriting identical context', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Passive context',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: 'passive-create-001',
+      requestId: 'create',
+    });
+    const now = '2026-09-12T12:00:00.000Z';
+    const owned = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'passive-browser-001',
+      requestId: 'checkout',
+      now,
+    });
+    const command = {
+      draftId: draft.id,
+      actor,
+      clientId: owned.clientId,
+      token: owned.token,
+      requestId: 'context',
+      now: '2026-09-12T12:10:00.000Z',
+      activity: false,
+    };
+    const context = {
+      draftId: draft.id,
+      panel: 'library' as const,
+      pageId: null,
+      selectedElementId: null,
+      previewViewport: 'desktop' as const,
+      previewZoom: 1,
+      scrollPositions: { first: 1, second: 2 },
+      updatedAt: now,
+    };
+    const saved = await repository.touchCheckout(command, context);
+    expect(saved.expiresAt).toBe(owned.expiresAt);
+    expect(saved.lastActivityAt).toBe(owned.lastActivityAt);
+    const batches = vi.fn((statements: D1PreparedStatement[]) => database.batch(statements));
+    const measured = new D1DraftRepository({
+      prepare: (sql: string) => database.prepare(sql),
+      batch: batches,
+    } as unknown as D1Database);
+    const repeated = await measured.touchCheckout(
+      { ...command, now: '2026-09-12T12:20:00.000Z' },
+      { ...context, scrollPositions: { second: 2, first: 1 }, updatedAt: command.now },
+    );
+    expect(repeated.viewState).toEqual(saved.viewState);
+    const batchResult = await (batches.mock.results.at(-1)!.value as Promise<D1Result[]>);
+    expect(batchResult.at(-1)?.meta.changes).toBe(0);
+    expect(repeated.expiresAt).toBe(owned.expiresAt);
+    const active = await repository.touchCheckout({ ...command, activity: true });
+    expect(active.expiresAt).toBe('2026-09-12T12:40:00.000Z');
+    await expect(
+      repository.touchCheckout({ ...command, clientId: 'wrong-browser-001' }, context),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect((await repository.ownedCheckout(actor, command.now))?.viewState).toEqual(
+      saved.viewState,
+    );
+  });
+
+  it('cannot write a no-op receipt after checkout transfers between read and commit', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'No-op transfer',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: 'noop-transfer-create',
+      requestId: 'create',
+    });
+    const owned = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'noop-transfer-first',
+      requestId: 'checkout',
+    });
+    const read = repository.getDraft.bind(repository);
+    vi.spyOn(repository, 'getDraft').mockImplementationOnce(async (id) => {
+      const current = await read(id);
+      await repository.acquireCheckout({
+        draftId: draft.id,
+        actor,
+        clientId: 'noop-transfer-second',
+        requestId: 'transfer',
+      });
+      return current;
+    });
+    await expect(
+      repository.saveDraft({
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedChecksum: draft.revision.checksum,
+        document: draft.document,
+        actor,
+        idempotencyKey: 'noop-transfer-save',
+        requestId: 'save',
+        action: { category: 'control-change', context: 'site-settings' },
+        checkoutToken: owned.token,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) AS count FROM idempotency_keys WHERE scope='draft.save'")
+        .first('count'),
+    ).toBe(0);
+    expect(await repository.listRevisions(draft.id)).toHaveLength(1);
+  });
+
+  it.each(['d1', 'memory'])(
+    '%s binds retries to the complete request before checking the latest revision',
+    async (kind) => {
+      const repository =
+        kind === 'd1' ? (await repositoryFixture()).repository : new InMemoryRepository();
+      const create = {
+        name: 'Receipts',
+        document: defaultSiteDocument,
+        actor: 'editor@pointatx.org',
+        idempotencyKey: 'receipt-create-00001',
+        requestId: 'create',
+      };
+      const draft = await repository.createDraft(create);
+      await expect(repository.createDraft({ ...create, name: 'Different' })).rejects.toBeInstanceOf(
+        ConflictError,
+      );
+      const checkout = await repository.acquireCheckout({
+        draftId: draft.id,
+        actor: create.actor,
+        clientId: 'receipt-browser-01',
+        requestId: 'checkout',
+      });
+      const input: SaveDraftInput = {
+        draftId: draft.id,
+        expectedRevisionId: draft.revision.id,
+        expectedChecksum: draft.revision.checksum,
+        document: { ...draft.document, site: { ...draft.document.site, shortName: 'Saved once' } },
+        actor: create.actor,
+        idempotencyKey: 'receipt-save-000001',
+        requestId: 'save',
+        action: { category: 'control-change', context: 'site-settings' },
+        checkoutToken: checkout.token,
+      };
+      const saved = await repository.saveDraft(input);
+      expect(await repository.saveDraft({ ...input, requestId: 'retry' })).toEqual(saved);
+      for (const altered of [
+        { ...input, document: draft.document },
+        { ...input, label: 'Another label' },
+        { ...input, expectedRevisionId: saved.revision.id },
+        { ...input, action: { category: 'undo' as const, context: 'site-settings' as const } },
+      ])
+        await expect(repository.saveDraft(altered)).rejects.toBeInstanceOf(ConflictError);
+      const restored = await repository.saveDraft({
+        ...input,
+        document: draft.document,
+        expectedRevisionId: saved.revision.id,
+        expectedChecksum: saved.revision.checksum,
+        idempotencyKey: 'receipt-return-00001',
+      });
+      expect(restored.revision.checksum).toBe(draft.revision.checksum);
+      await expect(
+        repository.saveDraft({ ...input, idempotencyKey: 'receipt-aba-test-001' }),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(await repository.saveDraft(input)).toEqual(saved);
+      await repository.acquireCheckout({
+        draftId: draft.id,
+        actor: create.actor,
+        clientId: 'receipt-browser-02',
+        requestId: 'transfer',
+      });
+      await expect(repository.saveDraft(input)).rejects.toBeInstanceOf(ConflictError);
+      expect(await repository.listRevisions(draft.id)).toHaveLength(3);
+    },
+  );
+
+  it('persists a no-op receipt and returns the same result after another save', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'No-op',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: 'noop-create-00001',
+      requestId: 'create',
+    });
+    const input: SaveDraftInput = {
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedChecksum: draft.revision.checksum,
+      document: draft.document,
+      actor,
+      idempotencyKey: 'noop-save-000001',
+      requestId: 'noop',
+      action: { category: 'control-change', context: 'site-settings' },
+    };
+    expect(await repository.saveDraft(input)).toEqual(draft);
+    expect(await repository.listRevisions(draft.id)).toHaveLength(1);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action='draft.save'")
+        .first('count'),
+    ).toBe(0);
+    const receipt = await database
+      .prepare(
+        'SELECT created_at,expires_at,request_version FROM idempotency_keys WHERE idempotency_key=?',
+      )
+      .bind(input.idempotencyKey)
+      .first<{ created_at: string; expires_at: string; request_version: number }>();
+    expect(receipt?.request_version).toBe(2);
+    expect(Date.parse(receipt!.expires_at) - Date.parse(receipt!.created_at)).toBe(90 * 86_400_000);
+    await repository.saveDraft({
+      ...input,
+      idempotencyKey: 'noop-next-save-0001',
+      document: { ...draft.document, site: { ...draft.document.site, shortName: 'Next' } },
+    });
+    expect(await repository.saveDraft(input)).toEqual(draft);
+    await database
+      .prepare('UPDATE idempotency_keys SET expires_at=? WHERE idempotency_key=?')
+      .bind('2000-01-01T00:00:00.000Z', input.idempotencyKey)
+      .run();
+    await expect(repository.saveDraft(input)).rejects.toThrow('expired');
+  });
+
+  it('returns one committed result to simultaneous identical saves', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const create = {
+      name: 'Simultaneous',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: 'parallel-create-001',
+      requestId: 'create',
+    };
+    const [draft, repeatedCreate] = await Promise.all([
+      repository.createDraft(create),
+      repository.createDraft(create),
+    ]);
+    expect(repeatedCreate).toEqual(draft);
+    expect(await repository.listDrafts()).toHaveLength(1);
+    const input: SaveDraftInput = {
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedChecksum: draft.revision.checksum,
+      document: { ...draft.document, site: { ...draft.document.site, shortName: 'Exactly once' } },
+      actor,
+      idempotencyKey: 'parallel-save-0001',
+      requestId: 'save',
+      action: { category: 'control-change', context: 'site-settings' },
+    };
+    const results = await Promise.all([repository.saveDraft(input), repository.saveDraft(input)]);
+    expect(results[0]).toEqual(results[1]);
+    expect(await repository.listRevisions(draft.id)).toHaveLength(2);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action='draft.save'")
+        .first('count'),
+    ).toBe(1);
+    // A pre-upgrade receipt still replays its original hash contract safely.
+    const legacyHash = await checksumDocument({
+      draftId: input.draftId,
+      expectedChecksum: input.expectedChecksum,
+      document: input.document,
+      action: input.action,
+    });
+    await database
+      .prepare(
+        'UPDATE idempotency_keys SET request_version=1,request_hash=? WHERE idempotency_key=?',
+      )
+      .bind(legacyHash, input.idempotencyKey)
+      .run();
+    expect(await repository.saveDraft(input)).toEqual(results[0]);
+    await expect(
+      repository.saveDraft({ ...input, label: 'Altered legacy request' }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
   it('repeated renames change only display metadata and audit while preserving revisions and checkout', async () => {
     const { database, repository } = await repositoryFixture();
     const draft = await repository.createDraft({

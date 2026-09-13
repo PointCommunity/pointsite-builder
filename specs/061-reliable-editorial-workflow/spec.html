@@ -68,9 +68,9 @@
         >T1 contracts below are fixed for implementation; delivery evidence remains pending.</strong
       >
       GitHub installation access is verified after account-holder reauthentication. The forward
-      encoding fixture passes. Provider plan confirmation, narrowly scoped runtime credentials,
-      migration rehearsal and actual allocated-storage measurements remain explicit release gates.
-      No permission setting or deployed content has changed. T2–T14 are not complete.
+      encoding fixture passes. Narrowly scoped runtime credentials, migration rehearsal and measured
+      workload headroom against documented free allowances remain explicit release gates. No
+      permission setting or deployed content has changed. T2–T14 are not complete.
     </p>
 
     <h2>Objective and preserved boundaries</h2>
@@ -460,9 +460,10 @@
         checks on 12 September 2026 returned HTTP 200 for Worker settings, database metadata and a
         read-only SELECT 1 query (zero rows written). Subscription readback returned HTTP 403.
         Dashboard access is not required to continue implementation or those operational checks.
-        Current plan confirmation and runtime credential configuration remain release evidence
-        prerequisites. Cloudflare credentials do not replace the Builder's authenticated user
-        session, and missing measurements must remain unknown.
+        Measure the defined workload against documented free allowances; billing details are not a
+        release prerequisite. Runtime credential configuration remains necessary for provider
+        sampling. Cloudflare credentials do not replace the Builder's authenticated user session,
+        and missing measurements must remain unknown.
       </li>
     </ul>
 
@@ -509,6 +510,27 @@
     </ul>
 
     <h2>Implementation order and verification</h2>
+    <p>
+      Save-integrity increment: version request hashes in the existing receipt table. Bind the
+      complete semantic request, including expected revision and label, while excluding transport
+      request IDs and renewable checkout tokens. Validate current checkout before replay, resolve a
+      matching receipt before stale-base rejection, persist no-op receipts without a revision or
+      audit event, and return the winning receipt after a simultaneous identical request. Retain new
+      receipts for 90 days and reject expired identities rather than reusing them. Legacy receipts
+      retain their original hash contract and must not bypass draft or label matching. The browser
+      sends the exact base revision and preserves it through retries. Tests cover altered input,
+      repeated content with a different revision, lost acknowledgement, concurrent retry, no-op,
+      expired receipt, and revoked checkout. Receipt payload compaction and role revocation at the
+      transaction boundary remain separate pending work.
+    </p>
+    <p>
+      Passive view-state persistence sends activity=false. Checkout validation and context writes
+      share one transaction; identical context does not rewrite its timestamp or content. Passive
+      context, connectivity and focus events do not extend the 30-minute lease. Visible pointer,
+      touch and keyboard input remain genuine activity, with the existing four-second availability
+      checks preserved. Old clients may omit activity and the revision header during the compatible
+      rollout; updated clients always send both. Full enforcement for old clients remains pending.
+    </p>
     <ol>
       <li>
         <strong>T1:</strong> contracts and reference workload fixed above; forward feasibility

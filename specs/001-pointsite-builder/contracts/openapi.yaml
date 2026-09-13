@@ -170,6 +170,11 @@ paths:
           required: true
           schema: { type: string }
           description: Current revision checksum in quotes
+        - name: x-draft-revision
+          in: header
+          required: false
+          schema: { type: string, format: uuid }
+          description: Exact base revision. Updated clients always send this; omitted only for compatibility with previously loaded clients during rollout. The value is bound to the request receipt and preserved through retries.
         - $ref: '#/components/parameters/CheckoutToken'
       requestBody:
         required: true
@@ -309,9 +314,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CheckoutClient' }
+            schema: { $ref: '#/components/schemas/CheckoutTouch' }
       responses:
-        '200': { description: Renewed checkout and persisted safe view state }
+        '200':
+          {
+            description: Persisted changed view state; renews checkout only for genuine activity. Passive context saves preserve expiry.,
+          }
         '409': { $ref: '#/components/responses/Error' }
     delete:
       operationId: releaseDraftCheckout
@@ -1004,6 +1012,43 @@ components:
       required: [clientId]
       properties:
         clientId: { type: string, minLength: 16, maxLength: 100 }
+    CheckoutTouch:
+      type: object
+      additionalProperties: false
+      required: [clientId]
+      properties:
+        clientId: { type: string, minLength: 16, maxLength: 100 }
+        activity:
+          type: boolean
+          default: true
+          description: False for passive view-state persistence. Updated clients report activity only for visible pointer, touch or keyboard input.
+        viewState:
+          type: object
+          additionalProperties: false
+          required:
+            [
+              draftId,
+              panel,
+              pageId,
+              selectedElementId,
+              previewViewport,
+              previewZoom,
+              scrollPositions,
+              updatedAt,
+            ]
+          properties:
+            draftId: { type: string, format: uuid }
+            panel:
+              { type: string, enum: [layout, forms, library, preview, history, settings, admin] }
+            pageId: { type: [string, 'null'], maxLength: 100 }
+            selectedElementId: { type: [string, 'null'], maxLength: 100 }
+            previewViewport: { type: string, enum: [phone, tablet, desktop] }
+            previewZoom: { type: number, minimum: 0.25, maximum: 2 }
+            scrollPositions:
+              type: object
+              propertyNames: { maxLength: 40 }
+              additionalProperties: { type: number, minimum: 0, maximum: 1000000 }
+            updatedAt: { type: string }
     CheckoutAvailability:
       type: object
       additionalProperties: false

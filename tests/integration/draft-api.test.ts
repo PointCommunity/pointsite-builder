@@ -4,6 +4,7 @@ import type { SiteDocument } from '../../src/site-kit/types';
 import { createApp } from '../../src/server/index';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 import type { Actor } from '../../src/server/auth/roles';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
 
 const origin = 'https://builder.pointatx.org';
 const requestHeaders = {
@@ -46,6 +47,43 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('validates and enforces the exact revision header, then replays a saved request', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Exact base',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'header-create-0001',
+      requestId: 'create',
+    });
+    const owned = await checkout(app, draft.id);
+    const headers = {
+      ...requestHeaders,
+      'idempotency-key': 'header-save-00001',
+      'if-match': `"${draft.revision.checksum}"`,
+      'x-draft-checkout': owned.token,
+      'x-draft-revision': draft.revision.id,
+    };
+    const body = JSON.stringify({
+      document: { ...draft.document, site: { ...draft.document.site, shortName: 'Header saved' } },
+      action: { category: 'control-change', context: 'site-settings' },
+    });
+    const save = (revision: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'x-draft-revision': revision },
+        body,
+      });
+    expect((await save('invalid')).status).toBe(422);
+    expect((await save(crypto.randomUUID())).status).toBe(412);
+    const first = await save(draft.revision.id);
+    expect(first.status).toBe(200);
+    const repeated = await save(draft.revision.id);
+    expect(repeated.status).toBe(200);
+    expect(await repeated.text()).toBe(await first.text());
+    expect(await repository.listRevisions(draft.id)).toHaveLength(2);
+  });
   it('reports unavailable readiness when the authentication role database is down', async () => {
     const app = createApp({
       repository: new InMemoryRepository(),

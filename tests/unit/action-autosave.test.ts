@@ -167,6 +167,7 @@ describe('ActionAutosaveController', () => {
     const request = persist.mock.calls[0]?.[0];
     expect(request?.idempotencyKey).toBe('30000000-0000-4000-8000-000000000001');
     expect(request?.expectedChecksum).toBe('initial-checksum');
+    expect(request?.expectedRevisionId).toBe(draft.latestRevisionId);
     expect(request?.action).toEqual({ category: 'text-edit', context: 'site-settings' });
     expect(request?.document.site.mission).toBe('Finished');
     expect(controller.snapshot.state).toBe('saved');
@@ -203,7 +204,10 @@ describe('ActionAutosaveController', () => {
 
     expect(controller.snapshot.document.site.shortName).toBe('Second');
     expect(persist).toHaveBeenCalledTimes(2);
-    expect(persist.mock.calls[1]?.[0]).toMatchObject({ expectedChecksum: 'checksum-2' });
+    expect(persist.mock.calls[1]?.[0]).toMatchObject({
+      expectedChecksum: 'checksum-2',
+      expectedRevisionId: savedDraft(draft, 2).latestRevisionId,
+    });
     second.resolve(savedDraft(draft, 3, persist.mock.calls[1]?.[0].document));
     await Promise.resolve();
     await Promise.resolve();
@@ -239,6 +243,13 @@ describe('ActionAutosaveController', () => {
     expect(new Set(persist.mock.calls.map(([request]) => request.idempotencyKey))).toEqual(
       new Set(['stable-action-id']),
     );
+    expect(
+      persist.mock.calls.every(
+        ([request]) =>
+          request.expectedRevisionId === draft.latestRevisionId &&
+          request.expectedChecksum === draft.revision.checksum,
+      ),
+    ).toBe(true);
     expect(controller.snapshot.state).toBe('saved');
   });
 
@@ -266,6 +277,7 @@ describe('ActionAutosaveController', () => {
     expect(controller.snapshot.pendingCount).toBe(1);
     expect(controller.snapshot.canLeave).toBe(false);
     await vi.runAllTimersAsync();
+
     expect(persist).toHaveBeenCalledOnce();
   });
 
@@ -299,6 +311,8 @@ describe('ActionAutosaveController', () => {
     expect(controller.snapshot.state).toBe('conflict');
     expect(controller.snapshot.pendingCount).toBe(2);
     expect(controller.snapshot.document.site.shortName).toBe('Later pending');
+    controller.retry();
+    await vi.runAllTimersAsync();
     expect(persist).toHaveBeenCalledOnce();
   });
 

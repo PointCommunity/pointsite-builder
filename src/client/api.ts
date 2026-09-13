@@ -197,12 +197,14 @@ export const api = {
     action: DraftAction,
     idempotencyKey: string,
     checkoutToken: string,
+    expectedRevisionId: string,
   ) =>
     request<DraftRecord>(`/drafts/${id}`, {
       method: 'PUT',
       headers: mutationHeaders(idempotencyKey, {
         'if-match': `"${checksum}"`,
         'x-draft-checkout': checkoutToken,
+        'x-draft-revision': expectedRevisionId,
       }),
       body: JSON.stringify({ document, action }),
     }),
@@ -220,11 +222,17 @@ export const api = {
     request<{ active: true }>(`/drafts/${id}/checkout`, {
       headers: { 'x-draft-checkout': token },
     }),
-  touchCheckout: (id: string, clientId: string, token: string, viewState?: EditorViewState) =>
+  touchCheckout: (
+    id: string,
+    clientId: string,
+    token: string,
+    viewState?: EditorViewState,
+    activity = true,
+  ) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'PATCH',
       headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
-      body: JSON.stringify({ clientId, ...(viewState ? { viewState } : {}) }),
+      body: JSON.stringify({ clientId, activity, ...(viewState ? { viewState } : {}) }),
     }),
   releaseCheckout: (id: string, clientId: string, token: string) =>
     request<void>(`/drafts/${id}/checkout`, {

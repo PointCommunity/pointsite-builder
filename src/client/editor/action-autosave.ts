@@ -17,6 +17,7 @@ export interface AutosavePersistRequest {
   document: SiteDocument;
   action: DraftAction;
   expectedChecksum: string;
+  expectedRevisionId: string;
   idempotencyKey: string;
 }
 
@@ -142,6 +143,9 @@ export class ActionAutosaveController {
       head.document = structuredClone(document);
       head.action = { category: mutation.category, context: mutation.context };
       head.attempt = 0;
+      head.idempotencyKey = this.#createId();
+      head.expectedChecksum = '';
+      head.expectedRevisionId = '';
       head.ready = (mutation.boundary ?? 'immediate') !== 'text';
       head.coalesceKey = mutation.coalesceKey;
       this.#state = this.#isOnline() ? 'pending' : 'offline';
@@ -219,6 +223,7 @@ export class ActionAutosaveController {
   }
 
   retry = (): void => {
+    if (this.#state === 'conflict') return;
     const head = this.#queue[0];
     if (!head) return;
     if (this.#retryTimer) clearTimeout(this.#retryTimer);
@@ -289,6 +294,7 @@ export class ActionAutosaveController {
       document: structuredClone(document),
       action: { category: mutation.category, context: mutation.context },
       expectedChecksum: '',
+      expectedRevisionId: '',
       idempotencyKey: this.#createId(),
       attempt: 0,
       ready,
@@ -333,7 +339,8 @@ export class ActionAutosaveController {
       return;
     }
 
-    head.expectedChecksum = this.#draft.revision.checksum;
+    head.expectedChecksum ||= this.#draft.revision.checksum;
+    head.expectedRevisionId ||= this.#draft.latestRevisionId;
     this.#inFlight = head;
     this.#state = 'saving';
     this.#errorKind = null;
@@ -343,6 +350,7 @@ export class ActionAutosaveController {
         document: structuredClone(head.document),
         action: head.action,
         expectedChecksum: head.expectedChecksum,
+        expectedRevisionId: head.expectedRevisionId,
         idempotencyKey: head.idempotencyKey,
       });
       if (this.#disposed) return;

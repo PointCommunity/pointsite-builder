@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/require-await -- async parity with the D1 repository is intentional */
 
-import { checksumDocument } from '../../site-kit/canonicalize';
+import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
+import { createRequestHash, saveRequestHash } from './request-hash';
 import type {
   AuditEventRecord,
   CheckoutCommand,
@@ -41,6 +42,7 @@ export class InMemoryRepository implements DraftRepository {
   readonly #drafts = new Map<string, DraftRecord>();
   readonly #revisions = new Map<string, RevisionRecord[]>();
   readonly #idempotency = new Map<string, DraftRecord | null>();
+  readonly #requestHashes = new Map<string, string>();
   readonly #audit: AuditEventRecord[] = [];
   readonly #checkouts = new Map<
     string,
@@ -75,20 +77,28 @@ export class InMemoryRepository implements DraftRepository {
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
     const operationKey = `draft.create:${input.actor}:${input.idempotencyKey}`;
+    const document = migrateDocument(clone(input.document)).document;
+    const [requestHash, checksum] = await Promise.all([
+      createRequestHash(input),
+      checksumDocument(document),
+    ]);
     const prior = this.#idempotency.get(operationKey);
     if (prior === null)
       throw new ConflictError('This request belongs to a permanently deleted draft');
-    if (prior) return clone(prior);
+    if (prior) {
+      if (this.#requestHashes.get(operationKey) !== requestHash)
+        throw new ConflictError('This request identity was already used with different input');
+      return clone(prior);
+    }
 
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
-    const document = migrateDocument(clone(input.document)).document;
     const revision: RevisionRecord = {
       id: crypto.randomUUID(),
       draftId: id,
       sequence: 1,
       parentRevisionId: null,
-      checksum: await checksumDocument(document),
+      checksum,
       document,
       label: 'Initial PointSite import',
       schemaVersion: document.schemaVersion,
@@ -114,6 +124,7 @@ export class InMemoryRepository implements DraftRepository {
     this.#drafts.set(id, clone(draft));
     this.#revisions.set(id, [clone(revision)]);
     this.#idempotency.set(operationKey, clone(draft));
+    this.#requestHashes.set(operationKey, requestHash);
     this.#recordAudit(input.actor, 'draft.create', id, input.requestId, {
       revisionId: revision.id,
       sequence: revision.sequence,
@@ -122,26 +133,35 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
+    const document = migrateDocument(clone(input.document)).document;
+    const [requestHash, checksum] = await Promise.all([
+      saveRequestHash(input),
+      checksumDocument(document),
+    ]);
     if (input.checkoutToken)
       await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
     const current = this.#drafts.get(input.draftId);
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
-    if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
-      throw new ConflictError('The draft has a newer revision');
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
     if (prior === null) throw new NotFoundError(`Draft ${input.draftId} was not found`);
-    if (prior) return clone(prior);
+    if (prior) {
+      if (this.#requestHashes.get(operationKey) !== requestHash)
+        throw new ConflictError('This request identity was already used with different input');
+      return clone(prior);
+    }
+
+    if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
+      throw new ConflictError('The draft has a newer revision');
 
     if (current.revision.checksum !== input.expectedChecksum) {
       throw new ConflictError('The draft has a newer revision');
     }
 
-    const document = migrateDocument(clone(input.document)).document;
-    const checksum = await checksumDocument(document);
     if (checksum === current.revision.checksum) {
       this.#idempotency.set(operationKey, clone(current));
+      this.#requestHashes.set(operationKey, requestHash);
       return clone(current);
     }
 
@@ -181,6 +201,7 @@ export class InMemoryRepository implements DraftRepository {
       });
     }
     this.#idempotency.set(operationKey, clone(updated));
+    this.#requestHashes.set(operationKey, requestHash);
     this.#recordAudit(input.actor, 'draft.save', input.draftId, input.requestId, {
       sequence: revision.sequence,
       actionCategory: input.action.category,
@@ -384,15 +405,30 @@ export class InMemoryRepository implements DraftRepository {
   async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
     await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
     const current = this.#checkouts.get(input.draftId)!;
+    if (current.clientId !== input.clientId)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     const now = input.now ?? new Date().toISOString();
-    const updated = { ...current, lastActivityAt: now, expiresAt: checkoutExpiry(now) };
+    const updated =
+      input.activity === false
+        ? current
+        : { ...current, lastActivityAt: now, expiresAt: checkoutExpiry(now) };
     this.#checkouts.set(input.draftId, updated);
-    if (viewState) this.#viewStates.set(input.actor, clone({ ...viewState, updatedAt: now }));
+    const previous = this.#viewStates.get(input.actor);
+    if (
+      viewState &&
+      (!previous ||
+        canonicalize({ ...previous, updatedAt: '' }) !==
+          canonicalize({ ...viewState, draftId: input.draftId, updatedAt: '' }))
+    )
+      this.#viewStates.set(
+        input.actor,
+        clone({ ...viewState, draftId: input.draftId, updatedAt: now }),
+      );
     return {
       ...updated,
       token: input.token,
       event: 'resumed',
-      viewState: clone(viewState ?? this.#viewStates.get(input.actor) ?? null),
+      viewState: clone(this.#viewStates.get(input.actor) ?? null),
     };
   }
 

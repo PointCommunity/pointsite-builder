@@ -186,7 +186,7 @@ function Workspace({
     if (!checkout || checkoutUnavailable) return;
     const persist = window.setTimeout(() => {
       void api
-        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
+        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState(), false)
         .then((next) => setLeaseExpiresAt(next.expiresAt))
         .catch((error) => {
           if (error instanceof ClientApiError && error.status === 409) setLeaseLost(true);

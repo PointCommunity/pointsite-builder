@@ -66,7 +66,7 @@ export function EditorProvider({
     () =>
       new ActionAutosaveController({
         initialDraft,
-        persist: ({ document, action, expectedChecksum, idempotencyKey }) =>
+        persist: ({ document, action, expectedChecksum, expectedRevisionId, idempotencyKey }) =>
           api.saveDraft(
             initialDraft.id,
             expectedChecksum,
@@ -74,6 +74,7 @@ export function EditorProvider({
             action,
             idempotencyKey,
             checkout?.token ?? '',
+            expectedRevisionId,
           ),
       }),
   );

@@ -22,9 +22,7 @@ export function checkoutPhase(
 }
 
 export function isGenuineActivity(event: Pick<Event, 'type'>, visible = true): boolean {
-  return (
-    visible && ['pointerdown', 'keydown', 'touchstart', 'focus', 'online'].includes(event.type)
-  );
+  return visible && ['pointerdown', 'keydown', 'touchstart'].includes(event.type);
 }
 
 export function sanitizeViewState(
