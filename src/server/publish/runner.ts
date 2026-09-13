@@ -12,7 +12,7 @@ import { verifyPublicationRunner, type PublicationRunnerScope } from './runner-a
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
 import { PublicationBuildSchema, commitPublicationBuild, publicationJson } from './build-proof';
-import { verifyDeploymentProof } from './deployment-proof';
+import { PublicationEvidenceSchema, verifyDeploymentProof } from './deployment-proof';
 import { currentPromotion } from './promotion';
 
 // Every call checks the live role, draft lifecycle, slot and signed run. The
@@ -277,9 +277,13 @@ export class D1PublicationRunner {
   }
 
   async reportDeployment(jobId: string, token: string, value: unknown) {
-    const deployment = z.strictObject({ workerVersionId: z.uuid() }).parse(value);
     const { scope, identity, row } = await this.authenticate(jobId, token);
-    if (!row.deploy_authorized_at || row.target !== 'staging')
+    const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
+    const deployment =
+      row.target === 'staging'
+        ? z.strictObject({ workerVersionId: z.uuid() }).parse(value)
+        : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) }).parse(value);
+    if (!row.deploy_authorized_at || row.result_sha !== build.commitSha)
       throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
     await this.database.batch([
       this.guard(scope, identity),
@@ -292,51 +296,117 @@ export class D1PublicationRunner {
 
   /** A different check in the same signed run verifies the completed deployment job. */
   async finalize(jobId: string, token: string) {
-    const { scope, identity, row } = await this.authenticate(jobId, token, true);
-    const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
-    const deployment = z
-      .strictObject({ workerVersionId: z.uuid() })
-      .parse(JSON.parse(row.deployment_json ?? 'null'));
-    if (!row.deploy_authorized_at || row.result_sha !== build.commitSha || !row.check_run_id)
-      throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
-    await this.guard(scope, identity, 'finalize').first();
-    const githubToken = await this.publisher(row);
-    const evidence = {
-      ...(await verifyDeploymentProof(
-        {
-          ...deployment,
-          target: scope.target,
-          runId: identity.runId,
-          checkRunId: row.check_run_id,
-          dispatchRevision: scope.dispatchRevision,
-          commitSha: build.commitSha,
-          workflowRevision: scope.workflowRevision,
-          candidateChecksum: build.candidateChecksum,
-          artifactDigest: build.artifactDigest,
-        },
-        this.request,
-        githubToken,
-      )),
-      verificationStatus: 'passed',
-    };
-    await this.database.batch([
-      this.guard(scope, identity, 'finalize'),
-      this.database
-        .prepare(
-          `INSERT INTO audit_events
+    if (await this.completedReceipt(jobId, token)) return { verified: true as const };
+    try {
+      const { scope, identity, row } = await this.authenticate(jobId, token, true);
+      const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
+      const deployment = (
+        row.target === 'staging'
+          ? z.strictObject({ workerVersionId: z.uuid() })
+          : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) })
+      ).parse(JSON.parse(row.deployment_json ?? 'null'));
+      if (!row.deploy_authorized_at || row.result_sha !== build.commitSha || !row.check_run_id)
+        throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
+      await this.guard(scope, identity, 'finalize').first();
+      const githubToken = await this.publisher(row);
+      const evidence = {
+        ...(await verifyDeploymentProof(
+          {
+            ...deployment,
+            target: scope.target,
+            runId: identity.runId,
+            checkRunId: row.check_run_id,
+            dispatchRevision: scope.dispatchRevision,
+            commitSha: build.commitSha,
+            workflowRevision: scope.workflowRevision,
+            candidateChecksum: build.candidateChecksum,
+            artifactDigest: build.artifactDigest,
+          },
+          this.request,
+          githubToken,
+        )),
+        verificationStatus: 'passed',
+      };
+      await this.database.batch([
+        this.guard(scope, identity, 'finalize'),
+        this.database
+          .prepare(
+            `INSERT INTO audit_events
         (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
         SELECT ?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),requested_by,'publish.verified',
         'publish-job',id,'succeeded',?,'{}' FROM publish_jobs WHERE id=? AND status='running'`,
-        )
-        .bind(crypto.randomUUID(), crypto.randomUUID(), jobId),
-      this.database
-        .prepare(
-          `UPDATE publish_jobs SET status='succeeded',evidence_json=?,
+          )
+          .bind(crypto.randomUUID(), crypto.randomUUID(), jobId),
+        this.database
+          .prepare(
+            `UPDATE publish_jobs SET status='succeeded',evidence_json=?,
         completed_at=COALESCE(completed_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id=?`,
-        )
-        .bind(JSON.stringify(evidence), jobId),
-    ]);
-    return { verified: true as const };
+          )
+          .bind(JSON.stringify(evidence), jobId),
+        this.database
+          .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
+          .bind(jobId),
+      ]);
+      return { verified: true as const };
+    } catch (error) {
+      if (await this.completedReceipt(jobId, token)) return { verified: true as const };
+      throw error;
+    }
+  }
+
+  /** A lost finalizer response returns its recorded result without reacquiring a released slot. */
+  private async completedReceipt(jobId: string, token: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT pr.nonce,pr.dispatch_revision,pr.run_id,pr.run_attempt,
+      pr.check_run_id,pr.reserved_check_run_id,pi.workflow_revision,j.environment,j.evidence_json,pr.build_json
+      FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id
+      JOIN publication_runs pr ON pr.job_id=j.id JOIN user_roles u ON u.email=j.requested_by
+      WHERE j.id=? AND j.status='succeeded' AND u.active=1
+        AND ((j.environment='staging' AND u.role IN ('publisher','administrator'))
+          OR (j.environment='production-merge' AND u.role='administrator'))`,
+      )
+      .bind(jobId)
+      .first<{
+        nonce: string;
+        dispatch_revision: string;
+        run_id: string;
+        run_attempt: string;
+        check_run_id: string;
+        reserved_check_run_id: string;
+        workflow_revision: string;
+        environment: string;
+        evidence_json: string;
+        build_json: string;
+      }>();
+    if (!row) return false;
+    const identity = await verifyPublicationRunner(
+      token,
+      {
+        jobId,
+        nonce: row.nonce,
+        dispatchRevision: row.dispatch_revision,
+        workflowRevision: row.workflow_revision,
+        target: row.environment === 'staging' ? 'staging' : 'production',
+        run: { id: row.run_id, attempt: row.run_attempt },
+      },
+      this.keys,
+    );
+    const evidence = PublicationEvidenceSchema.parse(JSON.parse(row.evidence_json));
+    const build = PublicationBuildSchema.parse(JSON.parse(row.build_json));
+    if (
+      identity.checkRunId === row.check_run_id ||
+      identity.checkRunId === row.reserved_check_run_id ||
+      evidence.runId !== row.run_id ||
+      evidence.checkRunId !== row.check_run_id ||
+      evidence.dispatchRevision !== row.dispatch_revision ||
+      evidence.workflowRevision !== row.workflow_revision ||
+      evidence.commitSha !== build.commitSha ||
+      evidence.artifactDigest !== build.artifactDigest ||
+      evidence.candidateChecksum !== build.candidateChecksum
+    )
+      throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    return true;
   }
 
   async inputs(jobId: string, token: string) {

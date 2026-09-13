@@ -69,7 +69,7 @@ export async function verifyPublicationRunner(
         ),
         job_workflow_sha: z.literal(scope.data.workflowRevision),
         job_workflow_ref: z.literal(
-          `PointCommunity/pointsite-staging/.github/workflows/publish-runtime.yml@${scope.data.workflowRevision}`,
+          `PointCommunity/pointsite-staging/.github/workflows/${scope.data.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${scope.data.workflowRevision}`,
         ),
         environment: z.literal(destination.environment),
         run_id: identifier,

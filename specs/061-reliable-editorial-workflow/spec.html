@@ -616,8 +616,20 @@
       runner boundary require that acceptance to remain current and unrevoked. Production build
       authorization requires the exact accepted static artifact digest. Duplicate capture receipts
       remain historical and cannot reinstate revoked authority. The direct Production route remains
-      disabled while the native Pages runtime, previous-good release and recovery flow are
-      unfinished.
+      disabled while previous-good release capture and the recovery flow are unfinished.
+    </p>
+    <p>
+      The separate Pages runtime at <code>a397e2f61aac7bbc88cf3672765eb9572a957dc5</code>
+      keeps Pages write permission out of the Staging caller. It rebuilds the accepted inputs,
+      uploads their verified static output with one-day retention, checks fresh Builder authority
+      immediately before native Pages deployment and verifies every public file before reporting.
+      The signed finalizer checks completed native execution, current content commit and live
+      release identity, then atomically releases only its Production slot. A lost or duplicate
+      finalizer response returns the exact signed run's historical verified receipt without another
+      provider request, publication or slot acquisition; a current authorized role is still
+      required. Production and Staging execution claims bind separate reviewed reusable workflow
+      paths. The proposed public caller removes push/manual deployment, preventing a content commit
+      from starting an independent deployment. Maintainer changes are not deployed yet.
     </p>
     <p>
       Initial public recovery evidence: native Pages deployment 6276181817 identifies source

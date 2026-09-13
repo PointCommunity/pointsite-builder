@@ -33,7 +33,7 @@ export function publicationClaims(expected: PublicationRunnerScope): JWTPayload 
     workflow_sha: expected.dispatchRevision,
     workflow_ref: `PointCommunity/${name}/.github/workflows/publish-candidate.yml@refs/heads/main`,
     job_workflow_sha: expected.workflowRevision,
-    job_workflow_ref: `PointCommunity/pointsite-staging/.github/workflows/publish-runtime.yml@${expected.workflowRevision}`,
+    job_workflow_ref: `PointCommunity/pointsite-staging/.github/workflows/${staging ? 'publish-runtime' : 'publish-production-runtime'}.yml@${expected.workflowRevision}`,
     environment,
     run_id: '12345',
     run_attempt: '1',
