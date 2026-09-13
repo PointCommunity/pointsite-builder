@@ -719,6 +719,19 @@
       retries retain their separate exact-acceptance requirements and remain pending.
     </p>
     <p>
+      Missing final callbacks can be reconciled from Builder after the runner recorded its native
+      deployment acknowledgment. Require terminal native run/attempt evidence, a successful native
+      execution check, the current destination commit/deployment and matching live release identity.
+      The trusted execution must already have verified every output file. The recovery action
+      records that existing result; it never authorizes another deployment or restores a revoked
+      approval. The acting user needs fresh publishing authority, with Administrator required for
+      Production. Original actor revocation cannot prevent an authorized administrator recording
+      historical deployment facts. Recheck the exact stored build/run/acknowledgment and held slot
+      in the transaction. Retain Staging for review; release only the completed Production slot.
+      Record one audit event and an immutable request receipt. Failed execution, absent deployment
+      acknowledgment, changed live identity and provider failures remain unresolved.
+    </p>
+    <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
     </p>
     <ul>

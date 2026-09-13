@@ -210,6 +210,33 @@ describe('guided Staging publishing', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it('verifies a reported deployment and restores focus without publishing again', async () => {
+    const reported: StagingWorkflowSnapshot = {
+      ...queuedCloud,
+      job: {
+        ...queuedCloud.job!,
+        status: 'running',
+        dispatch: { ...queuedCloud.job!.dispatch!, reserved: true, canVerifyCompleted: true },
+      },
+    };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(reported)
+      .mockResolvedValue(reviewReady);
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockResolvedValue({ recovered: true });
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify completed deployment' }));
+    await waitFor(() =>
+      expect(recover).toHaveBeenCalledWith(job.id, 'verify-completed', 6, expect.any(String)),
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Review Staging, then accept this version' }),
+    ).toHaveFocus();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it('offers an explicit native recovery check without claiming the cloud run stopped', async () => {
     vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
       ...queuedCloud,

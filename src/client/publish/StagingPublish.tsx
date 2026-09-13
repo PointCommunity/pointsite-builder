@@ -181,7 +181,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     }
   };
 
-  const recoverQueued = async (action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured') => {
+  const recoverQueued = async (
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
+  ) => {
     const job = snapshot?.job;
     if (
       !job ||
@@ -190,7 +192,8 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       !(
         (job.status === 'queued' && job.dispatch.reserved === false) ||
         (action === 'reconcile' && job.dispatch.canReconcileStopped === true) ||
-        (action === 'retry-captured' && job.dispatch.canRetryCaptured === true)
+        (action === 'retry-captured' && job.dispatch.canRetryCaptured === true) ||
+        (action === 'verify-completed' && job.dispatch.canVerifyCompleted === true)
       )
     )
       return;
@@ -516,6 +519,22 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               onClick={() => void recoverQueued('retry-captured')}
             >
               Retry captured candidate
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 && snapshot.job.dispatch?.canVerifyCompleted ? (
+          <div className="publish-actions">
+            <p>
+              The cloud runner reported deployment. Builder can verify its completed checks and
+              current release to recover a missing final update.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('verify-completed')}
+            >
+              Verify completed deployment
             </button>
           </div>
         ) : null}

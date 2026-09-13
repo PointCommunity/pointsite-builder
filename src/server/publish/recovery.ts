@@ -14,7 +14,7 @@ const TerminalRunSchema = z.object({
 });
 
 /** Read native execution, never infer completion from elapsed time or a single finished job. */
-async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
+export async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
   try {
     const input = TerminalRunSchema.parse(value);
     const destination = publicationDestinations[input.target];
@@ -79,7 +79,7 @@ async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
 
 export const QueuedRecoverySchema = z.strictObject({
   jobId: z.uuid(),
-  action: z.enum(['retry', 'cancel', 'reconcile', 'retry-captured']),
+  action: z.enum(['retry', 'cancel', 'reconcile', 'retry-captured', 'verify-completed']),
   expectedAttempts: z.number().int().min(0).max(MAX_DISPATCH_ATTEMPTS),
   actor: z.string().regex(/^github:[1-9][0-9]*$/),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9._:-]{16,100}$/),
@@ -94,7 +94,8 @@ export async function recoverQueuedPublication(
   fetcher: typeof fetch = fetch,
 ) {
   const input = QueuedRecoverySchema.parse(value);
-  if (input.action === 'retry-captured') throw new Error('PUBLICATION_RECOVERY_CHANGED');
+  if (input.action === 'retry-captured' || input.action === 'verify-completed')
+    throw new Error('PUBLICATION_RECOVERY_CHANGED');
   const requestHash = await checksumDocument({
     jobId: input.jobId,
     action: input.action,

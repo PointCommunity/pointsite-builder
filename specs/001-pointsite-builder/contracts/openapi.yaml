@@ -858,6 +858,9 @@ paths:
         Retry-captured copies a cancelled Staging candidate into a new job and nonce, at most three
         times, after fresh role, runtime, slot and destination-base checks. Later draft edits are
         not substituted. Jobs with deployment authorization are ineligible.
+        Verify-completed records an already deployed result only after terminal native execution,
+        passing checks and current live identity match its stored acknowledgment. It never publishes
+        again or restores revoked approval. Production requires an Administrator.
       parameters:
         - name: jobId
           in: path
@@ -873,7 +876,11 @@ paths:
               additionalProperties: false
               required: [action, expectedAttempts]
               properties:
-                action: { type: string, enum: [retry, cancel, reconcile, retry-captured] }
+                action:
+                  {
+                    type: string,
+                    enum: [retry, cancel, reconcile, retry-captured, verify-completed],
+                  }
                 expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
       responses:
         '200':

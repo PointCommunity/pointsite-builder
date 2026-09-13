@@ -38,7 +38,7 @@ function setup(role: Role = 'publisher') {
   return { app, publisher };
 }
 describe('publication continuation API', () => {
-  it.each(['cancel', 'retry-captured'])(
+  it.each(['cancel', 'retry-captured', 'verify-completed'])(
     'protects %s recovery and binds its request to the authenticated actor',
     async (action) => {
       const { app, publisher } = setup();

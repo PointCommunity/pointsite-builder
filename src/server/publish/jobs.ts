@@ -4,6 +4,7 @@ import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
 import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
 import { retryCapturedStaging } from './retry';
+import { reconcileCompletedPublication } from './reconcile';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -71,6 +72,8 @@ export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
 
   recoverQueued(input: QueuedRecoveryInput) {
+    if (input.action === 'verify-completed')
+      return reconcileCompletedPublication(this.database, input);
     return recoverQueuedPublication(this.database, input);
   }
 
@@ -293,7 +296,9 @@ export class D1PublishJobStore {
         AND j.status IN ('queued','running')) AS can_reconcile,
       (j.environment='staging' AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
         AND COALESCE((SELECT attempt FROM publication_retries WHERE job_id=j.id),0)<3
-        AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured
+        AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured,
+      (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.deployment_json IS NOT NULL
+        AND pr.run_id IS NOT NULL) AS can_verify_completed
       FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
       )
       .bind(id)
@@ -305,6 +310,7 @@ export class D1PublishJobStore {
         environment: string;
         can_reconcile: number;
         can_retry_captured: number;
+        can_verify_completed: number;
       }>();
     if (!row) return undefined;
     return {
@@ -313,6 +319,7 @@ export class D1PublishJobStore {
       reserved: row.run_id !== null,
       canReconcileStopped: row.can_reconcile === 1,
       canRetryCaptured: row.can_retry_captured === 1,
+      canVerifyCompleted: row.can_verify_completed === 1,
       needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)

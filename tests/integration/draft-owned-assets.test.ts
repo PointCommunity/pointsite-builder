@@ -18,6 +18,7 @@ import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { D1ProductionPublisher } from '../../src/server/publish/promotion';
 import { recoverQueuedPublication } from '../../src/server/publish/recovery';
 import { retryCapturedStaging } from '../../src/server/publish/retry';
+import { reconcileCompletedPublication } from '../../src/server/publish/reconcile';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { D1ApprovalService } from '../../src/server/approvals/service';
@@ -240,6 +241,264 @@ afterEach(async () => {
   miniflare = undefined;
   vi.restoreAllMocks();
 });
+
+it.each(['staging', 'production'] as const)(
+  'recovers a completed %s deployment without publishing again',
+  async (target) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345',
+      administrator = 'github:54321';
+    for (const [email, role] of [
+      [subject, 'publisher'],
+      [administrator, 'administrator'],
+    ])
+      await database
+        .prepare(
+          "INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by) VALUES (?,?,?,1,'fixture','fixture','fixture')",
+        )
+        .bind(email, `fixture-${role}`, role)
+        .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database);
+    const captured = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'completed-recovery-source',
+      requestId: 'capture',
+    });
+    const jobId = target === 'staging' ? captured.id : crypto.randomUUID();
+    if (target === 'production')
+      await database.batch([
+        database
+          .prepare(
+            `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+      SELECT ?,'completed-production-fixture','production-merge','running',candidate_json,candidate_checksum,'PointCommunity/pointsite',base_sha,requested_by,requested_at FROM publish_jobs WHERE id=?`,
+          )
+          .bind(jobId, captured.id),
+        database
+          .prepare(
+            'INSERT INTO publication_inputs(job_id,draft_id,revision_id,workflow_revision) SELECT ?,draft_id,revision_id,workflow_revision FROM publication_inputs WHERE job_id=?',
+          )
+          .bind(jobId, captured.id),
+        database
+          .prepare('INSERT INTO publication_runs(job_id,nonce,dispatch_revision) VALUES (?,?,?)')
+          .bind(jobId, 'd'.repeat(64), 'b'.repeat(40)),
+        database
+          .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('production',?)")
+          .bind(jobId),
+      ]);
+    const { build } = await publicationGitHubFixture(jobId, captured.candidateChecksum, [], target);
+    const workerVersionId = crypto.randomUUID();
+    // Snapshot after the separately tested signed runner authorized, committed and acknowledged deployment.
+    await database.batch([
+      database
+        .prepare(
+          `UPDATE publication_runs SET reserved_run_id='12345',reserved_run_attempt='1',reserved_check_run_id='23456',
+      run_id='12345',run_attempt='1',check_run_id='34567',claimed_at='fixture',commit_authorized_at='fixture',
+      deploy_authorized_at='fixture',build_json=?,deployment_json=? WHERE job_id=?`,
+        )
+        .bind(
+          JSON.stringify(build),
+          JSON.stringify(
+            target === 'staging' ? { workerVersionId } : { artifactDigest: build.artifactDigest },
+          ),
+          jobId,
+        ),
+      database
+        .prepare("UPDATE publish_jobs SET status='running',result_sha=? WHERE id=?")
+        .bind(build.commitSha, jobId),
+      database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject),
+    ]);
+    const repositoryName = target === 'staging' ? 'pointsite-staging' : 'pointsite';
+    const environment = target === 'staging' ? 'staging' : 'github-pages';
+    const origin = target === 'staging' ? 'https://staging.pointatx.org' : 'https://pointatx.org';
+    const apiRoot = `https://api.github.com/repos/PointCommunity/${repositoryName}`;
+    const jobUrl = `https://github.com/PointCommunity/${repositoryName}/actions/runs/12345/job/34567`;
+    let failure = '',
+      reads = 0,
+      deployments = 0;
+    const fetcher: typeof fetch = async (url, init) => {
+      const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      reads++;
+      expect(init?.method).toBeUndefined();
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe('error');
+      expect(new Headers(init?.headers).has('authorization')).toBe(false);
+      if (path.startsWith(`${apiRoot}/actions/runs/12345`))
+        return Response.json({
+          id: 12345,
+          run_attempt: 1,
+          status: failure === 'pending' ? 'in_progress' : 'completed',
+          conclusion: 'failure',
+          head_sha: 'b'.repeat(40),
+          head_branch: 'main',
+          event: 'repository_dispatch',
+          path: '.github/workflows/publish-candidate.yml',
+          repository: {
+            id: target === 'staging' ? 1357847426 : 1348084954,
+            full_name: `PointCommunity/${repositoryName}`,
+          },
+          referenced_workflows: [
+            {
+              path: `PointCommunity/pointsite-staging/.github/workflows/${target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${'a'.repeat(40)}`,
+              sha: 'a'.repeat(40),
+            },
+          ],
+        });
+      if (path === `${apiRoot}/check-runs/34567`)
+        return Response.json({
+          id: 34567,
+          status: 'completed',
+          conclusion: failure === 'checks' ? 'failure' : 'success',
+          head_sha: 'b'.repeat(40),
+          details_url: jobUrl,
+          app: { id: 15368, slug: 'github-actions' },
+        });
+      if (path === `${apiRoot}/git/ref/heads/main`)
+        return Response.json({ object: { sha: build.commitSha } });
+      if (path === `${apiRoot}/deployments?environment=${environment}&per_page=1`) {
+        if (++deployments === 2 && failure === 'role-race')
+          await database
+            .prepare("UPDATE user_roles SET role='viewer' WHERE email=?")
+            .bind(administrator)
+            .run();
+        return Response.json([
+          {
+            id: 1,
+            sha: 'b'.repeat(40),
+            environment,
+            performed_via_github_app: { id: 15368, slug: 'github-actions' },
+          },
+        ]);
+      }
+      if (path === `${apiRoot}/deployments/1/statuses?per_page=1`)
+        return Response.json([
+          { state: 'success', environment, log_url: jobUrl, environment_url: origin },
+        ]);
+      if (path === `${origin}/__pointsite_release.json`)
+        return Response.json({
+          format: 2,
+          candidateChecksum: captured.candidateChecksum,
+          workflowRevision: 'a'.repeat(40),
+          artifactDigest: failure === 'live' ? '0'.repeat(64) : build.artifactDigest,
+          ...(target === 'staging' ? { workerVersionId } : {}),
+        });
+      throw new Error('Unexpected recovery request');
+    };
+    const input = {
+      jobId,
+      action: 'verify-completed' as const,
+      expectedAttempts: 0,
+      actor: administrator,
+      idempotencyKey: 'completed-recovery-request',
+      requestId: 'recover',
+    };
+    expect((await store.dispatchStatus(jobId))?.canVerifyCompleted).toBe(true);
+    await expect(
+      reconcileCompletedPublication(database, { ...input, actor: subject }, fetcher),
+    ).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+    expect(reads).toBe(0);
+    if (target === 'production') {
+      await database
+        .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+        .bind(administrator)
+        .run();
+      await expect(reconcileCompletedPublication(database, input, fetcher)).rejects.toThrow(
+        'PUBLISH_AUTHORITY_CHANGED',
+      );
+      expect(reads).toBe(0);
+      await database
+        .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+        .bind(administrator)
+        .run();
+    }
+    for (failure of ['pending', 'checks', 'live', 'role-race']) {
+      deployments = 0;
+      await expect(reconcileCompletedPublication(database, input, fetcher)).rejects.toThrow(
+        /PUBLICATION_(RUN_NOT_TERMINAL|VERIFICATION_UNCONFIRMED|RECOVERY_CHANGED)/,
+      );
+      expect(
+        await database
+          .prepare('SELECT status FROM publish_jobs WHERE id=?')
+          .bind(jobId)
+          .first('status'),
+      ).toBe('running');
+      expect(
+        await database
+          .prepare('SELECT job_id FROM publication_slots WHERE target=?')
+          .bind(target)
+          .first('job_id'),
+      ).toBe(jobId);
+      await database
+        .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+        .bind(administrator)
+        .run();
+    }
+    failure = '';
+    deployments = 0;
+    const lostResponse = new Proxy(database, {
+      get: (db, property) =>
+        property === 'batch'
+          ? async (statements: D1PreparedStatement[]) => {
+              await database.batch(statements);
+              throw new Error('lost committed response');
+            }
+          : (Reflect.get(db, property) as unknown),
+    });
+    expect(await reconcileCompletedPublication(lostResponse, input, fetcher)).toEqual({
+      recovered: true,
+    });
+    expect(
+      await database
+        .prepare('SELECT status FROM publish_jobs WHERE id=?')
+        .bind(jobId)
+        .first('status'),
+    ).toBe('succeeded');
+    expect(
+      JSON.parse(
+        (await database
+          .prepare('SELECT evidence_json FROM publish_jobs WHERE id=?')
+          .bind(jobId)
+          .first<string>('evidence_json'))!,
+      ),
+    ).toMatchObject({
+      verificationStatus: 'passed',
+      artifactDigest: build.artifactDigest,
+      checkRunId: '34567',
+    });
+    expect(
+      await database
+        .prepare('SELECT job_id FROM publication_slots WHERE target=?')
+        .bind(target)
+        .first('job_id'),
+    ).toBe(target === 'staging' ? jobId : null);
+    expect(await database.prepare('SELECT count(*) AS n FROM approvals').first('n')).toBe(0);
+    const previousReads = reads;
+    expect(await reconcileCompletedPublication(database, input, fetcher)).toEqual({
+      recovered: true,
+    });
+    expect(reads).toBe(previousReads);
+    await expect(
+      recoverQueuedPublication(database, { ...input, action: 'cancel' }, fetcher),
+    ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    expect(
+      await database
+        .prepare(
+          "SELECT count(*) AS n FROM audit_events WHERE action='publish.deployment-reconciled'",
+        )
+        .first('n'),
+    ).toBe(1);
+    await database
+      .prepare('UPDATE user_roles SET active=0 WHERE email=?')
+      .bind(administrator)
+      .run();
+    await expect(reconcileCompletedPublication(database, input, fetcher)).rejects.toThrow(
+      'PUBLISH_AUTHORITY_CHANGED',
+    );
+  },
+);
 
 it.each([false, true])(
   'retries pinned Staging inputs after cancellation with recorded commit=%s',

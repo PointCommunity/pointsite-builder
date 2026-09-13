@@ -267,6 +267,11 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
         workflow.job!.status = 'queued';
         workflow.job!.dispatch!.canRetryCaptured = false;
         workflow.availability = { state: 'busy', phase: 'running' };
+      } else if (body.action === 'verify-completed') {
+        workflow.job!.status = 'succeeded';
+        workflow.job!.dispatch!.canVerifyCompleted = false;
+        workflow.job!.evidence = { verificationStatus: 'passed', artifactDigest: 'f'.repeat(64) };
+        workflow.currentStagingSha = 'd'.repeat(40);
       } else {
         workflow.job!.status = 'cancelled';
         workflow.job!.dispatch!.canRetryCaptured = true;
@@ -276,7 +281,15 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
     }
     if (path === '/api/publish/staging') {
       published.push(request.postDataJSON() as unknown);
-      workflow.job!.status = 'queued';
+      workflow.job!.id = '30000000-0000-4000-8000-000000000013';
+      workflow.job!.status = 'running';
+      workflow.job!.stagingCommitSha = 'd'.repeat(40);
+      workflow.job!.dispatch = {
+        ...workflow.job!.dispatch!,
+        reserved: true,
+        canRetryCaptured: false,
+        canVerifyCompleted: true,
+      };
       workflow.availability = { state: 'busy', phase: 'running' };
       return route.fulfill({
         status: 202,
@@ -321,7 +334,14 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
     expectedRevisionChecksum: draft.revision.checksum,
     expectedBaseSha: 'c'.repeat(40),
   });
-  expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel']);
+  const verify = page.getByRole('button', { name: 'Verify completed deployment' });
+  await expect(verify).toBeEnabled();
+  await verify.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel', 'verify-completed']);
+  expect(published).toHaveLength(1);
 });
 
 test('automatically advances an immediate exact verification', async ({ page }) => {

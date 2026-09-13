@@ -331,7 +331,7 @@ export const api = {
     }),
   recoverQueuedPublication: (
     jobId: string,
-    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured',
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
     expectedAttempts: number,
     requestKey: string,
   ) =>

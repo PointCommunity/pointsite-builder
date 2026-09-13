@@ -282,6 +282,7 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         [
           'PUBLICATION_RECOVERY_CHANGED',
           'PUBLICATION_RUN_NOT_TERMINAL',
+          'PUBLICATION_VERIFICATION_UNCONFIRMED',
           'IDEMPOTENCY_CONFLICT',
         ].includes(error.message)
       )
