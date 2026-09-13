@@ -278,11 +278,21 @@
         <tr>
           <td>R2–R5, R13</td>
           <td>
-            Use native IndexedDB. Proposed bounds: 250 actions, 32 MiB total pending payload,
-            seven-day recovery eligibility. Never silently discard expired or incompatible data:
-            show blocked recovery and explicit discard. Successful acknowledgements remove payloads.
-            Sign-out requires settlement or explicit discard. No session secret or checkout token
-            enters the journal.
+            Use native IndexedDB. Bounds: 250 actions, 32 MiB total pending payload, seven-day
+            recovery eligibility. Never silently discard expired or incompatible data: show blocked
+            recovery and explicit discard. Successful acknowledgements remove payloads. Sign-out
+            requires settlement or explicit discard. No session secret or checkout token enters the
+            journal. Scope records by authenticated actor, draft and tab client identity. An atomic
+            writer generation prevents an older page from replacing a resumed page's pending work;
+            it grants no backend authority. Commit the payload and shared byte budget in one
+            transaction, acknowledging local persistence only after transaction completion. Preserve
+            staged gestures and original action identities. Storage write failures show an explicit
+            recovery warning while remote saving remains available; an unreadable existing journal
+            blocks replay and editing until recovery succeeds or explicit discard. Discard pauses
+            edits and sending before fetching the latest draft and clearing storage. Failed discard
+            preserves pending work. Navigation waits for acknowledged payload cleanup; sign-out
+            checks all pending journals for the current actor and offers explicit atomic deletion of
+            that actor's records. Other actors' records remain untouched.
           </td>
           <td>
             Browser tests for text, controls, unfinished drag, eviction/denial, account switching,

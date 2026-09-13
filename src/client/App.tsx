@@ -14,6 +14,7 @@ import {
   saveFeedbackWorkspace,
 } from './feedback/workspace';
 import type { EditorPanel } from '../server/repositories/contracts';
+import { PendingJournal } from './editor/pending-journal';
 
 export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -61,6 +62,9 @@ export function App() {
   const [checkouts, setCheckouts] = useState<DraftCheckoutAvailability[]>([]);
   const [checkoutConflict, setCheckoutConflict] = useState(false);
   const checkoutTrigger = useRef<HTMLButtonElement | null>(null);
+  const logoutForm = useRef<HTMLFormElement | null>(null);
+  const [pendingSignout, setPendingSignout] = useState(false);
+  const [signoutError, setSignoutError] = useState('');
   const [clientId] = useState(() => {
     const key = 'pointsite-builder:editing-client:v1';
     const existing = globalThis.sessionStorage?.getItem(key);
@@ -248,7 +252,26 @@ export function App() {
               return Promise.resolve();
             }}
           />
-          <form action="/auth/logout" method="post">
+          <form
+            ref={logoutForm}
+            action="/auth/logout"
+            method="post"
+            onSubmit={(event) => {
+              if (typeof indexedDB === 'undefined') return;
+              event.preventDefault();
+              void PendingJournal.prepareSignout(actor.email)
+                .then((ready) => {
+                  if (ready) logoutForm.current?.submit();
+                  else setPendingSignout(true);
+                })
+                .catch(() => {
+                  setSignoutError(
+                    'Browser recovery could not be checked. Retry before signing out.',
+                  );
+                  setPendingSignout(true);
+                });
+            }}
+          >
             <button className="button" type="submit">
               Sign out
             </button>
@@ -256,6 +279,43 @@ export function App() {
         </div>
       </header>
       <main id="main-content">
+        {pendingSignout ? (
+          <section
+            className="autosave-recovery"
+            role="alert"
+            aria-label="Pending changes before sign out"
+          >
+            <p>
+              {signoutError ||
+                'Pending changes remain on this browser. Return to the draft to save them, or discard your pending changes before signing out.'}
+            </p>
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                setPendingSignout(false);
+                setSignoutError('');
+              }}
+            >
+              Keep working
+            </button>
+            <button
+              className="button button--danger"
+              type="button"
+              onClick={() => {
+                void PendingJournal.discardPending(actor.email)
+                  .then(() => logoutForm.current?.submit())
+                  .catch(() =>
+                    setSignoutError(
+                      'Sign-out could not finish. Retry after saving or discarding pending changes.',
+                    ),
+                  );
+              }}
+            >
+              Discard my pending changes and sign out
+            </button>
+          </section>
+        ) : null}
         <DraftList
           drafts={drafts}
           role={actor.role}

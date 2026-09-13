@@ -105,7 +105,13 @@ function Workspace({
   );
   const checkoutUnavailable = leaseLost || leaseExpired;
   const editable =
-    role !== 'viewer' && draft.status === 'active' && Boolean(checkout) && !checkoutUnavailable;
+    role !== 'viewer' &&
+    draft.status === 'active' &&
+    Boolean(checkout) &&
+    !checkoutUnavailable &&
+    autosave.recovery !== 'blocked' &&
+    autosave.recovery !== 'clearing' &&
+    autosave.recovery !== 'checking';
   const viewState = useCallback(
     (): EditorViewState => ({
       draftId: draft.id,
@@ -205,6 +211,19 @@ function Workspace({
       );
     }
   };
+  const discardPending = async (leave: boolean) => {
+    try {
+      await reloadLatest();
+      setRecoveryStatus('');
+      setRecoveryCopied(false);
+      if (leave) {
+        if (checkout) await api.releaseCheckout(draft.id, checkout.clientId, checkout.token);
+        onClose();
+      }
+    } catch {
+      setRecoveryStatus('Recovery could not be cleared safely. Keep this tab open and retry.');
+    }
+  };
   const closePublishing = () => {
     setPublishOpen(false);
     window.queueMicrotask(() => publishButtonRef.current?.focus());
@@ -302,6 +321,19 @@ function Workspace({
         </div>
       </header>
       <div className="autosave-recovery-slot">
+        <p className="pending-journal-status" aria-live="off">
+          {autosave.recovery === 'protected'
+            ? 'Pending changes protected on this browser.'
+            : autosave.recovery === 'writing'
+              ? autosave.pendingCount
+                ? 'Protecting pending changes…'
+                : 'Clearing recovery copy…'
+              : autosave.recovery === 'unavailable'
+                ? 'Refresh recovery unavailable.'
+                : autosave.recovery === 'blocked'
+                  ? 'Pending recovery needs attention.'
+                  : '\u00a0'}
+        </p>
         {leaseExpiresAt &&
         checkoutPhase(leaseExpiresAt, leaseNow) === 'warning' &&
         !checkoutUnavailable ? (
@@ -321,10 +353,18 @@ function Workspace({
             </p>
           </section>
         ) : null}
-        {autosave.alert || recoveryStatus ? (
+        {autosave.alert ||
+        recoveryStatus ||
+        autosave.recovery === 'blocked' ||
+        autosave.recovery === 'unavailable' ? (
           <section className="autosave-recovery" role="alert" aria-label="Autosave recovery">
-            <p>{recoveryStatus || autosave.alert}</p>
-            {!autosave.canLeave ? (
+            <p>{recoveryStatus || autosave.alert || autosave.recoveryMessage}</p>
+            {autosave.recovery === 'blocked' || autosave.recovery === 'unavailable' ? (
+              <button className="button" type="button" onClick={retryAutosave}>
+                Retry recovery
+              </button>
+            ) : null}
+            {!autosave.canLeave && autosave.recovery !== 'blocked' ? (
               <button className="button" type="button" onClick={() => void copyPendingDraft()}>
                 Copy pending draft
               </button>
@@ -334,7 +374,7 @@ function Workspace({
                 className="button"
                 type="button"
                 disabled={!recoveryCopied}
-                onClick={() => void reloadLatest()}
+                onClick={() => void discardPending(false)}
               >
                 Load latest version
               </button>
@@ -343,8 +383,11 @@ function Workspace({
               <button
                 className="button button--danger"
                 type="button"
-                disabled={!recoveryCopied}
-                onClick={onClose}
+                disabled={
+                  autosave.recovery === 'clearing' ||
+                  (!recoveryCopied && autosave.recovery !== 'blocked')
+                }
+                onClick={() => void discardPending(true)}
               >
                 Discard pending changes and leave
               </button>

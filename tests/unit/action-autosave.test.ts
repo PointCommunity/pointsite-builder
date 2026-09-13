@@ -5,6 +5,10 @@ import {
 } from '../../src/client/editor/action-autosave';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
+import {
+  PendingJournalError,
+  type PendingJournalState,
+} from '../../src/client/editor/pending-journal';
 
 const initialDraft = (): DraftRecord => {
   const document = structuredClone(defaultSiteDocument);
@@ -65,6 +69,219 @@ const savedDraft = (
 });
 
 describe('ActionAutosaveController', () => {
+  it('pauses editing and sending during discard and preserves pending work if clearing fails', async () => {
+    const draft = initialDraft();
+    const pendingWrite = deferred<void>();
+    const latest = deferred<DraftRecord>();
+    const journal = {
+      scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+      load: vi.fn().mockResolvedValue(null),
+      write: vi
+        .fn<(state: PendingJournalState | null) => Promise<void>>()
+        .mockImplementationOnce(() => pendingWrite.promise)
+        .mockRejectedValue(new PendingJournalError('unavailable')),
+    };
+    const persist = vi.fn();
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      journal,
+      persist,
+      isOnline: () => false,
+    });
+    expect(journal.load).not.toHaveBeenCalled();
+    controller.activate();
+    controller.dispose();
+    controller.activate();
+    expect(journal.load).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    const document = structuredClone(draft.document);
+    document.site.shortName = 'Keep if discard fails';
+    const action = { category: 'control-change' as const, context: 'site-settings' as const };
+    controller.complete(document, action);
+    const discard = controller.discardAndReplace(() => latest.promise);
+    expect(controller.snapshot.recovery).toBe('clearing');
+    expect(controller.complete(draft.document, action)).toBe(false);
+    controller.stage(draft.document, action);
+    controller.setOnline(true);
+    controller.retry();
+    pendingWrite.resolve();
+    latest.resolve(draft);
+    await expect(discard).rejects.toThrow('Pending recovery unavailable');
+    expect(persist).not.toHaveBeenCalled();
+    expect(controller.snapshot.document.site.shortName).toBe('Keep if discard fails');
+    expect(controller.snapshot.pendingCount).toBe(1);
+    expect(controller.snapshot.canLeave).toBe(false);
+    journal.write.mockResolvedValue(undefined);
+    await controller.discardAndReplace(() => Promise.resolve(draft));
+    await vi.waitFor(() => expect(controller.snapshot.canLeave).toBe(true));
+    expect(controller.snapshot.document).toEqual(draft.document);
+    controller.dispose();
+  });
+
+  it('keeps navigation blocked until acknowledged recovery payloads are cleared', async () => {
+    const draft = initialDraft();
+    const clear = deferred<void>();
+    const journal = {
+      scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+      load: vi.fn().mockResolvedValue(null),
+      write: vi.fn((state: PendingJournalState | null) =>
+        state ? Promise.resolve() : clear.promise,
+      ),
+    };
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      journal,
+      persist: (request) => Promise.resolve(savedDraft(draft, 2, request.document)),
+      isOnline: () => true,
+    });
+    controller.activate();
+    await Promise.resolve();
+    controller.complete(draft.document, { category: 'undo', context: 'page-content' });
+    await vi.waitFor(() => expect(controller.snapshot.state).toBe('saved'));
+    expect(controller.snapshot.canLeave).toBe(false);
+    clear.resolve();
+    await vi.waitFor(() => expect(controller.snapshot.canLeave).toBe(true));
+    controller.dispose();
+  });
+
+  it('waits for recovery persistence before sending, then removes acknowledged payloads', async () => {
+    const draft = initialDraft();
+    const pendingWrite = deferred<void>();
+    const journal = {
+      scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+      load: vi.fn().mockResolvedValue(null),
+      write: vi
+        .fn<(state: PendingJournalState | null) => Promise<void>>()
+        .mockImplementationOnce(() => pendingWrite.promise)
+        .mockResolvedValue(undefined),
+    };
+    const persist = vi.fn((request: AutosavePersistRequest) =>
+      Promise.resolve(savedDraft(draft, 2, request.document)),
+    );
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      journal,
+      persist,
+      isOnline: () => true,
+    });
+    controller.activate();
+    await Promise.resolve();
+    controller.mutate(
+      (document) => ({ ...document, site: { ...document.site, shortName: 'Durable first' } }),
+      { category: 'control-change', context: 'site-settings' },
+    );
+    expect(persist).not.toHaveBeenCalled();
+    expect(controller.snapshot.recovery).toBe('writing');
+    pendingWrite.resolve();
+    await vi.waitFor(() => expect(controller.snapshot.recovery).toBe('ready'));
+    expect(persist).toHaveBeenCalledOnce();
+    expect(journal.write.mock.calls.at(-1)?.[0]).toBeNull();
+    expect(controller.snapshot.canLeave).toBe(true);
+    controller.dispose();
+  });
+
+  it.each(['completed', 'staged', 'preview'])(
+    'recovers %s work with its original identity and base after refresh',
+    async (kind) => {
+      const draft = initialDraft();
+      let stored: PendingJournalState | null = null;
+      const journal = {
+        scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+        load: () => Promise.resolve(structuredClone(stored)),
+        write: (state: PendingJournalState | null) => {
+          stored = structuredClone(state);
+          return Promise.resolve();
+        },
+      };
+      const offlinePersist = vi.fn();
+      const first = new ActionAutosaveController({
+        initialDraft: draft,
+        journal,
+        persist: offlinePersist,
+        isOnline: () => false,
+        createId: () => 'recovered-action-0001',
+      });
+      first.activate();
+      await Promise.resolve();
+      const document = structuredClone(draft.document);
+      document.site.shortName = 'Pending after refresh';
+      const action = { category: 'resize' as const, context: 'element-layout' as const };
+      if (kind !== 'completed') first.stage(document, action, kind !== 'preview');
+      else first.complete(document, action);
+      if (kind === 'preview') expect(first.snapshot.document).toEqual(draft.document);
+      expect(JSON.parse(first.recoveryJson())).toMatchObject({
+        document,
+        pendingActions: [{ idempotencyKey: 'recovered-action-0001', ...action }],
+      });
+      expect(first.snapshot.canLeave).toBe(false);
+      await vi.waitFor(() => expect(first.snapshot.recovery).toBe('protected'));
+      expect(offlinePersist).not.toHaveBeenCalled();
+      first.dispose();
+      const persist = vi.fn((request: AutosavePersistRequest) =>
+        Promise.resolve(savedDraft(draft, 2, request.document)),
+      );
+      const restored = new ActionAutosaveController({
+        initialDraft: savedDraft(draft, 2, document),
+        journal,
+        persist,
+        isOnline: () => true,
+      });
+      restored.activate();
+      await vi.waitFor(() => expect(restored.snapshot.recovery).toBe('ready'));
+      expect(persist).toHaveBeenCalledOnce();
+      expect(persist.mock.calls[0]?.[0]).toMatchObject({
+        idempotencyKey: 'recovered-action-0001',
+        expectedRevisionId: draft.latestRevisionId,
+        expectedChecksum: draft.revision.checksum,
+        action,
+      });
+      expect(stored).toBeNull();
+      expect(restored.snapshot.document.site.shortName).toBe('Pending after refresh');
+      restored.dispose();
+    },
+  );
+
+  it('blocks invalid recovery until explicit discard and reports storage failure without stopping remote saves', async () => {
+    const draft = initialDraft();
+    const journal = {
+      scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+      load: vi.fn().mockRejectedValue(new PendingJournalError('invalid')),
+      write: vi
+        .fn<(state: PendingJournalState | null) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const persist = vi.fn((request: AutosavePersistRequest) =>
+      Promise.resolve(savedDraft(draft, 2, request.document)),
+    );
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      journal,
+      persist,
+      isOnline: () => true,
+    });
+    controller.activate();
+    await Promise.resolve();
+    expect(controller.snapshot.recovery).toBe('blocked');
+    expect(controller.complete(draft.document, { category: 'undo', context: 'page-content' })).toBe(
+      false,
+    );
+    expect(persist).not.toHaveBeenCalled();
+    await controller.discardAndReplace(() => Promise.resolve(draft));
+    await vi.waitFor(() => expect(controller.snapshot.recovery).toBe('ready'));
+    journal.write.mockRejectedValue(new PendingJournalError('quota'));
+    controller.mutate(
+      (document) => ({
+        ...document,
+        site: { ...document.site, shortName: 'Remote remains available' },
+      }),
+      { category: 'control-change', context: 'site-settings' },
+    );
+    await vi.waitFor(() => expect(controller.snapshot.state).toBe('saved'));
+    expect(controller.snapshot.recovery).toBe('unavailable');
+    expect(controller.snapshot.recoveryMessage).toContain('unavailable');
+    expect(persist).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
   it('merges rename metadata without replacing pending content or accepting stale save names', async () => {
     const draft = initialDraft();
     const save = deferred<DraftRecord>();

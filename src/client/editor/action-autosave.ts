@@ -1,6 +1,11 @@
 import type { SiteDocument } from '../../site-kit/types';
 import type { DraftRecord } from '../../server/repositories/contracts';
 import type { DraftAction } from '../../shared/draft-actions';
+import {
+  PendingJournalError,
+  type PendingJournal,
+  type PendingJournalState,
+} from './pending-journal';
 
 export type AutosaveState =
   'saved' | 'pending' | 'saving' | 'offline' | 'retrying' | 'conflict' | 'validation' | 'error';
@@ -30,6 +35,16 @@ export interface AutosaveSnapshot {
   message: string;
   alert: string | null;
   errorKind: AutosaveErrorKind;
+  recovery:
+    | 'disabled'
+    | 'checking'
+    | 'clearing'
+    | 'writing'
+    | 'protected'
+    | 'ready'
+    | 'unavailable'
+    | 'blocked';
+  recoveryMessage: string | null;
 }
 
 interface QueueEntry extends AutosavePersistRequest {
@@ -46,6 +61,8 @@ interface ControllerOptions {
   textDelayMs?: number;
   maxQueue?: number;
   retryDelaysMs?: readonly number[];
+  journal?: Pick<PendingJournal, 'load' | 'write' | 'scope'>;
+  recoveryUnavailable?: boolean;
 }
 
 function messageFor(
@@ -104,6 +121,18 @@ export class ActionAutosaveController {
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
   #snapshot: AutosaveSnapshot;
   #disposed = false;
+  readonly #journal: ControllerOptions['journal'];
+  #recovery: AutosaveSnapshot['recovery'];
+  #journalInitialized = false;
+  #journalStarted = false;
+  #journalVersion = 0;
+  #journalSavedVersion = 0;
+  #journalNext: { state: PendingJournalState | null; version: number } | null = null;
+  #journalWriting = false;
+  #journalTask: Promise<void> | null = null;
+  #journalHasPayload = false;
+  #discarding = false;
+  #staged: QueueEntry | null = null;
 
   constructor(options: ControllerOptions) {
     this.#draft = structuredClone(options.initialDraft);
@@ -114,6 +143,12 @@ export class ActionAutosaveController {
     this.#textDelayMs = options.textDelayMs ?? 1_000;
     this.#maxQueue = options.maxQueue ?? 250;
     this.#retryDelaysMs = options.retryDelaysMs ?? [1_000, 2_000, 4_000];
+    this.#journal = options.journal;
+    this.#recovery = options.journal
+      ? 'checking'
+      : options.recoveryUnavailable
+        ? 'unavailable'
+        : 'disabled';
     this.#snapshot = this.#makeSnapshot();
   }
 
@@ -131,12 +166,39 @@ export class ActionAutosaveController {
     return this.complete(next, mutation);
   }
 
-  stage(document: SiteDocument): void {
-    this.#document = structuredClone(document);
+  stage(
+    document: SiteDocument,
+    mutation: AutosaveMutation = { category: 'control-change', context: 'page-content' },
+    renderDocument = true,
+  ): void {
+    if (this.#discarding || this.#recovery === 'checking' || this.#recovery === 'blocked') return;
+    if (this.#queue.length >= this.#maxQueue) {
+      this.#state = 'error';
+      this.#errorKind = 'queue-limit';
+      this.#emit();
+      return;
+    }
+    if (renderDocument) this.#document = structuredClone(document);
+    if (
+      JSON.stringify(document) ===
+      JSON.stringify(this.#queue.at(-1)?.document ?? this.#draft.document)
+    )
+      this.#staged = null;
+    else {
+      this.#staged ??= this.#entry(document, mutation, false);
+      this.#staged.document = structuredClone(document);
+      this.#staged.action = { category: mutation.category, context: mutation.context };
+    }
+    if (!['conflict', 'validation', 'error'].includes(this.#state))
+      this.#state = this.#staged ? 'pending' : this.#queue.length ? this.#state : 'saved';
+    this.#scheduleJournal();
     this.#emit();
   }
 
   complete(document: SiteDocument, mutation: AutosaveMutation): boolean {
+    if (this.#discarding || this.#recovery === 'checking' || this.#recovery === 'blocked')
+      return false;
+    this.#staged = null;
     if (this.#state === 'validation' && this.#queue[0] && !this.#inFlight) {
       const head = this.#queue[0];
       this.#document = structuredClone(document);
@@ -150,6 +212,7 @@ export class ActionAutosaveController {
       head.coalesceKey = mutation.coalesceKey;
       this.#state = this.#isOnline() ? 'pending' : 'offline';
       this.#errorKind = null;
+      this.#scheduleJournal();
       if (head.ready) void this.#pump();
       else this.#scheduleTextFlush();
       this.#emit();
@@ -223,6 +286,12 @@ export class ActionAutosaveController {
   }
 
   retry = (): void => {
+    if (this.#discarding || this.#recovery === 'checking') return;
+    if (this.#journal && !this.#journalInitialized) {
+      void this.#loadJournal();
+      return;
+    }
+    if (this.#journal && this.#recovery === 'unavailable') this.#scheduleJournal();
     if (this.#state === 'conflict') return;
     const head = this.#queue[0];
     if (!head) return;
@@ -238,24 +307,50 @@ export class ActionAutosaveController {
   replaceWithLatest(draft: DraftRecord): void {
     this.#clearTimers();
     this.#queue = [];
+    this.#staged = null;
     this.#inFlight = null;
     this.#draft = structuredClone(draft);
     this.#renamed = null;
     this.#document = structuredClone(draft.document);
     this.#state = 'saved';
     this.#errorKind = null;
+    this.#scheduleJournal();
     this.#emit();
+  }
+
+  async discardAndReplace(loadLatest: () => Promise<DraftRecord>): Promise<void> {
+    if (this.#inFlight || this.#discarding || this.#recovery === 'checking')
+      throw new Error('Wait for the current save to finish before discarding pending work.');
+    this.#discarding = true;
+    this.#emit();
+    try {
+      const draft = await loadLatest();
+      if (this.#journal) {
+        // Let earlier snapshots settle before removing the payload the user chose to discard.
+        while (this.#journalTask) await this.#journalTask;
+        await this.#journal.write(null);
+        this.#journalHasPayload = false;
+        this.#journalInitialized = true;
+        this.#recovery = 'ready';
+      }
+      this.replaceWithLatest(draft);
+    } finally {
+      this.#discarding = false;
+      this.#emit();
+    }
   }
 
   recoveryJson(): string {
     return JSON.stringify(
       {
         draftName: this.#draft.name,
-        document: this.#document,
-        pendingActions: this.#queue.map(({ action, idempotencyKey }) => ({
-          idempotencyKey,
-          ...action,
-        })),
+        document: this.#staged?.document ?? this.#document,
+        pendingActions: [...this.#queue, ...(this.#staged ? [this.#staged] : [])].map(
+          ({ action, idempotencyKey }) => ({
+            idempotencyKey,
+            ...action,
+          }),
+        ),
       },
       null,
       2,
@@ -281,6 +376,11 @@ export class ActionAutosaveController {
 
   activate(): void {
     this.#disposed = false;
+    // React may discard a constructed controller without ever mounting it.
+    if (this.#journal && !this.#journalStarted) {
+      this.#journalStarted = true;
+      void this.#loadJournal();
+    }
   }
 
   dispose(): void {
@@ -308,6 +408,7 @@ export class ActionAutosaveController {
   }
 
   #setWaitingState(): void {
+    this.#scheduleJournal();
     if (['conflict', 'validation', 'error'].includes(this.#state)) {
       this.#emit();
       return;
@@ -319,11 +420,12 @@ export class ActionAutosaveController {
   }
 
   async #pump(): Promise<void> {
-    if (this.#disposed || this.#inFlight || this.#retryTimer) return;
+    if (this.#disposed || this.#discarding || this.#inFlight || this.#retryTimer) return;
+    if (this.#recovery === 'checking' || this.#recovery === 'blocked') return;
     if (['conflict', 'validation', 'error'].includes(this.#state)) return;
     const head = this.#queue[0];
     if (!head) {
-      this.#state = 'saved';
+      this.#state = this.#staged ? 'pending' : 'saved';
       this.#errorKind = null;
       this.#emit();
       return;
@@ -339,8 +441,17 @@ export class ActionAutosaveController {
       return;
     }
 
-    head.expectedChecksum ||= this.#draft.revision.checksum;
-    head.expectedRevisionId ||= this.#draft.latestRevisionId;
+    if (!head.expectedRevisionId) {
+      head.expectedChecksum = this.#draft.revision.checksum;
+      head.expectedRevisionId = this.#draft.latestRevisionId;
+      this.#scheduleJournal();
+    }
+    if (
+      this.#journal &&
+      this.#journalSavedVersion < this.#journalVersion &&
+      this.#recovery !== 'unavailable'
+    )
+      return;
     this.#inFlight = head;
     this.#state = 'saving';
     this.#errorKind = null;
@@ -353,17 +464,17 @@ export class ActionAutosaveController {
         expectedRevisionId: head.expectedRevisionId,
         idempotencyKey: head.idempotencyKey,
       });
-      if (this.#disposed) return;
       if (this.#queue[0] === head) this.#queue.shift();
       // Document acknowledgements can predate a confirmed metadata-only rename.
       this.#draft = this.#withConfirmedName(structuredClone(saved));
       this.#inFlight = null;
-      this.#state = this.#queue.length === 0 ? 'saved' : 'pending';
+      this.#state = this.#queue.length === 0 && !this.#staged ? 'saved' : 'pending';
+      this.#scheduleJournal();
       this.#emit();
       void this.#pump();
     } catch (error) {
-      if (this.#disposed) return;
       this.#inFlight = null;
+      if (this.#disposed) return;
       const status =
         typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
@@ -402,17 +513,129 @@ export class ActionAutosaveController {
   }
 
   #makeSnapshot(): AutosaveSnapshot {
-    const status = messageFor(this.#state, this.#queue.length, this.#errorKind);
+    const pendingCount = this.#queue.length + Number(Boolean(this.#staged));
+    const status = messageFor(this.#state, pendingCount, this.#errorKind);
     return {
       draft: this.#draft,
       document: this.#document,
       state: this.#state,
-      pendingCount: this.#queue.length,
-      canLeave: this.#queue.length === 0 && !this.#inFlight,
+      pendingCount,
+      canLeave:
+        pendingCount === 0 &&
+        !this.#inFlight &&
+        !this.#discarding &&
+        !this.#journalWriting &&
+        !this.#journalHasPayload &&
+        this.#recovery !== 'checking' &&
+        this.#recovery !== 'blocked',
       message: status.message,
       alert: status.alert,
       errorKind: this.#errorKind,
+      recovery: this.#discarding ? 'clearing' : this.#recovery,
+      recoveryMessage:
+        this.#recovery === 'checking'
+          ? 'Checking this browser for pending changes…'
+          : this.#recovery === 'blocked'
+            ? 'Pending recovery needs attention. Reopen this draft to retry, or explicitly discard its recovery copy.'
+            : this.#recovery === 'unavailable'
+              ? pendingCount
+                ? 'Refresh recovery is unavailable. Keep this tab open until all changes are saved remotely.'
+                : this.#journalHasPayload
+                  ? 'Changes are saved remotely, but the browser recovery copy could not be cleared. Retry recovery before leaving.'
+                  : 'Refresh recovery is unavailable. Current changes are saved remotely.'
+              : this.#recovery === 'writing'
+                ? pendingCount
+                  ? 'Protecting pending changes on this browser…'
+                  : 'Clearing the acknowledged recovery copy…'
+                : this.#recovery === 'protected'
+                  ? 'Pending changes are protected on this browser; they are not all saved remotely yet.'
+                  : null,
     };
+  }
+
+  async #loadJournal(): Promise<void> {
+    if (!this.#journal) return;
+    this.#recovery = 'checking';
+    this.#emit();
+    try {
+      const stored = await this.#journal.load();
+      this.#journalHasPayload = Boolean(stored);
+      this.#journalInitialized = true;
+      this.#recovery = 'ready';
+      if (stored) {
+        const actions = [...stored.actions, ...(stored.staged ? [stored.staged] : [])];
+        this.#queue = actions.map((entry, index) => ({
+          ...entry,
+          ready: true,
+          attempt: 0,
+          expectedRevisionId:
+            entry.expectedRevisionId ?? (index === 0 ? stored.baseRevisionId : ''),
+          expectedChecksum: entry.expectedChecksum ?? (index === 0 ? stored.baseChecksum : ''),
+        }));
+        this.#document = structuredClone(this.#queue.at(-1)?.document ?? this.#draft.document);
+        this.#state = this.#queue.length ? 'pending' : 'saved';
+        this.#scheduleJournal();
+      }
+      this.#emit();
+      void this.#pump();
+    } catch {
+      this.#recovery = 'blocked';
+      this.#emit();
+    }
+  }
+
+  #scheduleJournal(): void {
+    if (!this.#journal || !this.#journalInitialized) return;
+    const action = (entry: QueueEntry) => ({
+      document: entry.document,
+      action: entry.action,
+      idempotencyKey: entry.idempotencyKey,
+      expectedRevisionId: entry.expectedRevisionId || null,
+      expectedChecksum: entry.expectedChecksum || null,
+      ready: entry.ready,
+      ...(entry.coalesceKey ? { coalesceKey: entry.coalesceKey } : {}),
+    });
+    const state: PendingJournalState | null =
+      this.#queue.length || this.#staged
+        ? {
+            version: 1,
+            scope: this.#journal.scope,
+            baseRevisionId: this.#draft.latestRevisionId,
+            baseChecksum: this.#draft.revision.checksum,
+            updatedAt: new Date().toISOString(),
+            actions: this.#queue.map(action),
+            staged: this.#staged ? action(this.#staged) : null,
+          }
+        : null;
+    this.#journalNext = { state, version: ++this.#journalVersion };
+    this.#recovery = 'writing';
+    if (!this.#journalWriting) this.#journalTask = this.#writeJournal();
+  }
+
+  async #writeJournal(): Promise<void> {
+    if (!this.#journal) return;
+    this.#journalWriting = true;
+    while (this.#journalNext) {
+      const next = this.#journalNext;
+      this.#journalNext = null;
+      try {
+        await this.#journal.write(next.state);
+        this.#journalHasPayload = Boolean(next.state);
+        this.#journalSavedVersion = next.version;
+        this.#recovery = this.#journalNext ? 'writing' : next.state ? 'protected' : 'ready';
+      } catch (error) {
+        this.#recovery =
+          error instanceof PendingJournalError && error.code === 'ownership'
+            ? 'blocked'
+            : 'unavailable';
+        this.#journalNext = null;
+        break;
+      }
+    }
+    this.#journalWriting = false;
+    this.#journalTask = null;
+    this.#emit();
+    void this.#pump();
   }
 
   #emit(): void {
