@@ -544,8 +544,8 @@
       share one transaction; identical context does not rewrite its timestamp or content. Passive
       context, connectivity and focus events do not extend the 30-minute lease. Visible pointer,
       touch and keyboard input remain genuine activity, with the existing four-second availability
-      checks preserved. Old clients may omit activity and the revision header during the compatible
-      rollout; updated clients always send both. Full enforcement for old clients remains pending.
+      checks preserved. Activity remains optional for previously loaded clients. Saves and restores
+      without exact revision and checkout proof fail closed with a reopen instruction.
     </p>
     <p>
       Authority increment: automatic reopening uses a resume-only checkout command. The database
@@ -564,6 +564,14 @@
       Browser storage failures stay latched until explicit retry instead of retrying on each
       keystroke. Full checkout and expected-revision enforcement on restore, labels and lifecycle
       operations remains pending; this increment does not complete R4 or authorize release.
+    </p>
+    <p>
+      Next enforcement step: require expected revision and current checkout for every save and
+      History restore, including repository callers. Missing HTTP proof fails closed and asks the
+      editor to reopen; receipt matching still precedes stale-base rejection after current checkout
+      validation. Restore uses the same saved-state mutation guard as Library: an in-flight response
+      must never replace newer local edits. The source revision remains immutable; restore creates a
+      new revision through the ordinary guarded save transaction.
     </p>
     <ol>
       <li>

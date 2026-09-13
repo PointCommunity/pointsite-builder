@@ -6,7 +6,7 @@ import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { DraftRepository } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
-import type { ApiVariables } from './drafts';
+import { draftMutationProof, type ApiVariables } from './drafts';
 
 const LabelSchema = z.strictObject({ label: z.string().trim().min(1).max(100) });
 const RestoreSchema = z.strictObject({
@@ -73,16 +73,25 @@ export function createRevisionRoutes(
       RestoreSchema,
       await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
     );
-    return context.json(
-      await repository.restoreRevision({
-        draftId: context.req.param('draftId'),
-        revisionId: body.revisionId,
-        expectedChecksum: body.expectedChecksum,
-        actor: actor.email,
-        idempotencyKey: context.req.header('idempotency-key') ?? '',
-        requestId: context.get('requestId'),
-      }),
-    );
+    const proof = draftMutationProof(context.req.raw);
+    if (body.expectedChecksum !== proof.expectedChecksum)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Expected checksum must match If-Match');
+    try {
+      return context.json(
+        await repository.restoreRevision({
+          draftId: context.req.param('draftId'),
+          revisionId: body.revisionId,
+          ...proof,
+          actor: actor.email,
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+          requestId: context.get('requestId'),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ConflictError && error.message.includes('newer revision'))
+        throw new ApiError(412, 'REVISION_CONFLICT', 'The draft has a newer revision');
+      throw error;
+    }
   });
 
   routes.patch('/:draftId', async (context) => {

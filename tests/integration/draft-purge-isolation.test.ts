@@ -54,10 +54,18 @@ async function draftFixture(repository: DraftRepository) {
   const draft = await repository.createDraft(createInput);
   const document = structuredClone(draft.document);
   document.site.shortName = 'Private edited contents';
+  const saveCheckout = await repository.acquireCheckout({
+    draftId: draft.id,
+    actor,
+    clientId: 'purge-fixture-0001',
+    requestId: 'checkout',
+  });
   const saveInput = {
     draftId: draft.id,
     document,
     expectedChecksum: draft.revision.checksum,
+    expectedRevisionId: draft.revision.id,
+    checkoutToken: saveCheckout.token,
     actor,
     idempotencyKey: 'purge-save-draft-00001',
     requestId: 'purge-save',

@@ -435,9 +435,17 @@ describe('staging publish coordinator', () => {
 
     const changed = structuredClone(draft.document);
     changed.site.shortName = 'Changed';
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor: input.actor,
+      clientId: 'publish-fixture-001',
+      requestId: 'checkout',
+    });
     await repository.saveDraft({
       draftId: draft.id,
       expectedChecksum: draft.revision.checksum,
+      expectedRevisionId: draft.revision.id,
+      checkoutToken: saveCheckout.token,
       document: changed,
       actor: input.actor,
       idempotencyKey: 'save-before-retry',

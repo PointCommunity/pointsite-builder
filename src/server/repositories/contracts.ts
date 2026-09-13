@@ -112,18 +112,20 @@ export interface DeletedDraftReceipt {
 
 export interface SaveDraftInput {
   draftId: string;
-  expectedRevisionId?: string;
+  expectedRevisionId: string;
   expectedChecksum: string;
   document: SiteDocument;
   actor: string;
   idempotencyKey: string;
   requestId: string;
   action: DraftAction;
-  checkoutToken?: string;
+  checkoutToken: string;
   label?: string;
 }
 
 export interface RestoreRevisionInput {
+  expectedRevisionId: string;
+  checkoutToken: string;
   draftId: string;
   revisionId: string;
   expectedChecksum: string;

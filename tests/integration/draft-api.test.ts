@@ -103,6 +103,18 @@ describe('draft API', () => {
         headers: { ...headers, 'x-draft-revision': revision },
         body,
       });
+    const missingRevision = new Headers(headers);
+    missingRevision.delete('x-draft-revision');
+    expect(
+      (
+        await app.request(`${origin}/api/drafts/${draft.id}`, {
+          method: 'PUT',
+          headers: missingRevision,
+          body,
+        })
+      ).status,
+    ).toBe(428);
+    expect(await repository.listRevisions(draft.id)).toHaveLength(1);
     expect((await save('invalid')).status).toBe(422);
     expect((await save(crypto.randomUUID())).status).toBe(412);
     const first = await save(draft.revision.id);
@@ -191,6 +203,7 @@ describe('draft API', () => {
       ...requestHeaders,
       'idempotency-key': 'save-website-0001',
       'if-match': `"${created.revision.checksum}"`,
+      'x-draft-revision': created.revision.id,
       'x-draft-checkout': lease.token,
     };
     const savedResponse = await app.request(`${origin}/api/drafts/${created.id}`, {
@@ -247,7 +260,7 @@ describe('draft API', () => {
     });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: SiteDocument;
     }>(createdResponse);
     const first = structuredClone(created.document);
@@ -259,6 +272,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'first-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
@@ -273,6 +287,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'stale-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
@@ -293,7 +308,7 @@ describe('draft API', () => {
     });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: Record<string, unknown>;
     }>(createdResponse);
     created.document.script = 'unsafe';
@@ -303,6 +318,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'invalid-save-0001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
       },
       body: JSON.stringify({
         document: created.document,
@@ -319,7 +335,7 @@ describe('draft API', () => {
     const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: SiteDocument;
     }>(
       await app.request(`${origin}/api/drafts`, {
@@ -334,6 +350,7 @@ describe('draft API', () => {
       ...requestHeaders,
       'idempotency-key': 'save-action-contract',
       'if-match': `"${created.revision.checksum}"`,
+      'x-draft-revision': created.revision.id,
     };
 
     const missing = await app.request(`${origin}/api/drafts/${created.id}`, {
@@ -356,7 +373,7 @@ describe('draft API', () => {
 
   it('rejects documents above the canonical D1 safety ceiling before persistence', async () => {
     const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
-    const created = await responseJson<{ id: string; revision: { checksum: string } }>(
+    const created = await responseJson<{ id: string; revision: { checksum: string; id: string } }>(
       await app.request(`${origin}/api/drafts`, {
         method: 'POST',
         headers: { ...requestHeaders, 'idempotency-key': 'create-size-contract' },
@@ -369,6 +386,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'save-size-contract',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
       },
       body: JSON.stringify({
         document: { oversized: 'x'.repeat(1_500_001) },
@@ -391,7 +409,7 @@ describe('draft API', () => {
     const created = await responseJson<{
       id: string;
       document: SiteDocument;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
     }>(
       await app.request(`${origin}/api/drafts`, {
         method: 'POST',
@@ -427,6 +445,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'stale-client-save',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': first.token,
       },
       body: JSON.stringify({

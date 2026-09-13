@@ -518,7 +518,7 @@ export class ActionAutosaveController {
       const status =
         typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-      if ([401, 403, 404, 409, 410].includes(status)) {
+      if ([401, 403, 404, 409, 410, 428].includes(status)) {
         this.stopForAuthority();
       } else if (!this.#isOnline()) {
         this.#state = 'offline';

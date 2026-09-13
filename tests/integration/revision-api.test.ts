@@ -117,6 +117,7 @@ describe('revision and lifecycle API', () => {
         headers: {
           ...mutationHeaders('save-revisions-0001'),
           'if-match': `"${created.revision.checksum}"`,
+          'x-draft-revision': created.revision.id,
           'x-draft-checkout': checkout.token,
         },
         body: JSON.stringify({
@@ -143,9 +144,53 @@ describe('revision and lifecycle API', () => {
     }>(await app.request(`${origin}/api/drafts/${created.id}/revisions`));
     expect(revisions.items.map(({ sequence }) => sequence)).toEqual([2, 1]);
 
+    const restoreHeaders = {
+      ...mutationHeaders('restore-revision-01'),
+      'if-match': `"${saved.revision.checksum}"`,
+      'x-draft-revision': saved.revision.id,
+      'x-draft-checkout': checkout.token,
+    };
+    for (const [header, value, status] of [
+      ['x-draft-checkout', null, 428],
+      ['x-draft-revision', null, 428],
+      ['x-draft-checkout', crypto.randomUUID(), 409],
+      ['x-draft-revision', crypto.randomUUID(), 412],
+    ] as const) {
+      const proof = new Headers(restoreHeaders);
+      if (value === null) proof.delete(header);
+      else proof.set(header, value);
+      const denied = await app.request(`${origin}/api/drafts/${created.id}/restore`, {
+        method: 'POST',
+        headers: proof,
+        body: JSON.stringify({
+          revisionId: created.revision.id,
+          expectedChecksum: saved.revision.checksum,
+        }),
+      });
+      expect(denied.status).toBe(status);
+      expect((await repository.getDraft(created.id)).revision.id).toBe(saved.revision.id);
+      expect(await repository.listRevisions(created.id)).toHaveLength(2);
+    }
+    const unrelated = await repository.createDraft({
+      name: 'Independent source',
+      document: created.document,
+      actor: 'editor@pointatx.org',
+      idempotencyKey: 'restore-other-source',
+      requestId: 'create',
+    });
+    const wrongDraft = await app.request(`${origin}/api/drafts/${created.id}/restore`, {
+      method: 'POST',
+      headers: restoreHeaders,
+      body: JSON.stringify({
+        revisionId: unrelated.revision.id,
+        expectedChecksum: saved.revision.checksum,
+      }),
+    });
+    expect(wrongDraft.status).toBe(404);
+    expect((await repository.getDraft(created.id)).revision.id).toBe(saved.revision.id);
     const restoredResponse = await app.request(`${origin}/api/drafts/${created.id}/restore`, {
       method: 'POST',
-      headers: mutationHeaders('restore-revision-01'),
+      headers: restoreHeaders,
       body: JSON.stringify({
         revisionId: created.revision.id,
         expectedChecksum: saved.revision.checksum,

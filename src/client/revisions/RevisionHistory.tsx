@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 
 export function RevisionHistory() {
-  const { draft, reloadLatest } = useEditor();
+  const { draft, restoreRevision } = useEditor();
   const [items, setItems] = useState<RevisionRecord[]>([]);
   const [error, setError] = useState('');
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -124,13 +124,17 @@ export function RevisionHistory() {
                 type="button"
                 onClick={() => {
                   if (window.confirm(`Restore revision ${revision.sequence} as a new revision?`))
-                    void api
-                      .restoreRevision(draft.id, revision.id, draft.revision.checksum)
-                      .then(reloadLatest)
+                    void restoreRevision(revision.id)
                       .then(() =>
                         setStatus(`Revision ${revision.sequence} restored as a new revision.`),
                       )
-                      .catch(() => setStatus('Revision could not be restored.'));
+                      .catch((error: unknown) =>
+                        setStatus(
+                          error instanceof Error
+                            ? error.message
+                            : 'Revision could not be restored.',
+                        ),
+                      );
                 }}
               >
                 Restore

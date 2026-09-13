@@ -99,9 +99,17 @@ describe('repository contract', () => {
     const updatedDocument = structuredClone(created.document);
     updatedDocument.pages[0].title = 'New homepage';
 
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document: updatedDocument,
       actor,
       idempotencyKey: 'save-concurrent-0001',
@@ -116,6 +124,8 @@ describe('repository contract', () => {
       repository.saveDraft({
         draftId: created.id,
         expectedChecksum: created.revision.checksum,
+        expectedRevisionId: created.revision.id,
+        checkoutToken: saveCheckout.token,
         document: created.document,
         actor,
         idempotencyKey: 'save-concurrent-stale',
@@ -147,9 +157,17 @@ describe('repository contract', () => {
     hero.headingWidth.mobile = 71;
     hero.bodyWidth.mobile = 53;
 
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document,
       actor,
       idempotencyKey: 'save-hero-widths-01',
@@ -187,9 +205,17 @@ describe('repository contract', () => {
     });
     const changed = structuredClone(created.document);
     changed.site.shortName = 'Changed Point';
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document: changed,
       actor,
       idempotencyKey: 'save-restore-0001',
@@ -201,6 +227,8 @@ describe('repository contract', () => {
       draftId: created.id,
       revisionId: created.revision.id,
       expectedChecksum: saved.revision.checksum,
+      expectedRevisionId: saved.revision.id,
+      checkoutToken: saveCheckout.token,
       actor,
       idempotencyKey: 'restore-0001',
       requestId: 'request-8',

@@ -266,11 +266,11 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({ label }),
     }),
-  restoreRevision: (draftId: string, revisionId: string, expectedChecksum: string) =>
-    request<DraftRecord>(`/drafts/${draftId}/restore`, {
+  restoreRevision: (context: LibraryMutationContext, revisionId: string) =>
+    request<DraftRecord>(`/drafts/${context.draftId}/restore`, {
       method: 'POST',
-      headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ revisionId, expectedChecksum }),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
+      body: JSON.stringify({ revisionId, expectedChecksum: context.expectedChecksum }),
     }),
   stagingBase: () => request<{ sha: string }>('/publish/staging/base'),
   getStagingWorkflow: (draftId: string) =>

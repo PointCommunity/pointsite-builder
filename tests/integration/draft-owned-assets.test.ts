@@ -281,6 +281,15 @@ it('creates physically independent image copies and purges one draft without cha
     repository.saveDraft({
       draftId: source.id,
       expectedChecksum: source.revision.checksum,
+      expectedRevisionId: source.revision.id,
+      checkoutToken: (
+        await repository.acquireCheckout({
+          draftId: source.id,
+          actor,
+          clientId: 'owned-fixture-0001',
+          requestId: 'checkout',
+        })
+      ).token,
       document: tampered,
       actor,
       idempotencyKey: 'owned-invalid-save-01',
@@ -380,6 +389,15 @@ it('commits queued asset writes with a forced revision even when the document ch
     {
       draftId: draft.id,
       expectedChecksum: draft.revision.checksum,
+      expectedRevisionId: draft.revision.id,
+      checkoutToken: (
+        await repository.acquireCheckout({
+          draftId: draft.id,
+          actor,
+          clientId: 'owned-fixture-0001',
+          requestId: 'checkout',
+        })
+      ).token,
       document: draft.document,
       actor,
       idempotencyKey: 'owned-metadata-save01',
@@ -432,6 +450,7 @@ it('aborts all queued image writes when checkout ownership changes before the tr
       {
         draftId: draft.id,
         expectedChecksum: draft.revision.checksum,
+        expectedRevisionId: draft.revision.id,
         document: draft.document,
         actor,
         checkoutToken: checkout.token,
@@ -460,6 +479,15 @@ it('materializes every retained legacy revision without changing revision docume
   await legacyRepository.saveDraft({
     draftId: draft.id,
     expectedChecksum: draft.revision.checksum,
+    expectedRevisionId: draft.revision.id,
+    checkoutToken: (
+      await legacyRepository.acquireCheckout({
+        draftId: draft.id,
+        actor,
+        clientId: 'legacy-fixture-001',
+        requestId: 'checkout',
+      })
+    ).token,
     document: changed,
     actor,
     idempotencyKey: 'legacy-save-draft-001',

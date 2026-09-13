@@ -69,7 +69,7 @@ const savedDraft = (
 });
 
 describe('ActionAutosaveController', () => {
-  it.each([401, 403, 404, 409, 410])(
+  it.each([401, 403, 404, 409, 410, 428])(
     'preserves pending work without retries after authority failure %s',
     async (status) => {
       const draft = initialDraft();

@@ -546,6 +546,14 @@ describe('D1 draft repository', () => {
       expectedChecksum: draft.revision.checksum,
       document: draft.document,
       actor,
+      checkoutToken: (
+        await repository.acquireCheckout({
+          draftId: draft.id,
+          actor,
+          clientId: 'receipt-fixture-001',
+          requestId: 'checkout',
+        })
+      ).token,
       idempotencyKey: 'noop-save-000001',
       requestId: 'noop',
       action: { category: 'control-change', context: 'site-settings' },
@@ -600,6 +608,14 @@ describe('D1 draft repository', () => {
       expectedChecksum: draft.revision.checksum,
       document: { ...draft.document, site: { ...draft.document.site, shortName: 'Exactly once' } },
       actor,
+      checkoutToken: (
+        await repository.acquireCheckout({
+          draftId: draft.id,
+          actor,
+          clientId: 'receipt-fixture-001',
+          requestId: 'checkout',
+        })
+      ).token,
       idempotencyKey: 'parallel-save-0001',
       requestId: 'save',
       action: { category: 'control-change', context: 'site-settings' },
@@ -768,9 +784,17 @@ describe('D1 draft repository', () => {
     if (!hero || hero.type !== 'hero') throw new Error('Expected a Hero fixture');
     hero.headingWidth.mobile = 73;
     hero.bodyWidth.mobile = 57;
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor: 'editor@pointatx.org',
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document,
       actor: 'editor@pointatx.org',
       idempotencyKey: 'save-d1-draft-0001',
@@ -808,6 +832,8 @@ describe('D1 draft repository', () => {
       repository.saveDraft({
         draftId: created.id,
         expectedChecksum: created.revision.checksum,
+        expectedRevisionId: created.revision.id,
+        checkoutToken: saveCheckout.token,
         document,
         actor: 'editor@pointatx.org',
         idempotencyKey: 'stale-d1-draft-001',
@@ -831,6 +857,8 @@ describe('D1 draft repository', () => {
       draftId: created.id,
       revisionId: created.revision.id,
       expectedChecksum: saved.revision.checksum,
+      expectedRevisionId: saved.revision.id,
+      checkoutToken: saveCheckout.token,
       actor: 'editor@pointatx.org',
       idempotencyKey: 'restore-d1-draft-01',
       requestId: 'd1-request-5',
@@ -881,10 +909,18 @@ describe('D1 draft repository', () => {
     const second = structuredClone(created.document);
     second.site.shortName = 'Second writer';
 
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor: 'editor@pointatx.org',
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const results = await Promise.allSettled([
       repository.saveDraft({
         draftId: created.id,
         expectedChecksum: created.revision.checksum,
+        expectedRevisionId: created.revision.id,
+        checkoutToken: saveCheckout.token,
         document: first,
         actor: 'editor@pointatx.org',
         idempotencyKey: 'concurrent-save-first',
@@ -894,6 +930,8 @@ describe('D1 draft repository', () => {
       repository.saveDraft({
         draftId: created.id,
         expectedChecksum: created.revision.checksum,
+        expectedRevisionId: created.revision.id,
+        checkoutToken: saveCheckout.token,
         document: second,
         actor: 'editor@pointatx.org',
         idempotencyKey: 'concurrent-save-second',

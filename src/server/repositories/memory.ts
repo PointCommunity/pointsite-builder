@@ -138,11 +138,11 @@ export class InMemoryRepository implements DraftRepository {
     const [requestHash, checksum, checkoutHash] = await Promise.all([
       saveRequestHash(input),
       checksumDocument(document),
-      input.checkoutToken ? hashToken(input.checkoutToken) : Promise.resolve(null),
+      hashToken(input.checkoutToken),
     ]);
-    if (checkoutHash) this.#checkedCheckout(input.draftId, input.actor, checkoutHash);
     const current = this.#drafts.get(input.draftId);
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
+    this.#checkedCheckout(input.draftId, input.actor, checkoutHash);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
@@ -153,7 +153,7 @@ export class InMemoryRepository implements DraftRepository {
       return clone(prior);
     }
 
-    if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
+    if (input.expectedRevisionId !== current.revision.id)
       throw new ConflictError('The draft has a newer revision');
 
     if (current.revision.checksum !== input.expectedChecksum) {
@@ -213,8 +213,7 @@ export class InMemoryRepository implements DraftRepository {
     const source = revisions?.find((revision) => revision.id === input.revisionId);
     if (!source) throw new NotFoundError(`Revision ${input.revisionId} was not found`);
     return this.saveDraft({
-      draftId: input.draftId,
-      expectedChecksum: input.expectedChecksum,
+      ...input,
       document: source.document,
       actor: input.actor,
       idempotencyKey: `restore:${input.idempotencyKey.slice(0, 92)}`,

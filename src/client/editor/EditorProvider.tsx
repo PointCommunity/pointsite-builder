@@ -47,6 +47,7 @@ interface EditorValue {
   discardLocal: () => Promise<void>;
   stopAutosave: () => void;
   renameDraft: (name: string) => Promise<void>;
+  restoreRevision: (revisionId: string) => Promise<void>;
   runLibraryMutation: (
     operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
   ) => Promise<LibrarySnapshot>;
@@ -99,18 +100,18 @@ export function EditorProvider({
     () => controller.snapshot,
     () => controller.snapshot,
   );
-  const libraryMutationPending = useRef(false);
-  const runLibraryMutation = useCallback(
-    async (
-      operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
-    ): Promise<LibrarySnapshot> => {
+  const savedMutationPending = useRef(false);
+  const runSavedMutation = useCallback(
+    async <T,>(
+      operation: (context: LibraryMutationContext) => Promise<{ draft: DraftRecord; result: T }>,
+    ): Promise<T> => {
       const before = controller.snapshot;
       if (!checkout || before.draft.status !== 'active')
         throw new Error(
-          'An active draft checkout is required. Reopen this draft to edit its Library.',
+          'An active draft checkout is required. Reopen this draft before continuing.',
         );
-      if (libraryMutationPending.current)
-        throw new Error('Wait for the current Library change to finish.');
+      if (savedMutationPending.current)
+        throw new Error('Wait for the current draft change to finish.');
       if (
         before.state !== 'saved' ||
         !before.canLeave ||
@@ -121,7 +122,7 @@ export function EditorProvider({
           'Wait until all draft changes are saved, then try again. Your pending edits are preserved.',
         );
       }
-      libraryMutationPending.current = true;
+      savedMutationPending.current = true;
       try {
         await api.validateCheckout(before.draft.id, checkout.token);
         if (controller.snapshot !== before)
@@ -137,25 +138,47 @@ export function EditorProvider({
         });
         if (controller.snapshot !== before)
           throw new Error(
-            'The Library change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
+            'The change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
           );
         if (
           result.draft.id !== before.draft.id ||
-          result.library.draftId !== before.draft.id ||
+          result.draft.revision.id !== result.draft.latestRevisionId
+        )
+          throw new Error(
+            'The response could not be verified. Reload the latest draft before continuing.',
+          );
+        controller.replaceWithLatest(result.draft);
+        return result.result;
+      } finally {
+        savedMutationPending.current = false;
+      }
+    },
+    [checkout, controller],
+  );
+
+  const runLibraryMutation = useCallback(
+    (operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>) =>
+      runSavedMutation(async (context) => {
+        const result = await operation(context);
+        if (
+          result.library.draftId !== context.draftId ||
           result.library.revisionId !== result.draft.latestRevisionId ||
-          result.draft.revision.id !== result.draft.latestRevisionId ||
           result.library.revisionChecksum !== result.draft.revision.checksum
         )
           throw new Error(
             'The Library response could not be verified. Reload the latest draft before continuing.',
           );
-        controller.replaceWithLatest(result.draft);
-        return result.library;
-      } finally {
-        libraryMutationPending.current = false;
-      }
-    },
-    [checkout, controller],
+        return { draft: result.draft, result: result.library };
+      }),
+    [runSavedMutation],
+  );
+  const restoreRevision = useCallback(
+    (revisionId: string) =>
+      runSavedMutation(async (context) => ({
+        draft: await api.restoreRevision(context, revisionId),
+        result: undefined,
+      })),
+    [runSavedMutation],
   );
 
   useEffect(() => {
@@ -233,9 +256,18 @@ export function EditorProvider({
       discardLocal: () => controller.discardAndReplace(),
       stopAutosave: controller.stopForAuthority,
       renameDraft,
+      restoreRevision,
       runLibraryMutation,
     }),
-    [autosave, controller, copyRecoveryData, reloadLatest, renameDraft, runLibraryMutation],
+    [
+      autosave,
+      controller,
+      copyRecoveryData,
+      reloadLatest,
+      renameDraft,
+      restoreRevision,
+      runLibraryMutation,
+    ],
   );
 
   const documentValue = useMemo<EditorDocumentValue>(

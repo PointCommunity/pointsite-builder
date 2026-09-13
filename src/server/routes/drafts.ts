@@ -65,6 +65,26 @@ function preconditionChecksum(value: string | undefined): string {
   return match[1];
 }
 
+export function draftMutationProof(request: Request) {
+  const checkoutToken = request.headers.get('x-draft-checkout');
+  if (!checkoutToken)
+    throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
+  const revision = request.headers.get('x-draft-revision');
+  if (!revision)
+    throw new ApiError(
+      428,
+      'PRECONDITION_REQUIRED',
+      'Reopen this draft to send its exact revision',
+    );
+  const expectedRevision = z.uuid().safeParse(revision);
+  if (!expectedRevision.success) throw validationError(expectedRevision.error);
+  return {
+    checkoutToken,
+    expectedRevisionId: expectedRevision.data,
+    expectedChecksum: preconditionChecksum(request.headers.get('if-match') ?? undefined),
+  };
+}
+
 export function createDraftRoutes(
   repository: DraftRepository,
   limiter: SlidingWindowRateLimiter,
@@ -219,22 +239,16 @@ export function createDraftRoutes(
     }
     const document = SiteDocumentSchema.safeParse(parsed.data.document);
     if (!document.success) throw validationError(document.error);
-    const checkoutToken = context.req.header('x-draft-checkout');
-    if (!checkoutToken)
-      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
-    const expectedRevision = z.uuid().optional().safeParse(context.req.header('x-draft-revision'));
-    if (!expectedRevision.success) throw validationError(expectedRevision.error);
+    const proof = draftMutationProof(context.req.raw);
     try {
       const draft = await repository.saveDraft({
         draftId: context.req.param('draftId'),
-        expectedChecksum: preconditionChecksum(context.req.header('if-match')),
-        expectedRevisionId: expectedRevision.data,
+        ...proof,
         document: document.data,
         actor: actor.email,
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
         action: parsed.data.action,
-        checkoutToken,
         label: parsed.data.label,
       });
       return context.json(draft);

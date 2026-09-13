@@ -170,11 +170,7 @@ paths:
           required: true
           schema: { type: string }
           description: Current revision checksum in quotes
-        - name: x-draft-revision
-          in: header
-          required: false
-          schema: { type: string, format: uuid }
-          description: Exact base revision. Updated clients always send this; omitted only for compatibility with previously loaded clients during rollout. The value is bound to the request receipt and preserved through retries.
+        - $ref: '#/components/parameters/LibraryRevision'
         - $ref: '#/components/parameters/CheckoutToken'
       requestBody:
         required: true
@@ -364,6 +360,9 @@ paths:
     parameters:
       - $ref: '#/components/parameters/DraftId'
       - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryChecksum'
     post:
       operationId: restoreRevision
       requestBody:
@@ -383,7 +382,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
         '412': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
   /drafts/{draftId}/library:
     parameters:
       - $ref: '#/components/parameters/DraftId'
