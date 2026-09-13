@@ -232,6 +232,12 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Your draft is safe. Ask a Builder Administrator or site maintainer to restore the publishing connection, then try again.',
       };
+    case 'PUBLICATION_RUN_NOT_TERMINAL':
+      return {
+        title: 'Cloud execution has not been confirmed stopped',
+        guidance:
+          'The publication stays protected. Wait for the cloud run to finish, then check recovery again.',
+      };
     case 'PUBLICATION_RECOVERY_CHANGED':
       return {
         title: 'Publication changed while you were recovering it',

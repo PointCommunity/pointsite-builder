@@ -16,7 +16,7 @@ const scopeSchema = z.strictObject({
 
 export type PublicationRunnerScope = z.infer<typeof scopeSchema>;
 
-const destinations = {
+export const publicationDestinations = {
   staging: { repository: 'pointsite-staging', id: '1357847426', environment: 'staging' },
   production: { repository: 'pointsite', id: '1348084954', environment: 'github-pages' },
 } as const;
@@ -38,7 +38,7 @@ export async function verifyPublicationRunner(
   if (!scope.success) throw new Error('PUBLISH_RUNNER_NOT_CONFIGURED');
   try {
     if (!token || token.length > 16_384) throw new Error('Invalid token size');
-    const destination = destinations[scope.data.target];
+    const destination = publicationDestinations[scope.data.target];
     const repository = `PointCommunity/${destination.repository}`;
     const audience = publicationRunnerAudience(scope.data.jobId, scope.data.nonce);
     const { payload } = await jwtVerify(token, keys, {

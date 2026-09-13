@@ -279,7 +279,11 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         );
       if (
         error instanceof Error &&
-        ['PUBLICATION_RECOVERY_CHANGED', 'IDEMPOTENCY_CONFLICT'].includes(error.message)
+        [
+          'PUBLICATION_RECOVERY_CHANGED',
+          'PUBLICATION_RUN_NOT_TERMINAL',
+          'IDEMPOTENCY_CONFLICT',
+        ].includes(error.message)
       )
         throw new ApiError(
           409,

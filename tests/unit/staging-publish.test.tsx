@@ -181,6 +181,34 @@ describe('guided Staging publishing', () => {
     expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
   });
 
+  it('offers an explicit native recovery check without claiming the cloud run stopped', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
+      ...queuedCloud,
+      job: {
+        ...queuedCloud.job!,
+        status: 'running',
+        dispatch: { ...queuedCloud.job!.dispatch!, reserved: true, canReconcileStopped: true },
+      },
+    });
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockRejectedValue(
+        new ClientApiError(
+          409,
+          'PUBLICATION_RUN_NOT_TERMINAL',
+          'Native execution not terminal',
+          'fixture',
+        ),
+      );
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Recover stopped publication' }));
+    await waitFor(() =>
+      expect(recover).toHaveBeenCalledWith(job.id, 'reconcile', 6, expect.any(String)),
+    );
+    expect(await screen.findByText('Cloud execution has not been confirmed stopped')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Cancel queued publication' })).toBeNull();
+  });
+
   it('cancels the queued job and can publish the same saved revision again', async () => {
     const cancelled: StagingWorkflowSnapshot = {
       ...ready,

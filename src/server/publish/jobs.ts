@@ -278,8 +278,11 @@ export class D1PublishJobStore {
   async dispatchStatus(id: string) {
     const row = await this.database
       .prepare(
-        `SELECT dispatch_count,dispatch_after,dispatch_error,
-      COALESCE(run_id,reserved_run_id) AS run_id FROM publication_runs WHERE job_id=?`,
+        `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,
+      COALESCE(run_id,reserved_run_id) AS run_id,
+      (reserved_run_id IS NOT NULL AND commit_authorized_at IS NULL AND deploy_authorized_at IS NULL
+        AND j.result_sha IS NULL AND j.status IN ('queued','running')) AS can_reconcile
+      FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
       )
       .bind(id)
       .first<{
@@ -287,17 +290,20 @@ export class D1PublishJobStore {
         dispatch_after: string;
         dispatch_error: string | null;
         run_id: string | null;
+        environment: string;
+        can_reconcile: number;
       }>();
     if (!row) return undefined;
     return {
       attempts: row.dispatch_count,
       retryAt: row.dispatch_after,
       reserved: row.run_id !== null,
+      canReconcileStopped: row.can_reconcile === 1,
       needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)
         ? {
-            workflowUrl: `https://github.com/PointCommunity/pointsite-staging/actions/runs/${row.run_id}`,
+            workflowUrl: `https://github.com/PointCommunity/${row.environment === 'staging' ? 'pointsite-staging' : 'pointsite'}/actions/runs/${row.run_id}`,
           }
         : {}),
     };

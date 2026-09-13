@@ -179,12 +179,16 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     }
   };
 
-  const recoverQueued = async (action: 'retry' | 'cancel') => {
+  const recoverQueued = async (action: 'retry' | 'cancel' | 'reconcile') => {
     const job = snapshot?.job;
     if (
-      job?.status !== 'queued' ||
+      !job ||
       job.publicationProtocol !== 2 ||
-      job.dispatch?.reserved !== false
+      !job.dispatch ||
+      !(
+        (job.status === 'queued' && job.dispatch.reserved === false) ||
+        (action === 'reconcile' && job.dispatch.canReconcileStopped === true)
+      )
     )
       return;
     const scope = JSON.stringify([job.id, action, job.dispatch.attempts, job.dispatch.retryAt]);
@@ -473,6 +477,22 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               onClick={() => void recoverQueued('cancel')}
             >
               Cancel queued publication
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canReconcileStopped === true ? (
+          <div className="publish-actions">
+            <p>
+              If the cloud run stopped before publishing, Builder can check it and release this job.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('reconcile')}
+            >
+              Recover stopped publication
             </button>
           </div>
         ) : null}

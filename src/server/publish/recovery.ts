@@ -2,10 +2,84 @@ import { z } from 'zod';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { currentPromotion } from './promotion';
+import { publicationJson } from './build-proof';
+import { publicationDestinations } from './runner-auth';
+
+const TerminalRunSchema = z.object({
+  target: z.enum(['staging', 'production']),
+  run_id: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  run_attempt: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  dispatch_revision: z.string().regex(/^[a-f0-9]{40}$/),
+  workflow_revision: z.string().regex(/^[a-f0-9]{40}$/),
+});
+
+/** Read native execution, never infer completion from elapsed time or a single finished job. */
+async function verifyTerminalRun(value: unknown, fetcher: typeof fetch) {
+  try {
+    const input = TerminalRunSchema.parse(value);
+    const destination = publicationDestinations[input.target];
+    const repository = `PointCommunity/${destination.repository}`;
+    const url = `https://api.github.com/repos/${repository}/actions/runs/${input.run_id}`;
+    const read = async (path: string) => {
+      const response = await fetcher(path, {
+        headers: {
+          accept: 'application/vnd.github+json',
+          'user-agent': 'PointSite-Builder',
+          'cache-control': 'no-cache',
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error('Unconfirmed native run');
+      return publicationJson(response, 32_768);
+    };
+    const run = z.object({
+      id: z
+        .number()
+        .int()
+        .refine((id) => String(id) === input.run_id),
+      run_attempt: z.number().int().positive(),
+      status: z.literal('completed'),
+      conclusion: z.string().min(1),
+      head_sha: z.literal(input.dispatch_revision),
+      head_branch: z.literal('main'),
+      event: z.literal('repository_dispatch'),
+      path: z.enum([
+        '.github/workflows/publish-candidate.yml',
+        '.github/workflows/publish-candidate.yml@main',
+        '.github/workflows/publish-candidate.yml@refs/heads/main',
+      ]),
+      repository: z.object({
+        id: z
+          .number()
+          .int()
+          .refine((id) => String(id) === destination.id),
+        full_name: z.literal(repository),
+      }),
+      referenced_workflows: z
+        .array(
+          z.object({
+            path: z.literal(
+              `PointCommunity/pointsite-staging/.github/workflows/${input.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${input.workflow_revision}`,
+            ),
+            sha: z.literal(input.workflow_revision),
+          }),
+        )
+        .length(1),
+    });
+    const attempt = run.parse(await read(`${url}/attempts/${input.run_attempt}`));
+    if (String(attempt.run_attempt) !== input.run_attempt) throw new Error('Different attempt');
+    const latest = run.parse(await read(url));
+    if (latest.run_attempt < attempt.run_attempt) throw new Error('Stale run');
+    return input;
+  } catch {
+    throw new Error('PUBLICATION_RUN_NOT_TERMINAL');
+  }
+}
 
 export const QueuedRecoverySchema = z.strictObject({
   jobId: z.uuid(),
-  action: z.enum(['retry', 'cancel']),
+  action: z.enum(['retry', 'cancel', 'reconcile']),
   expectedAttempts: z.number().int().min(0).max(MAX_DISPATCH_ATTEMPTS),
   actor: z.string().regex(/^github:[1-9][0-9]*$/),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9._:-]{16,100}$/),
@@ -13,10 +87,11 @@ export const QueuedRecoverySchema = z.strictObject({
 });
 export type QueuedRecoveryInput = z.infer<typeof QueuedRecoverySchema>;
 
-/** Only an unreserved job can be fenced without waiting for native execution to stop. */
+/** Reserved execution additionally needs terminal proof before any external-write authorization. */
 export async function recoverQueuedPublication(
   database: D1Database,
   value: z.infer<typeof QueuedRecoverySchema>,
+  fetcher: typeof fetch = fetch,
 ) {
   const input = QueuedRecoverySchema.parse(value);
   const requestHash = await checksumDocument({
@@ -44,6 +119,23 @@ export async function recoverQueuedPublication(
     return true;
   };
   if (await receipt()) return { recovered: true as const };
+  const reserved =
+    input.action === 'reconcile'
+      ? await database
+          .prepare(
+            `
+    SELECT ps.target,pr.reserved_run_id AS run_id,pr.reserved_run_attempt AS run_attempt,
+      pr.dispatch_revision,pi.workflow_revision
+    FROM publication_runs pr JOIN publication_inputs pi ON pi.job_id=pr.job_id
+    JOIN publication_slots ps ON ps.job_id=pr.job_id JOIN publish_jobs j ON j.id=pr.job_id
+    WHERE pr.job_id=? AND pr.reserved_run_id IS NOT NULL AND j.status IN ('queued','running')
+      AND pr.commit_authorized_at IS NULL AND pr.deploy_authorized_at IS NULL AND j.result_sha IS NULL
+  `,
+          )
+          .bind(input.jobId)
+          .first()
+      : null;
+  const terminal = reserved ? await verifyTerminalRun(reserved, fetcher) : null;
   try {
     await database.batch([
       database
@@ -53,22 +145,38 @@ export async function recoverQueuedPublication(
         JOIN publication_slots ps ON ps.job_id=j.id JOIN publication_runs pr ON pr.job_id=j.id
         JOIN user_roles actor ON actor.email=? LEFT JOIN user_roles original ON original.email=j.requested_by
         JOIN drafts d ON d.id=pi.draft_id
-        WHERE j.id=? AND j.status='queued' AND j.result_sha IS NULL AND pr.run_id IS NULL
-          AND pr.reserved_run_id IS NULL AND pr.dispatch_count=? AND actor.active=1
+        WHERE j.id=? AND j.result_sha IS NULL
+          AND ((?!='reconcile' AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL) OR
+            (j.status IN ('queued','running') AND pr.reserved_run_id=? AND pr.reserved_run_attempt=?
+              AND pr.commit_authorized_at IS NULL AND pr.deploy_authorized_at IS NULL))
+          AND pr.dispatch_count=? AND actor.active=1
           AND ((ps.target='staging' AND j.environment='staging' AND actor.role IN ('publisher','administrator'))
             OR (ps.target='production' AND j.environment='production-merge' AND actor.role='administrator'))
-          AND (?='cancel' OR (d.status='active' AND original.active=1
+          AND (?!='retry' OR (d.status='active' AND original.active=1
             AND pr.dispatch_count=${MAX_DISPATCH_ATTEMPTS} AND pr.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
             AND ((ps.target='staging' AND original.role IN ('publisher','administrator'))
               OR (ps.target='production' AND original.role='administrator' AND ${currentPromotion}))))
       ) THEN 'true' ELSE 'publication recovery changed' END)`,
         )
-        .bind(input.actor, input.jobId, input.expectedAttempts, input.action),
+        .bind(
+          input.actor,
+          input.jobId,
+          input.action,
+          terminal?.run_id ?? null,
+          terminal?.run_attempt ?? null,
+          input.expectedAttempts,
+          input.action,
+        ),
       database
         .prepare(
           `INSERT INTO publication_recovery_receipts(idempotency_key,job_id,action,request_hash) VALUES (?,?,?,?)`,
         )
-        .bind(input.idempotencyKey, input.jobId, input.action, requestHash),
+        .bind(
+          input.idempotencyKey,
+          input.jobId,
+          input.action === 'retry' ? 'retry' : 'cancel',
+          requestHash,
+        ),
       ...(input.action === 'retry'
         ? [
             database

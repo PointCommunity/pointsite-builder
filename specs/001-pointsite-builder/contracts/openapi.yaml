@@ -848,11 +848,13 @@ paths:
     post:
       operationId: recoverQueuedPublication
       description: >-
-        Recover only a captured cloud job that has no native reservation or execution claim.
+        Recover a captured cloud job before any external-write authorization.
         Requires a current Publisher or Administrator for Staging, or Administrator for Production,
         same-origin JSON, Fetch Metadata and an Idempotency-Key. Retry resets exhausted dispatch
         attempts after the recorded backoff without changing the candidate or nonce. Cancel fences
-        the job and releases only its slot atomically. Exact receipt replay never repeats the action.
+        the job and releases only its slot atomically. Reconcile a reserved job only with verified
+        terminal native execution and no build/commit or deployment authorization; concurrent
+        authorization prevents release. Exact receipt replay never repeats the action.
       parameters:
         - name: jobId
           in: path
@@ -868,7 +870,7 @@ paths:
               additionalProperties: false
               required: [action, expectedAttempts]
               properties:
-                action: { type: string, enum: [retry, cancel] }
+                action: { type: string, enum: [retry, cancel, reconcile] }
                 expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
       responses:
         '200':
@@ -1586,6 +1588,7 @@ components:
             retryAt: { type: string, format: date-time }
             needsAttention: { type: boolean }
             reserved: { type: boolean }
+            canReconcileStopped: { type: boolean }
             failureCode: { type: string, pattern: '^PUBLISH_[A-Z_]+$' }
             workflowUrl: { type: string, format: uri }
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }

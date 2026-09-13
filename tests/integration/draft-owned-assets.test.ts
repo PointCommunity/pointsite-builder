@@ -240,6 +240,147 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+it.each(['reserved', 'claimed', 'authorization-race'] as const)(
+  'reconciles terminal %s execution only before external-write authorization',
+  async (mode) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database);
+    const job = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'terminal-capture-fixture',
+      requestId: 'capture',
+    });
+    const nonce = await database
+      .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+      .bind(job.id)
+      .first<string>('nonce');
+    const keys = await generateKeyPair('RS256');
+    const runner = new D1PublicationRunner(database, () => Promise.resolve(keys.publicKey));
+    const signed = (checkRunId: string) =>
+      new SignJWT({
+        ...publicationClaims({
+          target: 'staging',
+          jobId: job.id,
+          nonce: nonce!,
+          workflowRevision: 'a'.repeat(40),
+          dispatchRevision: 'b'.repeat(40),
+        }),
+        check_run_id: checkRunId,
+      })
+        .setProtectedHeader({ alg: 'RS256' })
+        .sign(keys.privateKey);
+    await runner.reserve(job.id, await signed('23456'));
+    if (mode !== 'reserved') await runner.claim(job.id, await signed('34567'));
+    expect(await store.dispatchStatus(job.id)).toMatchObject({
+      reserved: true,
+      canReconcileStopped: true,
+    });
+    const run = {
+      id: 12345,
+      run_attempt: 1,
+      status: 'completed',
+      conclusion: 'failure',
+      head_sha: 'b'.repeat(40),
+      head_branch: 'main',
+      event: 'repository_dispatch',
+      path: '.github/workflows/publish-candidate.yml',
+      repository: { id: 1357847426, full_name: 'PointCommunity/pointsite-staging' },
+      referenced_workflows: [
+        {
+          path: `PointCommunity/pointsite-staging/.github/workflows/publish-runtime.yml@${'a'.repeat(40)}`,
+          sha: 'a'.repeat(40),
+        },
+      ],
+    };
+    let override: Record<string, unknown> = {};
+    let latestOverride: Record<string, unknown> = {};
+    let authorizeDuringRead = false;
+    const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+      expect(new Headers(init?.headers).has('authorization')).toBe(false);
+      expect(init?.redirect).toBe('error');
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      const root =
+        'https://api.github.com/repos/PointCommunity/pointsite-staging/actions/runs/12345';
+      expect([root, `${root}/attempts/1`]).toContain(
+        typeof url === 'string' ? url : url instanceof URL ? url.href : url.url,
+      );
+      if (url === root && authorizeDuringRead)
+        await database
+          .prepare("UPDATE publication_runs SET commit_authorized_at='raced' WHERE job_id=?")
+          .bind(job.id)
+          .run();
+      return Response.json({ ...run, ...override, ...(url === root ? latestOverride : {}) });
+    });
+    const input = {
+      jobId: job.id,
+      action: 'reconcile' as const,
+      expectedAttempts: 0,
+      actor: subject,
+      idempotencyKey: 'reconcile-stopped-fixture',
+      requestId: 'recover',
+    };
+    if (mode === 'reserved') {
+      for (const changed of [
+        { status: 'in_progress' },
+        { head_sha: 'c'.repeat(40) },
+        { run_attempt: 2 },
+        { repository: { id: 1348084954, full_name: 'PointCommunity/pointsite' } },
+        { referenced_workflows: [] },
+      ]) {
+        override = changed;
+        await expect(recoverQueuedPublication(database, input, fetcher)).rejects.toThrow(
+          'PUBLICATION_RUN_NOT_TERMINAL',
+        );
+      }
+      override = {};
+      latestOverride = { status: 'in_progress', run_attempt: 2 };
+      await expect(recoverQueuedPublication(database, input, fetcher)).rejects.toThrow(
+        'PUBLICATION_RUN_NOT_TERMINAL',
+      );
+      latestOverride = {};
+      expect((await store.cloudAvailability()).state).toBe('busy');
+    }
+    if (mode === 'authorization-race') {
+      authorizeDuringRead = true;
+      await expect(recoverQueuedPublication(database, input, fetcher)).rejects.toThrow(
+        'PUBLICATION_RECOVERY_CHANGED',
+      );
+      expect((await store.cloudAvailability()).state).toBe('busy');
+      expect(await store.dispatchStatus(job.id)).toMatchObject({ canReconcileStopped: false });
+      return;
+    }
+    await Promise.all([
+      recoverQueuedPublication(database, input, fetcher),
+      recoverQueuedPublication(database, input, fetcher),
+    ]);
+    expect((await store.getById(job.id))?.status).toBe('cancelled');
+    expect((await store.cloudAvailability()).state).toBe('available');
+    fetcher.mockClear();
+    await recoverQueuedPublication(database, input, fetcher);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='publish.reconcile-requested'")
+        .first('n'),
+    ).toBe(1);
+    await expect(runner.claim(job.id, await signed('34567'))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+  },
+);
+
 it('dispatches one captured job with scoped credentials, fresh permission, bounded retries and no browser session', async () => {
   const { database, repository, createInput } = await fixture();
   const subject = 'github:12345';

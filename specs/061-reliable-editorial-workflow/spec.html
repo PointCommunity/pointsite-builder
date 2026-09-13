@@ -652,8 +652,17 @@
       replay cannot reset backoff twice or cancel a later job. Retry requires the original actor's
       current publication authority and unrevoked Production acceptance. Cancellation requires the
       acting user's destination role but does not reinstate revoked publishing authority. Reserved
-      or running jobs require native terminal-state reconciliation before slot release; that path
-      and previous-release restoration remain separate implementation gates.
+      or running jobs require native terminal-state reconciliation before slot release. Before any
+      build/commit or deployment authorization, cancellation may reconcile the exact reserved GitHub
+      run and attempt through bounded public
+      <a href="https://docs.github.com/en/rest/actions/workflow-runs">workflow-run REST reads</a>.
+      Both the recorded attempt and latest overall run must be completed and match the captured
+      repository, dispatch revision, event and reviewed reusable workflow. The commit transaction
+      rechecks those immutable run identities, current acting authority, and the absence of
+      commit/deployment authorization. A concurrent authorization prevents release. Provider
+      failure, unfinished execution or substituted evidence preserves the slot. Jobs that reached
+      external-write authorization and previous-release restoration remain separate implementation
+      gates.
     </p>
     <p>
       Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
