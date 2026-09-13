@@ -157,6 +157,34 @@ describe('draft API', () => {
     await expect(ready.json()).resolves.toEqual({ ready: true });
   });
 
+  it('reports uncached native version and storage compatibility without authenticating', async () => {
+    const authenticate = vi.fn().mockRejectedValue(new Error('no browser session'));
+    const release = {
+      sourceRevision: 'a'.repeat(40),
+      sourceClean: true,
+      workerVersionId: crypto.randomUUID(),
+      storageWriteFormat: 'legacy' as const,
+    };
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate,
+      environment: 'production',
+      version: 'test',
+      release,
+    });
+    const response = await app.request(`${origin}/api/health`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      environment: 'production',
+      version: 'test',
+      ...release,
+      storageReaders: ['legacy', 'compact-v1'],
+    });
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
   it('exposes public process health without private state', async () => {
     const { app } = appFor({ email: 'viewer@pointatx.org', role: 'viewer' });
     const response = await app.request(`${origin}/api/health`);

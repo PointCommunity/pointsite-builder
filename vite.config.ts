@@ -5,6 +5,11 @@ import { execFileSync } from 'node:child_process';
 
 export default defineConfig({
   define: {
+    __BUILDER_SOURCE_CLEAN__: JSON.stringify(
+      execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+        encoding: 'utf8',
+      }).trim() === '',
+    ),
     __BUILDER_SOURCE_REVISION__: JSON.stringify(
       execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     ),

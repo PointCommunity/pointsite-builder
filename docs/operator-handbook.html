@@ -227,6 +227,49 @@
       </dl>
     </section>
 
+    <section id="compact-storage">
+      <h2>Compact storage activation</h2>
+      <p>
+        Use this sequence only for a fully validated release. Keep other deployments and rollbacks
+        paused during conversion.
+      </p>
+      <ol>
+        <li>
+          Apply additive schema migrations through 0019 and complete draft-media ownership
+          migration. Deploy a compatible reader with legacy writes first.
+        </li>
+        <li>
+          Verify the exact release source SHA from a clean checkout. Dirty builds fail the reader
+          gate. This command reads Cloudflare deployment state and uncached health; it performs no
+          database writes.
+          <pre><code>npx tsx scripts/compact-storage.ts --verify-reader &lt;source-sha&gt;</code></pre>
+        </li>
+        <li>
+          Enable DRAFT_STORAGE_FORMAT=compact-v1 in the controlled release, deploy, then verify its
+          exact source SHA again. Mixed traffic or a missing/mismatched native Worker version ID
+          fails verification. The deployed version must bind DB to the intended PointSite Builder
+          database.
+        </li>
+        <li>
+          Inspect remaining conversion counts without changing storage.
+          <pre><code>npx tsx scripts/compact-storage.ts --status</code></pre>
+        </li>
+        <li>
+          Run conversion using that verified source SHA. The CLI uses Wrangler authentication and
+          rechecks deployment around each batch of at most eight atomic steps.
+          <pre><code>npx tsx scripts/compact-storage.ts --apply &lt;source-sha&gt;</code></pre>
+        </li>
+      </ol>
+      <p>
+        On interruption or a changed deployment, inspect the current release before resuming.
+        Completed steps remain recorded and are skipped on restart. A corruption error requires
+        diagnosis; do not delete the source or force conversion. Status and logs contain counts and
+        release metadata, never draft bodies or credentials. After any compact payload exists,
+        rollback only to a verified reader supporting both storage formats. A pre-bridge binary or
+        removal of the compact schema is not a compatible rollback.
+      </p>
+    </section>
+
     <section class="runbook" id="backup-restore">
       <h2>Backup &amp; restore</h2>
       <dl>

@@ -17,6 +17,7 @@ import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration'
 import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
+declare const __BUILDER_SOURCE_CLEAN__: boolean;
 
 class D1RoleDirectory implements RoleDirectory {
   constructor(private readonly database: D1Database) {}
@@ -54,6 +55,12 @@ export default {
       authenticate: (incomingRequest) => authenticateRequest(incomingRequest, config, roles, auth),
       environment: config.environment,
       version: config.appVersion,
+      release: {
+        sourceRevision: __BUILDER_SOURCE_REVISION__,
+        sourceClean: __BUILDER_SOURCE_CLEAN__,
+        workerVersionId: env.CF_VERSION_METADATA?.id ?? null,
+        storageWriteFormat: config.draftStorageFormat,
+      },
       readiness: async () => {
         await env.DB.prepare('SELECT id FROM drafts LIMIT 1').first();
       },

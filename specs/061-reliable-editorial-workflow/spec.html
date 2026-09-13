@@ -703,6 +703,26 @@
       local samples exclude sustained maintenance volume and provider CPU. Recovery coordination
       remains a separate gate.
     </p>
+    <p>
+      Operator activation contract: expose the compiled source revision, native Worker version ID,
+      supported storage readers and current write format on uncached liveness. Use Cloudflare's
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/"
+        >version metadata binding</a
+      >
+      to bind the health response to the version receiving traffic. A Wrangler-authenticated CLI
+      must verify the intended account/database, one 100-percent deployment, matching native version
+      ID and deployed DB binding, a clean build of the exact expected source revision and both
+      legacy/compact readers. Read deployment state before and after health to reject a changing
+      rollout. Verification alone performs no database writes. Apply additionally requires compact
+      writes already enabled, verifies the same deployment around each batch of at most eight atomic
+      conversion steps, and stops on mismatch or corruption. Use a controlled deployment window: do
+      not run concurrent deployments or rollbacks during conversion. Progress reports confirmed
+      steps; full remaining-row counts run only at start and completion, avoiding repeated history
+      scans. Completed steps remain independently restartable; no credential, document, receipt body
+      or provider error is logged. First deploy the compatible legacy-writing reader, verify it,
+      then enable compact writes in a verified release before conversion. A pre-bridge binary is
+      never a rollback target after compact data exists.
+    </p>
     <ol>
       <li>
         <strong>T1:</strong> contracts and reference workload fixed above; forward feasibility

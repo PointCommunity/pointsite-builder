@@ -1132,6 +1132,14 @@ components:
         ok: { type: boolean }
         environment: { type: string }
         version: { type: string }
+        sourceRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        sourceClean: { type: boolean }
+        workerVersionId: { type: [string, 'null'], format: uuid }
+        storageWriteFormat: { type: string, enum: [legacy, compact-v1] }
+        storageReaders:
+          type: array
+          items: { type: string, enum: [legacy, compact-v1] }
+          uniqueItems: true
     Actor:
       type: object
       required: [email, role]

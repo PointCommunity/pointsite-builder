@@ -30,6 +30,12 @@ export interface AppDependencies {
   environment: string;
   version: string;
   readiness?: () => Promise<void>;
+  release?: {
+    sourceRevision: string;
+    sourceClean: boolean;
+    workerVersionId: string | null;
+    storageWriteFormat: 'legacy' | 'compact-v1';
+  };
   publisher?: StagingPublisher;
   media?: MediaService;
   library?: D1LibraryService;
@@ -58,13 +64,17 @@ export function createApp(dependencies: AppDependencies) {
     context.res.headers.set('x-request-id', requestId);
   });
 
-  app.get('/api/health', (context) =>
-    context.json({
+  app.get('/api/health', (context) => {
+    context.header('Cache-Control', 'no-store');
+    return context.json({
       ok: true,
       environment: dependencies.environment,
       version: dependencies.version,
-    }),
-  );
+      ...(dependencies.release
+        ? { ...dependencies.release, storageReaders: ['legacy', 'compact-v1'] }
+        : {}),
+    });
+  });
   app.get('/api/me', (context) => context.json(context.get('actor')));
   app.get('/api/ready', async (context) => {
     context.header('Cache-Control', 'no-store');
