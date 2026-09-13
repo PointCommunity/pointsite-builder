@@ -3341,9 +3341,16 @@ it('retains the last two releases and recent evidence while retiring one old rel
   ).rejects.toThrow('retained for publication or rollback');
 }, 30_000);
 
-it.each(['staging', 'production'] as const)(
-  'captures and verifies terminal %s output with a missing acknowledgement',
-  async (target) => {
+it.each([
+  ['staging', 'signed'],
+  ['production', 'signed'],
+  ['staging', 'session'],
+  ['production', 'session'],
+  ['staging', 'retry'],
+  ['production', 'retry'],
+] as const)(
+  'captures and verifies terminal %s output with %s completion and a missing acknowledgement',
+  async (target, completion) => {
     const { D1PublicationVerifier } = await import('../../src/server/publish/verification');
     const { database, repository, createInput } = await fixture();
     const subject = 'github:12345';
@@ -3419,6 +3426,8 @@ it.each(['staging', 'production'] as const)(
     const nativeDeploymentId = crypto.randomUUID();
     let terminal = false;
     let verificationSucceeded = false;
+    let verificationTerminal = false;
+    let revokeReconciler = false;
     let callerChanged = false;
     let revoke = false;
     let revokeBeforeDispatch = false;
@@ -3432,6 +3441,29 @@ it.each(['staging', 'production'] as const)(
       }
       if (revokeBeforeDispatch && url.endsWith('/git/ref/heads/main'))
         await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
+      if (url.endsWith('/collaborators/fixture-reconciler/permission'))
+        return Response.json({ permission: 'admin', user: { id: 12346 } });
+      if (url.includes('/actions/runs/56789'))
+        return Response.json({
+          id: 56789,
+          run_attempt: 1,
+          status: verificationTerminal ? 'completed' : 'in_progress',
+          conclusion: 'failure',
+          head_sha: provider.build.commitSha,
+          head_branch: 'main',
+          event: 'repository_dispatch',
+          path: '.github/workflows/verify-publication.yml',
+          repository: {
+            id: staging ? 1357847426 : 1348084954,
+            full_name: `PointCommunity/${repositoryName}`,
+          },
+          referenced_workflows: [
+            {
+              path: `PointCommunity/pointsite-staging/.github/workflows/verify-runtime.yml@${workflowRevision}`,
+              sha: workflowRevision,
+            },
+          ],
+        });
       if (url.includes('/actions/runs/12345'))
         return Response.json({
           id: 12345,
@@ -3454,6 +3486,8 @@ it.each(['staging', 'production'] as const)(
           ],
         });
       if (url.includes('/check-runs/')) {
+        if (revokeReconciler)
+          await database.prepare("UPDATE user_roles SET active=0 WHERE email='github:12346'").run();
         const verification = url.endsWith('/78901');
         return Response.json({
           id: verification ? 78901 : 34567,
@@ -3575,11 +3609,11 @@ it.each(['staging', 'production'] as const)(
       await database.prepare('SELECT count(*) n FROM publication_verifications').first('n'),
     ).toBe(0);
     await database.exec('DROP TRIGGER fixture_verification_audit');
-    const captured = await verifier.capture(input);
+    let captured = await verifier.capture(input);
     fetcher.mockClear();
     expect(await verifier.capture(input)).toEqual(captured);
     expect(fetcher).not.toHaveBeenCalled();
-    const record = await database
+    let record = await database
       .prepare('SELECT * FROM publication_verifications WHERE id=?')
       .bind(captured.verificationId)
       .first();
@@ -3592,6 +3626,7 @@ it.each(['staging', 'production'] as const)(
       native_worker_deployment_id: staging ? nativeDeploymentId : null,
       workflow_revision: workflowRevision,
     });
+    expect((await jobs.dispatchStatus(job.id))?.canVerifyOutput).toBe(true);
     expect(JSON.parse(String(record?.source_json))).toEqual({
       target,
       deploymentId: '45678',
@@ -3660,7 +3695,53 @@ it.each(['staging', 'production'] as const)(
     );
     expect(dispatches).toHaveLength(5);
     fetcher.mockClear();
-    const verificationClaims = {
+    if (completion === 'retry') {
+      const retry = {
+        jobId: job.id,
+        verificationId: captured.verificationId,
+        target,
+        actor: subject,
+        expectedDispatches: 6,
+        action: 'retry' as const,
+        idempotencyKey: 'verification-queued-retry',
+        requestId: 'retry',
+      };
+      await database.exec(
+        "CREATE TRIGGER fixture_verification_retire_audit BEFORE INSERT ON audit_events WHEN NEW.action='publish.verification-retired' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END",
+      );
+      await expect(verifier.retry(retry)).rejects.toThrow('PUBLICATION_VERIFICATION_CHANGED');
+      expect(
+        await database
+          .prepare('SELECT status FROM publication_verifications WHERE id=?')
+          .bind(captured.verificationId)
+          .first('status'),
+      ).toBe('queued');
+      await database.exec('DROP TRIGGER fixture_verification_retire_audit');
+      await database.exec(
+        "CREATE TRIGGER fixture_verification_recapture_audit BEFORE INSERT ON audit_events WHEN NEW.action='publish.verification-captured' BEGIN SELECT RAISE(ABORT,'fixture capture interruption'); END",
+      );
+      const priorId = captured.verificationId;
+      await expect(verifier.retry(retry)).rejects.toThrow('PUBLICATION_VERIFICATION_CHANGED');
+      expect(
+        await database
+          .prepare('SELECT status FROM publication_verifications WHERE id=?')
+          .bind(priorId)
+          .first('status'),
+      ).toBe('failed');
+      await database.exec('DROP TRIGGER fixture_verification_recapture_audit');
+      captured = await verifier.retry(retry);
+      expect(await verifier.retry(retry)).toEqual(captured);
+      record = await database
+        .prepare('SELECT * FROM publication_verifications WHERE id=?')
+        .bind(captured.verificationId)
+        .first();
+      expect(record).toMatchObject({ status: 'queued', attempt: 2, dispatch_count: 0 });
+      await expect(verifier.reserve(priorId, 'revoked-fixture')).rejects.toThrow(
+        'PUBLISH_RUNNER_UNAUTHORIZED',
+      );
+      fetcher.mockClear();
+    }
+    const verificationClaims = () => ({
       ...publicationClaims({
         target,
         jobId: captured.verificationId,
@@ -3672,13 +3753,13 @@ it.each(['staging', 'production'] as const)(
       workflow_ref: `PointCommunity/${repositoryName}/.github/workflows/verify-publication.yml@refs/heads/main`,
       job_workflow_ref: `PointCommunity/pointsite-staging/.github/workflows/verify-runtime.yml@${workflowRevision}`,
       run_id: '56789',
-    };
+    });
     const signVerification = (check: string, run = '56789') =>
-      new SignJWT({ ...verificationClaims, run_id: run, check_run_id: check })
+      new SignJWT({ ...verificationClaims(), run_id: run, check_run_id: check })
         .setProtectedHeader({ alg: 'RS256' })
         .sign(keys.privateKey);
-    const reserveToken = await signVerification('67890');
-    const verifyToken = await signVerification('78901');
+    let reserveToken = await signVerification('67890');
+    let verifyToken = await signVerification('78901');
     await expect(verifier.inputs(captured.verificationId, verifyToken)).rejects.toThrow();
     expect(await verifier.reserve(captured.verificationId, reserveToken)).toEqual({
       reserved: true,
@@ -3704,13 +3785,66 @@ it.each(['staging', 'production'] as const)(
     expect(await verifier.claim(captured.verificationId, verifyToken)).toEqual({ claimed: true });
     expect(await verifier.status(job.id, target, subject)).toMatchObject({
       status: 'running',
-      dispatchAttempts: 6,
+      dispatchAttempts: completion === 'retry' ? 0 : 6,
       reported: false,
       workflowUrl: `https://github.com/PointCommunity/${repositoryName}/actions/runs/56789`,
     });
     expect(await verifier.inputs(captured.verificationId, verifyToken)).toEqual(
       JSON.parse(String(record?.source_json)),
     );
+    if (completion === 'retry') {
+      for (const attempt of [3]) {
+        const retry = {
+          jobId: job.id,
+          verificationId: captured.verificationId,
+          target,
+          actor: subject,
+          expectedDispatches: 0,
+          action: 'retry' as const,
+          idempotencyKey: `verification-retry-${attempt}`,
+          requestId: 'retry',
+        };
+        await expect(verifier.retry(retry)).rejects.toThrow('PUBLICATION_RUN_NOT_TERMINAL');
+        verificationTerminal = true;
+        const priorId = captured.verificationId;
+        const priorNonce = record?.nonce;
+        captured = await verifier.retry(retry);
+        expect(await verifier.retry(retry)).toEqual(captured);
+        expect(
+          await database
+            .prepare('SELECT status FROM publication_verifications WHERE id=?')
+            .bind(priorId)
+            .first('status'),
+        ).toBe('failed');
+        await expect(verifier.claim(priorId, verifyToken)).rejects.toThrow(
+          'PUBLISH_RUNNER_UNAUTHORIZED',
+        );
+        record = await database
+          .prepare('SELECT * FROM publication_verifications WHERE id=?')
+          .bind(captured.verificationId)
+          .first();
+        expect(record).toMatchObject({ attempt, dispatch_count: 0, status: 'queued' });
+        expect(record?.nonce).not.toBe(priorNonce);
+        reserveToken = await signVerification('67890');
+        verifyToken = await signVerification('78901');
+        await verifier.reserve(captured.verificationId, reserveToken);
+        await verifier.claim(captured.verificationId, verifyToken);
+        verificationTerminal = false;
+      }
+      await expect(
+        verifier.retry({
+          jobId: job.id,
+          verificationId: captured.verificationId,
+          target,
+          actor: subject,
+          expectedDispatches: 0,
+          action: 'retry',
+          idempotencyKey: 'verification-fourth-attempt',
+          requestId: 'retry',
+        }),
+      ).rejects.toThrow('PUBLICATION_VERIFICATION_LIMIT');
+      fetcher.mockClear();
+    }
     const report = {
       artifactDigest: provider.build.artifactDigest,
       deploymentId: '45678',
@@ -3723,6 +3857,18 @@ it.each(['staging', 'production'] as const)(
     expect(await verifier.report(captured.verificationId, verifyToken, report)).toEqual({
       recorded: true,
     });
+    await expect(
+      verifier.retry({
+        jobId: job.id,
+        verificationId: captured.verificationId,
+        target,
+        actor: subject,
+        expectedDispatches: completion === 'retry' ? 0 : 6,
+        action: 'retry',
+        idempotencyKey: 'verification-reported-retry',
+        requestId: 'retry',
+      }),
+    ).rejects.toThrow('PUBLICATION_VERIFICATION_RECONCILE_REQUIRED');
     expect(await verifier.report(captured.verificationId, verifyToken, report)).toEqual({
       recorded: true,
     });
@@ -3785,10 +3931,39 @@ it.each(['staging', 'production'] as const)(
       'PUBLICATION_VERIFICATION_UNCONFIRMED',
     );
     verificationSucceeded = true;
+    const reconciliation = {
+      jobId: job.id,
+      verificationId: captured.verificationId,
+      target,
+      actor: 'github:12346',
+      expectedDispatches: 6,
+      idempotencyKey: 'verification-session-receipt',
+      requestId: 'reconcile',
+      action: 'reconcile' as const,
+    };
+    const finish = () =>
+      completion !== 'session'
+        ? verifier.finalize(captured.verificationId, finalizerToken)
+        : verifier.reconcile(reconciliation);
+    const finished = completion !== 'session' ? { verified: true } : { recovered: true };
+    if (completion === 'session') {
+      await database
+        .prepare(
+          "INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by) VALUES ('github:12346','fixture-reconciler','administrator',1,'fixture','fixture','fixture')",
+        )
+        .run();
+      await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
+      await expect(finish()).rejects.toThrow('PUBLICATION_RUN_NOT_TERMINAL');
+      verificationTerminal = true;
+      revokeReconciler = true;
+      await expect(finish()).rejects.toThrow();
+      revokeReconciler = false;
+      await database.prepare("UPDATE user_roles SET active=1 WHERE email='github:12346'").run();
+    }
     await database.exec(
       "CREATE TRIGGER fixture_verification_completion_audit BEFORE INSERT ON audit_events WHEN NEW.action='publish.verification-completed' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END",
     );
-    await expect(verifier.finalize(captured.verificationId, finalizerToken)).rejects.toThrow();
+    await expect(finish()).rejects.toThrow();
     expect(
       await database
         .prepare('SELECT status FROM publish_jobs WHERE id=?')
@@ -3808,17 +3983,24 @@ it.each(['staging', 'production'] as const)(
         .first('status'),
     ).toBe('running');
     await database.exec('DROP TRIGGER fixture_verification_completion_audit');
-    expect(
-      await Promise.all([
-        verifier.finalize(captured.verificationId, finalizerToken),
-        verifier.finalize(captured.verificationId, finalizerToken),
-      ]),
-    ).toEqual([{ verified: true }, { verified: true }]);
+    expect(await Promise.all([finish(), finish()])).toEqual([finished, finished]);
+    fetcher.mockClear();
+    expect(await finish()).toEqual(finished);
+    expect(fetcher).not.toHaveBeenCalled();
+    if (completion === 'session') {
+      await expect(
+        verifier.reconcile({ ...reconciliation, expectedDispatches: 5 }),
+      ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+      await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
+      await database.prepare("UPDATE user_roles SET active=0 WHERE email='github:12346'").run();
+      await expect(finish()).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+    }
     const completed = await database
       .prepare('SELECT status,evidence_json FROM publish_jobs WHERE id=?')
       .bind(job.id)
       .first();
     expect(completed?.status).toBe('succeeded');
+    expect((await jobs.dispatchStatus(job.id))?.canVerifyOutput).toBe(false);
     expect(await verifier.status(job.id, target, subject)).toMatchObject({
       status: 'passed',
       reported: true,

@@ -4,7 +4,11 @@ import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationHeaders } from '../http/security';
 import { publicationJson } from '../publish/build-proof';
-import { VerificationRequestSchema, type D1PublicationVerifier } from '../publish/verification';
+import {
+  VerificationRequestSchema,
+  VerificationRecoverySchema,
+  type D1PublicationVerifier,
+} from '../publish/verification';
 import type { ApiVariables } from './drafts';
 
 export function createVerificationSessionRoutes(
@@ -13,25 +17,36 @@ export function createVerificationSessionRoutes(
 ) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   const bodySchema = VerificationRequestSchema.pick({ expectedAttempts: true });
+  const recoveryBody = VerificationRecoverySchema.pick({ action: true, expectedDispatches: true });
+  const readBody = async (request: Request) => {
+    requireMutationHeaders(request, new URL(request.url).origin, 'application/json', 8192);
+    try {
+      return await publicationJson(new Response(request.body), 8192);
+    } catch {
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to verify');
+    }
+  };
   for (const target of ['staging', 'production'] as const) {
     const path = `/${target}/jobs/:jobId/verification`;
-    routes.use(path, async (context, next) => {
-      requireRole(context.get('actor'), target === 'staging' ? 'publisher' : 'administrator');
-      if (target === 'production' && !productionEnabled)
-        throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');
-      if (!verifier)
-        throw new ApiError(
-          503,
-          'PUBLICATION_VERIFICATION_UNAVAILABLE',
-          'Verification is unavailable',
-        );
-      if (
-        !z.uuid().safeParse(context.req.param('jobId')).success ||
-        new URL(context.req.url).search
-      )
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to verify');
-      await next();
-    });
+    const recoveryPath = `${path}/:verificationId/recovery`;
+    for (const route of [path, recoveryPath])
+      routes.use(route, async (context, next) => {
+        requireRole(context.get('actor'), target === 'staging' ? 'publisher' : 'administrator');
+        if (target === 'production' && !productionEnabled)
+          throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');
+        if (!verifier)
+          throw new ApiError(
+            503,
+            'PUBLICATION_VERIFICATION_UNAVAILABLE',
+            'Verification is unavailable',
+          );
+        if (
+          !z.uuid().safeParse(context.req.param('jobId')).success ||
+          new URL(context.req.url).search
+        )
+          throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to verify');
+        await next();
+      });
     routes.get(path, async (context) => {
       try {
         return context.json({
@@ -46,19 +61,7 @@ export function createVerificationSessionRoutes(
       }
     });
     routes.post(path, async (context) => {
-      requireMutationHeaders(
-        context.req.raw,
-        new URL(context.req.url).origin,
-        'application/json',
-        8192,
-      );
-      let value: unknown;
-      try {
-        value = await publicationJson(new Response(context.req.raw.body), 8192);
-      } catch {
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to verify');
-      }
-      const input = bodySchema.safeParse(value);
+      const input = bodySchema.safeParse(await readBody(context.req.raw));
       if (!input.success)
         throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to verify');
       try {
@@ -81,6 +84,33 @@ export function createVerificationSessionRoutes(
         throw verificationError(error);
       }
     });
+    routes.post(recoveryPath, async (context) => {
+      const input = recoveryBody.safeParse(await readBody(context.req.raw));
+      const verificationId = z.uuid().safeParse(context.req.param('verificationId'));
+      if (!input.success || !verificationId.success)
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the verification to recover');
+      try {
+        const result = await verifier![input.data.action]({
+          ...input.data,
+          target,
+          jobId: context.req.param('jobId')!,
+          verificationId: verificationId.data,
+          actor: context.get('actor').email,
+          requestId: context.get('requestId'),
+          idempotencyKey: context.req.header('idempotency-key')!,
+        });
+        if ('verificationId' in result && typeof result.verificationId === 'string') {
+          try {
+            await verifier!.dispatch(result.verificationId);
+          } catch {
+            /* Durable status owns retry. */
+          }
+        }
+        return context.json(result);
+      } catch (error) {
+        throw verificationError(error);
+      }
+    });
   }
   return routes;
 }
@@ -94,6 +124,8 @@ function verificationError(error: unknown) {
       'PUBLICATION_VERIFICATION_BUSY',
       'PUBLICATION_VERIFICATION_CHANGED',
       'PUBLICATION_VERIFICATION_LIMIT',
+      'PUBLICATION_VERIFICATION_RECONCILE_REQUIRED',
+      'PUBLICATION_VERIFICATION_BACKOFF',
       'PUBLICATION_RUN_NOT_TERMINAL',
       'PUBLICATION_VERIFICATION_UNCONFIRMED',
       'IDEMPOTENCY_CONFLICT',

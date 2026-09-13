@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ClientApiError } from '../api';
 import type { ProductionWorkflowSnapshot, StagingAcceptanceSummary } from './workflow';
+import { PublicationVerification } from './PublicationVerification';
 
 type RecoveryAction = Parameters<typeof api.recoverProduction>[1];
 
@@ -28,6 +29,13 @@ export function ProductionPublish({
       if (generation === reading.current.generation) setSnapshot(null);
     }
   }, [draftId]);
+  const refreshVerification = useCallback(
+    async (focus = false) => {
+      await load();
+      if (focus) heading.current?.focus();
+    },
+    [load],
+  );
   useEffect(() => {
     const state = reading.current;
     void load();
@@ -211,7 +219,7 @@ export function ProductionPublish({
               Retry captured Production version
             </button>
           ) : null}
-          {dispatch?.canVerifyCompleted ? (
+          {dispatch?.canVerifyCompleted && !dispatch.canVerifyOutput ? (
             <>
               <p>Verify the existing deployment without publishing again.</p>
               <button
@@ -223,6 +231,16 @@ export function ProductionPublish({
                 Verify completed Production publication
               </button>
             </>
+          ) : null}
+          {job && dispatch?.canVerifyOutput ? (
+            <PublicationVerification
+              key={job.id}
+              target="production"
+              jobId={job.id}
+              dispatchAttempts={dispatch.attempts}
+              disabled={busy}
+              onRefresh={refreshVerification}
+            />
           ) : null}
           {job ? (
             <details>

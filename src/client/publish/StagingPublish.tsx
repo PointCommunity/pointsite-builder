@@ -10,6 +10,7 @@ import {
 } from './guidance';
 import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow';
 import { ProductionPublish } from './ProductionPublish';
+import { PublicationVerification } from './PublicationVerification';
 
 const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
@@ -63,6 +64,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       return null;
     }
   }, [draft.id]);
+  const refreshVerification = useCallback(
+    async (focus = false) => {
+      await loadWorkflow();
+      if (focus) nextActionHeading.current?.focus();
+    },
+    [loadWorkflow],
+  );
 
   useEffect(() => {
     setSnapshot(undefined);
@@ -523,7 +531,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
             </button>
           </div>
         ) : null}
-        {snapshot?.job?.publicationProtocol === 2 && snapshot.job.dispatch?.canVerifyCompleted ? (
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canVerifyCompleted &&
+        !snapshot.job.dispatch.canVerifyOutput ? (
           <div className="publish-actions">
             <p>
               The cloud runner reported deployment. Builder can verify its completed checks and
@@ -538,6 +548,18 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               Verify completed deployment
             </button>
           </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canVerifyOutput &&
+        (role === 'publisher' || role === 'administrator') ? (
+          <PublicationVerification
+            key={snapshot.job.id}
+            target="staging"
+            jobId={snapshot.job.id}
+            dispatchAttempts={snapshot.job.dispatch.attempts}
+            disabled={busy}
+            onRefresh={refreshVerification}
+          />
         ) : null}
         {lifecycle.phase === 'accepted' ? (
           <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">

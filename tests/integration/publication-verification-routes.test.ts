@@ -19,6 +19,8 @@ it.each(['staging', 'production'] as const)(
       status: vi.fn().mockResolvedValue(null),
       capture: vi.fn().mockResolvedValue({ recovered: true, verificationId: id }),
       dispatch: vi.fn().mockRejectedValue(new Error('PUBLICATION_VERIFICATION_BACKOFF')),
+      reconcile: vi.fn().mockResolvedValue({ recovered: true }),
+      retry: vi.fn().mockResolvedValue({ recovered: true, verificationId: id }),
     };
     const dependencies = {
       repository: new InMemoryRepository(),
@@ -42,6 +44,12 @@ it.each(['staging', 'production'] as const)(
         headers: mutationHeaders,
         body: JSON.stringify({ expectedAttempts: 2, ...extra }),
       });
+    const recover = (action: 'retry' | 'reconcile', extra = {}) =>
+      app.request(`${path}/${id}/recovery`, {
+        method: 'POST',
+        headers: mutationHeaders,
+        body: JSON.stringify({ action, expectedDispatches: 6, ...extra }),
+      });
     expect(await (await app.request(path)).json()).toEqual({ verification: null });
     expect(verifier.status).toHaveBeenCalledWith(id, target, 'github:12345');
     expect((await call()).status).toBe(202);
@@ -54,6 +62,21 @@ it.each(['staging', 'production'] as const)(
       requestId: expect.any(String) as string,
     });
     expect(verifier.dispatch).toHaveBeenCalledWith(id);
+    for (const action of ['retry', 'reconcile'] as const) {
+      expect((await recover(action)).status).toBe(200);
+      expect(verifier[action]).toHaveBeenCalledWith({
+        jobId: id,
+        verificationId: id,
+        target,
+        actor: 'github:12345',
+        expectedDispatches: 6,
+        action,
+        idempotencyKey: mutationHeaders['idempotency-key'],
+        requestId: expect.any(String) as string,
+      });
+      verifier[action].mockClear();
+      expect((await recover(action, { actor: 'github:99999' })).status).toBe(422);
+    }
     verifier.capture.mockClear();
     expect((await call({ target: target === 'staging' ? 'production' : 'staging' })).status).toBe(
       422,
@@ -72,13 +95,35 @@ it.each(['staging', 'production'] as const)(
       : ['viewer', 'editor', 'publisher']) as Role[]) {
       expect((await call()).status).toBe(403);
       expect((await app.request(path)).status).toBe(403);
+      expect((await recover('retry')).status).toBe(403);
+      expect((await recover('reconcile')).status).toBe(403);
     }
     expect(verifier.capture).not.toHaveBeenCalled();
+    expect(verifier.retry).not.toHaveBeenCalled();
+    expect(verifier.reconcile).not.toHaveBeenCalled();
     role = 'administrator';
     verifier.capture.mockRejectedValueOnce(new Error('private provider detail'));
     const failure = await call();
     expect(failure.status).toBe(503);
     expect(await failure.text()).not.toContain('private provider detail');
+    const log = vi.spyOn(console, 'error');
+    for (const body of ['private-invalid-json', JSON.stringify({ value: 'x'.repeat(8192) })]) {
+      expect(
+        (await app.request(path, { method: 'POST', headers: mutationHeaders, body })).status,
+      ).toBe(422);
+      expect(
+        (
+          await app.request(`${path}/${id}/recovery`, {
+            method: 'POST',
+            headers: mutationHeaders,
+            body,
+          })
+        ).status,
+      ).toBe(422);
+    }
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(
+      /private-invalid-json|private provider detail|x{32}/,
+    );
     if (target === 'production')
       expect(
         (await createApp({ ...dependencies, production: undefined }).request(path)).status,

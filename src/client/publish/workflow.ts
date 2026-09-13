@@ -3,6 +3,19 @@ import type { CandidateTuple } from '../api';
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
 
+export interface PublicationVerificationState {
+  id: string;
+  status: 'queued' | 'running' | 'passed' | 'failed';
+  attempt: number;
+  dispatchAttempts: number;
+  requestedAt: string;
+  retryAt: string;
+  reported: boolean;
+  needsAttention: boolean;
+  failureCode?: string;
+  workflowUrl?: string;
+}
+
 export interface StagingWorkflowJob {
   id: string;
   publicationProtocol?: 2;
@@ -15,6 +28,7 @@ export interface StagingWorkflowJob {
     canReconcileStopped?: boolean;
     canRetryCaptured?: boolean;
     canVerifyCompleted?: boolean;
+    canVerifyOutput?: boolean;
     failureCode?: string;
     workflowUrl?: string;
   };

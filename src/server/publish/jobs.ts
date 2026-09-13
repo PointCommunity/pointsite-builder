@@ -299,7 +299,9 @@ export class D1PublishJobStore {
         AND COALESCE((SELECT attempt FROM publication_retries WHERE job_id=j.id),0)<3
         AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured,
       (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.deployment_json IS NOT NULL
-        AND pr.run_id IS NOT NULL) AS can_verify_completed
+        AND pr.run_id IS NOT NULL) AS can_verify_completed,
+      (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.commit_authorized_at IS NOT NULL
+        AND pr.build_json IS NOT NULL AND pr.run_id IS NOT NULL AND j.result_sha IS NOT NULL) AS can_verify_output
       FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
       )
       .bind(id)
@@ -312,6 +314,7 @@ export class D1PublishJobStore {
         can_reconcile: number;
         can_retry_captured: number;
         can_verify_completed: number;
+        can_verify_output: number;
       }>();
     if (!row) return undefined;
     return {
@@ -321,6 +324,7 @@ export class D1PublishJobStore {
       canReconcileStopped: row.can_reconcile === 1,
       canRetryCaptured: row.can_retry_captured === 1,
       canVerifyCompleted: row.can_verify_completed === 1,
+      canVerifyOutput: row.can_verify_output === 1,
       needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)

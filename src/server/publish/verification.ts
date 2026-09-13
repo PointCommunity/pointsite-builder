@@ -25,6 +25,13 @@ export const VerificationRequestSchema = z.strictObject({
   expectedAttempts: z.number().int().min(0).max(6),
   requestId: z.string().min(1).max(200),
 });
+export const VerificationRecoverySchema = VerificationRequestSchema.omit({
+  expectedAttempts: true,
+}).extend({
+  verificationId: z.uuid(),
+  expectedDispatches: z.number().int().min(0).max(MAX_DISPATCH_ATTEMPTS),
+  action: z.enum(['reconcile', 'retry']),
+});
 export const VerificationSourceSchema = z.strictObject({
   target: targetSchema,
   deploymentId: identifier,
@@ -65,6 +72,8 @@ type VerificationRow = {
   workflow_revision: string;
   source_json: string;
   status: string;
+  attempt: number;
+  dispatch_count: number;
   reserved_run_id: string | null;
   reserved_run_attempt: string | null;
   reserved_check_run_id: string | null;
@@ -101,7 +110,7 @@ export class D1PublicationVerifier {
     if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
     const row = await this.database
       .prepare(
-        `SELECT id,status,attempt,dispatch_count,dispatch_after,dispatch_error,
+        `SELECT id,status,attempt,requested_at,dispatch_count,dispatch_after,dispatch_error,
       reserved_run_id,report_json IS NOT NULL AS reported FROM publication_verifications WHERE job_id=? AND target=? ORDER BY attempt DESC LIMIT 1`,
       )
       .bind(jobId, target)
@@ -109,6 +118,7 @@ export class D1PublicationVerifier {
         id: string;
         status: 'queued' | 'running' | 'passed' | 'failed';
         attempt: number;
+        requested_at: string;
         dispatch_count: number;
         dispatch_after: string;
         dispatch_error: string | null;
@@ -121,6 +131,7 @@ export class D1PublicationVerifier {
       id: row.id,
       status: row.status,
       attempt: row.attempt,
+      requestedAt: row.requested_at,
       dispatchAttempts: row.dispatch_count,
       retryAt: row.dispatch_after,
       reported: row.reported === 1,
@@ -352,117 +363,360 @@ export class D1PublicationVerifier {
     if (await this.completedReceipt(id, token)) return { verified: true as const };
     try {
       const context = await this.authenticate(id, token);
-      const { row, source, scope } = context;
-      const report = z
-        .strictObject({
-          artifactDigest: z.literal(source.build.artifactDigest),
-          deploymentId: z.literal(source.deploymentId),
-          ...(source.target === 'staging'
-            ? { workerVersionId: z.literal(source.workerVersionId!) }
-            : {}),
-        })
-        .parse(JSON.parse(row.report_json ?? 'null'));
-      await this.guard(context, 'finalize').first();
-      const githubToken = await createPublisherToken({
+      return await this.complete(
+        context.row,
+        context.source,
+        this.guard(context, 'finalize'),
+        context.row.requested_by,
+        crypto.randomUUID(),
+      );
+    } catch (error) {
+      if (await this.completedReceipt(id, token)) return { verified: true as const };
+      throw error;
+    }
+  }
+
+  private async complete(
+    row: VerificationRow,
+    source: z.infer<typeof VerificationSourceSchema>,
+    guard: D1PreparedStatement,
+    actor: string,
+    requestId: string,
+    receipt?: { key: string; hash: string },
+  ) {
+    const id = row.id;
+    const report = z
+      .strictObject({
+        artifactDigest: z.literal(source.build.artifactDigest),
+        deploymentId: z.literal(source.deploymentId),
+        ...(source.target === 'staging'
+          ? { workerVersionId: z.literal(source.workerVersionId!) }
+          : {}),
+      })
+      .parse(JSON.parse(row.report_json ?? 'null'));
+    await guard.first();
+    const githubToken = await createPublisherToken({
+      ...this.config,
+      repository: source.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+      subject: actor,
+      login: row.github_login,
+      fetcher: this.request,
+    });
+    await verifyTerminalRun(
+      {
+        target: source.target,
+        run_id: source.runId,
+        run_attempt: row.original_run_attempt,
+        dispatch_revision: source.dispatchRevision,
+        workflow_revision: source.workflowRevision,
+      },
+      this.request,
+      githubToken,
+    );
+    if (receipt)
+      await verifyTerminalRun(
+        {
+          purpose: 'verification',
+          target: row.target,
+          run_id: row.reserved_run_id,
+          run_attempt: row.reserved_run_attempt,
+          dispatch_revision: source.build.commitSha,
+          workflow_revision: row.workflow_revision,
+        },
+        this.request,
+        githubToken,
+      );
+    if (source.target === 'staging') {
+      const native = await verifyStagingDeployment(
+        source.build.commitSha,
+        source.build.candidateChecksum,
+        this.nativeReadToken ?? '',
+        this.request,
+      );
+      if (
+        native.deploymentId !== row.native_worker_deployment_id ||
+        native.workerVersionId !== source.workerVersionId
+      )
+        throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
+    }
+    const evidence = PublicationEvidenceSchema.parse({
+      ...(await verifyDeploymentProof(
+        {
+          target: source.target,
+          runId: source.runId,
+          checkRunId: source.checkRunId,
+          dispatchRevision: source.dispatchRevision,
+          workflowRevision: source.workflowRevision,
+          commitSha: source.build.commitSha,
+          candidateChecksum: source.build.candidateChecksum,
+          artifactDigest: report.artifactDigest,
+          ...(source.workerVersionId ? { workerVersionId: source.workerVersionId } : {}),
+          verification: {
+            runId: row.reserved_run_id!,
+            checkRunId: row.check_run_id!,
+            dispatchRevision: source.build.commitSha,
+            workflowRevision: row.workflow_revision,
+          },
+        },
+        this.request,
+        githubToken,
+      )),
+      verificationStatus: 'passed',
+    });
+    if (evidence.deploymentId !== source.deploymentId)
+      throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
+    const deployment =
+      source.target === 'staging'
+        ? { workerVersionId: source.workerVersionId }
+        : { artifactDigest: source.build.artifactDigest };
+    await this.database.batch([
+      guard,
+      ...(receipt
+        ? [
+            this.database
+              .prepare(
+                "INSERT INTO publication_recovery_receipts(idempotency_key,job_id,action,request_hash) VALUES (?,?,'retry',?)",
+              )
+              .bind(receipt.key, row.job_id, receipt.hash),
+          ]
+        : []),
+      this.database
+        .prepare(
+          'UPDATE publication_runs SET deployment_json=COALESCE(deployment_json,?) WHERE job_id=?',
+        )
+        .bind(JSON.stringify(deployment), row.job_id),
+      this.database
+        .prepare(
+          "UPDATE publication_verifications SET status='passed',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+        )
+        .bind(id),
+      this.database
+        .prepare(
+          "UPDATE publish_jobs SET status='succeeded',evidence_json=?,completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+        )
+        .bind(JSON.stringify(evidence), row.job_id),
+      verifiedReleaseStatement(this.database, row.job_id),
+      this.database
+        .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
+        .bind(row.job_id),
+      this.database
+        .prepare(
+          `INSERT INTO audit_events(id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
+          VALUES (?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'publish.verification-completed','publish-job',?,'succeeded',?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          actor,
+          row.job_id,
+          requestId,
+          JSON.stringify({ verificationId: id }),
+        ),
+    ]);
+    return { verified: true as const };
+  }
+
+  private async recoveryRequest(
+    value: z.infer<typeof VerificationRecoverySchema>,
+    action: 'reconcile' | 'retry',
+  ) {
+    const input = VerificationRecoverySchema.parse(value);
+    if (input.action !== action) throw new Error('PUBLICATION_VERIFICATION_CHANGED');
+    const allowed = this.database
+      .prepare(
+        `SELECT 1 FROM publication_verifications v JOIN publish_jobs j ON j.id=v.job_id
+      JOIN user_roles u ON u.email=? WHERE v.id=? AND v.job_id=? AND v.target=? AND ${authority}`,
+      )
+      .bind(
+        input.actor,
+        input.verificationId,
+        input.jobId,
+        input.target,
+        input.target,
+        input.target,
+      );
+    if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+    const hash = await checksumDocument({
+      jobId: input.jobId,
+      verificationId: input.verificationId,
+      actor: input.actor,
+      target: input.target,
+      expectedDispatches: input.expectedDispatches,
+      action: input.action,
+    });
+    const receipt = async () => {
+      const prior = await this.database
+        .prepare('SELECT request_hash FROM publication_recovery_receipts WHERE idempotency_key=?')
+        .bind(input.idempotencyKey)
+        .first<{ request_hash: string }>();
+      if (!prior) return false;
+      if (prior.request_hash !== hash) throw new Error('IDEMPOTENCY_CONFLICT');
+      if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+      return true;
+    };
+    return { input, hash, receipt };
+  }
+
+  /** A fresh publisher can record a completed proof even after the original requester loses access. */
+  async reconcile(value: z.infer<typeof VerificationRecoverySchema>) {
+    const { input, hash, receipt } = await this.recoveryRequest(value, 'reconcile');
+    if (await receipt()) return { recovered: true as const };
+    const eligible = verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
+    const row = await this.database
+      .prepare(
+        `SELECT v.*,u.github_login ${eligible} AND v.target=? AND v.job_id=? AND v.dispatch_count=?`,
+      )
+      .bind(input.actor, input.verificationId, input.target, input.jobId, input.expectedDispatches)
+      .first<VerificationRow>();
+    if (!row) throw new Error('PUBLICATION_VERIFICATION_CHANGED');
+    const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
+    const guard = this.database
+      .prepare(
+        `SELECT json(CASE WHEN EXISTS(SELECT 1 ${eligible}
+      AND v.target=? AND v.job_id=? AND v.dispatch_count=? AND v.status='running'
+      AND v.source_json=? AND v.nonce=? AND v.workflow_revision=? AND v.reserved_run_id=?
+      AND v.reserved_run_attempt=? AND v.check_run_id=? AND v.report_json=? AND u.github_login=?
+      ) THEN 'true' ELSE 'publication verification changed' END)`,
+      )
+      .bind(
+        input.actor,
+        input.verificationId,
+        input.target,
+        input.jobId,
+        input.expectedDispatches,
+        row.source_json,
+        row.nonce,
+        row.workflow_revision,
+        row.reserved_run_id,
+        row.reserved_run_attempt,
+        row.check_run_id,
+        row.report_json,
+        row.github_login,
+      );
+    try {
+      await this.complete(row, source, guard, input.actor, input.requestId, {
+        key: input.idempotencyKey,
+        hash,
+      });
+      return { recovered: true as const };
+    } catch (error) {
+      if (await receipt()) return { recovered: true as const };
+      if (
+        error instanceof Error &&
+        [
+          'PUBLICATION_RUN_NOT_TERMINAL',
+          'PUBLICATION_VERIFICATION_UNCONFIRMED',
+          'PUBLISH_GITHUB_AUTHORITY_CHANGED',
+        ].includes(error.message)
+      )
+        throw error;
+      throw new Error('PUBLICATION_VERIFICATION_CHANGED');
+    }
+  }
+
+  private async captureRetry(input: z.infer<typeof VerificationRecoverySchema>) {
+    const original = await this.database
+      .prepare('SELECT dispatch_count FROM publication_runs WHERE job_id=?')
+      .bind(input.jobId)
+      .first<{ dispatch_count: number }>();
+    if (!original) throw new Error('PUBLICATION_VERIFICATION_CHANGED');
+    return this.capture({
+      jobId: input.jobId,
+      target: input.target,
+      actor: input.actor,
+      expectedAttempts: original.dispatch_count,
+      requestId: input.requestId,
+      idempotencyKey: await checksumDocument({ verificationRetryKey: input.idempotencyKey }),
+    });
+  }
+
+  async retry(value: z.infer<typeof VerificationRecoverySchema>) {
+    const { input, hash, receipt } = await this.recoveryRequest(value, 'retry');
+    if (await receipt()) return this.captureRetry(input);
+    const eligible = verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
+    const row = await this.database
+      .prepare(
+        `SELECT v.*,u.github_login ${eligible} AND v.target=? AND v.job_id=? AND v.dispatch_count=?`,
+      )
+      .bind(input.actor, input.verificationId, input.target, input.jobId, input.expectedDispatches)
+      .first<VerificationRow>();
+    if (!row) throw new Error('PUBLICATION_VERIFICATION_CHANGED');
+    if (row.report_json) throw new Error('PUBLICATION_VERIFICATION_RECONCILE_REQUIRED');
+    if (row.attempt >= 3) throw new Error('PUBLICATION_VERIFICATION_LIMIT');
+    if (row.reserved_run_id) {
+      const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
+      const token = await createPublisherToken({
         ...this.config,
-        repository: source.target === 'staging' ? 'pointsite-staging' : 'pointsite',
-        subject: row.requested_by,
+        repository: input.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+        subject: input.actor,
         login: row.github_login,
         fetcher: this.request,
       });
       await verifyTerminalRun(
         {
-          target: source.target,
-          run_id: source.runId,
-          run_attempt: row.original_run_attempt,
-          dispatch_revision: source.dispatchRevision,
-          workflow_revision: source.workflowRevision,
+          purpose: 'verification',
+          target: input.target,
+          run_id: row.reserved_run_id,
+          run_attempt: row.reserved_run_attempt,
+          dispatch_revision: source.build.commitSha,
+          workflow_revision: row.workflow_revision,
         },
         this.request,
-        githubToken,
+        token,
       );
-      if (source.target === 'staging') {
-        const native = await verifyStagingDeployment(
-          source.build.commitSha,
-          source.build.candidateChecksum,
-          this.nativeReadToken ?? '',
-          this.request,
-        );
-        if (
-          native.deploymentId !== row.native_worker_deployment_id ||
-          native.workerVersionId !== source.workerVersionId
-        )
-          throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
-      }
-      const evidence = PublicationEvidenceSchema.parse({
-        ...(await verifyDeploymentProof(
-          {
-            target: source.target,
-            runId: source.runId,
-            checkRunId: source.checkRunId,
-            dispatchRevision: source.dispatchRevision,
-            workflowRevision: source.workflowRevision,
-            commitSha: source.build.commitSha,
-            candidateChecksum: source.build.candidateChecksum,
-            artifactDigest: report.artifactDigest,
-            ...(source.workerVersionId ? { workerVersionId: source.workerVersionId } : {}),
-            verification: {
-              runId: row.reserved_run_id!,
-              checkRunId: row.check_run_id!,
-              dispatchRevision: scope.dispatchRevision,
-              workflowRevision: scope.workflowRevision,
-            },
-          },
-          this.request,
-          githubToken,
-        )),
-        verificationStatus: 'passed',
-      });
-      if (evidence.deploymentId !== source.deploymentId)
-        throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
-      const deployment =
-        source.target === 'staging'
-          ? { workerVersionId: source.workerVersionId }
-          : { artifactDigest: source.build.artifactDigest };
+    } else if (row.dispatch_count !== MAX_DISPATCH_ATTEMPTS) {
+      throw new Error('PUBLICATION_VERIFICATION_BACKOFF');
+    }
+    try {
       await this.database.batch([
-        this.guard(context, 'finalize'),
         this.database
           .prepare(
-            'UPDATE publication_runs SET deployment_json=COALESCE(deployment_json,?) WHERE job_id=?',
+            `SELECT json(CASE WHEN EXISTS(SELECT 1 ${eligible}
+          AND v.target=? AND v.job_id=? AND v.dispatch_count=? AND v.report_json IS NULL AND v.attempt<3
+          AND v.source_json=? AND v.nonce=? AND v.reserved_run_id IS ? AND v.reserved_run_attempt IS ?
+          AND v.check_run_id IS ? AND u.github_login=?
+          ) THEN 'true' ELSE 'publication verification changed' END)`,
           )
-          .bind(JSON.stringify(deployment), row.job_id),
+          .bind(
+            input.actor,
+            input.verificationId,
+            input.target,
+            input.jobId,
+            input.expectedDispatches,
+            row.source_json,
+            row.nonce,
+            row.reserved_run_id,
+            row.reserved_run_attempt,
+            row.check_run_id,
+            row.github_login,
+          ),
         this.database
           .prepare(
-            "UPDATE publication_verifications SET status='passed',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+            "INSERT INTO publication_recovery_receipts(idempotency_key,job_id,action,request_hash) VALUES (?,?,'retry',?)",
           )
-          .bind(id),
+          .bind(input.idempotencyKey, input.jobId, hash),
         this.database
           .prepare(
-            "UPDATE publish_jobs SET status='succeeded',evidence_json=?,completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
+            "UPDATE publication_verifications SET status='failed',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
           )
-          .bind(JSON.stringify(evidence), row.job_id),
-        verifiedReleaseStatement(this.database, row.job_id),
-        this.database
-          .prepare("DELETE FROM publication_slots WHERE target='production' AND job_id=?")
-          .bind(row.job_id),
+          .bind(input.verificationId),
         this.database
           .prepare(
             `INSERT INTO audit_events(id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
-          VALUES (?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'publish.verification-completed','publish-job',?,'succeeded',?,?)`,
+          VALUES (?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'publish.verification-retired','publish-job',?,'succeeded',?,?)`,
           )
           .bind(
             crypto.randomUUID(),
-            row.requested_by,
-            row.job_id,
-            crypto.randomUUID(),
-            JSON.stringify({ verificationId: id }),
+            input.actor,
+            input.jobId,
+            input.requestId,
+            JSON.stringify({ verificationId: input.verificationId }),
           ),
       ]);
-      return { verified: true as const };
-    } catch (error) {
-      if (await this.completedReceipt(id, token)) return { verified: true as const };
-      throw error;
+    } catch {
+      if (!(await receipt())) throw new Error('PUBLICATION_VERIFICATION_CHANGED');
     }
+    // A lost reply between retirement and capture resumes with this same derived key.
+    return this.captureRetry(input);
   }
 
   private async completedReceipt(id: string, token: string) {

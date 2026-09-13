@@ -11,7 +11,11 @@ import type {
 } from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
-import type { StagingWorkflowSnapshot, ProductionWorkflowSnapshot } from './publish/workflow';
+import type {
+  StagingWorkflowSnapshot,
+  ProductionWorkflowSnapshot,
+  PublicationVerificationState,
+} from './publish/workflow';
 import type { FeedbackAvailability, FeedbackScreen } from '../shared/feedback';
 import type {
   LibrarySnapshot,
@@ -347,6 +351,40 @@ export const api = {
       body: '{}',
     }),
   productionBase: () => request<{ sha: string }>('/approvals/production-base'),
+  getPublicationVerification: (target: 'staging' | 'production', jobId: string) =>
+    request<{ verification: PublicationVerificationState | null }>(
+      `/publish/${target}/jobs/${jobId}/verification`,
+    ),
+  capturePublicationVerification: (
+    target: 'staging' | 'production',
+    jobId: string,
+    expectedAttempts: number,
+    key: string,
+  ) =>
+    request<{ recovered: true; verificationId: string }>(
+      `/publish/${target}/jobs/${jobId}/verification`,
+      {
+        method: 'POST',
+        headers: mutationHeaders(key),
+        body: JSON.stringify({ expectedAttempts }),
+      },
+    ),
+  recoverPublicationVerification: (
+    target: 'staging' | 'production',
+    jobId: string,
+    verificationId: string,
+    action: 'retry' | 'reconcile',
+    expectedDispatches: number,
+    key: string,
+  ) =>
+    request<{ recovered: true; verificationId?: string }>(
+      `/publish/${target}/jobs/${jobId}/verification/${verificationId}/recovery`,
+      {
+        method: 'POST',
+        headers: mutationHeaders(key),
+        body: JSON.stringify({ action, expectedDispatches }),
+      },
+    ),
   getProductionWorkflow: (draftId: string) =>
     request<ProductionWorkflowSnapshot>(
       `/publish/production/workflow?draftId=${encodeURIComponent(draftId)}`,

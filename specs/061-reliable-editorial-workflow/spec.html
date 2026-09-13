@@ -786,11 +786,16 @@
       unauthorized or incomplete evidence fails closed. Permit at most three verification attempts
       per original job and six throttled dispatches per attempt, preserving request receipts after
       lost responses. A terminal verification attempt can be retired only after native completion;
-      no timeout alone releases it. Reopening the draft shows the durable recovery state. Extend
-      acceptance, promotion and rollback proof readers to retain recovery provenance. Test
-      nonce/scope substitution, failed original execution, missing acknowledgement, changed
-      output/deployment, duplicate dispatch, lost replies, role revocation and transaction rollback
-      before enabling this path. GitHub's
+      no timeout alone releases it. An unreserved attempt can be retired after its six dispatches;
+      its revoked nonce prevents a delayed run from claiming it. A saved report requires completion
+      reconciliation instead of another verification. A retry receipt survives interruption between
+      retirement and fresh capture, and cannot exceed three attempts. A fresh authorized publisher
+      may reconcile a saved report after the original requester loses access, provided the exact
+      verification run is terminal, its execution check succeeded, and native output still matches.
+      Reopening the draft shows the durable recovery state. Extend acceptance, promotion and
+      rollback proof readers to retain recovery provenance. Test nonce/scope substitution, failed
+      original execution, missing acknowledgement, changed output/deployment, duplicate dispatch,
+      lost replies, role revocation and transaction rollback before enabling this path. GitHub's
       <a
         href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
         >deployment: false environment contract</a

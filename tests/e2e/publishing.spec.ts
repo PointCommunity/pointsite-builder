@@ -207,6 +207,160 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
 
+for (const target of ['staging', 'production'] as const)
+  test(`${target} verification survives reopening and recovers without publishing again`, async ({
+    page,
+  }, testInfo) => {
+    await mockPublishing(page, 'accepted', 'administrator');
+    const jobId = '50000000-0000-4000-8000-000000000061';
+    let verified = false;
+    let verification: null | {
+      id: string;
+      status: string;
+      attempt: number;
+      dispatchAttempts: number;
+      reported: boolean;
+      requestedAt: string;
+      retryAt: string;
+      needsAttention: boolean;
+    } = null;
+    const actions: string[] = [];
+    await page.route('**/api/publish/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path === `/api/publish/${target}/workflow`) {
+        const job = {
+          id: jobId,
+          publicationProtocol: 2,
+          workflowRevision: 'e'.repeat(40),
+          status: verified ? 'succeeded' : 'running',
+          candidateChecksum: 'b'.repeat(64),
+          draftId: draft.id,
+          revisionId: draft.revision.id,
+          revisionChecksum: draft.revision.checksum,
+          schemaVersion: draft.revision.schemaVersion,
+          rendererVersion: draft.revision.rendererVersion,
+          stagingBaseSha: 'c'.repeat(40),
+          stagingCommitSha: 'd'.repeat(40),
+          commitUrl: null,
+          stagingJobId: 'staging',
+          approvalId: 'approval',
+          artifactDigest: 'a'.repeat(64),
+          baseSha: 'c'.repeat(40),
+          commitSha: 'd'.repeat(40),
+          requestedAt: new Date().toISOString(),
+          completedAt: null,
+          evidence: verified
+            ? { verificationStatus: 'passed', artifactDigest: 'a'.repeat(64) }
+            : {},
+          dispatch: {
+            attempts: 1,
+            reserved: true,
+            needsAttention: false,
+            canVerifyOutput: !verified,
+            retryAt: new Date().toISOString(),
+          },
+        };
+        return route.fulfill({
+          json:
+            target === 'production'
+              ? { enabled: true, busy: !verified, job }
+              : {
+                  publicationProtocol: 2,
+                  currentStagingSha: 'd'.repeat(40),
+                  reviewUrl: 'https://staging.pointatx.org',
+                  preflight: {
+                    state: 'passed',
+                    revisionId: draft.revision.id,
+                    revisionChecksum: draft.revision.checksum,
+                    candidateChecksum: 'b'.repeat(64),
+                    validatedAt: new Date().toISOString(),
+                  },
+                  availability: { state: 'busy', phase: verified ? 'review' : 'running' },
+                  approval: null,
+                  job,
+                },
+        });
+      }
+      if (path === `/api/publish/${target}/jobs/${jobId}/verification`) {
+        if (request.method() === 'GET') return route.fulfill({ json: { verification } });
+        expect(request.postDataJSON()).toEqual({ expectedAttempts: 1 });
+        expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+        actions.push('capture');
+        verification = {
+          id: '60000000-0000-4000-8000-000000000061',
+          status: 'queued',
+          attempt: 1,
+          dispatchAttempts: 6,
+          reported: false,
+          requestedAt: new Date().toISOString(),
+          retryAt: new Date().toISOString(),
+          needsAttention: true,
+        };
+        return route.fulfill({
+          status: 202,
+          json: { recovered: true, verificationId: verification.id },
+        });
+      }
+      if (
+        path === `/api/publish/${target}/jobs/${jobId}/verification/${verification?.id}/recovery`
+      ) {
+        const body = request.postDataJSON() as { action: string; expectedDispatches: number };
+        actions.push(body.action);
+        expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+        if (body.action === 'retry') {
+          expect(body.expectedDispatches).toBe(6);
+          verification = {
+            ...verification!,
+            id: '60000000-0000-4000-8000-000000000062',
+            status: 'running',
+            attempt: 2,
+            dispatchAttempts: 0,
+            needsAttention: false,
+            reported: true,
+          };
+          return route.fulfill({ json: { recovered: true, verificationId: verification.id } });
+        }
+        expect(body).toEqual({ action: 'reconcile', expectedDispatches: 0 });
+        verified = true;
+        verification!.status = 'passed';
+        return route.fulfill({ json: { recovered: true } });
+      }
+      if (target === 'production' && path === '/api/publish/staging/workflow')
+        return route.fallback();
+      if (target === 'staging' && path === '/api/publish/production/workflow')
+        return route.fulfill({ json: { enabled: false } });
+      throw new Error(`Unexpected publication mutation during verification: ${path}`);
+    });
+    await openPublishing(page);
+    await page.getByRole('button', { name: 'Verify existing publication' }).click();
+    const region = page.getByRole('region', {
+      name: `${target === 'staging' ? 'Staging' : 'Production'} verification`,
+    });
+    await expect(region.getByRole('button', { name: 'Retry stopped verification' })).toBeVisible();
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .include(`section[aria-labelledby="${target}-verification-heading"]`)
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await region.screenshot({ path: testInfo.outputPath(`${target}-verification.png`) });
+    await page.reload();
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await page.getByRole('button', { name: 'Publish', exact: true }).click();
+    const retry = page.getByRole('button', { name: 'Retry stopped verification' });
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator(`#${target}-verification-heading`)).toBeFocused();
+    await page.getByRole('button', { name: 'Finish verification' }).click();
+    await expect(region).toHaveCount(0);
+    await expect(
+      page.locator(target === 'staging' ? '#publish-next-action-title' : '#production-heading'),
+    ).toBeFocused();
+    expect(actions).toEqual(['capture', 'retry', 'reconcile']);
+  });
+
 test('an Administrator recovers saved Production progress after reopening', async ({
   page,
 }, testInfo) => {
