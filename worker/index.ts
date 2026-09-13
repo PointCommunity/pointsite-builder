@@ -92,7 +92,7 @@ export default {
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
       retention: new RetentionService(env.DB),
       ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),
-      publicationRunner: new D1PublicationRunner(env.DB),
+      publicationRunner: new D1PublicationRunner(env.DB, undefined, config.github),
       ...(auth ? { auth } : {}),
     });
     const url = new URL(request.url);

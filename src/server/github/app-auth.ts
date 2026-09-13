@@ -49,3 +49,39 @@ export function githubHeaders(token: string): HeadersInit {
     'user-agent': 'PointSite-Builder',
   };
 }
+
+/** Check the current account ID and repository permission, never a cached user role. */
+export async function createPublisherToken(input: {
+  appId: string;
+  installationId: string;
+  privateKey: string;
+  repository: 'pointsite-staging' | 'pointsite';
+  subject: string;
+  login: string;
+  fetcher?: typeof fetch;
+}): Promise<string> {
+  try {
+    z.string()
+      .regex(/^github:[1-9][0-9]*$/)
+      .parse(input.subject);
+    z.string()
+      .regex(/^[A-Za-z0-9-]{1,39}$/)
+      .parse(input.login);
+    const token = await createInstallationToken(input);
+    const response = await (input.fetcher ?? fetch)(
+      `https://api.github.com/repos/PointCommunity/${input.repository}/collaborators/${encodeURIComponent(input.login)}/permission`,
+      { headers: githubHeaders(token), redirect: 'error', signal: AbortSignal.timeout(10_000) },
+    );
+    if (!response.ok) throw new Error('Permission unavailable');
+    const permission = z
+      .object({
+        permission: z.enum(['admin', 'maintain', 'write']),
+        user: z.object({ id: z.number().int().positive() }),
+      })
+      .parse(await response.json());
+    if (`github:${permission.user.id}` !== input.subject) throw new Error('Account changed');
+    return token;
+  } catch {
+    throw new Error('PUBLISH_GITHUB_AUTHORITY_CHANGED');
+  }
+}

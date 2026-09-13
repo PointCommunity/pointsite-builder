@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createInstallationToken, githubHeaders } from '../github/app-auth';
+import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
 
 const DispatchSchema = z.object({
@@ -13,7 +13,7 @@ const DispatchSchema = z.object({
 const eligible = `FROM publication_runs pr JOIN publication_slots ps ON ps.job_id=pr.job_id
   JOIN publish_jobs j ON j.id=pr.job_id JOIN publication_inputs pi ON pi.job_id=j.id
   JOIN drafts d ON d.id=pi.draft_id JOIN user_roles u ON u.email=j.requested_by
-  WHERE pr.job_id=? AND j.status='queued' AND pr.run_id IS NULL AND d.status='active' AND u.active=1
+  WHERE pr.job_id=? AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL AND d.status='active' AND u.active=1
     AND ((ps.target='staging' AND j.environment='staging' AND u.role IN ('publisher','administrator'))
       OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'))`;
 
@@ -56,22 +56,15 @@ export async function dispatchPublication(
         signal: AbortSignal.timeout(10_000),
       });
     const name = input.target === 'staging' ? 'pointsite-staging' : 'pointsite';
-    const token = await createInstallationToken({ ...config, repository: name, fetcher: request });
+    const token = await createPublisherToken({
+      ...config,
+      repository: name,
+      fetcher: request,
+      subject: input.requested_by,
+      login: input.github_login,
+    });
     const headers = { ...githubHeaders(token), 'content-type': 'application/json' };
     const api = `https://api.github.com/repos/PointCommunity/${name}`;
-    const permissionResponse = await request(
-      `${api}/collaborators/${encodeURIComponent(input.github_login)}/permission`,
-      { headers },
-    );
-    if (!permissionResponse.ok) throw new Error('PUBLISH_GITHUB_AUTHORITY_CHANGED');
-    const permission = z
-      .object({
-        permission: z.enum(['admin', 'maintain', 'write']),
-        user: z.object({ id: z.number().int().positive() }),
-      })
-      .safeParse(await permissionResponse.json());
-    if (!permission.success || `github:${permission.data.user.id}` !== input.requested_by)
-      throw new Error('PUBLISH_GITHUB_AUTHORITY_CHANGED');
     const baseResponse = await request(`${api}/git/ref/heads/main`, { headers });
     if (!baseResponse.ok) throw new Error('PUBLISH_BASE_UNAVAILABLE');
     const base = z

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ApiError, errorResponse } from '../http/errors';
 import type { ApiVariables } from './drafts';
 import type { D1PublicationRunner } from '../publish/runner';
+import { publicationJson } from '../publish/build-proof';
 
 export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
   const routes = new Hono<{ Variables: ApiVariables }>();
@@ -36,9 +37,34 @@ export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
   routes.post('/:jobId/claim', async (context) => {
     // This operation has no client-supplied scope or claim body.
     if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
-    await runner!.claim(context.req.param('jobId'), credential(context));
+    const token = credential(context);
+    await runner!.claim(context.req.param('jobId'), token);
     return context.json({ claimed: true });
   });
+  for (const [path, method] of [
+    ['reserve', 'reserve'],
+    ['commit', 'commitBuild'],
+    ['authorize-deployment', 'authorizeDeployment'],
+    ['finalize', 'finalize'],
+  ] as const) {
+    routes.post(`/:jobId/${path}`, async (context) => {
+      const token = credential(context);
+      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      return context.json(await runner![method](context.req.param('jobId'), token));
+    });
+  }
+  for (const [path, method] of [
+    ['build', 'authorizeBuild'],
+    ['deployment', 'reportDeployment'],
+  ] as const) {
+    routes.post(`/:jobId/${path}`, async (context) => {
+      const token = credential(context);
+      if (context.req.header('content-type') !== 'application/json')
+        throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      const value = await publicationJson(new Response(context.req.raw.body), 8192);
+      return context.json(await runner![method](context.req.param('jobId'), token, value));
+    });
+  }
   routes.get('/:jobId/inputs', async (context) =>
     context.json(await runner!.inputs(context.req.param('jobId'), credential(context))),
   );

@@ -493,8 +493,11 @@
       dispatch uses repository-scoped installation credentials, rechecks the actor's repository
       permission and expected main commit, and persists retry backoff. Local D1 and signed-token
       tests cover duplicate requests, revocation races, later edits and provider failure. The
-      backend runner input routes are wired; user-facing capture/dispatch, trusted workflow
-      execution, completion evidence, slot release and Production promotion remain pending.
+      backend runner input routes are wired. Migration 0021 adds an immutable run reservation,
+      compact build identity, commit/deployment intents and native deployment acknowledgment. Build
+      authorization, Git commit verification, deployment authorization and final verification have
+      local D1 and signed-token coverage. User-facing capture/dispatch, live workflow execution,
+      slot release, acceptance and Production promotion remain pending.
     </p>
     <p>
       Read-only GitHub checks on 13 September verified public repository IDs 1357847426 for
@@ -517,6 +520,30 @@
       OIDC authenticates execution; the original Builder actor and fresh database role authorize
       publication. It does not acquire an editor checkout or accept a caller's claimed Administrator
       identity. Missing trusted workflow configuration disables execution.
+    </p>
+    <p>
+      Reserve the first run in a job using an environment with
+      <a
+        href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
+        >deployment: false</a
+      >. Only its dependent execution job may create the native deployment record. Duplicate
+      dispatches must fail before entering that environment, so they cannot supersede legitimate
+      deployment evidence. Bind execution to a different signed check ID in the same reserved run
+      and attempt. A finalizer uses a third check ID with deployment disabled and verifies the
+      completed execution check, native deployment status, current content commit and live release
+      identity.
+    </p>
+    <p>
+      Upload Git objects to a job-owned candidate branch after fresh publication authorization.
+      Before updating main, Builder checks the exact commit, its single captured parent, complete
+      trees, allowed input paths and immutable output-manifest blob. GitHub's native
+      <a href="https://docs.github.com/en/graphql/reference/git#updaterefs">updateRefs mutation</a>
+      supplies beforeOid and afterOid with force disabled: the expected-base comparison and write
+      are atomic, including a concurrent branch reset. A lost response is reconciled against the
+      exact already-created commit. Store the full static-file manifest in immutable Git inputs; D1
+      keeps only bounded identity/count/size fields. Distinguish the workflow dispatch SHA from the
+      new content commit, renderer source revision, static artifact digest and native deployment
+      identity. They prove different facts and must never be relabeled as one SHA.
     </p>
     <p>
       Capture the saved revision and a complete, sorted manifest of immutable owned media IDs,

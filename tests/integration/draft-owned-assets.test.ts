@@ -18,6 +18,7 @@ import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { dispatchPublication } from '../../src/server/publish/dispatch';
+import { publicationGitHubFixture } from '../fixtures/publication-github';
 
 const actor = 'editor@pointatx.org';
 const png = new Uint8Array(
@@ -340,6 +341,162 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
   ).toBe(1);
 }, 30_000);
 
+it('authorizes immutable builds, commits with fresh authority, and holds the slot through native deployment verification', async () => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const jobs = new D1PublishJobStore(database);
+  const job = await jobs.captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    idempotencyKey: 'execution-owned-fixture',
+    requestId: 'capture',
+  });
+  const nonce = await database
+    .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+    .bind(job.id)
+    .first<string>('nonce');
+  const keys = await generateKeyPair('RS256', { extractable: true });
+  const claims = publicationClaims({
+    target: 'staging',
+    jobId: job.id,
+    nonce: nonce!,
+    workflowRevision: 'a'.repeat(40),
+    dispatchRevision: job.baseSha,
+  });
+  const sign = (change = {}) =>
+    new SignJWT({ ...claims, ...change })
+      .setProtectedHeader({ alg: 'RS256' })
+      .sign(keys.privateKey);
+  const token = await sign();
+  const github = await publicationGitHubFixture(
+    job.id,
+    job.candidateChecksum,
+    draft.document.media.map((media) => media.sourcePath),
+  );
+  const workerVersionId = crypto.randomUUID();
+  const jobUrl = `https://github.com/PointCommunity/pointsite-staging/actions/runs/${String(claims.run_id)}/job/${String(claims.check_run_id)}`;
+  let completed = false;
+  const provider: typeof fetch = async (url, init) => {
+    const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+    if (path.includes('/check-runs/'))
+      return Response.json({
+        id: Number(claims.check_run_id),
+        status: completed ? 'completed' : 'in_progress',
+        conclusion: 'success',
+        head_sha: job.baseSha,
+        details_url: jobUrl,
+        app: { id: 15368, slug: 'github-actions' },
+      });
+    if (path.includes('/statuses?'))
+      return Response.json([
+        {
+          state: 'success',
+          environment: 'staging',
+          log_url: jobUrl,
+          environment_url: 'https://staging.pointatx.org/',
+        },
+      ]);
+    if (path.includes('/deployments?'))
+      return Response.json([
+        {
+          id: 1,
+          sha: job.baseSha,
+          environment: 'staging',
+          performed_via_github_app: { id: 15368, slug: 'github-actions' },
+        },
+      ]);
+    if (path === 'https://staging.pointatx.org/__pointsite_release.json')
+      return Response.json({
+        format: 2,
+        candidateChecksum: job.candidateChecksum,
+        workflowRevision: 'a'.repeat(40),
+        artifactDigest: github.build.artifactDigest,
+        workerVersionId,
+      });
+    return github.fetcher(url, init);
+  };
+  const runner = new D1PublicationRunner(
+    database,
+    () => Promise.resolve(keys.publicKey),
+    {
+      appId: '123',
+      installationId: '456',
+      privateKey: await exportPKCS8(keys.privateKey),
+    },
+    provider,
+  );
+  await runner.reserve(
+    job.id,
+    await sign({ check_run_id: String(Number(claims.check_run_id) + 10) }),
+  );
+  await runner.claim(job.id, token);
+  github.state.beforePermission = async () => {
+    await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
+  };
+  await expect(runner.authorizeBuild(job.id, token, github.build)).rejects.toThrow();
+  expect(
+    await database
+      .prepare('SELECT build_json FROM publication_runs WHERE job_id=?')
+      .bind(job.id)
+      .first('build_json'),
+  ).toBeNull();
+  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
+  github.state.beforePermission = () => Promise.resolve();
+  await runner.authorizeBuild(job.id, token, github.build);
+  await runner.authorizeBuild(job.id, token, github.build);
+  await expect(
+    runner.authorizeBuild(job.id, token, { ...github.build, commitSha: 'f'.repeat(40) }),
+  ).rejects.toThrow();
+  await expect(runner.authorizeDeployment(job.id, token)).rejects.toThrow(
+    'PUBLICATION_COMMIT_UNCONFIRMED',
+  );
+  github.state.permission = 'read';
+  await expect(runner.commitBuild(job.id, token)).rejects.toThrow(
+    'PUBLISH_GITHUB_AUTHORITY_CHANGED',
+  );
+  expect(github.state.mutations).toBe(0);
+  github.state.permission = 'write';
+  await runner.commitBuild(job.id, token);
+  await runner.commitBuild(job.id, token);
+  expect(github.state.mutations).toBe(1);
+  expect((await jobs.getById(job.id))?.status).toBe('running');
+  await expect(runner.reportDeployment(job.id, token, { workerVersionId })).rejects.toThrow(
+    'PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED',
+  );
+  await runner.authorizeDeployment(job.id, token);
+  await runner.reportDeployment(job.id, token, { workerVersionId });
+  await expect(
+    runner.reportDeployment(job.id, token, { workerVersionId: crypto.randomUUID() }),
+  ).rejects.toThrow();
+  await expect(runner.finalize(job.id, token)).rejects.toThrow();
+  const finalizer = await sign({ check_run_id: String(Number(claims.check_run_id) + 1) });
+  await expect(runner.finalize(job.id, finalizer)).rejects.toThrow(
+    'PUBLICATION_VERIFICATION_UNCONFIRMED',
+  );
+  completed = true;
+  await runner.finalize(job.id, finalizer);
+  await runner.finalize(job.id, finalizer);
+  expect((await jobs.getById(job.id))?.status).toBe('succeeded');
+  expect(
+    await database
+      .prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='publish.verified'")
+      .first('n'),
+  ).toBe(1);
+  expect(await database.prepare('SELECT COUNT(*) AS n FROM publication_slots').first('n')).toBe(1);
+  await expect(runner.inputs(job.id, token)).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+  await expect(runner.commitBuild(job.id, token)).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+}, 30_000);
+
 it('captures once, rejects duplicate runners, and serves pinned inputs after further editing', async () => {
   const { database, repository, createInput } = await fixture();
   await database.prepare("UPDATE user_roles SET role='publisher' WHERE email=?").bind(actor).run();
@@ -415,8 +572,24 @@ it('captures once, rejects duplicate runners, and serves pinned inputs after fur
         headers: { authorization: `Bearer ${token}` },
       })
     ).status,
-  ).toBe(200);
+  ).toBe(409);
   expect(authenticate).not.toHaveBeenCalled();
+  await expect(runner.claim(job.id, token)).rejects.toThrow();
+  const reservation = await sign({ check_run_id: String(Number(claims.check_run_id) + 10) });
+  await runner.reserve(job.id, reservation);
+  await runner.reserve(job.id, reservation);
+  expect(
+    (
+      await app.request(`${runnerUrl}/claim`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).status,
+  ).toBe(200);
+  await expect(runner.reserve(job.id, await sign({ run_id: '99999' }))).rejects.toThrow(
+    'PUBLISH_RUNNER_UNAUTHORIZED',
+  );
+  await expect(runner.claim(job.id, reservation)).rejects.toThrow();
   await Promise.all([runner.claim(job.id, token), runner.claim(job.id, token)]);
   expect((await jobs.getById(job.id))?.status).toBe('running');
   expect(
