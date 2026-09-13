@@ -27,6 +27,7 @@ const SaveDraftSchema = z.strictObject({
   label: z.string().trim().max(100).optional(),
 });
 const ClientSchema = z.strictObject({ clientId: z.string().min(16).max(100) });
+const AcquireCheckoutSchema = ClientSchema.extend({ resumeOnly: z.boolean().optional() });
 const ViewStateSchema = z.strictObject({
   draftId: z.uuid(),
   panel: z.enum(['layout', 'forms', 'library', 'preview', 'history', 'settings', 'admin']),
@@ -97,13 +98,14 @@ export function createDraftRoutes(
     const actor = requireRole(context.get('actor'), 'editor');
     if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
-    const parsed = ClientSchema.safeParse(raw);
+    const parsed = AcquireCheckoutSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
     return context.json(
       await repository.acquireCheckout({
         draftId: context.req.param('draftId'),
         actor: actor.email,
         clientId: parsed.data.clientId,
+        resumeOnly: parsed.data.resumeOnly,
         requestId: context.get('requestId'),
       }),
     );

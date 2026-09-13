@@ -11,7 +11,13 @@ export type AutosaveState =
   'saved' | 'pending' | 'saving' | 'offline' | 'retrying' | 'conflict' | 'validation' | 'error';
 
 export type AutosaveErrorKind =
-  'queue-limit' | 'document-too-large' | 'conflict' | 'validation' | 'transient' | null;
+  | 'authority'
+  | 'queue-limit'
+  | 'document-too-large'
+  | 'conflict'
+  | 'validation'
+  | 'transient'
+  | null;
 
 export interface AutosaveMutation extends DraftAction {
   boundary?: 'immediate' | 'text';
@@ -70,6 +76,12 @@ function messageFor(
   count: number,
   errorKind: AutosaveErrorKind,
 ): { message: string; alert: string | null } {
+  if (errorKind === 'authority')
+    return {
+      message: 'Editing access is unavailable.',
+      alert:
+        'Autosave stopped because your access or checkout is no longer valid. Copy pending changes before leaving, then reopen the draft to check access.',
+    };
   if (state === 'saved') return { message: 'All changes saved', alert: null };
   if (state === 'pending')
     return {
@@ -132,6 +144,7 @@ export class ActionAutosaveController {
   #journalTask: Promise<void> | null = null;
   #journalHasPayload = false;
   #discarding = false;
+  #authorityLost = false;
   #staged: QueueEntry | null = null;
 
   constructor(options: ControllerOptions) {
@@ -171,7 +184,13 @@ export class ActionAutosaveController {
     mutation: AutosaveMutation = { category: 'control-change', context: 'page-content' },
     renderDocument = true,
   ): void {
-    if (this.#discarding || this.#recovery === 'checking' || this.#recovery === 'blocked') return;
+    if (
+      this.#authorityLost ||
+      this.#discarding ||
+      this.#recovery === 'checking' ||
+      this.#recovery === 'blocked'
+    )
+      return;
     if (this.#queue.length >= this.#maxQueue) {
       this.#state = 'error';
       this.#errorKind = 'queue-limit';
@@ -196,7 +215,12 @@ export class ActionAutosaveController {
   }
 
   complete(document: SiteDocument, mutation: AutosaveMutation): boolean {
-    if (this.#discarding || this.#recovery === 'checking' || this.#recovery === 'blocked')
+    if (
+      this.#authorityLost ||
+      this.#discarding ||
+      this.#recovery === 'checking' ||
+      this.#recovery === 'blocked'
+    )
       return false;
     this.#staged = null;
     if (this.#state === 'validation' && this.#queue[0] && !this.#inFlight) {
@@ -269,7 +293,16 @@ export class ActionAutosaveController {
     }
   };
 
+  stopForAuthority = (): void => {
+    this.#authorityLost = true;
+    this.#clearTimers();
+    this.#state = 'error';
+    this.#errorKind = 'authority';
+    this.#emit();
+  };
+
   setOnline(online: boolean): void {
+    if (this.#authorityLost) return;
     if (!online) {
       if (this.#queue.length > 0) {
         this.#state = 'offline';
@@ -291,8 +324,8 @@ export class ActionAutosaveController {
       void this.#loadJournal();
       return;
     }
-    if (this.#journal && this.#recovery === 'unavailable') this.#scheduleJournal();
-    if (this.#state === 'conflict') return;
+    if (this.#journal && this.#recovery === 'unavailable') this.#scheduleJournal(true);
+    if (this.#authorityLost || this.#state === 'conflict') return;
     const head = this.#queue[0];
     if (!head) return;
     if (this.#retryTimer) clearTimeout(this.#retryTimer);
@@ -318,13 +351,13 @@ export class ActionAutosaveController {
     this.#emit();
   }
 
-  async discardAndReplace(loadLatest: () => Promise<DraftRecord>): Promise<void> {
+  async discardAndReplace(loadLatest?: () => Promise<DraftRecord>): Promise<void> {
     if (this.#inFlight || this.#discarding || this.#recovery === 'checking')
       throw new Error('Wait for the current save to finish before discarding pending work.');
     this.#discarding = true;
     this.#emit();
     try {
-      const draft = await loadLatest();
+      const draft = loadLatest ? await loadLatest() : this.#draft;
       if (this.#journal) {
         // Let earlier snapshots settle before removing the payload the user chose to discard.
         while (this.#journalTask) await this.#journalTask;
@@ -420,7 +453,14 @@ export class ActionAutosaveController {
   }
 
   async #pump(): Promise<void> {
-    if (this.#disposed || this.#discarding || this.#inFlight || this.#retryTimer) return;
+    if (
+      this.#authorityLost ||
+      this.#disposed ||
+      this.#discarding ||
+      this.#inFlight ||
+      this.#retryTimer
+    )
+      return;
     if (this.#recovery === 'checking' || this.#recovery === 'blocked') return;
     if (['conflict', 'validation', 'error'].includes(this.#state)) return;
     const head = this.#queue[0];
@@ -478,7 +518,9 @@ export class ActionAutosaveController {
       const status =
         typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-      if (!this.#isOnline()) {
+      if ([401, 403, 404, 409, 410].includes(status)) {
+        this.stopForAuthority();
+      } else if (!this.#isOnline()) {
         this.#state = 'offline';
       } else if (status === 412 || code === 'REVISION_CONFLICT') {
         this.#state = 'conflict';
@@ -584,8 +626,9 @@ export class ActionAutosaveController {
     }
   }
 
-  #scheduleJournal(): void {
+  #scheduleJournal(retry = false): void {
     if (!this.#journal || !this.#journalInitialized) return;
+    if (this.#recovery === 'unavailable' && !retry) return;
     const action = (entry: QueueEntry) => ({
       document: entry.document,
       action: entry.action,
@@ -639,6 +682,10 @@ export class ActionAutosaveController {
   }
 
   #emit(): void {
+    if (this.#authorityLost) {
+      this.#state = 'error';
+      this.#errorKind = 'authority';
+    }
     this.#snapshot = this.#makeSnapshot();
     for (const listener of this.#listeners) listener();
   }

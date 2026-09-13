@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MediaLibrary, type MediaClient } from '../../src/client/media/MediaLibrary';
 import type {
   LibraryItem,
@@ -180,6 +180,36 @@ const imageFile = () =>
     'new.png',
     { type: 'image/png' },
   );
+
+it('preserves the validated filename when alternative text changes in the same render batch', async () => {
+  setup([]);
+  await screen.findByText('Your Library is empty');
+  fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
+  const dialog = screen.getByRole('dialog', { name: 'Upload image' });
+  const read = vi.spyOn(FileReader.prototype, 'readAsArrayBuffer').mockImplementation(() => {});
+  try {
+    fireEvent.change(within(dialog).getByLabelText('Image file'), {
+      target: { files: [imageFile()] },
+    });
+    const reader = read.mock.contexts[0] as FileReader;
+    await act(async () => {
+      Object.defineProperty(reader, 'result', {
+        value: Uint8Array.from([
+          137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+        ]).buffer,
+      });
+      reader.dispatchEvent(new Event('load'));
+      await Promise.resolve();
+      fireEvent.change(within(dialog).getByLabelText('Alternative text'), {
+        target: { value: 'People gathering' },
+      });
+    });
+    fireEvent.load(await within(dialog).findByRole('img'));
+    expect(within(dialog).getByRole('button', { name: 'Upload image' })).toBeEnabled();
+  } finally {
+    read.mockRestore();
+  }
+});
 
 it('adds a validated upload once immediately without placement controls', async () => {
   const { client } = setup([]);

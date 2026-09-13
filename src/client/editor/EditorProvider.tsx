@@ -44,6 +44,8 @@ interface EditorValue {
   retryAutosave: () => void;
   copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
+  discardLocal: () => Promise<void>;
+  stopAutosave: () => void;
   renameDraft: (name: string) => Promise<void>;
   runLibraryMutation: (
     operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
@@ -228,6 +230,8 @@ export function EditorProvider({
       retryAutosave: controller.retry,
       copyRecoveryData,
       reloadLatest,
+      discardLocal: () => controller.discardAndReplace(),
+      stopAutosave: controller.stopForAuthority,
       renameDraft,
       runLibraryMutation,
     }),

@@ -118,7 +118,7 @@ export function App() {
               if (!active || !owned) return;
               const draft = items.find((item) => item.id === owned.draftId);
               if (!draft) return;
-              const acquired = await api.acquireCheckout(draft.id, clientId);
+              const acquired = await api.acquireCheckout(draft.id, clientId, true);
               if (!active) return;
               setCheckout(acquired);
               setSelected(await api.getDraft(draft.id));

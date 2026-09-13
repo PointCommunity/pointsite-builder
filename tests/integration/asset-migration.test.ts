@@ -28,6 +28,11 @@ async function setup() {
     .sort()) {
     await database.exec((await readFile(`migrations/${file}`, 'utf8')).replace(/\s+/g, ' ').trim());
   }
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES ('editor','editor',1,'fixture','fixture','fixture')",
+    )
+    .run();
   const bytes = new Uint8Array(24);
   bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   new DataView(bytes.buffer).setUint32(16, 1);

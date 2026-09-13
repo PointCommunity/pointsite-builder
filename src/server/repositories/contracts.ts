@@ -49,6 +49,10 @@ export interface CheckoutCommand {
   activity?: boolean;
 }
 
+export interface AcquireCheckoutCommand extends Omit<CheckoutCommand, 'token' | 'activity'> {
+  resumeOnly?: boolean;
+}
+
 export interface RevisionRecord {
   id: string;
   draftId: string;
@@ -157,7 +161,7 @@ export interface DraftRepository {
   ): Promise<DraftRecord>;
   purgeDraft(draftId: string, actor: string, requestId: string): Promise<DeletedDraftReceipt>;
   listCheckoutAvailability(actor: string, now?: string): Promise<DraftCheckoutAvailability[]>;
-  acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout>;
+  acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout>;
   touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout>;
   releaseCheckout(input: CheckoutCommand): Promise<void>;
   assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void>;

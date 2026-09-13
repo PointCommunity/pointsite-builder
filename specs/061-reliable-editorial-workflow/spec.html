@@ -267,7 +267,14 @@
             completed action enters the single remote queue; the receipt removes only that
             acknowledged action. Recovery authenticates, obtains current backend authority,
             reconciles exact action receipts, then sends unchanged identities. Remote drift or lost
-            checkout blocks replay. Acknowledgements never replace newer pending content.
+            checkout blocks replay. Acknowledgements never replace newer pending content. Automatic
+            page restoration may resume only the current actor's same, unexpired client; it must not
+            acquire an expired checkout, transfer another client's checkout, or renew inactivity.
+            Explicit Open editor remains the user action for acquisition or transfer. Resume rotates
+            the transport token with an atomic comparison against the prior lease. Mutation guards
+            use the database clock at commit rather than a timestamp captured before asset
+            preparation. Storage failures remain latched until explicit recovery retry, so typing
+            does not repeatedly announce the same failure.
           </td>
           <td>
             Refresh before/after storage commit, before/after remote commit and acknowledgement;
@@ -530,8 +537,7 @@
       retain their original hash contract and must not bypass draft or label matching. The browser
       sends the exact base revision and preserves it through retries. Tests cover altered input,
       repeated content with a different revision, lost acknowledgement, concurrent retry, no-op,
-      expired receipt, and revoked checkout. Receipt payload compaction and role revocation at the
-      transaction boundary remain separate pending work.
+      expired receipt, and revoked checkout. Receipt payload compaction remains pending.
     </p>
     <p>
       Passive view-state persistence sends activity=false. Checkout validation and context writes
@@ -540,6 +546,24 @@
       touch and keyboard input remain genuine activity, with the existing four-second availability
       checks preserved. Old clients may omit activity and the revision header during the compatible
       rollout; updated clients always send both. Full enforcement for old clients remains pending.
+    </p>
+    <p>
+      Authority increment: automatic reopening uses a resume-only checkout command. The database
+      accepts it only for the current actor and client with an unexpired lease and active draft; it
+      rotates the transport token without extending expiry or activity. Explicit Open editor retains
+      acquisition and device transfer. Delayed saves and receipt replay never renew the lease. Save
+      and context transaction guards use the database clock, and all D1 draft mutation batches check
+      the current role before writing. Tests revoke roles at the commit boundary and verify
+      unchanged draft, revision, receipt and audit state. Memory-model token hashing also precedes
+      reading current checkout authority, so a transfer during hashing cannot authorize a stale
+      token.
+    </p>
+    <p>
+      The editor stops sends and retries after access or checkout failure, retains pending work for
+      copying, and allows explicitly discarding its local journal without a successful remote read.
+      Browser storage failures stay latched until explicit retry instead of retrying on each
+      keystroke. Full checkout and expected-revision enforcement on restore, labels and lifecycle
+      operations remains pending; this increment does not complete R4 or authorize release.
     </p>
     <ol>
       <li>

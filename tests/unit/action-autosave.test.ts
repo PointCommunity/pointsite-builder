@@ -69,6 +69,76 @@ const savedDraft = (
 });
 
 describe('ActionAutosaveController', () => {
+  it.each([401, 403, 404, 409, 410])(
+    'preserves pending work without retries after authority failure %s',
+    async (status) => {
+      const draft = initialDraft();
+      const journal = {
+        scope: { actor: draft.createdBy, draftId: draft.id, clientId: 'journal-browser-01' },
+        load: vi.fn().mockResolvedValue(null),
+        write: vi.fn().mockResolvedValue(undefined),
+      };
+      const persist = vi.fn().mockRejectedValue({ status });
+      const controller = new ActionAutosaveController({
+        initialDraft: draft,
+        journal,
+        persist,
+        isOnline: () => true,
+        retryDelaysMs: [1],
+      });
+      controller.activate();
+      await vi.waitFor(() => expect(controller.snapshot.recovery).toBe('ready'));
+      const document = structuredClone(draft.document);
+      document.site.shortName = 'Keep after access loss';
+      const action = { category: 'control-change' as const, context: 'site-settings' as const };
+      controller.complete(document, action);
+      await vi.waitFor(() => expect(controller.snapshot.errorKind).toBe('authority'));
+      controller.setOnline(false);
+      controller.setOnline(true);
+      controller.retry();
+      controller.stage(draft.document, action);
+      expect(controller.complete(draft.document, action)).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(persist).toHaveBeenCalledOnce();
+      expect(controller.snapshot.document).toEqual(document);
+      expect(controller.snapshot.pendingCount).toBe(1);
+      expect(controller.recoveryJson()).toContain('Keep after access loss');
+      // Explicit local discard must remain possible without a successful remote read.
+      await controller.discardAndReplace();
+      await vi.waitFor(() => expect(controller.snapshot.canLeave).toBe(true));
+      expect(journal.write.mock.calls.at(-1)?.[0]).toBeNull();
+      expect(controller.snapshot.pendingCount).toBe(0);
+      expect(controller.snapshot.errorKind).toBe('authority');
+      controller.retry();
+      expect(persist).toHaveBeenCalledOnce();
+      controller.dispose();
+    },
+  );
+
+  it('does not send queued changes after access is lost during an in-flight save', async () => {
+    const draft = initialDraft();
+    const save = deferred<DraftRecord>();
+    const persist = vi.fn().mockReturnValue(save.promise);
+    const controller = new ActionAutosaveController({
+      initialDraft: draft,
+      persist,
+      isOnline: () => true,
+    });
+    const document = structuredClone(draft.document);
+    document.site.shortName = 'First change';
+    const action = { category: 'control-change' as const, context: 'site-settings' as const };
+    controller.complete(document, action);
+    document.site.shortName = 'Second change';
+    controller.complete(document, action);
+    controller.stopForAuthority();
+    save.resolve(savedDraft(draft, 2));
+    await vi.waitFor(() => expect(controller.snapshot.pendingCount).toBe(1));
+    expect(controller.snapshot.errorKind).toBe('authority');
+    expect(controller.snapshot.document.site.shortName).toBe('Second change');
+    expect(persist).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
   it('pauses editing and sending during discard and preserves pending work if clearing fails', async () => {
     const draft = initialDraft();
     const pendingWrite = deferred<void>();
@@ -280,6 +350,20 @@ describe('ActionAutosaveController', () => {
     expect(controller.snapshot.recovery).toBe('unavailable');
     expect(controller.snapshot.recoveryMessage).toContain('unavailable');
     expect(persist).toHaveBeenCalledOnce();
+    const failedWrites = journal.write.mock.calls.length;
+    controller.mutate(
+      (document) => ({
+        ...document,
+        site: { ...document.site, shortName: 'Still saving remotely' },
+      }),
+      { category: 'control-change', context: 'site-settings' },
+    );
+    await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(2));
+    expect(controller.snapshot.recovery).toBe('unavailable');
+    expect(journal.write).toHaveBeenCalledTimes(failedWrites);
+    journal.write.mockResolvedValue(undefined);
+    controller.retry();
+    await vi.waitFor(() => expect(controller.snapshot.recovery).toBe('ready'));
     controller.dispose();
   });
   it('merges rename metadata without replacing pending content or accepting stale save names', async () => {

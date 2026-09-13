@@ -301,7 +301,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CheckoutClient' }
+            schema: { $ref: '#/components/schemas/CheckoutAcquire' }
       responses:
         '200': { description: 'Acquired, resumed, or transferred checkout' }
         '409': { $ref: '#/components/responses/Error' }
@@ -1012,6 +1012,16 @@ components:
       required: [clientId]
       properties:
         clientId: { type: string, minLength: 16, maxLength: 100 }
+    CheckoutAcquire:
+      type: object
+      additionalProperties: false
+      required: [clientId]
+      properties:
+        clientId: { type: string, minLength: 16, maxLength: 100 }
+        resumeOnly:
+          type: boolean
+          default: false
+          description: Automatic recovery uses true. It rotates only the same actor and active client's token, preserves inactivity expiry, and cannot acquire or transfer a checkout. False is reserved for explicit Open editor.
     CheckoutTouch:
       type: object
       additionalProperties: false

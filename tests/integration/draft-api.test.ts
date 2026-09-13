@@ -47,6 +47,34 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('rejects automatic acquisition or transfer while allowing explicit Open editor', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Automatic recovery authority',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'automatic-create-001',
+      requestId: 'create',
+    });
+    const resume = (clientId: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}/checkout`, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({ clientId, resumeOnly: true }),
+      });
+    expect((await resume('browser-client-0001')).status).toBe(409);
+    const first = await checkout(app, draft.id);
+    const resumed = await resume('browser-client-0001');
+    expect(resumed.status).toBe(200);
+    expect(await responseJson<{ expiresAt: string }>(resumed)).toMatchObject({
+      expiresAt: first.expiresAt,
+    });
+    expect((await resume('browser-client-0002')).status).toBe(409);
+    await checkout(app, draft.id, 'browser-client-0002');
+    expect((await resume('browser-client-0001')).status).toBe(409);
+  });
+
   it('validates and enforces the exact revision header, then replays a saved request', async () => {
     const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
     const { app, repository } = appFor(actor);

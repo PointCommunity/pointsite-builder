@@ -212,11 +212,11 @@ export const api = {
     (await request<{ items: DraftCheckoutAvailability[] }>('/drafts/checkouts')).items,
   ownedCheckout: () =>
     request<{ draftId: string; expiresAt: string } | null>('/drafts/checkout/owned'),
-  acquireCheckout: (id: string, clientId: string) =>
+  acquireCheckout: (id: string, clientId: string, resumeOnly = false) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, ...(resumeOnly ? { resumeOnly } : {}) }),
     }),
   validateCheckout: (id: string, token: string) =>
     request<{ active: true }>(`/drafts/${id}/checkout`, {

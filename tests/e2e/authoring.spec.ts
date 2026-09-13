@@ -578,6 +578,103 @@ test('denied browser storage blocks recovery without sending and reports explici
   expect(controls.saveRequests).toHaveLength(0);
 });
 
+test('lost access preserves pending changes and allows local discard without a remote read', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  await installApi(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => {} },
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Church name').fill('Preserve after permission change');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  const pending = await readPending(page);
+  expect(pending).not.toBeNull();
+  let saves = 0;
+  let draftReads = 0;
+  await page.route(`**/api/drafts/${pending!.scope.draftId}`, (route) => {
+    if (route.request().method() === 'PUT') saves += 1;
+    if (route.request().method() === 'GET') draftReads += 1;
+    return route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{"code":"FORBIDDEN","message":"Access changed"}',
+    });
+  });
+  await page.route('**/api/drafts/*/checkout', (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{"code":"FORBIDDEN","message":"Access changed"}',
+    }),
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
+  await expect(page.getByText('Editing access is unavailable.', { exact: true })).toBeVisible();
+  expect((await readPending(page))?.actions).toHaveLength(1);
+  const sendsAtAccessLoss = saves;
+  expect(sendsAtAccessLoss).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Copy pending draft' }).click();
+  await page.getByRole('button', { name: 'Discard pending changes and leave' }).click();
+  await expect(page.getByRole('button', { name: 'Open editor', exact: true })).toBeVisible();
+  expect(await readPending(page)).toBeNull();
+  expect(saves).toBe(sendsAtAccessLoss);
+  expect(draftReads).toBe(0);
+});
+
+test('automatic recovery cannot take a superseded checkout before explicit Open editor', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Church name').fill('Pending before transfer');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  const pending = await readPending(page);
+  const attempts: boolean[] = [];
+  await page.route('**/api/drafts/*/checkout', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const input = route.request().postDataJSON() as { resumeOnly?: boolean };
+    attempts.push(Boolean(input.resumeOnly));
+    return input.resumeOnly
+      ? route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: '{"code":"CONFLICT","message":"Checkout moved to another client"}',
+        })
+      : route.fallback();
+  });
+  await page.reload();
+  await expect.poll(() => attempts).toEqual([true]);
+  await expect(page.getByRole('button', { name: 'Open editor', exact: true })).toBeVisible();
+  expect(controls.saveRequests).toHaveLength(0);
+  expect((await readPending(page))?.actions[0].idempotencyKey).toBe(
+    pending?.actions[0].idempotencyKey,
+  );
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Church name')).toHaveValue('Pending before transfer');
+  expect(attempts).toEqual([true, false]);
+});
+
 for (const kind of ['control', 'unfinished resize']) {
   test(`refresh restores a pending ${kind} before continuing remote saves`, async ({ page }) => {
     await page.unroute('**/api/**');

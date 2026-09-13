@@ -6,6 +6,7 @@ import { checkoutExpiry } from '../../shared/draft-checkout';
 import { createRequestHash, saveRequestHash } from './request-hash';
 import type {
   AuditEventRecord,
+  AcquireCheckoutCommand,
   CheckoutCommand,
   CreateDraftInput,
   DeletedDraftReceipt,
@@ -134,12 +135,12 @@ export class InMemoryRepository implements DraftRepository {
 
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
     const document = migrateDocument(clone(input.document)).document;
-    const [requestHash, checksum] = await Promise.all([
+    const [requestHash, checksum, checkoutHash] = await Promise.all([
       saveRequestHash(input),
       checksumDocument(document),
+      input.checkoutToken ? hashToken(input.checkoutToken) : Promise.resolve(null),
     ]);
-    if (input.checkoutToken)
-      await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
+    if (checkoutHash) this.#checkedCheckout(input.draftId, input.actor, checkoutHash);
     const current = this.#drafts.get(input.draftId);
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
@@ -192,14 +193,6 @@ export class InMemoryRepository implements DraftRepository {
     revisions.push(clone(revision));
     this.#revisions.set(input.draftId, revisions);
     this.#drafts.set(input.draftId, clone(updated));
-    if (input.checkoutToken) {
-      const checkout = this.#checkouts.get(input.draftId)!;
-      this.#checkouts.set(input.draftId, {
-        ...checkout,
-        lastActivityAt: now,
-        expiresAt: checkoutExpiry(now),
-      });
-    }
     this.#idempotency.set(operationKey, clone(updated));
     this.#requestHashes.set(operationKey, requestHash);
     this.#recordAudit(input.actor, 'draft.save', input.draftId, input.requestId, {
@@ -357,12 +350,22 @@ export class InMemoryRepository implements DraftRepository {
       });
   }
 
-  async acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout> {
+  async acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout> {
+    const token = crypto.randomUUID();
+    const tokenHash = await hashToken(token);
     const draft = this.#drafts.get(input.draftId);
     if (!draft) throw new NotFoundError(`Draft ${input.draftId} was not found`);
     if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
     const now = input.now ?? new Date().toISOString();
     const current = this.#checkouts.get(input.draftId);
+    if (
+      input.resumeOnly &&
+      (!current ||
+        current.expiresAt <= now ||
+        current.actor.toLowerCase() !== input.actor.toLowerCase() ||
+        current.clientId !== input.clientId)
+    )
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     if (
       current &&
       current.expiresAt > now &&
@@ -379,8 +382,6 @@ export class InMemoryRepository implements DraftRepository {
         input.requestId,
         {},
       );
-    const token = crypto.randomUUID();
-    const tokenHash = await hashToken(token);
     const event =
       !current || current.expiresAt <= now
         ? 'acquired'
@@ -394,8 +395,8 @@ export class InMemoryRepository implements DraftRepository {
       clientId: input.clientId,
       tokenHash,
       acquiredAt,
-      lastActivityAt: now,
-      expiresAt: checkoutExpiry(now),
+      lastActivityAt: input.resumeOnly ? current!.lastActivityAt : now,
+      expiresAt: input.resumeOnly ? current!.expiresAt : checkoutExpiry(now),
     };
     this.#checkouts.set(input.draftId, record);
     this.#recordAudit(input.actor, `draft.checkout.${event}`, input.draftId, input.requestId, {});
@@ -403,8 +404,12 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
-    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
-    const current = this.#checkouts.get(input.draftId)!;
+    const current = this.#checkedCheckout(
+      input.draftId,
+      input.actor,
+      await hashToken(input.token),
+      input.now,
+    );
     if (current.clientId !== input.clientId)
       throw new ConflictError('This editing client no longer owns the draft checkout');
     const now = input.now ?? new Date().toISOString();
@@ -433,27 +438,32 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async releaseCheckout(input: CheckoutCommand): Promise<void> {
+    const tokenHash = await hashToken(input.token);
     const current = this.#checkouts.get(input.draftId);
     if (!current) return;
-    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
+    this.#checkedCheckout(input.draftId, input.actor, tokenHash, input.now);
+    if (current.clientId !== input.clientId)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     this.#checkouts.delete(input.draftId);
     this.#recordAudit(input.actor, 'draft.checkout.released', input.draftId, input.requestId, {});
   }
 
-  async assertCheckout(
+  async assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void> {
+    this.#checkedCheckout(draftId, actor, await hashToken(token), now);
+  }
+
+  #checkedCheckout(
     draftId: string,
     actor: string,
-    token: string,
+    tokenHash: string,
     now = new Date().toISOString(),
-  ): Promise<void> {
+  ) {
     const current = this.#checkouts.get(draftId);
     if (!current || current.expiresAt <= now || this.#drafts.get(draftId)?.status !== 'active')
       throw new ConflictError('The draft checkout expired');
-    if (
-      current.actor.toLowerCase() !== actor.toLowerCase() ||
-      current.tokenHash !== (await hashToken(token))
-    )
+    if (current.actor.toLowerCase() !== actor.toLowerCase() || current.tokenHash !== tokenHash)
       throw new ConflictError('This editing client no longer owns the draft checkout');
+    return current;
   }
 
   async ownedCheckout(
