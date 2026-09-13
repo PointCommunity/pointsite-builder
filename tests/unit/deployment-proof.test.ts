@@ -126,3 +126,122 @@ it('sends the repository token only to fixed GitHub proof endpoints, never to th
   await verifyDeploymentProof(expectation, fetcher, 'fixture-token');
   expect(fetcher).toHaveBeenCalledTimes(6);
 });
+
+it('requires current full native Worker traffic and exact retained version annotations', async () => {
+  const { verifyStagingDeployment } = await import('../../src/server/publish/deployment-proof');
+  const deploymentId = crypto.randomUUID();
+  const versionId = crypto.randomUUID();
+  const api =
+    'https://api.cloudflare.com/client/v4/accounts/bc890091d86ddf9ce669e96e79d47746/workers/scripts/pointsite-staging';
+  for (const failure of ['', 'split', 'tag', 'candidate', 'changed', 'provider']) {
+    let reads = 0;
+    const fetcher = vi.fn<typeof fetch>((value, init) => {
+      expect(init?.redirect).toBe('error');
+      expect(init?.method ?? 'GET').toBe('GET');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-native-reader');
+      const url = typeof value === 'string' ? value : value instanceof URL ? value.href : value.url;
+      if (failure === 'provider')
+        return Promise.resolve(new Response('private-provider-body', { status: 403 }));
+      if (url === `${api}/deployments`) {
+        reads++;
+        return Promise.resolve(
+          Response.json({
+            success: true,
+            result: {
+              deployments: [
+                {
+                  id: failure === 'changed' && reads > 1 ? crypto.randomUUID() : deploymentId,
+                  versions: [{ version_id: versionId, percentage: failure === 'split' ? 50 : 100 }],
+                },
+              ],
+            },
+          }),
+        );
+      }
+      expect(url).toBe(`${api}/versions/${versionId}`);
+      return Promise.resolve(
+        Response.json({
+          success: true,
+          result: {
+            id: versionId,
+            annotations: {
+              'workers/tag': failure === 'tag' ? 'f'.repeat(40) : expectation.commitSha,
+              'workers/message': `Staging candidate ${failure === 'candidate' ? 'f'.repeat(64) : expectation.candidateChecksum} from ${expectation.commitSha}`,
+            },
+          },
+        }),
+      );
+    });
+    const check = verifyStagingDeployment(
+      expectation.commitSha,
+      expectation.candidateChecksum,
+      'fixture-native-reader',
+      fetcher,
+    );
+    if (failure)
+      await expect(check, failure).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
+    else {
+      expect(await check).toEqual({ deploymentId, workerVersionId: versionId });
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    }
+  }
+});
+
+it('preserves failed original execution only with an independently successful verification check', async () => {
+  const verification = {
+    runId: '45678',
+    checkRunId: '56789',
+    dispatchRevision: expectation.commitSha,
+    workflowRevision: 'f'.repeat(40),
+  };
+  for (const failure of [
+    '',
+    'verification-failed',
+    'verification-pending',
+    'verification-head',
+    'verification-app',
+    'verification-run',
+    'native-pending',
+  ]) {
+    const original = fixture(expectation, 'failed');
+    const fetcher: typeof fetch = async (url, init) => {
+      const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      if (path.endsWith(`/check-runs/${verification.checkRunId}`))
+        return Response.json({
+          id: Number(verification.checkRunId),
+          status: failure === 'verification-pending' ? 'in_progress' : 'completed',
+          conclusion: failure === 'verification-failed' ? 'failure' : 'success',
+          head_sha:
+            failure === 'verification-head'
+              ? expectation.dispatchRevision
+              : verification.dispatchRevision,
+          details_url: `https://github.com/PointCommunity/pointsite-staging/actions/runs/${failure === 'verification-run' ? '45679' : verification.runId}/job/${verification.checkRunId}`,
+          app: { id: failure === 'verification-app' ? 42 : 15368, slug: 'github-actions' },
+        });
+      if (path.includes('/statuses?'))
+        return Response.json([
+          {
+            state: failure === 'native-pending' ? 'in_progress' : 'failure',
+            environment: 'staging',
+            log_url: `https://github.com/PointCommunity/pointsite-staging/actions/runs/${expectation.runId}/job/${expectation.checkRunId}`,
+            environment_url: 'https://staging.pointatx.org/',
+          },
+        ]);
+      return original(url, init);
+    };
+    const check = verifyDeploymentProof({ ...expectation, verification }, fetcher);
+    if (failure)
+      await expect(check, failure).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
+    else
+      expect(await check).toMatchObject({
+        verification: {
+          ...verification,
+          originalConclusion: 'failure',
+          originalDeploymentState: 'failure',
+        },
+        runId: expectation.runId,
+        checkRunId: expectation.checkRunId,
+        artifactDigest: expectation.artifactDigest,
+      });
+  }
+});

@@ -761,6 +761,39 @@
       destination evidence, and verify restored output before recording another release.
     </p>
     <p>
+      Verification-only recovery contract: after native evidence proves the original deployment run
+      terminal, a fresh Publisher/Administrator (Administrator for Production) may request a bounded
+      read-only cloud verification. Retain the original job, build, commit, execution and deployment
+      identities. For Staging, Builder independently reads Cloudflare's current single version at
+      100% traffic, checks the exact commit tag and candidate message, and rechecks deployment
+      identity. A dedicated read-only Worker credential remains in 1Password and is provisioned to
+      Builder only; the cloud verification process receives the captured native version ID, never
+      this credential. The live site's version must match that independent capture. Recheck native
+      traffic before finalization. A distinct nonce, OIDC audience, immutable verification workflow,
+      run and check bind the recovery; deployment tokens cannot call verification endpoints or vice
+      versa. The verification job uses read-only repository permissions and no deployment
+      credential, rebuild, Git write or native deployment record. Fetch the retained output manifest
+      by its immutable Git blob identity, check every live output hash and native release identity
+      before and after, then record a signed acknowledgement. A separate finalizer requires the
+      verification execution check to have succeeded and rereads current destination/native
+      evidence. Preserve the original execution conclusion and deployment status; do not relabel a
+      failed deployment check as successful. Only this independently verified recovery proof may
+      reconcile a terminal failed original check. Unrecovered publication continues to require
+      successful native execution. Pending, replaced, changed, unauthorized or incomplete evidence
+      fails closed. Permit at most three verification attempts per original job and six throttled
+      dispatches per attempt, preserving request receipts after lost responses. A terminal
+      verification attempt can be retired only after native completion; no timeout alone releases
+      it. Reopening the draft shows the durable recovery state. Extend acceptance, promotion and
+      rollback proof readers to retain recovery provenance. Test nonce/scope substitution, failed
+      original execution, missing acknowledgement, changed output/deployment, duplicate dispatch,
+      lost replies, role revocation and transaction rollback before enabling this path. GitHub's
+      <a
+        href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
+        >deployment: false environment contract</a
+      >
+      supports verification without creating a deployment record.
+    </p>
+    <p>
       Publication retention contract: the existing schedule retires at most one terminal cloud job
       and one release record per pass after ninety days. Preserve occupied slots, unresolved
       deployment authorization, the latest verified Staging job, the two latest recorded Production

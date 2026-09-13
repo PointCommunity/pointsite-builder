@@ -401,6 +401,7 @@ export class D1ApprovalService {
           candidateChecksum: actual.candidateChecksum,
           artifactDigest: actual.artifactDigest,
           workerVersionId: proof.data.workerVersionId,
+          ...(proof.data.verification ? { verification: proof.data.verification } : {}),
         },
         request,
         token,

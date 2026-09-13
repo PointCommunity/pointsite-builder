@@ -7,6 +7,7 @@ const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const identifier = z.string().regex(/^[1-9][0-9]{0,19}$/);
 const scopeSchema = z.strictObject({
   target: z.enum(['staging', 'production']),
+  purpose: z.literal('verification').optional(),
   workflowRevision: sha,
   dispatchRevision: sha,
   jobId: z.uuid(),
@@ -23,10 +24,14 @@ export const publicationDestinations = {
 
 // Verified repository OIDC settings use immutable subjects. Do not silently accept
 // legacy subjects, alternate repositories, user sessions, or caller-provided URLs.
-export function publicationRunnerAudience(jobId: string, nonce: string): string {
+export function publicationRunnerAudience(
+  jobId: string,
+  nonce: string,
+  purpose?: 'verification',
+): string {
   z.uuid().parse(jobId);
   scopeSchema.shape.nonce.parse(nonce);
-  return `https://builder.pointatx.org/publish/${jobId}/${nonce}`;
+  return `https://builder.pointatx.org/${purpose === 'verification' ? 'verify' : 'publish'}/${jobId}/${nonce}`;
 }
 
 export async function verifyPublicationRunner(
@@ -40,7 +45,11 @@ export async function verifyPublicationRunner(
     if (!token || token.length > 16_384) throw new Error('Invalid token size');
     const destination = publicationDestinations[scope.data.target];
     const repository = `PointCommunity/${destination.repository}`;
-    const audience = publicationRunnerAudience(scope.data.jobId, scope.data.nonce);
+    const audience = publicationRunnerAudience(
+      scope.data.jobId,
+      scope.data.nonce,
+      scope.data.purpose,
+    );
     const { payload } = await jwtVerify(token, keys, {
       algorithms: ['RS256'],
       issuer,
@@ -65,11 +74,11 @@ export async function verifyPublicationRunner(
         sha: z.literal(scope.data.dispatchRevision),
         workflow_sha: z.literal(scope.data.dispatchRevision),
         workflow_ref: z.literal(
-          `${repository}/.github/workflows/publish-candidate.yml@refs/heads/main`,
+          `${repository}/.github/workflows/${scope.data.purpose === 'verification' ? 'verify-publication' : 'publish-candidate'}.yml@refs/heads/main`,
         ),
         job_workflow_sha: z.literal(scope.data.workflowRevision),
         job_workflow_ref: z.literal(
-          `PointCommunity/pointsite-staging/.github/workflows/${scope.data.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${scope.data.workflowRevision}`,
+          `PointCommunity/pointsite-staging/.github/workflows/${scope.data.purpose === 'verification' ? 'verify-runtime' : scope.data.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${scope.data.workflowRevision}`,
         ),
         environment: z.literal(destination.environment),
         run_id: identifier,

@@ -152,6 +152,7 @@ export class D1ProductionPublisher {
             candidateChecksum: evidence.candidateChecksum,
             artifactDigest: evidence.artifactDigest,
             workerVersionId: evidence.workerVersionId,
+            ...(evidence.verification ? { verification: evidence.verification } : {}),
           },
           request,
         );
@@ -314,6 +315,7 @@ export class D1ProductionPublisher {
         candidateChecksum: evidence.candidateChecksum,
         artifactDigest: evidence.artifactDigest,
         workerVersionId: evidence.workerVersionId,
+        ...(evidence.verification ? { verification: evidence.verification } : {}),
       },
       request,
     );

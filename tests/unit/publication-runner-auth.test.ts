@@ -126,3 +126,38 @@ it('binds tokens to one job and nonce and rejects missing configuration before k
     runId: '12345',
   });
 });
+
+it('separates read-only verification audiences and workflows from deployment authority', async () => {
+  for (const target of ['staging', 'production'] as const) {
+    const deployment = { ...scope, target };
+    const verification = { ...deployment, purpose: 'verification' as const };
+    const name = target === 'staging' ? 'pointsite-staging' : 'pointsite';
+    const payload = {
+      ...claims(deployment),
+      aud: `https://builder.pointatx.org/verify/${scope.jobId}/${scope.nonce}`,
+      workflow_ref: `PointCommunity/${name}/.github/workflows/verify-publication.yml@refs/heads/main`,
+      job_workflow_ref: `PointCommunity/pointsite-staging/.github/workflows/verify-runtime.yml@${scope.workflowRevision}`,
+    };
+    const token = await sign(payload);
+    expect(await verifyPublicationRunner(token, verification, resolver)).toMatchObject({
+      runId: '12345',
+      checkRunId: '23456',
+    });
+    await expect(verifyPublicationRunner(token, deployment, resolver)).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    await expect(
+      verifyPublicationRunner(await sign(claims(deployment)), verification, resolver),
+    ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+    for (const field of ['aud', 'workflow_ref', 'job_workflow_ref'] as const) {
+      await expect(
+        verifyPublicationRunner(
+          await sign({ ...payload, [field]: claims(deployment)[field] }),
+          verification,
+          resolver,
+        ),
+        field,
+      ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+    }
+  }
+});
