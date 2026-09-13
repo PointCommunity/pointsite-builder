@@ -96,6 +96,8 @@ async function mockPublishing(
               }),
       });
     if (path.endsWith('/verification')) verificationRequests += 1;
+    if (path.endsWith('/publish/production/workflow'))
+      return route.fulfill({ contentType: 'application/json', body: '{"enabled":false}' });
     const passed =
       scenario === 'accepted'
         ? true
@@ -204,6 +206,76 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
+
+test('an Administrator recovers saved Production progress after reopening', async ({
+  page,
+}, testInfo) => {
+  await mockPublishing(page, 'accepted', 'administrator');
+  let recovered = false;
+  const jobId = '50000000-0000-4000-8000-000000000011';
+  await page.route('**/api/publish/production/workflow?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        enabled: true,
+        busy: !recovered,
+        job: {
+          id: jobId,
+          status: recovered ? 'succeeded' : 'running',
+          revisionId: draft.revision.id,
+          stagingJobId: '30000000-0000-4000-8000-000000000011',
+          approvalId: 'acceptance',
+          candidateChecksum: 'b'.repeat(64),
+          artifactDigest: 'a'.repeat(64),
+          baseSha: 'e'.repeat(40),
+          commitSha: 'f'.repeat(40),
+          requestedAt: new Date(Date.now() - 16 * 60_000).toISOString(),
+          completedAt: null,
+          evidence: recovered
+            ? { verificationStatus: 'passed', artifactDigest: 'a'.repeat(64) }
+            : {},
+          dispatch: {
+            attempts: 1,
+            needsAttention: false,
+            reserved: true,
+            canVerifyCompleted: !recovered,
+            retryAt: '2026-09-13T00:00:00Z',
+          },
+        },
+      }),
+    });
+  });
+  await page.route(`**/api/publish/production/jobs/${jobId}/recovery`, async (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({
+      action: 'verify-completed',
+      expectedAttempts: 1,
+    });
+    expect(route.request().headers()['idempotency-key']).toBeTruthy();
+    recovered = true;
+    await route.fulfill({ contentType: 'application/json', body: '{"recovered":true}' });
+  });
+  await openPublishing(page);
+  await expect(
+    page.getByRole('button', { name: 'Verify completed Production publication' }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  const verify = page.getByRole('button', { name: 'Verify completed Production publication' });
+  await expect(verify).toBeVisible();
+  await verify.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('This Production publication was verified.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Production', exact: true })).toBeFocused();
+  await expect(verify).toHaveCount(0);
+  await page.getByText('Production publication details', { exact: true }).click();
+  await page
+    .locator('.production-lock')
+    .screenshot({ path: testInfo.outputPath('production-status.png') });
+  const violations = await new AxeBuilder({ page }).include('.production-lock').analyze();
+  expect(violations.violations).toEqual([]);
+});
 
 test('cloud recovery retains the captured revision and keyboard focus', async ({ page }) => {
   await mockPublishing(page, 'immediate');
@@ -486,7 +558,7 @@ test('gives an Administrator a clear Production handoff without an unavailable a
   await openPublishing(page);
   await expect(page.getByText('Your next step · Administrator')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-  await expect(page.getByText(/No Production action is available here yet/i)).toBeVisible();
+  await expect(page.getByText(/Check the Production section below/i)).toBeVisible();
   await expect(page.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
   await expect(page.getByRole('button', { name: /publish.*production/i })).toHaveCount(0);
 });

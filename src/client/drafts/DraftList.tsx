@@ -176,7 +176,9 @@ export function DraftList({
         <div>
           <p className="eyebrow">Workspace</p>
           <h1 id="drafts-title">Website drafts</h1>
-          <p className="safety-note">Publishing is staging-only. Production remains locked.</p>
+          <p className="safety-note">
+            Review and accept on protected Staging. Production publishing requires an Administrator.
+          </p>
         </div>
         {canEdit ? (
           <form

@@ -9,6 +9,7 @@ import {
   type PublishingRole,
 } from './guidance';
 import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow';
+import { ProductionPublish } from './ProductionPublish';
 
 const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
@@ -673,18 +674,29 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         </div>
       </details>
 
-      <aside className="production-lock">
-        <strong>Production remains unchanged</strong>
-        <p>
-          {role === 'administrator'
-            ? 'Production publishing is not enabled in Builder yet. There is no Production button until the separate protected setup and approval are complete.'
-            : 'Your Publisher role ends at accepted Staging. An Administrator can continue only after the separate protected Production workflow is enabled.'}
-        </p>
-        <p className="production-role-note">
-          A GitHub organization owner must also have an active Builder Administrator role and the
-          required live repository permission before any Production action can appear.
-        </p>
-      </aside>
+      {role === 'administrator' ? (
+        <ProductionPublish
+          key={draft.id}
+          draftId={draft.id}
+          approval={
+            snapshot?.job?.id === snapshot?.approval?.publishJobId
+              ? (snapshot?.approval ?? null)
+              : null
+          }
+        />
+      ) : (
+        <aside className="production-lock">
+          <strong>Production requires an Administrator</strong>
+          <p>
+            Your Publisher role ends at accepted Staging. An Administrator can continue only after
+            the separate protected Production workflow is enabled.
+          </p>
+          <p className="production-role-note">
+            A GitHub organization owner must also have an active Builder Administrator role and the
+            required live repository permission before any Production action can appear.
+          </p>
+        </aside>
+      )}
     </section>
   );
 }

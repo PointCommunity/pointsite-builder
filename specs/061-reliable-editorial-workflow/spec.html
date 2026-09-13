@@ -769,6 +769,20 @@
       rollback and the remaining release gates are complete; route tests inject the real service
       boundary without activating live publication.
     </p>
+    <p>
+      Production status and UI contract: an Administrator can reopen a draft and read its latest
+      Production job, captured revision, acceptance, artifact and dispatch recovery state. Query
+      immutable publication pins, never the current draft document; newer edits and captured retry
+      children cannot hide this progress. Status reads require fresh active Administrator authority,
+      never dispatch or call a provider, and report disabled explicitly when the service is absent.
+      Keep Staging job readers and recovery destination-scoped, including when Production is
+      disabled. The UI offers a deliberate exact-acceptance promotion and only recorded recovery
+      actions, preserving request keys after uncertain replies. Background polling is limited to
+      ten-second reads for fifteen minutes; refresh remains available afterward. Unknown status
+      cannot offer a publication action or claim success. Route, real D1 and UI tests cover role
+      revocation, empty/busy/completed states, reopening, bounded polling and lost replies before
+      enabling the Production service in the Worker.
+    </p>
     <ul>
       <li>
         T2: Additive migration 0014 creates per-draft item/date/path summaries. Draft saves update
@@ -1092,10 +1106,16 @@
         recovery limitations.
       </li>
       <li>
-        Pending: authenticated installation permissions/repository selection; account plan readback;
-        safe metrics/recovery permissions; forward storage and migration proof; final numeric
-        budgets. These are unresolved evidence dependencies, not implied approvals or completed
-        acceptance.
+        Verified September 13: scoped operations and analytics credentials are stored in 1Password;
+        both token verifications are active, Builder D1 metadata and read-only query access succeed,
+        and the exact telemetry query returns account and workspace counters. The requested UTC
+        period ending 17:20:35Z returned 3,853 rows read and 100 written; this is a lagging
+        analytics sample, not an audited bill or a plan allowance. Worker telemetry installation is
+        pending. Forward compact-storage and migration guards have local proof; activation and
+        provider CPU measurements remain pending. Complete workload budgets, cloud rollback,
+        independent deletion receipts, quarantined restore, live publication and the final release
+        gates remain unfinished. Billing details are not a prerequisite for these read-only
+        operations.
       </li>
     </ul>
   </body>

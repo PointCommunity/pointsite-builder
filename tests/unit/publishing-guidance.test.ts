@@ -50,8 +50,8 @@ describe('non-technical publishing guidance', () => {
     const guidance = getPublishingNextStep(lifecycle('accepted', 5), 'administrator', 76);
     expect(guidance.primaryAction).toBeNull();
     expect(guidance.title).toBe('Your Staging work is complete');
-    expect(guidance.guidance).toMatch(/No Production action is available/i);
-    expect(guidance.effect).toMatch(/Production is unchanged/i);
+    expect(guidance.guidance).toMatch(/Check the Production section below/i);
+    expect(guidance.effect).toMatch(/Production has its own publication status/i);
   });
 
   it.each([

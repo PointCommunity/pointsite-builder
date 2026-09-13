@@ -156,7 +156,10 @@ const queuedCloud: StagingWorkflowSnapshot = {
 };
 
 describe('guided Staging publishing', () => {
-  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -528,7 +531,7 @@ describe('guided Staging publishing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Accept this Staging version' }));
     expect(await screen.findByText('Official Staging candidate accepted')).toBeVisible();
-    expect(screen.getByText(/public website has not changed/i)).toBeVisible();
+    expect(screen.getByText(/Production has its own publication status/i)).toBeVisible();
     expect(load).toHaveBeenCalledTimes(4);
   });
 
@@ -540,7 +543,7 @@ describe('guided Staging publishing', () => {
     expect(screen.queryByRole('button', { name: /publish this revision/i })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
     expect(screen.getByText(/No more publishing action is required from you/i)).toBeVisible();
-    expect(screen.getByText(/Production remains unchanged/i)).toBeVisible();
+    expect(screen.getByText(/Production requires an Administrator/i)).toBeVisible();
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -565,7 +568,7 @@ describe('guided Staging publishing', () => {
 
     expect(await screen.findByText('Your next step · Administrator')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-    expect(screen.getByText(/No Production action is available here yet/i)).toBeVisible();
+    expect(screen.getByText(/Check the Production section below/i)).toBeVisible();
     expect(screen.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /publish.*production/i })).toBeNull();
   });

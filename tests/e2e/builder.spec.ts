@@ -129,6 +129,8 @@ test.beforeEach(async ({ page }) => {
     if (path.endsWith(`/publish/jobs/${publishResult.jobId}/verification`))
       verificationPassed = true;
     if (path.endsWith('/approvals') && request.method() === 'POST') acceptedOnStaging = true;
+    if (path.endsWith('/publish/production/workflow'))
+      return route.fulfill({ contentType: 'application/json', body: '{"enabled":false}' });
     const body = path.endsWith('/me')
       ? { email: 'admin@pointatx.org', role: 'administrator', repositoryPermission: 'admin' }
       : path.endsWith('/drafts')
@@ -255,7 +257,7 @@ test.beforeEach(async ({ page }) => {
 test('loads an accessible private draft workspace', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Website drafts' })).toBeVisible();
-  await expect(page.getByText('Production remains locked.')).toBeVisible();
+  await expect(page.getByText(/Production publishing requires an Administrator/)).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
   expect(
     results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
@@ -394,8 +396,13 @@ test('publishes and accepts only exact verified staging while production stays l
   await expect(page.getByText('c'.repeat(64))).toBeHidden();
   await page.getByRole('button', { name: 'Accept this Staging version' }).click();
   await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
-  await expect(page.getByText(/public website has not changed/i)).toBeVisible();
-  await expect(page.getByText('Production remains unchanged')).toBeVisible();
+  await expect(
+    page.getByText(
+      'This exact revision is accepted on Staging. Production has its own publication status.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/Production publishing is not enabled in Builder yet/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await page.reload();

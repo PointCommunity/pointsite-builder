@@ -98,11 +98,11 @@ export function getPublishingNextStep(
         title: 'Your Staging work is complete',
         guidance:
           role === 'administrator'
-            ? 'No Production action is available here yet. Production publishing remains protected and disabled until its separate setup and approval are complete.'
+            ? 'Check the Production section below for saved progress and available actions for this accepted version.'
             : 'No more publishing action is required from you. This exact version is now the official Staging candidate.',
         effect:
           role === 'administrator'
-            ? 'The accepted Staging version is recorded. Production is unchanged.'
+            ? 'Acceptance records the Staging decision. Production has its own publication status.'
             : 'The accepted Staging version is recorded. The public site was not changed.',
         primaryAction: null,
       };

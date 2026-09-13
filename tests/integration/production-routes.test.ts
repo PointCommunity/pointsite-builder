@@ -31,6 +31,40 @@ const headers = {
   'idempotency-key': 'production-request-fixture',
 };
 
+it('reads Production progress only for administrators and reports disabled explicitly', async () => {
+  let role: Role = 'administrator';
+  const production = { workflowForDraft: vi.fn().mockResolvedValue({ job: null, busy: false }) };
+  const dependencies = {
+    repository: new InMemoryRepository(),
+    environment: 'test',
+    version: 'test',
+    authenticate: () => Promise.resolve({ email: 'github:12345', role }),
+    production: production as unknown as D1ProductionPublisher,
+  };
+  const app = createApp(dependencies);
+  const url = `https://builder.pointatx.org/api/publish/production/workflow?draftId=${jobId}`;
+  const response = await app.request(url);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toContain('no-store');
+  expect(await response.json()).toEqual({ enabled: true, job: null, busy: false });
+  expect(production.workflowForDraft).toHaveBeenCalledWith(jobId, 'github:12345');
+  production.workflowForDraft.mockClear();
+  for (role of ['viewer', 'editor', 'publisher'] as const)
+    expect((await app.request(url)).status).toBe(403);
+  expect(production.workflowForDraft).not.toHaveBeenCalled();
+  role = 'administrator';
+  expect((await app.request(url.replace(jobId, 'invalid'))).status).toBe(422);
+  expect(
+    await (await createApp({ ...dependencies, production: undefined }).request(url)).json(),
+  ).toEqual({ enabled: false });
+  production.workflowForDraft.mockRejectedValueOnce(new Error('PRODUCTION_AUTHORITY_CHANGED'));
+  expect((await app.request(url)).status).toBe(403);
+  production.workflowForDraft.mockRejectedValueOnce(new Error('private-provider-detail'));
+  const unavailable = await app.request(url);
+  expect(unavailable.status).toBe(503);
+  expect(await unavailable.text()).not.toContain('private-provider-detail');
+});
+
 it.each(['capture', 'recovery'] as const)(
   'protects Production %s before invoking the service',
   async (operation) => {

@@ -17,6 +17,22 @@ const recoveryBody = QueuedRecoverySchema.pick({ action: true, expectedAttempts:
 /** Production stays unavailable unless the deployment explicitly supplies its service. */
 export function createProductionRoutes(production?: D1ProductionPublisher) {
   const routes = new Hono<{ Variables: ApiVariables }>();
+  routes.get('/production/workflow', async (context) => {
+    const actor = requireRole(context.get('actor'), 'administrator');
+    const draftId = z.uuid().safeParse(context.req.query('draftId'));
+    if (!draftId.success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the draft publication to inspect');
+    context.header('Cache-Control', 'no-store');
+    if (!production) return context.json({ enabled: false });
+    try {
+      return context.json({
+        enabled: true,
+        ...(await production.workflowForDraft(draftId.data, actor.email)),
+      });
+    } catch (error) {
+      throw productionError(error);
+    }
+  });
   routes.post('/production', async (context) => {
     if (!production)
       throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');

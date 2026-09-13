@@ -11,7 +11,7 @@ import type {
 } from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
-import type { StagingWorkflowSnapshot } from './publish/workflow';
+import type { StagingWorkflowSnapshot, ProductionWorkflowSnapshot } from './publish/workflow';
 import type { FeedbackAvailability, FeedbackScreen } from '../shared/feedback';
 import type {
   LibrarySnapshot,
@@ -347,6 +347,32 @@ export const api = {
       body: '{}',
     }),
   productionBase: () => request<{ sha: string }>('/approvals/production-base'),
+  getProductionWorkflow: (draftId: string) =>
+    request<ProductionWorkflowSnapshot>(
+      `/publish/production/workflow?draftId=${encodeURIComponent(draftId)}`,
+    ),
+  publishProduction: (
+    stagingJobId: string,
+    approvalId: string,
+    tuple: CandidateTuple,
+    requestKey: string,
+  ) =>
+    request<{ id: string; status: string }>('/publish/production', {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ stagingJobId, approvalId, tuple }),
+    }),
+  recoverProduction: (
+    jobId: string,
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
+    expectedAttempts: number,
+    requestKey: string,
+  ) =>
+    request<{ recovered: true; jobId?: string }>(`/publish/production/jobs/${jobId}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ action, expectedAttempts }),
+    }),
   revokeStaging: (
     publishJobId: string,
     expectedTuple: CandidateTuple,

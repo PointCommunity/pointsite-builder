@@ -71,7 +71,8 @@ const activeCandidate = `COALESCE(json_extract(candidate_json,'$.publicationProt
 export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
 
-  recoverQueued(input: QueuedRecoveryInput) {
+  async recoverQueued(input: QueuedRecoveryInput) {
+    if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
     if (input.action === 'verify-completed')
       return reconcileCompletedPublication(this.database, input);
     return recoverQueuedPublication(this.database, input);
@@ -294,7 +295,7 @@ export class D1PublishJobStore {
       COALESCE(run_id,reserved_run_id) AS run_id,
       (reserved_run_id IS NOT NULL AND deploy_authorized_at IS NULL
         AND j.status IN ('queued','running')) AS can_reconcile,
-      (j.environment='staging' AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
+      (j.environment IN ('staging','production-merge') AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
         AND COALESCE((SELECT attempt FROM publication_retries WHERE job_id=j.id),0)<3
         AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured,
       (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.deployment_json IS NOT NULL

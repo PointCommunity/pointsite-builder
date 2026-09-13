@@ -768,6 +768,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GitSha' }
+  /publish/production/workflow:
+    get:
+      operationId: getProductionWorkflow
+      description: Administrator-only saved progress; reads pinned metadata without dispatching or calling providers.
+      parameters:
+        - name: draftId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Explicitly disabled, or latest Production job and shared-slot occupancy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductionWorkflowSnapshot' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /publish/production:
     post:
       operationId: captureAcceptedProductionCandidate
@@ -1690,6 +1708,8 @@ components:
             needsAttention: { type: boolean }
             reserved: { type: boolean }
             canReconcileStopped: { type: boolean }
+            canRetryCaptured: { type: boolean }
+            canVerifyCompleted: { type: boolean }
             failureCode: { type: string, pattern: '^PUBLISH_[A-Z_]+$' }
             workflowUrl: { type: string, format: uri }
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
@@ -1769,6 +1789,58 @@ components:
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
         publicationProtocol: { type: integer, const: 2 }
         candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ProductionWorkflowSnapshot:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [enabled]
+          properties:
+            enabled: { type: boolean, const: false }
+        - type: object
+          additionalProperties: false
+          required: [enabled, busy, job]
+          properties:
+            enabled: { type: boolean, const: true }
+            busy: { type: boolean }
+            job:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required:
+                    [
+                      id,
+                      status,
+                      candidateChecksum,
+                      revisionId,
+                      stagingJobId,
+                      approvalId,
+                      artifactDigest,
+                      baseSha,
+                      commitSha,
+                      requestedAt,
+                      completedAt,
+                      evidence,
+                    ]
+                  properties:
+                    id: { type: string, format: uuid }
+                    status: { $ref: '#/components/schemas/StagingWorkflowJob/properties/status' }
+                    candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    revisionId: { type: string, format: uuid }
+                    stagingJobId: { type: string, format: uuid }
+                    approvalId: { type: string, format: uuid }
+                    artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    baseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+                    commitSha:
+                      {
+                        $ref: '#/components/schemas/StagingWorkflowJob/properties/stagingCommitSha',
+                      }
+                    requestedAt: { type: string, format: date-time }
+                    completedAt:
+                      { $ref: '#/components/schemas/StagingWorkflowJob/properties/completedAt' }
+                    evidence: { type: object, additionalProperties: true }
+                    dispatch:
+                      { $ref: '#/components/schemas/StagingWorkflowJob/properties/dispatch' }
     ProductionJobReceipt:
       type: object
       additionalProperties: false

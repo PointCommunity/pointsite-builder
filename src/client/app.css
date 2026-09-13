@@ -983,10 +983,18 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   overflow-wrap: anywhere;
 }
 .production-lock {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin-top: 2rem;
   padding: 1rem;
   border-left: 0.35rem solid var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.production-lock .button {
+  width: fit-content;
+  max-width: 100%;
 }
 .production-lock p {
   margin-bottom: 0;

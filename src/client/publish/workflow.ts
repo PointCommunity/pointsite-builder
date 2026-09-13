@@ -50,6 +50,32 @@ export interface StagingAcceptanceSummary {
   tuple?: CandidateTuple;
 }
 
+export type ProductionWorkflowSnapshot =
+  | { enabled: false }
+  | {
+      enabled: true;
+      busy: boolean;
+      job:
+        | (Pick<
+            StagingWorkflowJob,
+            | 'id'
+            | 'status'
+            | 'candidateChecksum'
+            | 'revisionId'
+            | 'requestedAt'
+            | 'completedAt'
+            | 'dispatch'
+            | 'evidence'
+          > & {
+            stagingJobId: string;
+            approvalId: string;
+            artifactDigest: string;
+            baseSha: string;
+            commitSha: string | null;
+          })
+        | null;
+    };
+
 export interface StagingWorkflowSnapshot {
   publicationProtocol?: 2;
   currentStagingSha: string;
@@ -298,7 +324,7 @@ export function deriveStagingWorkflow(input: {
       'accepted',
       5,
       'Official Staging candidate accepted',
-      'This exact revision is accepted on Staging. The public website has not changed.',
+      'This exact revision is accepted on Staging. Production has its own publication status.',
       { canRefresh: true },
     );
 

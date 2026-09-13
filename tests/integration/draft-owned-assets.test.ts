@@ -1787,6 +1787,40 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
     ]);
     expect(promoted).toEqual(repeated);
     expect(promoted.status).toBe('queued');
+    const statusUrl = `https://builder.pointatx.org/api/publish/production/workflow?draftId=${draft.id}`;
+    const statusResponse = await productionApp.request(statusUrl);
+    expect(statusResponse.status).toBe(200);
+    expect(await statusResponse.json()).toMatchObject({
+      enabled: true,
+      busy: true,
+      job: {
+        id: promoted.id,
+        status: 'queued',
+        revisionId: draft.revision.id,
+        stagingJobId: job.id,
+        approvalId: acceptedAgain.id,
+        artifactDigest: expectedTuple.artifactDigest,
+        dispatch: { reserved: false, canRetryCaptured: false },
+      },
+    });
+    expect(await jobs.getById(promoted.id)).toBeNull();
+    await expect(
+      jobs.recoverQueued({
+        jobId: promoted.id,
+        actor: subject,
+        action: 'cancel',
+        expectedAttempts: 0,
+        requestId: 'staging-route-production-boundary',
+        idempotencyKey: 'staging-must-not-cancel-production',
+      }),
+    ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    expect(await production.workflowForDraft(crypto.randomUUID(), subject)).toEqual({
+      job: null,
+      busy: true,
+    });
+    await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
+    expect((await productionApp.request(statusUrl)).status).toBe(403);
+    await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
     expect(
       prepare.mock.calls.some(([query]) => /document_json|draft_asset_chunks/.test(query)),
     ).toBe(false);
@@ -1995,6 +2029,10 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       ]);
       expect(retried).toEqual(duplicateRetry);
       expect(retried.jobId).not.toBe(promoted.id);
+      expect(await production.workflowForDraft(draft.id, subject)).toMatchObject({
+        job: { id: retried.jobId, revisionId: draft.revision.id, approvalId: acceptedAgain.id },
+        busy: true,
+      });
       const child = await database
         .prepare(
           `SELECT j.candidate_json,j.base_sha,pi.revision_id,pr.nonce,

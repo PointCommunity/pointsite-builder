@@ -12,6 +12,7 @@ import {
   type QueuedRecoveryInput,
 } from './recovery';
 import { reconcileCompletedPublication } from './reconcile';
+import { D1PublishJobStore, type PublishJobStatus } from './jobs';
 
 /** Shared by dispatch and every signed runner boundary; aliases belong to their job queries. */
 export const currentPromotion = `EXISTS (
@@ -46,6 +47,62 @@ export class D1ProductionPublisher {
     private readonly callerBlob: string,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
+
+  async workflowForDraft(draftId: string, actor: string) {
+    z.uuid().parse(draftId);
+    ProductionCaptureSchema.shape.actor.parse(actor);
+    const authority = this.database
+      .prepare("SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role='administrator'")
+      .bind(actor);
+    if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
+    const row = await this.database
+      .prepare(
+        `SELECT j.id,j.status,j.candidate_checksum,j.base_sha,
+      j.result_sha,j.requested_at,j.completed_at,j.evidence_json,pi.revision_id,
+      p.staging_job_id,p.approval_id,p.artifact_digest
+      FROM publication_inputs pi JOIN publish_jobs j ON j.id=pi.job_id
+      JOIN publication_promotions p ON p.job_id=j.id
+      WHERE pi.draft_id=? AND j.environment='production-merge'
+      ORDER BY j.requested_at DESC,j.rowid DESC LIMIT 1`,
+      )
+      .bind(draftId)
+      .first<{
+        id: string;
+        status: PublishJobStatus;
+        candidate_checksum: string;
+        base_sha: string;
+        result_sha: string | null;
+        requested_at: string;
+        completed_at: string | null;
+        evidence_json: string;
+        revision_id: string;
+        staging_job_id: string;
+        approval_id: string;
+        artifact_digest: string;
+      }>();
+    const occupied = await this.database
+      .prepare("SELECT 1 FROM publication_slots WHERE target='production'")
+      .first();
+    const job = row
+      ? {
+          id: row.id,
+          status: row.status,
+          candidateChecksum: row.candidate_checksum,
+          revisionId: row.revision_id,
+          stagingJobId: row.staging_job_id,
+          approvalId: row.approval_id,
+          artifactDigest: row.artifact_digest,
+          baseSha: row.base_sha,
+          commitSha: row.result_sha,
+          requestedAt: row.requested_at,
+          completedAt: row.completed_at,
+          evidence: JSON.parse(row.evidence_json) as Record<string, unknown>,
+          dispatch: await new D1PublishJobStore(this.database).dispatchStatus(row.id),
+        }
+      : null;
+    if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
+    return { job, busy: Boolean(occupied) };
+  }
 
   async recoverQueued(value: QueuedRecoveryInput): Promise<{ recovered: true; jobId?: string }> {
     const input = QueuedRecoverySchema.parse(value);
