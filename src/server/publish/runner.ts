@@ -25,6 +25,7 @@ const authorizedFrom = `FROM publication_runs pr
   JOIN drafts d ON d.id=pi.draft_id
   JOIN user_roles u ON u.email=j.requested_by AND u.active=1
   WHERE pr.job_id=? AND d.status='active'
+    AND NOT EXISTS(SELECT 1 FROM publication_verifications WHERE job_id=pr.job_id)
     AND ((ps.target='staging' AND j.environment='staging' AND u.role IN ('publisher','administrator'))
       OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'
         AND ${currentPromotion}))`;
