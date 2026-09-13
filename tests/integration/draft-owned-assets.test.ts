@@ -19,6 +19,7 @@ import { D1ProductionPublisher } from '../../src/server/publish/promotion';
 import { recoverQueuedPublication } from '../../src/server/publish/recovery';
 import { retryCapturedPublication as retryCapturedStaging } from '../../src/server/publish/retry';
 import { reconcileCompletedPublication } from '../../src/server/publish/reconcile';
+import { retirePublicationMetadata } from '../../src/server/publish/releases';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { D1ApprovalService } from '../../src/server/approvals/service';
@@ -3049,3 +3050,293 @@ it('materializes every retained legacy revision without changing revision docume
   expect((await assets.readForDraft(draft.id, '/assets/point-logo.png')).bytes).toEqual(png);
   expect((await assets.readForDraft(draft.id, '/assets/retained-image.png')).bytes).toEqual(png);
 });
+
+it('retires bounded publication metadata without deleting content or replaying old captures', async () => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-admin','administrator',1,'fixture','fixture','fixture')`,
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const jobs = new D1PublishJobStore(database);
+  const input = {
+    draft,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    actor: subject,
+    requestId: 'retention-fixture',
+  };
+  const captured = [];
+  for (let index = 0; index < 3; index++) {
+    const job = await jobs.captureStaging({
+      ...input,
+      idempotencyKey: `metadata-retention-${index}`,
+    });
+    await database.batch([
+      database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(job.id),
+      database
+        .prepare('UPDATE publish_jobs SET status=?,completed_at=?,evidence_json=? WHERE id=?')
+        .bind(
+          index === 2 ? 'succeeded' : 'cancelled',
+          `202${index}-01-01T00:00:00.000Z`,
+          index === 2 ? '{"verificationStatus":"passed"}' : '{}',
+          job.id,
+        ),
+    ]);
+    captured.push(job);
+  }
+  const [old, held, current] = captured;
+  await database
+    .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('staging',?)")
+    .bind(held.id)
+    .run();
+  const chunks = await database.prepare('SELECT count(*) n FROM draft_asset_chunks').first('n');
+  await database.exec(
+    "CREATE TRIGGER block_retirement BEFORE INSERT ON audit_events WHEN NEW.action='publication.retired' BEGIN SELECT RAISE(ABORT,'fixture-blocked'); END;",
+  );
+  await expect(retirePublicationMetadata(database)).rejects.toThrow('fixture-blocked');
+  expect(await jobs.getById(old.id)).not.toBeNull();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM publication_tombstones WHERE job_id=?')
+      .bind(old.id)
+      .first(),
+  ).toBeNull();
+  expect(
+    await database.prepare('SELECT 1 FROM publication_inputs WHERE job_id=?').bind(old.id).first(),
+  ).not.toBeNull();
+  await database.exec('DROP TRIGGER block_retirement;');
+  expect(await retirePublicationMetadata(database)).toEqual({ jobs: 1, releases: 0 });
+  expect(await jobs.getById(old.id)).toBeNull();
+  expect(await jobs.getById(held.id)).not.toBeNull();
+  expect(await jobs.getById(current.id)).not.toBeNull();
+  expect(await database.prepare('SELECT count(*) n FROM draft_asset_chunks').first('n')).toBe(
+    chunks,
+  );
+  expect((await repository.getDraft(draft.id)).document).toEqual(draft.document);
+  await expect(
+    jobs.captureStaging({ ...input, idempotencyKey: 'metadata-retention-0' }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  await expect(
+    database
+      .prepare(
+        `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+    SELECT ?,'metadata-retention-0',environment,'queued',candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at FROM publish_jobs WHERE id=?`,
+      )
+      .bind(crypto.randomUUID(), held.id)
+      .run(),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  const provider = vi.fn(() => Promise.reject(new Error('must not call provider')));
+  const production = new D1ProductionPublisher(
+    database,
+    { appId: '1', installationId: '1', privateKey: 'unused', workflowRevision: 'a'.repeat(40) },
+    'b'.repeat(40),
+    provider,
+  );
+  await expect(
+    production.capture({
+      stagingJobId: current.id,
+      approvalId: crypto.randomUUID(),
+      actor: subject,
+      requestId: 'old-key',
+      idempotencyKey: 'metadata-retention-0',
+      tuple: {
+        siteId: 'pointsite',
+        revisionId: draft.revision.id,
+        revisionChecksum: draft.revision.checksum,
+        schemaVersion: draft.revision.schemaVersion,
+        rendererVersion: draft.revision.rendererVersion,
+        candidateChecksum: current.candidateChecksum,
+        stagingBaseSha: 'b'.repeat(40),
+        stagingCommitSha: 'c'.repeat(40),
+        productionBaseSha: 'd'.repeat(40),
+        publicationProtocol: 2,
+        workflowRevision: 'a'.repeat(40),
+        artifactDigest: 'e'.repeat(64),
+      },
+    }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  expect(provider).not.toHaveBeenCalled();
+  expect(await retirePublicationMetadata(database)).toEqual({ jobs: 0, releases: 0 });
+  await database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(held.id).run();
+  const raced = new Proxy(database, {
+    get(target, property) {
+      if (property === 'batch')
+        return async (statements: D1PreparedStatement[]) => {
+          await database
+            .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('staging',?)")
+            .bind(held.id)
+            .run();
+          return database.batch(statements);
+        };
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === 'function' ? (value.bind(target) as unknown) : value;
+    },
+  });
+  await expect(retirePublicationMetadata(raced)).rejects.toThrow('PUBLICATION_RETENTION_CHANGED');
+  expect(await jobs.getById(held.id)).not.toBeNull();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM publication_tombstones WHERE job_id=?')
+      .bind(held.id)
+      .first(),
+  ).toBeNull();
+}, 30_000);
+
+it('retains the last two releases and recent evidence while retiring one old release', async () => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-admin','administrator',1,'fixture','fixture','fixture')`,
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const jobs = new D1PublishJobStore(database);
+  const stage = await jobs.captureStaging({
+    draft,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    actor: subject,
+    requestId: 'retained-releases',
+    idempotencyKey: 'retained-staging-source',
+  });
+  await database.batch([
+    database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(stage.id),
+    database
+      .prepare(
+        `UPDATE publish_jobs SET status='succeeded',completed_at='2020-01-01T00:00:00.000Z',
+      evidence_json='{"verificationStatus":"passed"}' WHERE id=?`,
+      )
+      .bind(stage.id),
+  ]);
+  const ids: string[] = [];
+  const artifactDigest = 'c'.repeat(64);
+  for (let index = 0; index < 4; index++) {
+    const id = crypto.randomUUID();
+    ids.push(id);
+    const build = {
+      artifactDigest,
+      commitSha: 'd'.repeat(40),
+      treeSha: 'e'.repeat(40),
+      manifestBlobSha: 'f'.repeat(40),
+      fileCount: 1,
+      totalBytes: 100,
+    };
+    const evidence = {
+      format: 2,
+      verificationStatus: 'passed',
+      artifactDigest,
+      commitSha: build.commitSha,
+      candidateChecksum: stage.candidateChecksum,
+      workflowRevision: 'a'.repeat(40),
+      dispatchRevision: 'b'.repeat(40),
+      runId: String(8000 + index),
+      checkRunId: String(9000 + index),
+      deploymentId: String(10000 + index),
+    };
+    const source = {
+      repository: 'PointCommunity/pointsite',
+      ...build,
+      workflowRevision: 'a'.repeat(40),
+      candidateChecksum: stage.candidateChecksum,
+    };
+    await database.batch([
+      database
+        .prepare(
+          `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,
+        repository,base_sha,result_sha,evidence_json,requested_by,requested_at,completed_at)
+        SELECT ?,?,'production-merge','succeeded',candidate_json,candidate_checksum,'PointCommunity/pointsite',base_sha,?,?,
+        requested_by,requested_at,'2020-01-01T00:00:00.000Z' FROM publish_jobs WHERE id=?`,
+        )
+        .bind(
+          id,
+          `historical-production-${index}`,
+          build.commitSha,
+          JSON.stringify(evidence),
+          stage.id,
+        ),
+      database
+        .prepare(
+          `INSERT INTO publication_inputs(job_id,draft_id,revision_id,workflow_revision)
+        SELECT ?,draft_id,revision_id,workflow_revision FROM publication_inputs WHERE job_id=?`,
+        )
+        .bind(id, stage.id),
+      database
+        .prepare(
+          `INSERT INTO publication_asset_pins(job_id,draft_id,source_path,asset_id)
+        SELECT ?,draft_id,source_path,asset_id FROM publication_asset_pins WHERE job_id=?`,
+        )
+        .bind(id, stage.id),
+      database
+        .prepare(
+          `INSERT INTO publication_runs(job_id,nonce,dispatch_revision,run_id,run_attempt,check_run_id,claimed_at,
+        build_json,deploy_authorized_at,deployment_json) VALUES (?,?,?,?,'1',?,'2020-01-01',?,'2020-01-01',?)`,
+        )
+        .bind(
+          id,
+          String(index + 1).repeat(64),
+          evidence.dispatchRevision,
+          evidence.runId,
+          evidence.checkRunId,
+          JSON.stringify(build),
+          JSON.stringify({ artifactDigest }),
+        ),
+      database
+        .prepare(
+          `INSERT INTO publication_releases(id,kind,job_id,previous_release_id,artifact_digest,source_json,evidence_json,verified_at,recorded_at)
+        VALUES (?,'publication',?,(SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1),?,?,?,?,?)`,
+        )
+        .bind(
+          id,
+          id,
+          artifactDigest,
+          JSON.stringify(source),
+          JSON.stringify(evidence),
+          '2020-01-01T00:00:00.000Z',
+          index === 1 ? new Date().toISOString() : '2020-01-01T00:00:00.000Z',
+        ),
+    ]);
+  }
+  expect(await retirePublicationMetadata(database)).toEqual({ jobs: 1, releases: 1 });
+  expect(
+    await database.prepare('SELECT 1 FROM publish_jobs WHERE id=?').bind(ids[0]).first(),
+  ).toBeNull();
+  expect(
+    await database.prepare('SELECT 1 FROM publication_releases WHERE id=?').bind(ids[0]).first(),
+  ).toBeNull();
+  for (const id of [stage.id, ...ids.slice(1)]) {
+    expect(
+      await database.prepare('SELECT 1 FROM publication_inputs WHERE job_id=?').bind(id).first(),
+    ).not.toBeNull();
+    expect(
+      await database
+        .prepare('SELECT 1 FROM publication_asset_pins WHERE job_id=?')
+        .bind(id)
+        .first(),
+    ).not.toBeNull();
+  }
+  expect(await retirePublicationMetadata(database)).toEqual({ jobs: 0, releases: 0 });
+  expect((await repository.getDraft(draft.id)).document).toEqual(draft.document);
+  await repository.setDraftStatus(
+    draft.id,
+    'archived',
+    subject,
+    'archive-retained',
+    await acquireDraftProof(repository, draft.id, subject),
+  );
+  await expect(
+    repository.purgeDraft(
+      draft.id,
+      subject,
+      'purge-retained',
+      await acquireDraftProof(repository, draft.id, subject),
+    ),
+  ).rejects.toThrow('retained for publication or rollback');
+}, 30_000);

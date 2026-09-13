@@ -761,6 +761,22 @@
       destination evidence, and verify restored output before recording another release.
     </p>
     <p>
+      Publication retention contract: the existing schedule retires at most one terminal cloud job
+      and one release record per pass after ninety days. Preserve occupied slots, unresolved
+      deployment authorization, the latest verified Staging job, the two latest recorded Production
+      releases, recent release evidence, and jobs referenced by retained promotions or retry
+      children. Recheck eligibility inside the deletion transaction. Remove only publication
+      metadata and pins; draft revisions and image bytes remain owned by their guarded retention
+      paths. Keep a content-free immutable capture-key tombstone so an old request cannot become a
+      new publication after metadata retirement; enforce this both in capture readers and an insert
+      trigger. Use indexed age scans and bounded transactions. Real D1 tests must prove retained
+      releases/current Staging, late eligibility changes, complete rollback, preserved content,
+      bounded work, and rejection of old keys in both destinations before schedule integration.
+      Whole-draft purge reports a clear conflict for retained publication pins and rechecks them
+      atomically. Deleted-draft maintenance skips pinned revisions and continues to later eligible
+      drafts instead of repeatedly failing on the first protected history.
+    </p>
+    <p>
       Production HTTP integration contract: accept only an Administrator's exact Staging job,
       acceptance ID and captured tuple. Bind request receipts to the authenticated actor and reject
       cross-origin requests, substituted fields and malformed keys before invoking the service.

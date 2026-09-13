@@ -19,6 +19,7 @@ import { PUBLICATION_WORKFLOW_REVISION } from '../src/server/publish/renderer-co
 import { dispatchPendingPublication } from '../src/server/publish/dispatch';
 import { D1PublicationRunner } from '../src/server/publish/runner';
 import { refreshProviderUsage } from '../src/server/admin/provider-usage';
+import { retirePublicationMetadata } from '../src/server/publish/releases';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
 declare const __BUILDER_SOURCE_CLEAN__: boolean;
@@ -40,6 +41,7 @@ export default {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     if (config.github) await dispatchPendingPublication(env.DB, config.github);
     await refreshProviderUsage(env.DB, config.analyticsToken);
+    await retirePublicationMetadata(env.DB);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);

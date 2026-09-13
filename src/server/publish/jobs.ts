@@ -338,6 +338,14 @@ export class D1PublishJobStore {
       )
       .bind(key)
       .first<JobRow>();
+    if (
+      !row &&
+      (await this.database
+        .prepare('SELECT 1 FROM publication_tombstones WHERE idempotency_key=?')
+        .bind(key)
+        .first())
+    )
+      throw new Error('IDEMPOTENCY_CONFLICT');
     return row ? fromRow(row) : null;
   }
 

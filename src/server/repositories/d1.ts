@@ -695,6 +695,15 @@ export class D1DraftRepository implements DraftRepository {
     const { current, guard } = await this.prepareMetadataMutation(draftId, actor, proof);
     if (current.status !== 'archived')
       throw new ConflictError('Only archived drafts can be deleted');
+    if (
+      await this.database
+        .prepare('SELECT 1 FROM publication_inputs WHERE draft_id=? LIMIT 1')
+        .bind(draftId)
+        .first()
+    )
+      throw new ConflictError(
+        'This draft is still retained for publication or rollback and cannot be deleted yet',
+      );
     const now = new Date().toISOString();
     const activePublication = await this.database
       .prepare(
@@ -713,6 +722,8 @@ export class D1DraftRepository implements DraftRepository {
             `UPDATE drafts SET status=CASE WHEN status='archived' AND NOT EXISTS (
              SELECT 1 FROM publish_jobs WHERE json_extract(candidate_json,'$.draftId')=drafts.id
              AND status IN ('queued','running') AND lease_expires_at>?
+           ) AND NOT EXISTS (
+             SELECT 1 FROM publication_inputs WHERE draft_id=drafts.id
            ) THEN 'deleted' ELSE 'purge-blocked' END,deleted_at=?,latest_revision_id=NULL WHERE id=?`,
           )
           .bind(now, now, draftId),
@@ -753,7 +764,7 @@ export class D1DraftRepository implements DraftRepository {
           'Draft media migration is still running; deletion is unavailable until all private copies are verified',
         );
       if (error instanceof Error && error.message.includes('CHECK constraint failed'))
-        throw new ConflictError('Draft state changed or a publication is active; try again');
+        throw new ConflictError('Draft state changed or a publication still needs it; try again');
       throw error;
     }
     return { id: draftId, status: 'deleted', deletedAt: now };

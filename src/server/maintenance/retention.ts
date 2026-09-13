@@ -49,7 +49,8 @@ const automaticEligible = `d.status='active' AND r.created_at<${cutoff(90)}
   AND NOT EXISTS (SELECT 1 FROM idempotency_keys k
     WHERE json_extract(k.response_json,'$.latestRevisionId')=r.id AND k.expires_at>${clock})`;
 const noActivePublication = `NOT EXISTS (SELECT 1 FROM publish_jobs j WHERE json_extract(j.candidate_json,'$.draftId')=d.id AND j.status IN ('queued','running'))`;
-const deletedEligible = `d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${unreferencedCheckpoint} AND ${noActivePublication}`;
+const unpinnedRevision = 'NOT EXISTS (SELECT 1 FROM publication_inputs WHERE revision_id=r.id)';
+const deletedEligible = `d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${unreferencedCheckpoint} AND ${unpinnedRevision} AND ${noActivePublication}`;
 
 async function checksum(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -93,7 +94,10 @@ export class RetentionService {
     const deleted = remaining
       ? await this.database
           .prepare(
-            `SELECT d.* FROM drafts d WHERE d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${noActivePublication} ORDER BY d.deleted_at,d.id LIMIT 1`,
+            `SELECT d.* FROM drafts d WHERE d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${noActivePublication}
+            AND (NOT EXISTS (SELECT 1 FROM revisions r WHERE r.draft_id=d.id)
+              OR EXISTS (SELECT 1 FROM revisions r WHERE r.draft_id=d.id AND ${unreferencedCheckpoint} AND ${unpinnedRevision}))
+            ORDER BY d.deleted_at,d.id LIMIT 1`,
           )
           .first<DraftRow>()
       : null;

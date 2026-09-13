@@ -219,7 +219,16 @@ export class D1ProductionPublisher {
         )
         .bind(input.idempotencyKey)
         .first<{ id: string; status: string; request_hash: string | null }>();
-      if (!row) return null;
+      if (!row) {
+        if (
+          await this.database
+            .prepare('SELECT 1 FROM publication_tombstones WHERE idempotency_key=?')
+            .bind(input.idempotencyKey)
+            .first()
+        )
+          throw new Error('IDEMPOTENCY_CONFLICT');
+        return null;
+      }
       if (row.request_hash !== requestHash) throw new Error('IDEMPOTENCY_CONFLICT');
       if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
       return { id: row.id, status: row.status };

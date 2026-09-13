@@ -46,6 +46,50 @@ async function setup() {
 }
 
 describe('retention maintenance', () => {
+  it('skips retained deleted history without blocking the next eligible draft', async () => {
+    const { database, service } = await setup();
+    await database.batch([
+      database
+        .prepare(
+          `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+        VALUES ('retained-job','retained-history-key','staging','cancelled',?,?,'PointCommunity/pointsite-staging',?,'admin','2020-01-01')`,
+        )
+        .bind(
+          JSON.stringify({
+            draftId: 'draft-deleted',
+            revisionId: 'revision-deleted',
+            revisionChecksum: 'd'.repeat(64),
+            workflowRevision: 'a'.repeat(40),
+            publicationProtocol: 2,
+          }),
+          'b'.repeat(64),
+          'c'.repeat(40),
+        ),
+      database
+        .prepare(
+          `INSERT INTO publication_inputs(job_id,draft_id,revision_id,workflow_revision)
+        VALUES ('retained-job','draft-deleted','revision-deleted',?)`,
+        )
+        .bind('a'.repeat(40)),
+      database.prepare(
+        `INSERT INTO drafts VALUES ('draft-next','pointsite','Next','revision-next','deleted','admin','2025-01-01','2025-02-01','2025-02-01')`,
+      ),
+      database
+        .prepare(
+          `INSERT INTO revisions(id,draft_id,sequence,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+        VALUES ('revision-next','draft-next',1,?,'{"media":[]}',1,'1.0.0','admin','2025-01-01')`,
+        )
+        .bind('e'.repeat(64)),
+    ]);
+    const plan = await service.plan();
+    expect(plan.export.deletedDraftRevisions.map((row) => row.id)).toEqual(['revision-next']);
+    expect(plan.export.drafts.map((row) => row.id)).toEqual(['draft-next']);
+    await service.apply(plan, plan.exportChecksum, 'admin@pointatx.org', 'retained-cleanup');
+    expect(
+      await database.prepare("SELECT 1 FROM revisions WHERE id='revision-deleted'").first(),
+    ).not.toBeNull();
+    expect(await database.prepare("SELECT 1 FROM drafts WHERE id='draft-next'").first()).toBeNull();
+  });
   it.each([
     "UPDATE user_roles SET active=0 WHERE email='admin@pointatx.org'",
     "UPDATE drafts SET latest_revision_id='revision-old' WHERE id='draft-live'",

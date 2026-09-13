@@ -33,6 +33,7 @@ it('persists an auditable publish lifecycle and idempotency key', async () => {
   for (const migration of [
     'migrations/0001_initial.sql',
     'migrations/0010_publish_preflight_leases.sql',
+    'migrations/0030_publication_retention.sql',
   ]) {
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   }
@@ -116,6 +117,7 @@ it('grants one recoverable Staging lease and rejects a competing draft without l
   for (const migration of [
     'migrations/0001_initial.sql',
     'migrations/0010_publish_preflight_leases.sql',
+    'migrations/0030_publication_retention.sql',
   ]) {
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   }
@@ -212,6 +214,7 @@ it('atomically grants exactly one lease to simultaneous competing drafts', async
   for (const migration of [
     'migrations/0001_initial.sql',
     'migrations/0010_publish_preflight_leases.sql',
+    'migrations/0030_publication_retention.sql',
   ]) {
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   }
@@ -269,6 +272,7 @@ it.each(['missing', 'archived', 'revision-changed'])(
     for (const migration of [
       'migrations/0001_initial.sql',
       'migrations/0010_publish_preflight_leases.sql',
+      'migrations/0030_publication_retention.sql',
     ]) {
       await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
     }
