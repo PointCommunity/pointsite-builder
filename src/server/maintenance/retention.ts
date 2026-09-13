@@ -1,7 +1,4 @@
 import { readRevisionDocument } from '../repositories/revision-payloads';
-interface PrivateDeleteBucket {
-  delete(key: string): Promise<void>;
-}
 
 interface RevisionRow extends Record<string, unknown> {
   id: string;
@@ -9,17 +6,9 @@ interface RevisionRow extends Record<string, unknown> {
   checksum: string;
   document_json: string;
 }
-
 interface DraftRow extends Record<string, unknown> {
   id: string;
 }
-
-interface MediaRow extends Record<string, unknown> {
-  id: string;
-  object_key: string;
-  status: string;
-}
-
 interface AuditRow extends Record<string, unknown> {
   id: string;
 }
@@ -39,190 +28,251 @@ export interface RetentionPlan {
     revisions: RevisionRow[];
     drafts: DraftRow[];
     deletedDraftRevisions: RevisionRow[];
-    mediaToOrphan: MediaRow[];
-    mediaToDelete: MediaRow[];
+    mediaToOrphan: never[];
+    mediaToDelete: never[];
     auditEvents: AuditRow[];
   };
 }
 
-const DAY = 86_400_000;
-const before = (now: Date, days: number) => new Date(now.getTime() - days * DAY).toISOString();
+// Includes compact payload/base reads and applyCurrent's dry run within the Free query limit.
+const REVISION_BATCH = 6;
+const AUDIT_BATCH = 4;
+const clock = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+const cutoff = (days: number) => `strftime('%Y-%m-%dT%H:%M:%fZ','now','-${days} days')`;
+const unreferencedCheckpoint = `NOT EXISTS (SELECT 1 FROM revision_payloads p WHERE p.base_revision_id=r.id)`;
+const automaticEligible = `d.status='active' AND r.created_at<${cutoff(90)}
+  AND r.id!=d.latest_revision_id AND r.label IS NULL
+  AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id)
+  AND ${unreferencedCheckpoint}
+  AND NOT EXISTS (SELECT 1 FROM publish_preflights p WHERE p.draft_id=r.draft_id AND p.revision_id=r.id)
+  AND NOT EXISTS (SELECT 1 FROM publish_jobs j WHERE json_extract(j.candidate_json,'$.revisionId')=r.id)
+  AND NOT EXISTS (SELECT 1 FROM idempotency_keys k
+    WHERE json_extract(k.response_json,'$.latestRevisionId')=r.id AND k.expires_at>${clock})`;
+const noActivePublication = `NOT EXISTS (SELECT 1 FROM publish_jobs j WHERE json_extract(j.candidate_json,'$.draftId')=d.id AND j.status IN ('queued','running'))`;
+const deletedEligible = `d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${unreferencedCheckpoint} AND ${noActivePublication}`;
 
 async function checksum(value: unknown): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(JSON.stringify(value)),
+  );
   return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, '0')).join('');
 }
-
-function referencedMedia(rows: Array<{ document_json: string }>): Set<string> {
-  const result = new Set<string>();
-  for (const row of rows) {
-    try {
-      const document = JSON.parse(row.document_json) as { media?: Array<{ id?: unknown }> };
-      for (const item of document.media ?? []) if (typeof item.id === 'string') result.add(item.id);
-    } catch {
-      // Invalid stored documents are preserved; schema validation owns corruption reporting.
-    }
-  }
-  return result;
-}
+const ids = (rows: Array<{ id: string }>) => JSON.stringify(rows.map((row) => row.id));
+const report = (data: RetentionPlan['export']): RetentionPlan['report'] => ({
+  revisionsToDelete: data.revisions.length,
+  draftsToDelete: data.drafts.length,
+  mediaToOrphan: 0,
+  mediaToDelete: 0,
+  auditEventsToDelete: data.auditEvents.length,
+});
 
 export class RetentionService {
-  constructor(
-    private readonly database: D1Database,
-    private readonly bucket: PrivateDeleteBucket,
-  ) {}
+  constructor(private readonly database: D1Database) {}
 
-  async plan(now = new Date()): Promise<RetentionPlan> {
-    const automaticCutoff = before(now, 90);
-    const draftCutoff = before(now, 30);
-    const orphanCutoff = before(now, 7);
-    const mediaDeleteCutoff = before(now, 30);
-    const auditCutoff = before(now, 400);
-    const [revisionRows, draftRows, latestRows, mediaRows, auditRows] = await Promise.all([
-      this.database
-        .prepare(
-          "SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.status='active' AND r.created_at<? AND r.id!=d.latest_revision_id AND r.label IS NULL AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id) AND NOT EXISTS (SELECT 1 FROM revision_payloads p WHERE p.base_revision_id=r.id) AND NOT EXISTS (SELECT 1 FROM idempotency_keys k WHERE json_extract(k.response_json,'$.latestRevisionId')=r.id AND k.expires_at>?) ORDER BY r.created_at DESC,r.id DESC LIMIT 64",
-        )
-        .bind(automaticCutoff, now.toISOString())
-        .all<RevisionRow>(),
-      this.database
-        .prepare(
-          "SELECT * FROM drafts WHERE status='deleted' AND deleted_at<? ORDER BY deleted_at,id",
-        )
-        .bind(draftCutoff)
-        .all<DraftRow>(),
-      this.database
-        .prepare(
-          "SELECT r.id,r.draft_id,r.checksum,r.document_json FROM drafts d JOIN revisions r ON r.draft_id=d.id WHERE d.status!='deleted' AND EXISTS(SELECT 1 FROM media_assets)",
-        )
-        .all<RevisionRow>(),
-      this.database.prepare('SELECT * FROM media_assets ORDER BY created_at,id').all<MediaRow>(),
-      this.database
-        .prepare('SELECT * FROM audit_events WHERE occurred_at<? ORDER BY occurred_at,id')
-        .bind(auditCutoff)
-        .all<AuditRow>(),
-    ]);
-    const draftIds = draftRows.results.map((row) => row.id);
-    const deletedDraftRevisions = draftIds.length
+  private async requireMigration() {
+    const state = await this.database
+      .prepare('SELECT state FROM draft_asset_migration WHERE id=1')
+      .first('state');
+    if (state !== 'complete') throw new Error('ASSET_MIGRATION_INCOMPLETE');
+    // Migration owns retired shared bytes; retention never races its recovery/export work.
+    if (await this.database.prepare('SELECT 1 FROM media_assets LIMIT 1').first())
+      throw new Error('ASSET_MIGRATION_INCOMPLETE');
+  }
+
+  async plan(): Promise<RetentionPlan> {
+    await this.requireMigration();
+    const revisions = await this.database
+      .prepare(
+        `SELECT r.* FROM revisions r INDEXED BY revisions_retention_age JOIN drafts d ON d.id=r.draft_id WHERE ${automaticEligible}
+       ORDER BY r.created_at DESC,r.id DESC LIMIT ?`,
+      )
+      .bind(REVISION_BATCH)
+      .all<RevisionRow>();
+    const remaining = REVISION_BATCH - revisions.results.length;
+    const deleted = remaining
       ? await this.database
           .prepare(
-            `SELECT * FROM revisions WHERE draft_id IN (${draftIds.map(() => '?').join(',')}) ORDER BY draft_id,sequence`,
+            `SELECT d.* FROM drafts d WHERE d.status='deleted' AND d.deleted_at<${cutoff(30)} AND ${noActivePublication} ORDER BY d.deleted_at,d.id LIMIT 1`,
           )
-          .bind(...draftIds)
-          .all<RevisionRow>()
-      : { results: [] as RevisionRow[] };
+          .first<DraftRow>()
+      : null;
+    const deletedRevisions = deleted
+      ? (
+          await this.database
+            .prepare(
+              `SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.id=? AND ${deletedEligible}
+       ORDER BY r.sequence DESC LIMIT ?`,
+            )
+            .bind(deleted.id, remaining)
+            .all<RevisionRow>()
+        ).results
+      : [];
+    const hasRemaining = deleted
+      ? await this.database
+          .prepare(
+            'SELECT 1 FROM revisions WHERE draft_id=? AND id NOT IN (SELECT value FROM json_each(?)) LIMIT 1',
+          )
+          .bind(deleted.id, ids(deletedRevisions))
+          .first()
+      : null;
+    const audit = await this.database
+      .prepare(
+        `SELECT * FROM audit_events WHERE occurred_at<${cutoff(400)} ORDER BY occurred_at,id LIMIT ?`,
+      )
+      .bind(AUDIT_BATCH)
+      .all<AuditRow>();
     const exported = async (row: RevisionRow): Promise<RevisionRow> => ({
       ...row,
       document_json: JSON.stringify(await readRevisionDocument(this.database, row)),
     });
-    const references = referencedMedia(
-      mediaRows.results.length ? await Promise.all(latestRows.results.map(exported)) : [],
-    );
-    const mediaToOrphan = mediaRows.results.filter(
-      (row) =>
-        row.status === 'ready' && !references.has(row.id) && String(row.created_at) < orphanCutoff,
-    );
-    const mediaToDelete = mediaRows.results.filter(
-      (row) =>
-        row.status === 'orphaned' &&
-        String(row.last_referenced_at ?? row.created_at) < mediaDeleteCutoff,
-    );
-    const exportData = {
-      revisions: await Promise.all(revisionRows.results.map(exported)),
-      drafts: draftRows.results,
-      deletedDraftRevisions: await Promise.all(deletedDraftRevisions.results.map(exported)),
-      mediaToOrphan,
-      mediaToDelete,
-      auditEvents: auditRows.results,
+    const data: RetentionPlan['export'] = {
+      revisions: await Promise.all(revisions.results.map(exported)),
+      drafts: deleted && !hasRemaining ? [deleted] : [],
+      deletedDraftRevisions: await Promise.all(deletedRevisions.map(exported)),
+      mediaToOrphan: [],
+      mediaToDelete: [],
+      auditEvents: audit.results,
     };
     return {
       dryRun: true,
-      generatedAt: now.toISOString(),
-      exportChecksum: await checksum(exportData),
-      report: {
-        revisionsToDelete: revisionRows.results.length,
-        draftsToDelete: draftRows.results.length,
-        mediaToOrphan: mediaToOrphan.length,
-        mediaToDelete: mediaToDelete.length,
-        auditEventsToDelete: auditRows.results.length,
-      },
-      export: exportData,
+      generatedAt: new Date().toISOString(),
+      exportChecksum: await checksum(data),
+      report: report(data),
+      export: data,
     };
   }
 
   async apply(plan: RetentionPlan, savedExportChecksum: string, actor: string, requestId: string) {
-    const migrationTable = await this.database
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='draft_asset_migration'")
-      .first();
+    await this.requireMigration();
+    const data = plan.export;
+    const allRevisions = [...data.revisions, ...data.deletedDraftRevisions];
     if (
-      migrationTable &&
-      (await this.database
-        .prepare('SELECT state FROM draft_asset_migration WHERE id=1')
-        .first('state')) !== 'complete'
+      allRevisions.length > REVISION_BATCH ||
+      data.drafts.length > 1 ||
+      data.auditEvents.length > AUDIT_BATCH ||
+      data.mediaToDelete.length ||
+      data.mediaToOrphan.length ||
+      new Set(allRevisions.map((row) => row.id)).size !== allRevisions.length ||
+      (await checksum(data)) !== plan.exportChecksum ||
+      savedExportChecksum !== plan.exportChecksum
     )
-      throw new Error('ASSET_MIGRATION_INCOMPLETE');
-    const observed = await checksum(plan.export);
-    if (observed !== plan.exportChecksum || savedExportChecksum !== plan.exportChecksum)
       throw new Error('RETENTION_EXPORT_MISMATCH');
-
-    for (const media of plan.export.mediaToDelete) await this.bucket.delete(media.object_key);
-    const statements: D1PreparedStatement[] = [];
+    const statements: D1PreparedStatement[] = [
+      this.database
+        .prepare(
+          `SELECT json(CASE WHEN EXISTS (SELECT 1 FROM user_roles WHERE email=? COLLATE NOCASE AND role='administrator' AND active=1)
+       AND (SELECT state FROM draft_asset_migration WHERE id=1)='complete'
+       AND NOT EXISTS(SELECT 1 FROM media_assets)
+       THEN 'true' ELSE 'retention-state-changed' END)`,
+        )
+        .bind(actor),
+    ];
+    const revisionGuard = (rows: RevisionRow[], eligible: string) =>
+      this.database
+        .prepare(
+          `SELECT json(CASE WHEN (SELECT COUNT(*) FROM json_each(?) e JOIN revisions r ON r.id=json_extract(e.value,'$.id')
+       JOIN drafts d ON d.id=r.draft_id WHERE r.draft_id=json_extract(e.value,'$.draft_id')
+       AND r.checksum=json_extract(e.value,'$.checksum') AND ${eligible})=?
+       THEN 'true' ELSE 'retention-state-changed' END)`,
+        )
+        .bind(
+          JSON.stringify(rows.map(({ id, draft_id, checksum }) => ({ id, draft_id, checksum }))),
+          rows.length,
+        );
+    statements.push(
+      revisionGuard(data.revisions, automaticEligible),
+      revisionGuard(data.deletedDraftRevisions, deletedEligible),
+    );
     const audit = (action: string, targetType: string, targetId: string) =>
       this.database
         .prepare(
-          "INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json) VALUES (?,?,?,?,?,?,'succeeded',?,'{}')",
+          `INSERT INTO audit_events (id,occurred_at,actor,action,target_type,target_id,outcome,request_id,metadata_json)
+       VALUES (?,${clock},?,?,?,?,'succeeded',?,'{}')`,
         )
-        .bind(
-          crypto.randomUUID(),
-          new Date().toISOString(),
-          actor,
-          action,
-          targetType,
-          targetId,
-          requestId,
-        );
-
-    for (const revision of plan.export.revisions) {
-      statements.push(this.database.prepare('DELETE FROM revisions WHERE id=?').bind(revision.id));
-      statements.push(audit('retention.revision.delete', 'revision', revision.id));
-    }
-    for (const draft of plan.export.drafts) {
-      const revisions = plan.export.deletedDraftRevisions.filter(
-        (row) => row.draft_id === draft.id,
-      );
-      for (const revision of revisions) {
-        statements.push(
-          this.database
-            .prepare('DELETE FROM revision_labels WHERE revision_id=?')
-            .bind(revision.id),
-        );
-        statements.push(
-          this.database.prepare('DELETE FROM revisions WHERE id=?').bind(revision.id),
-        );
-        statements.push(audit('retention.revision.delete', 'revision', revision.id));
-      }
-      statements.push(this.database.prepare('DELETE FROM drafts WHERE id=?').bind(draft.id));
-      statements.push(audit('retention.draft.delete', 'draft', draft.id));
-    }
-    for (const media of plan.export.mediaToOrphan) {
+        .bind(crypto.randomUUID(), actor, action, targetType, targetId, requestId);
+    const deletedDraftIds = [
+      ...new Set([
+        ...data.deletedDraftRevisions.map((row) => row.draft_id),
+        ...data.drafts.map((row) => row.id),
+      ]),
+    ];
+    const deletedIds = JSON.stringify(deletedDraftIds);
+    statements.push(
+      this.database
+        .prepare(
+          `SELECT json(CASE WHEN (SELECT COUNT(*) FROM json_each(?) e JOIN drafts d ON d.id=json_extract(e.value,'$.id')
+       WHERE d.status='deleted' AND d.deleted_at<${cutoff(30)} AND d.deleted_at=json_extract(e.value,'$.deleted_at') AND ${noActivePublication}
+       AND NOT EXISTS (SELECT 1 FROM revisions r WHERE r.draft_id=d.id AND r.id NOT IN (SELECT value FROM json_each(?))))=?
+       THEN 'true' ELSE 'retention-state-changed' END)`,
+        )
+        .bind(JSON.stringify(data.drafts), ids(data.deletedDraftRevisions), data.drafts.length),
+    );
+    statements.push(
+      this.database
+        .prepare(
+          `SELECT json(CASE WHEN (SELECT COUNT(*) FROM audit_events WHERE id IN (SELECT value FROM json_each(?))
+       AND occurred_at<${cutoff(400)})=? THEN 'true' ELSE 'retention-state-changed' END)`,
+        )
+        .bind(ids(data.auditEvents), data.auditEvents.length),
+    );
+    if (deletedDraftIds.length) {
       statements.push(
         this.database
-          .prepare("UPDATE media_assets SET status='orphaned' WHERE id=? AND status='ready'")
-          .bind(media.id),
+          .prepare(
+            `UPDATE idempotency_keys SET status_code=410,response_json='{"deleted":true}',expires_at='9999-12-31T23:59:59.999Z'
+         WHERE json_extract(response_json,'$.id') IN (SELECT value FROM json_each(?))`,
+          )
+          .bind(deletedIds),
       );
-      statements.push(audit('retention.media.orphan', 'media', media.id));
+      statements.push(
+        this.database
+          .prepare(
+            'UPDATE drafts SET latest_revision_id=NULL WHERE id IN (SELECT value FROM json_each(?))',
+          )
+          .bind(deletedIds),
+      );
     }
-    for (const media of plan.export.mediaToDelete) {
-      statements.push(this.database.prepare('DELETE FROM media_assets WHERE id=?').bind(media.id));
-      statements.push(audit('retention.media.delete', 'media', media.id));
+    if (data.deletedDraftRevisions.length)
+      statements.push(
+        this.database
+          .prepare(
+            'DELETE FROM publish_preflights WHERE revision_id IN (SELECT value FROM json_each(?))',
+          )
+          .bind(ids(data.deletedDraftRevisions)),
+      );
+    if (allRevisions.length)
+      statements.push(
+        this.database
+          .prepare('DELETE FROM revisions WHERE id IN (SELECT value FROM json_each(?))')
+          .bind(ids(allRevisions)),
+      );
+    for (const row of allRevisions)
+      statements.push(audit('retention.revision.delete', 'revision', row.id));
+    if (data.drafts.length)
+      statements.push(
+        this.database
+          .prepare('DELETE FROM drafts WHERE id IN (SELECT value FROM json_each(?))')
+          .bind(ids(data.drafts)),
+      );
+    for (const row of data.drafts)
+      statements.push(audit('retention.draft.delete', 'draft', row.id));
+    if (data.auditEvents.length)
+      statements.push(
+        this.database
+          .prepare('DELETE FROM audit_events WHERE id IN (SELECT value FROM json_each(?))')
+          .bind(ids(data.auditEvents)),
+      );
+    for (const row of data.auditEvents)
+      statements.push(audit('retention.audit.delete', 'audit-event', row.id));
+    try {
+      await this.database.batch(statements);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('malformed JSON'))
+        throw new Error('RETENTION_STATE_CHANGED');
+      throw error;
     }
-    for (const event of plan.export.auditEvents) {
-      statements.push(this.database.prepare('DELETE FROM audit_events WHERE id=?').bind(event.id));
-      statements.push(audit('retention.audit.delete', 'audit-event', event.id));
-    }
-    if (statements.length) await this.database.batch(statements);
-    return { applied: true as const, exportChecksum: plan.exportChecksum, report: plan.report };
+    return { applied: true as const, exportChecksum: plan.exportChecksum, report: report(data) };
   }
 
   async applyCurrent(savedExportChecksum: string, actor: string, requestId: string) {

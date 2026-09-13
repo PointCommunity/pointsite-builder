@@ -60,6 +60,107 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('purges large compact history with bounded statements and complete rollback on failure', async () => {
+    const { database } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const writer = new D1DraftRepository(database, undefined, 'compact-v1');
+    const create = (name: string) =>
+      writer.createDraft({
+        name,
+        document: defaultSiteDocument,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'create',
+      });
+    const draft = await create('Large retained history');
+    const other = await create('Other draft');
+    let latest = draft.latestRevisionId;
+    // Seed immutable imported checkpoints, then use the real save path for a splice.
+    for (let sequence = 2; sequence <= 121; sequence++) {
+      const id = crypto.randomUUID();
+      await database.batch([
+        database
+          .prepare(
+            `INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+          SELECT ?,draft_id,?,?,checksum,document_json,schema_version,renderer_version,created_by,created_at FROM revisions WHERE id=?`,
+          )
+          .bind(id, sequence, latest, draft.latestRevisionId),
+        database
+          .prepare(
+            `INSERT INTO revision_payloads(revision_id,base_revision_id,codec,payload,raw_bytes,prefix_bytes,suffix_bytes)
+          SELECT ?,NULL,codec,payload,raw_bytes,prefix_bytes,suffix_bytes FROM revision_payloads WHERE revision_id=?`,
+          )
+          .bind(id, draft.latestRevisionId),
+      ]);
+      latest = id;
+    }
+    await database
+      .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+      .bind(latest, draft.id)
+      .run();
+    const changed = structuredClone(draft.document);
+    changed.site.shortName = 'Latest retained splice';
+    await writer.saveDraft({
+      draftId: draft.id,
+      actor,
+      document: changed,
+      ...(await acquireDraftProof(writer, draft.id, actor)),
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'save',
+      action: { category: 'text-edit', context: 'site-settings' },
+    });
+    await writer.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(writer, draft.id, actor),
+    );
+    const proof = await acquireDraftProof(writer, draft.id, actor);
+    const before = await writer.getDraft(draft.id);
+    let fail = true;
+    const prepared: string[] = [];
+    const repository = new D1DraftRepository(
+      {
+        prepare: (sql: string) => {
+          prepared.push(sql);
+          return database.prepare(sql);
+        },
+        batch: (statements: D1PreparedStatement[]) =>
+          database.batch(
+            fail ? [...statements, database.prepare("SELECT json('force-rollback')")] : statements,
+          ),
+      } as unknown as D1Database,
+      undefined,
+      'compact-v1',
+    );
+    await expect(repository.purgeDraft(draft.id, actor, 'purge', proof)).rejects.toThrow();
+    expect(await writer.getDraft(draft.id)).toEqual(before);
+    expect(
+      await database
+        .prepare('SELECT COUNT(*) FROM revisions WHERE draft_id=?')
+        .bind(draft.id)
+        .first('COUNT(*)'),
+    ).toBe(122);
+    expect(await database.prepare('SELECT COUNT(*) FROM revision_payloads').first('COUNT(*)')).toBe(
+      123,
+    );
+    expect(
+      await database
+        .prepare('SELECT COUNT(*) FROM idempotency_keys WHERE status_code=410')
+        .first('COUNT(*)'),
+    ).toBe(0);
+    fail = false;
+    prepared.length = 0;
+    await repository.purgeDraft(draft.id, actor, 'purge', proof);
+    expect(prepared.length).toBeLessThan(40);
+    await expect(writer.getDraft(draft.id)).rejects.toThrow('was not found');
+    expect(await database.prepare('SELECT COUNT(*) FROM revision_payloads').first('COUNT(*)')).toBe(
+      1,
+    );
+    expect(await writer.getDraft(other.id)).toEqual(other);
+  });
+
   it('pages and searches retained metadata without reading revision payloads', async () => {
     const { database } = await repositoryFixture();
     const actor = 'editor@pointatx.org';
@@ -614,17 +715,19 @@ describe('D1 draft repository', () => {
     await database
       .prepare("UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z'")
       .run();
-    const retention = new RetentionService(database, { delete: () => Promise.resolve() });
-    const plan = await retention.plan(new Date('2027-12-01T00:00:00.000Z'));
-    expect(plan.report.revisionsToDelete).toBe(33);
-    for (const row of plan.export.revisions)
-      expect(await checksumDocument(JSON.parse(row.document_json))).toBe(row.checksum);
+    const retention = new RetentionService(database);
+    // Fresh revisions cannot become eligible by advancing the caller's clock.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2027-12-01T00:00:00.000Z'));
+    const plan = await retention.plan();
+    vi.useRealTimers();
+    expect(plan.report.revisionsToDelete).toBe(0);
+    await database
+      .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+      .bind(actor)
+      .run();
     await retention.apply(plan, plan.exportChecksum, actor, 'retention');
-    expect(await bridge.listRevisions(draft.id)).toHaveLength(4);
-    await expect(
-      projection.requireCoverage(draft.id, restored.revision.sequence),
-    ).rejects.toThrow();
-    expect((await projection.backfill(draft.id)).processed).toBe(4);
+    expect(await bridge.listRevisions(draft.id)).toHaveLength(37);
     await expect(projection.requireCoverage(draft.id, restored.revision.sequence)).resolves.toEqual(
       expect.any(String),
     );

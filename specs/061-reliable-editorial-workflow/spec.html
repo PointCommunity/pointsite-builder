@@ -676,6 +676,33 @@
       context writes, broader action mixes, publishing, maintenance, runtime CPU, provider billing
       and other account consumers remain outside this subtotal.
     </p>
+    <p>
+      Maintenance bound: purge must use a fixed number of statements, not one statement per
+      revision. Delete same-draft splice payloads before deleting their revision rows and full
+      checkpoints, inside the existing role/checkout/revision-guarded transaction. Migration 0015
+      permits parent detachment only after actual parent deletion. Preserve receipt tombstoning and
+      other-draft isolation; inject a late transaction failure to prove complete rollback.
+      <a href="https://developers.cloudflare.com/d1/worker-api/d1-database/"
+        >D1 batch transactions</a
+      >
+      provide the atomic boundary. Measure large-history purge and retention separately before
+      claiming daily headroom. Retention also needs bounded exports and fresh commit-time
+      eligibility checks. Each pass exports at most six combined automatic/deleted revisions and
+      four old audit rows. Database time controls minimum ages; the apply transaction rechecks
+      Administrator authority, named/latest/checkpoint/receipt protections and deleted-draft status.
+      Deleted histories drain leaf revisions before checkpoints and tombstone receipts before
+      deletion. Completed ownership migration is required; retired shared media cleanup remains
+      owned by that migration. No bucket deletion occurs outside the guarded transaction. Migration
+      0019 indexes revision age, parent foreign-key references and publication references so
+      maintenance does not sort every recent revision or rescan all publication jobs for each
+      retention candidate. The 122-revision purge baseline read 17,115 rows without the parent
+      index; the indexed run used 2,678 reads, 1,072 writes and 17 statements. Keep a regression
+      ceiling below 4,000 reads for that fixture. The six-revision retention dry run used 45 reads,
+      zero writes and 16 statements; applyCurrent, including its repeated dry run, used 1,687 reads,
+      278 writes and 30 statements. Authentication adds one measured statement per request. These
+      local samples exclude sustained maintenance volume and provider CPU. Recovery coordination
+      remains a separate gate.
+    </p>
     <ol>
       <li>
         <strong>T1:</strong> contracts and reference workload fixed above; forward feasibility

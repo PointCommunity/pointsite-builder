@@ -135,11 +135,8 @@ it('resumes verified ownership conversion, recovers unassigned uploads, then rem
       .prepare("UPDATE audit_events SET metadata_json='{}' WHERE request_id='legacy-upload'")
       .run(),
   ).rejects.toThrow('audit events are immutable');
-  const retention = new RetentionService(database, new D1PrivateBucket(database));
-  const plan = await retention.plan();
-  await expect(
-    retention.apply(plan, plan.exportChecksum, 'administrator', 'retention-race'),
-  ).rejects.toThrow('ASSET_MIGRATION_INCOMPLETE');
+  const retention = new RetentionService(database);
+  await expect(retention.plan()).rejects.toThrow('ASSET_MIGRATION_INCOMPLETE');
   await expect(
     database
       .prepare("UPDATE drafts SET status='deleted',deleted_at='2026-09-12' WHERE id=?")

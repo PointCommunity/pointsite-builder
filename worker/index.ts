@@ -82,7 +82,7 @@ export default {
       admin: new D1AdminService(env.DB),
       approvals: new D1ApprovalService(env.DB),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
-      retention: new RetentionService(env.DB, new D1PrivateBucket(env.DB)),
+      retention: new RetentionService(env.DB),
       ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),
       ...(auth ? { auth } : {}),
     });

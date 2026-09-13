@@ -233,7 +233,12 @@
         <dt>Prerequisites</dt>
         <dd>
           Authenticated Wrangler, intended Cloudflare account confirmed, encrypted destination,
-          maintenance window, and retention dry-run.
+          maintenance window, and retention dry-run. Retention requires completed draft-media
+          ownership migration. Each pass exports at most six historical revisions and four old audit
+          rows. Save that exact export before applying; repeat with a fresh export to drain
+          additional eligible history. A changed role, label, revision pointer, recovery pin, or
+          deletion state aborts the transaction. Current/named revisions and publication references
+          remain protected. Retired shared media cleanup belongs to the ownership migration.
         </dd>
         <dt>Safe command</dt>
         <dd>

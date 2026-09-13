@@ -705,10 +705,6 @@ export class D1DraftRepository implements DraftRepository {
       .first();
     if (activePublication)
       throw new ConflictError('Wait for the active publication before deleting this draft');
-    const revisions = await this.database
-      .prepare('SELECT id FROM revisions WHERE draft_id=? ORDER BY sequence DESC')
-      .bind(draftId)
-      .all<{ id: string }>();
     try {
       await this.commitMetadata(actor, guard, [
         // The CHECK constraint aborts the entire batch if lifecycle or lease state changed.
@@ -741,12 +737,13 @@ export class D1DraftRepository implements DraftRepository {
             'DELETE FROM revision_labels WHERE revision_id IN (SELECT id FROM revisions WHERE draft_id=?)',
           )
           .bind(draftId),
-        // Delete children first: nulling a surviving child's parent would violate revision immutability.
-        ...revisions.results.map(({ id }) =>
-          this.database
-            .prepare('DELETE FROM revisions WHERE id=? AND draft_id=?')
-            .bind(id, draftId),
-        ),
+        // Remove splice references before checkpoints cascade; keep statement count independent of history.
+        this.database
+          .prepare(
+            'DELETE FROM revision_payloads WHERE base_revision_id IS NOT NULL AND revision_id IN (SELECT id FROM revisions WHERE draft_id=?)',
+          )
+          .bind(draftId),
+        this.database.prepare('DELETE FROM revisions WHERE draft_id=?').bind(draftId),
         this.database.prepare('DELETE FROM drafts WHERE id=?').bind(draftId),
         this.auditStatement(actor, 'draft.deleted', draftId, requestId, {}),
       ]);

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
-import { canonicalize } from '../../src/site-kit/canonicalize';
+import { RetentionService } from '../../src/server/maintenance/retention';
+import { prepareRevisionPayload } from '../../src/server/repositories/revision-payloads';
+import { canonicalize, checksumDocument } from '../../src/site-kit/canonicalize';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1LibraryService } from '../../src/server/media/library';
@@ -346,19 +348,110 @@ async function measureStorage() {
   }
 }
 
-const library = await measureLibrary();
-console.log(JSON.stringify({ phase: 'library', samples: library }));
-const storage = await measureStorage();
-const evidence = {
-  kind: 'local-d1-editorial-workload',
-  measuredAt: new Date().toISOString(),
-  workload,
-  library,
-  storage,
-  limitations:
-    'Local emulator row counters and allocated SQLite bytes; Node repository/codec execution. Changed saves and retries are executed in full. Editor-day totals scale the declared read-only samples and one measured authentication lookup per modeled request; foreground observation is conservatively every four seconds. Storage is a linear projection including measured revision, receipt, audit and index growth plus a media reserve. Actual Worker CPU, provider billing, broader action distributions, startup and active context writes, publishing, maintenance and other account consumers remain separate gates.',
-};
-await mkdir('artifacts', { recursive: true });
-await writeFile('artifacts/d1-editorial-workload.json', `${JSON.stringify(evidence, null, 2)}\n`);
-console.log(JSON.stringify(evidence));
-assert(storage.withinStorageBudget, 'Measured reference projection exceeds the database budget');
+async function measureMaintenance() {
+  const f = await fixture('compact-v1');
+  try {
+    await f.raw
+      .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+      .bind(actor)
+      .run();
+    const session = await create(f, 90);
+    for (let sequence = 2; sequence <= 128; sequence++) {
+      const changed = structuredClone(document);
+      changed.site.shortName = `Retained ${sequence}`;
+      const id = crypto.randomUUID();
+      const payload = await prepareRevisionPayload(f.raw, {
+        id,
+        draftId: session.draft.id,
+        sequence,
+        document: changed,
+      });
+      await f.raw.batch([
+        f.raw
+          .prepare(
+            `INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+          SELECT ?,draft_id,?,id,?,'{}',schema_version,renderer_version,created_by,'2025-01-01' FROM revisions WHERE id=?`,
+          )
+          .bind(id, sequence, await checksumDocument(changed), session.draft.latestRevisionId),
+        ...payload.statements,
+        f.raw
+          .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+          .bind(id, session.draft.id),
+      ]);
+      session.draft = await f.repository.getDraft(session.draft.id);
+    }
+    const retention = new RetentionService(f.meter.database);
+    f.meter.reset();
+    const plan = await retention.plan();
+    const dryRun = { ...f.meter.totals };
+    assert.equal(plan.export.revisions.length, 6);
+    assert.equal(dryRun.rowsWritten, 0);
+    f.meter.reset();
+    await retention.applyCurrent(plan.exportChecksum, actor, 'measured-retention');
+    const apply = { ...f.meter.totals };
+    assert(
+      apply.queries + 1 < 50,
+      'Retention plus authentication exceeds Free statement allowance',
+    );
+    const current = await f.repository.getDraft(session.draft.id);
+    await f.repository.setDraftStatus(current.id, 'archived', actor, 'archive', {
+      checkoutToken: session.token,
+      expectedRevisionId: current.latestRevisionId,
+      expectedChecksum: current.revision.checksum,
+    });
+    const checkout = await f.repository.acquireCheckout({
+      draftId: current.id,
+      actor,
+      clientId: 'purge-workload-client',
+      requestId: 'checkout',
+      expectedStatus: 'archived',
+    });
+    f.meter.reset();
+    await f.repository.purgeDraft(current.id, actor, 'measured-purge', {
+      checkoutToken: checkout.token,
+      expectedRevisionId: current.latestRevisionId,
+      expectedChecksum: current.revision.checksum,
+    });
+    const purge = { ...f.meter.totals };
+    assert(purge.queries + 1 < 50, 'Purge plus authentication exceeds Free statement allowance');
+    assert(purge.rowsRead < 4_000, 'Purge scanned revision history for each parent deletion');
+    assert.equal(
+      await f.raw.prepare('SELECT COUNT(*) FROM revision_payloads').first('COUNT(*)'),
+      0,
+    );
+    return {
+      startingRevisions: 128,
+      retentionRevisions: 6,
+      dryRun,
+      apply,
+      purgeRevisions: 122,
+      purge,
+    };
+  } finally {
+    await f.miniflare.dispose();
+  }
+}
+
+if (process.argv[2] === '--maintenance-only') {
+  console.log(JSON.stringify({ kind: 'local-d1-maintenance', ...(await measureMaintenance()) }));
+} else {
+  const library = await measureLibrary();
+  console.log(JSON.stringify({ phase: 'library', samples: library }));
+  const maintenance = await measureMaintenance();
+  console.log(JSON.stringify({ phase: 'maintenance', ...maintenance }));
+  const storage = await measureStorage();
+  const evidence = {
+    kind: 'local-d1-editorial-workload',
+    measuredAt: new Date().toISOString(),
+    workload,
+    library,
+    maintenance,
+    storage,
+    limitations:
+      'Local emulator row counters and allocated SQLite bytes; Node repository/codec execution. Changed saves and retries are executed in full. Editor-day totals scale the declared read-only samples and one measured authentication lookup per modeled request; foreground observation is conservatively every four seconds. Storage is a linear projection including measured revision, receipt, audit and index growth plus a media reserve. Actual Worker CPU, provider billing, broader action distributions, startup and active context writes, publishing, sustained maintenance volume and other account consumers remain separate gates.',
+  };
+  await mkdir('artifacts', { recursive: true });
+  await writeFile('artifacts/d1-editorial-workload.json', `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(JSON.stringify(evidence));
+  assert(storage.withinStorageBudget, 'Measured reference projection exceeds the database budget');
+}

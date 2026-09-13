@@ -78,7 +78,17 @@ export function createAdminRoutes(
         'RETENTION_NOT_CONFIGURED',
         'Retention maintenance is not configured',
       );
-    return context.json(await retention.plan());
+    try {
+      return context.json(await retention.plan());
+    } catch (error) {
+      if (error instanceof Error && error.message === 'ASSET_MIGRATION_INCOMPLETE')
+        throw new ApiError(
+          409,
+          error.message,
+          'Finish draft media migration before retention cleanup.',
+        );
+      throw error;
+    }
   });
   routes.post('/retention/apply', async (context) => {
     const actor = context.get('actor');
@@ -108,7 +118,10 @@ export function createAdminRoutes(
           error.message,
           'Draft media migration is still running. Retention cleanup is unavailable until all private copies are verified.',
         );
-      if (error instanceof Error && error.message === 'RETENTION_EXPORT_MISMATCH')
+      if (
+        error instanceof Error &&
+        ['RETENTION_EXPORT_MISMATCH', 'RETENTION_STATE_CHANGED'].includes(error.message)
+      )
         throw new ApiError(
           409,
           error.message,
