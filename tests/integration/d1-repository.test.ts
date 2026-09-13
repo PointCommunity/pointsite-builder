@@ -9,6 +9,9 @@ import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { ConflictError, InMemoryRepository } from '../../src/server/repositories/memory';
 import type { SaveDraftInput } from '../../src/server/repositories/contracts';
+import { D1StorageCompaction } from '../../src/server/maintenance/storage-compaction';
+import { RetentionService } from '../../src/server/maintenance/retention';
+import { D1LibraryProjection } from '../../src/server/media/library-projection';
 import { AuthorizationError } from '../../src/server/auth/roles';
 
 let miniflare: Miniflare | undefined;
@@ -55,6 +58,501 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('preserves legacy data when conversion is interrupted before commit or a receipt differs', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Interrupted conversion',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const conversion = new D1StorageCompaction(database);
+    const interrupted = new D1StorageCompaction({
+      prepare: (sql: string) => database.prepare(sql),
+      batch: () => Promise.reject(new Error('Interrupted before commit')),
+    } as unknown as D1Database);
+    await expect(interrupted.step(actor, 'convert')).rejects.toThrow('Interrupted before commit');
+    expect(await conversion.status()).toMatchObject({ revisions: 1, receipts: 1 });
+    expect(await database.prepare('SELECT COUNT(*) FROM revision_payloads').first('COUNT(*)')).toBe(
+      0,
+    );
+    expect(await repository.getDraft(draft.id)).toEqual(draft);
+    await conversion.step(actor, 'convert');
+    await database
+      .prepare(
+        "UPDATE idempotency_keys SET response_json=json_set(response_json,'$.document.site.shortName','Different receipt')",
+      )
+      .run();
+    const before = await database
+      .prepare('SELECT response_json FROM idempotency_keys')
+      .first('response_json');
+    await expect(conversion.step(actor, 'convert')).rejects.toThrow('RECEIPT_DOCUMENT_MISMATCH');
+    expect(
+      await database.prepare('SELECT response_json FROM idempotency_keys').first('response_json'),
+    ).toBe(before);
+    expect(await conversion.status()).toMatchObject({ revisions: 0, receipts: 1 });
+  });
+
+  it('does not convert a legacy document whose stored checksum differs', async () => {
+    const { database, repository } = await repositoryFixture();
+    const draft = await repository.createDraft({
+      name: 'Corrupt legacy source',
+      document: defaultSiteDocument,
+      actor: 'editor@pointatx.org',
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    // Simulate pre-existing corruption, outside the ordinary immutable write path.
+    await database.exec('DROP TRIGGER revisions_are_immutable');
+    await database
+      .prepare('UPDATE revisions SET checksum=? WHERE id=?')
+      .bind('0'.repeat(64), draft.latestRevisionId)
+      .run();
+    const before = await database
+      .prepare('SELECT document_json FROM revisions WHERE id=?')
+      .bind(draft.latestRevisionId)
+      .first('document_json');
+    await expect(new D1StorageCompaction(database).step('operator', 'convert')).rejects.toThrow(
+      'REVISION_CHECKSUM_MISMATCH',
+    );
+    expect(
+      await database
+        .prepare('SELECT document_json FROM revisions WHERE id=?')
+        .bind(draft.latestRevisionId)
+        .first('document_json'),
+    ).toBe(before);
+    expect(await database.prepare('SELECT COUNT(*) FROM revision_payloads').first('COUNT(*)')).toBe(
+      0,
+    );
+  });
+
+  it.each(['ahead', 'behind'] as const)(
+    'uses the database clock for receipt conversion and replay when JavaScript is %s',
+    async (direction) => {
+      const { database, repository } = await repositoryFixture();
+      const actor = 'editor@pointatx.org';
+      const input = {
+        name: 'Receipt clock',
+        document: defaultSiteDocument,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'create',
+      };
+      const draft = await repository.createDraft(input);
+      if (direction === 'behind')
+        await database
+          .prepare("UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z'")
+          .run();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(direction === 'ahead' ? '2100-01-01' : '1900-01-01'));
+      const conversion = new D1StorageCompaction(database);
+      await conversion.step(actor, 'convert');
+      await conversion.step(actor, 'convert');
+      if (direction === 'ahead') expect(await repository.createDraft(input)).toEqual(draft);
+      else {
+        expect(
+          await database
+            .prepare('SELECT response_json FROM idempotency_keys')
+            .first('response_json'),
+        ).toBe('{"expired":true}');
+        await expect(repository.createDraft(input)).rejects.toThrow('receipt expired');
+      }
+    },
+  );
+
+  it('restarts conversion after lost acknowledgements without changing canonical history or replay', async () => {
+    const { database, repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const create = {
+      name: 'Legacy conversion',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    };
+    const draft = await repository.createDraft(create);
+    const checkout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'conversion-fixture-client',
+      requestId: 'checkout',
+    });
+    const document = structuredClone(draft.document);
+    document.site.shortName = 'Before conversion 🌿';
+    const input: SaveDraftInput = {
+      draftId: draft.id,
+      actor,
+      document,
+      expectedRevisionId: draft.latestRevisionId,
+      expectedChecksum: draft.revision.checksum,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'save',
+      action: { category: 'text-edit', context: 'site-settings' },
+    };
+    const saved = await repository.saveDraft(input);
+    const before = await repository.listRevisions(draft.id);
+    const conversion = new D1StorageCompaction(database);
+    expect(await conversion.status()).toMatchObject({
+      state: 'pending',
+      revisions: 2,
+      receipts: 2,
+    });
+    let interrupted = false;
+    const lostAck = new D1StorageCompaction({
+      prepare: (sql: string) => database.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        const result = await database.batch(statements);
+        if (!interrupted) {
+          interrupted = true;
+          throw new Error('Lost acknowledgement');
+        }
+        return result;
+      },
+    } as unknown as D1Database);
+    await expect(lostAck.step(actor, 'convert')).rejects.toThrow('Lost acknowledgement');
+    expect(await conversion.status()).toMatchObject({ revisions: 1, receipts: 2 });
+    for (let count = 0; count < 3; count++)
+      expect((await conversion.step(actor, 'convert')).processed).not.toBeNull();
+    expect(await conversion.status()).toEqual({ state: 'complete', revisions: 0, receipts: 0 });
+    expect(await conversion.step(actor, 'convert')).toEqual({ processed: null });
+    expect(await repository.listRevisions(draft.id)).toEqual(before);
+    expect(await repository.createDraft(create)).toEqual(draft);
+    expect(await repository.saveDraft(input)).toEqual(saved);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) FROM audit_events WHERE action='revision.storage.compact'")
+        .first('COUNT(*)'),
+    ).toBe(2);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) FROM audit_events WHERE action='receipt.storage.compact'")
+        .first('COUNT(*)'),
+    ).toBe(2);
+  });
+
+  it('rejects cross-draft checkpoints, delta chains and gaps of 32 revisions', async () => {
+    const { database, repository: bridge } = await repositoryFixture();
+    const repository = new D1DraftRepository(database, undefined, 'compact-v1');
+    const actor = 'editor@pointatx.org';
+    let draft = await repository.createDraft({
+      name: 'Checkpoint owner',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const base = draft.latestRevisionId;
+    const checkout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'checkpoint-fixture-client',
+      requestId: 'checkout',
+    });
+    const save = async (writer: D1DraftRepository, name: string) => {
+      const document = structuredClone(draft.document);
+      document.site.shortName = name;
+      draft = await writer.saveDraft({
+        draftId: draft.id,
+        actor,
+        document,
+        expectedRevisionId: draft.latestRevisionId,
+        expectedChecksum: draft.revision.checksum,
+        checkoutToken: checkout.token,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'save',
+        action: { category: 'text-edit', context: 'site-settings' },
+      });
+    };
+    await save(repository, 'Delta');
+    const delta = draft.latestRevisionId;
+    await save(bridge, 'Legacy target');
+    const other = await repository.createDraft({
+      name: 'Other checkpoint owner',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const payload = await database
+      .prepare('SELECT payload FROM revision_payloads WHERE revision_id=?')
+      .bind(base)
+      .first<number[]>('payload');
+    const insert = (target: string, checkpoint: string) =>
+      database
+        .prepare(
+          "INSERT INTO revision_payloads(revision_id,base_revision_id,codec,payload,raw_bytes,prefix_bytes,suffix_bytes) VALUES (?,?,'gzip-splice',?,100,0,0)",
+        )
+        .bind(target, checkpoint, new Uint8Array(payload!).buffer)
+        .run();
+    await expect(insert(draft.latestRevisionId, other.latestRevisionId)).rejects.toThrow(
+      'invalid revision checkpoint',
+    );
+    await expect(insert(draft.latestRevisionId, delta)).rejects.toThrow(
+      'invalid revision checkpoint',
+    );
+    const distant = crypto.randomUUID();
+    await database
+      .prepare(
+        'INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at) SELECT ?,draft_id,33,NULL,checksum,document_json,schema_version,renderer_version,created_by,created_at FROM revisions WHERE id=?',
+      )
+      .bind(distant, draft.latestRevisionId)
+      .run();
+    await expect(insert(distant, base)).rejects.toThrow('invalid revision checkpoint');
+  });
+
+  it('replays compact receipts exactly, pins their source revisions and tombstones them on purge', async () => {
+    const { database, repository: bridge } = await repositoryFixture();
+    const repository = new D1DraftRepository(database, undefined, 'compact-v1');
+    const actor = 'editor@pointatx.org';
+    const create = {
+      name: 'Original receipt name',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    };
+    const draft = await repository.createDraft(create);
+    const checkout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'compact-receipt-client',
+      requestId: 'checkout',
+    });
+    const document = structuredClone(draft.document);
+    document.site.shortName = 'First change';
+    const input: SaveDraftInput = {
+      draftId: draft.id,
+      actor,
+      document,
+      expectedRevisionId: draft.latestRevisionId,
+      expectedChecksum: draft.revision.checksum,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'save',
+      action: { category: 'text-edit', context: 'site-settings' },
+    };
+    const saved = await repository.saveDraft(input);
+    const proof = {
+      expectedRevisionId: saved.latestRevisionId,
+      expectedChecksum: saved.revision.checksum,
+      checkoutToken: checkout.token,
+    };
+    await repository.renameDraft(draft.id, 'Later name', actor, 'rename', proof);
+    await repository.labelRevision(
+      draft.id,
+      saved.latestRevisionId,
+      'Later label',
+      actor,
+      'label',
+      proof,
+    );
+    expect(await bridge.saveDraft(input)).toEqual(saved);
+    expect(await bridge.createDraft(create)).toEqual(draft);
+    const noop: SaveDraftInput = { ...input, ...proof, idempotencyKey: crypto.randomUUID() };
+    const acknowledged = await repository.saveDraft(noop);
+    const next = structuredClone(document);
+    next.site.shortName = 'Second change';
+    const advanced = await repository.saveDraft({
+      ...noop,
+      document: next,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(await bridge.saveDraft(noop)).toEqual(acknowledged);
+    await expect(repository.saveDraft({ ...input, document: next })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    await expect(
+      database.prepare('DELETE FROM revisions WHERE id=?').bind(advanced.latestRevisionId).run(),
+    ).rejects.toThrow('retained by request receipt');
+    const rows = await database
+      .prepare(
+        "SELECT response_version,length(response_json) AS bytes,json_extract(response_json,'$.document') AS document,json_extract(response_json,'$.revision.document') AS nested_document FROM idempotency_keys",
+      )
+      .all<{ response_version: number; bytes: number; document: null; nested_document: null }>();
+    for (const row of rows.results) {
+      expect(row.response_version).toBe(2);
+      expect(row.bytes).toBeLessThan(2000);
+      expect(row.document).toBeNull();
+      expect(row.nested_document).toBeNull();
+    }
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    await repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    await expect(bridge.createDraft(create)).rejects.toThrow('permanently deleted');
+    await expect(bridge.saveDraft(input)).rejects.toThrow('not found');
+    const tombstones = await database
+      .prepare('SELECT response_json FROM idempotency_keys')
+      .all<{ response_json: string }>();
+    expect(tombstones.results.every((row) => row.response_json === '{"deleted":true}')).toBe(true);
+  });
+
+  it('reads mixed formats, bounds checkpoint dependencies, rebuilds projections and purges compact history', async () => {
+    const { database, repository: bridge } = await repositoryFixture();
+    const repository = new D1DraftRepository(database, undefined, 'compact-v1');
+    const actor = 'editor@pointatx.org';
+    const original = await bridge.createDraft({
+      name: 'Mixed storage',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    let draft = original;
+    const checkout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'compact-fixture-client',
+      requestId: 'checkout',
+    });
+    for (let index = 0; index < 35; index++) {
+      const document = structuredClone(draft.document);
+      document.site.shortName = `Unicode ${index}: 🌿`;
+      draft = await repository.saveDraft({
+        draftId: draft.id,
+        document,
+        actor,
+        expectedRevisionId: draft.latestRevisionId,
+        expectedChecksum: draft.revision.checksum,
+        checkoutToken: checkout.token,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'save',
+        action: { category: 'text-edit', context: 'site-settings' },
+      });
+      expect((await bridge.getDraft(draft.id)).document).toEqual(document);
+    }
+    const payloads = await database
+      .prepare(
+        `SELECT r.sequence,p.codec,p.base_revision_id,b.sequence AS base_sequence FROM revision_payloads p JOIN revisions r ON r.id=p.revision_id LEFT JOIN revisions b ON b.id=p.base_revision_id ORDER BY r.sequence`,
+      )
+      .all<{
+        sequence: number;
+        codec: string;
+        base_revision_id: string | null;
+        base_sequence: number | null;
+      }>();
+    expect(
+      payloads.results.filter((row) => row.codec === 'gzip').map((row) => row.sequence),
+    ).toEqual([2, 34]);
+    for (const row of payloads.results.filter((row) => row.codec === 'gzip-splice'))
+      expect(row.sequence - row.base_sequence!).toBeLessThan(32);
+    const firstBase = payloads.results.find((row) => row.base_revision_id)?.base_revision_id;
+    await database
+      .prepare(
+        "UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z' WHERE json_extract(response_json,'$.latestRevisionId')=?",
+      )
+      .bind(firstBase)
+      .run();
+    await expect(
+      database.prepare('DELETE FROM revisions WHERE id=?').bind(firstBase).run(),
+    ).rejects.toThrow('FOREIGN KEY');
+    await expect(
+      database
+        .prepare('UPDATE revision_payloads SET payload=? WHERE revision_id=?')
+        .bind(new Uint8Array([1]).buffer, draft.latestRevisionId)
+        .run(),
+    ).rejects.toThrow('immutable');
+    expect(await bridge.listRevisions(draft.id)).toHaveLength(36);
+    const restored = await bridge.restoreRevision({
+      draftId: draft.id,
+      revisionId: original.latestRevisionId,
+      actor,
+      expectedRevisionId: draft.latestRevisionId,
+      expectedChecksum: draft.revision.checksum,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'restore',
+    });
+    expect(restored.document).toEqual(original.document);
+    await database
+      .prepare('DELETE FROM draft_library_projection WHERE draft_id=?')
+      .bind(draft.id)
+      .run();
+    const projection = new D1LibraryProjection(database);
+    let processed = 0;
+    for (;;) {
+      const step = await projection.backfill(draft.id);
+      processed += step.processed;
+      if (!step.processed) break;
+    }
+    expect(processed).toBe(37);
+    await expect(projection.requireCoverage(draft.id, restored.revision.sequence)).resolves.toEqual(
+      expect.any(String),
+    );
+    await database
+      .prepare("UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z'")
+      .run();
+    const retention = new RetentionService(database, { delete: () => Promise.resolve() });
+    const plan = await retention.plan(new Date('2027-12-01T00:00:00.000Z'));
+    expect(plan.report.revisionsToDelete).toBe(33);
+    for (const row of plan.export.revisions)
+      expect(await checksumDocument(JSON.parse(row.document_json))).toBe(row.checksum);
+    await retention.apply(plan, plan.exportChecksum, actor, 'retention');
+    expect(await bridge.listRevisions(draft.id)).toHaveLength(4);
+    await expect(
+      projection.requireCoverage(draft.id, restored.revision.sequence),
+    ).rejects.toThrow();
+    expect((await projection.backfill(draft.id)).processed).toBe(4);
+    await expect(projection.requireCoverage(draft.id, restored.revision.sequence)).resolves.toEqual(
+      expect.any(String),
+    );
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    await repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    expect(
+      await database.prepare('SELECT COUNT(*) AS count FROM revision_payloads').first('count'),
+    ).toBe(0);
+    await expect(bridge.getDraft(draft.id)).rejects.toThrow('not found');
+  }, 30_000);
+
+  it('rolls back compact writes before ownership migration completes and fails closed on missing payloads', async () => {
+    const { database } = await repositoryFixture();
+    const repository = new D1DraftRepository(database, undefined, 'compact-v1');
+    const actor = 'editor@pointatx.org';
+    const input = {
+      name: 'Compact guard',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    };
+    await database.prepare("UPDATE draft_asset_migration SET state='pending' WHERE id=1").run();
+    await expect(repository.createDraft(input)).rejects.toThrow('migration incomplete');
+    expect(await database.prepare('SELECT COUNT(*) AS count FROM drafts').first('count')).toBe(0);
+    expect(await database.prepare('SELECT COUNT(*) AS count FROM revisions').first('count')).toBe(
+      0,
+    );
+    await database.prepare("UPDATE draft_asset_migration SET state='complete' WHERE id=1").run();
+    const draft = await repository.createDraft(input);
+    await database
+      .prepare('DELETE FROM revision_payloads WHERE revision_id=?')
+      .bind(draft.latestRevisionId)
+      .run();
+    await expect(repository.getDraft(draft.id)).rejects.toThrow('REVISION_PAYLOAD_MISSING');
+  });
+
   it.each(['save', 'touch', 'release', 'assert'])(
     'rejects a token replaced during hashing in the memory model (%s)',
     async (operation) => {

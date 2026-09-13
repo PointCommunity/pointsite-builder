@@ -1,0 +1,1 @@
+export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;

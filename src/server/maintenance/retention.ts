@@ -1,3 +1,4 @@
+import { readRevisionDocument } from '../repositories/revision-payloads';
 interface PrivateDeleteBucket {
   delete(key: string): Promise<void>;
 }
@@ -5,6 +6,8 @@ interface PrivateDeleteBucket {
 interface RevisionRow extends Record<string, unknown> {
   id: string;
   draft_id: string;
+  checksum: string;
+  document_json: string;
 }
 
 interface DraftRow extends Record<string, unknown> {
@@ -79,9 +82,9 @@ export class RetentionService {
     const [revisionRows, draftRows, latestRows, mediaRows, auditRows] = await Promise.all([
       this.database
         .prepare(
-          "SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.status='active' AND r.created_at<? AND r.id!=d.latest_revision_id AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id) ORDER BY r.created_at DESC,r.id DESC",
+          "SELECT r.* FROM revisions r JOIN drafts d ON d.id=r.draft_id WHERE d.status='active' AND r.created_at<? AND r.id!=d.latest_revision_id AND r.label IS NULL AND NOT EXISTS (SELECT 1 FROM revision_labels l WHERE l.revision_id=r.id) AND NOT EXISTS (SELECT 1 FROM revision_payloads p WHERE p.base_revision_id=r.id) AND NOT EXISTS (SELECT 1 FROM idempotency_keys k WHERE json_extract(k.response_json,'$.latestRevisionId')=r.id AND k.expires_at>?) ORDER BY r.created_at DESC,r.id DESC LIMIT 64",
         )
-        .bind(automaticCutoff)
+        .bind(automaticCutoff, now.toISOString())
         .all<RevisionRow>(),
       this.database
         .prepare(
@@ -91,9 +94,9 @@ export class RetentionService {
         .all<DraftRow>(),
       this.database
         .prepare(
-          "SELECT r.document_json FROM drafts d JOIN revisions r ON r.draft_id=d.id WHERE d.status!='deleted'",
+          "SELECT r.id,r.draft_id,r.checksum,r.document_json FROM drafts d JOIN revisions r ON r.draft_id=d.id WHERE d.status!='deleted' AND EXISTS(SELECT 1 FROM media_assets)",
         )
-        .all<{ document_json: string }>(),
+        .all<RevisionRow>(),
       this.database.prepare('SELECT * FROM media_assets ORDER BY created_at,id').all<MediaRow>(),
       this.database
         .prepare('SELECT * FROM audit_events WHERE occurred_at<? ORDER BY occurred_at,id')
@@ -109,7 +112,13 @@ export class RetentionService {
           .bind(...draftIds)
           .all<RevisionRow>()
       : { results: [] as RevisionRow[] };
-    const references = referencedMedia(latestRows.results);
+    const exported = async (row: RevisionRow): Promise<RevisionRow> => ({
+      ...row,
+      document_json: JSON.stringify(await readRevisionDocument(this.database, row)),
+    });
+    const references = referencedMedia(
+      mediaRows.results.length ? await Promise.all(latestRows.results.map(exported)) : [],
+    );
     const mediaToOrphan = mediaRows.results.filter(
       (row) =>
         row.status === 'ready' && !references.has(row.id) && String(row.created_at) < orphanCutoff,
@@ -120,9 +129,9 @@ export class RetentionService {
         String(row.last_referenced_at ?? row.created_at) < mediaDeleteCutoff,
     );
     const exportData = {
-      revisions: revisionRows.results,
+      revisions: await Promise.all(revisionRows.results.map(exported)),
       drafts: draftRows.results,
-      deletedDraftRevisions: deletedDraftRevisions.results,
+      deletedDraftRevisions: await Promise.all(deletedDraftRevisions.results.map(exported)),
       mediaToOrphan,
       mediaToDelete,
       auditEvents: auditRows.results,

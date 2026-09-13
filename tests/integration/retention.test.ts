@@ -21,18 +21,22 @@ async function setup() {
     'migrations/0003_revision_labels.sql',
     'migrations/0004_exact_approvals.sql',
     'migrations/0005_revision_retention.sql',
+    'migrations/0008_revision_actions.sql',
+    'migrations/0015_revision_retention_integrity.sql',
+    'migrations/0017_revision_payloads.sql',
+    'migrations/0018_compact_receipts.sql',
   ])
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
 
   const document = JSON.stringify({ media: [{ id: 'media-referenced' }] });
   await database.exec(`
     INSERT INTO drafts VALUES ('draft-live','pointsite','Live','revision-current','active','admin','2025-01-01','2026-09-01',NULL);
-    INSERT INTO revisions VALUES ('revision-old','draft-live',1,NULL,'${'a'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2025-01-01');
-    INSERT INTO revisions VALUES ('revision-named','draft-live',2,'revision-old','${'b'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2025-02-01');
-    INSERT INTO revisions VALUES ('revision-current','draft-live',3,'revision-named','${'c'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2026-09-01');
+    INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES ('revision-old','draft-live',1,NULL,'${'a'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2025-01-01');
+    INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES ('revision-named','draft-live',2,'revision-old','${'b'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2025-02-01');
+    INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES ('revision-current','draft-live',3,'revision-named','${'c'.repeat(64)}','${document}',NULL,1,'1.0.0','admin','2026-09-01');
     INSERT INTO revision_labels VALUES ('label-1','revision-named','Before launch','admin','2025-02-01');
     INSERT INTO drafts VALUES ('draft-deleted','pointsite','Deleted','revision-deleted','deleted','admin','2025-01-01','2025-01-01','2025-01-01');
-    INSERT INTO revisions VALUES ('revision-deleted','draft-deleted',1,NULL,'${'d'.repeat(64)}','{"media":[]}',NULL,1,'1.0.0','admin','2025-01-01');
+    INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at) VALUES ('revision-deleted','draft-deleted',1,NULL,'${'d'.repeat(64)}','{"media":[]}',NULL,1,'1.0.0','admin','2025-01-01');
     INSERT INTO media_assets VALUES ('media-referenced','private/referenced.png','referenced.png','image/png',10,1,1,'${'e'.repeat(64)}','Alt','ready','admin','2025-01-01','2026-09-01');
     INSERT INTO media_assets VALUES ('media-ready','private/ready.png','ready.png','image/png',10,1,1,'${'f'.repeat(64)}','Alt','ready','admin','2026-08-01',NULL);
     INSERT INTO media_assets VALUES ('media-orphan','private/orphan.png','orphan.png','image/png',10,1,1,'${'1'.repeat(64)}','Alt','orphaned','admin','2025-01-01',NULL);

@@ -605,7 +605,43 @@
       >
       avoid a new dependency;
       <a href="https://developers.cloudflare.com/d1/worker-api/">D1 binary bindings</a> avoid base64
-      expansion. Actual codec CPU and D1 page allocation remain release gates.
+      expansion. Actual Worker codec CPU remains a release gate; local D1 allocation evidence is
+      recorded below.
+    </p>
+    <p>
+      Compact storage implementation: migration 0017 adds immutable binary payloads with foreign-key
+      checkpoint protection, same-draft and maximum-gap checks, and an ownership-migration guard.
+      Legacy JSON and compact rows share the reader used by draft/history/restore, Library backfill
+      and retention exports. Retention preserves named revisions and checkpoint bases; pruning
+      invalidates the Library projection for bounded rebuilding. Migration 0018 adds an independent
+      response format version and indexed receipt references. Compact receipts omit both document
+      copies and reconstruct the original response metadata from the immutable revision; later
+      labels and draft names cannot alter replay. Unexpired receipts of either format pin their
+      source revision. Purge replaces responses with content-free tombstones before deleting
+      history. DRAFT_STORAGE_FORMAT defaults to legacy; compact-v1 is not set in production
+      configuration. Existing-row conversion runs one atomic revision or receipt step at a time,
+      verifies canonical checksums and response equality, and restarts after lost acknowledgements
+      without duplicating conversion records. Expired response payloads become content-free markers;
+      conversion and replay use the database clock. Operator activation, deployment rehearsal and
+      whole-workload CPU/read/write measurements remain pending.
+    </p>
+    <p>
+      Local D1 measurement (2026-09-12):
+      <code>npx tsx tests/performance/d1-editorial-workload.ts</code> uses the production repository
+      and codec with 12 drafts, 100 media entries per draft, 800 starting revisions and 400
+      additional actions, including 40 identical retries. Allocated SQLite storage grew from
+      4,288,512 to 6,082,560 bytes, or 4,486 rounded bytes per action including receipts, audit and
+      indexes. The linear 90-day projection is 265,784,512 bytes including a 100,000,000-byte media
+      reserve, below the 350,000,000-byte target. The 1,600-action growth case projects 750,272,512
+      bytes and fails that target and the conservative per-database free limit; it is not claimed as
+      supported. The 400 saves and 40 retries used 147,304 emulator row reads and 7,208 row writes.
+      Library history aggregation fell from 64,422 reads to 200 at 80 revisions, a 99.69% reduction.
+      Full legacy-format Library listing remained 204 reads and zero writes at both eight and 80
+      revisions; four compact-format listings used 836 reads and zero writes. These are local
+      emulator counters and a declared synthetic action distribution, not provider billing or Worker
+      CPU measurements. Dashboard, foreground observation, history, publishing, maintenance, other
+      account consumers, additional action distributions and live usage still need inclusion before
+      claiming complete free-tier suitability.
     </p>
     <ol>
       <li>

@@ -1,3 +1,4 @@
+import { prepareRevisionPayload, readRevisionDocument } from './revision-payloads';
 import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
@@ -77,8 +78,8 @@ const DRAFT_SELECT = `
   JOIN revisions r ON r.id = d.latest_revision_id
 `;
 
-function parseRevision(row: RevisionRow): RevisionRecord {
-  const document = migrateDocument(JSON.parse(row.document_json)).document;
+async function parseRevision(database: D1Database, row: RevisionRow): Promise<RevisionRecord> {
+  const document = migrateDocument(await readRevisionDocument(database, row)).document;
   return {
     id: row.id,
     draftId: row.draft_id,
@@ -96,8 +97,8 @@ function parseRevision(row: RevisionRow): RevisionRecord {
   };
 }
 
-function parseDraft(row: DraftRow): DraftRecord {
-  const revision = parseRevision({
+async function parseDraft(database: D1Database, row: DraftRow): Promise<DraftRecord> {
+  const revision = await parseRevision(database, {
     id: row.revision_id,
     draft_id: row.id,
     sequence: row.sequence,
@@ -131,6 +132,7 @@ export class D1DraftRepository implements DraftRepository {
   constructor(
     private readonly database: D1Database,
     private readonly assets?: D1DraftAssets,
+    private readonly storageFormat: 'legacy' | 'compact-v1' = 'legacy',
   ) {}
 
   private async assertEditor(actor: string): Promise<void> {
@@ -170,7 +172,7 @@ export class D1DraftRepository implements DraftRepository {
       ? this.database.prepare(query).bind(status)
       : this.database.prepare(query);
     const result = await statement.all<DraftRow>();
-    return result.results.map(parseDraft);
+    return Promise.all(result.results.map((row) => parseDraft(this.database, row)));
   }
 
   async getDraft(id: string): Promise<DraftRecord> {
@@ -179,7 +181,7 @@ export class D1DraftRepository implements DraftRepository {
       .bind(id)
       .first<DraftRow>();
     if (!row) throw new NotFoundError(`Draft ${id} was not found`);
-    return parseDraft(row);
+    return parseDraft(this.database, row);
   }
 
   async getRevision(id: string): Promise<RevisionRecord> {
@@ -193,7 +195,7 @@ export class D1DraftRepository implements DraftRepository {
       .bind(id)
       .first<RevisionRow>();
     if (!row) throw new NotFoundError(`Revision ${id} was not found`);
-    return parseRevision(row);
+    return parseRevision(this.database, row);
   }
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
@@ -242,7 +244,10 @@ export class D1DraftRepository implements DraftRepository {
       updatedAt: now,
       deletedAt: null,
     };
-    const responseJson = JSON.stringify(record);
+    const payload =
+      this.storageFormat === 'compact-v1'
+        ? await prepareRevisionPayload(this.database, record.revision)
+        : { documentJson: JSON.stringify(document), statements: [] };
     try {
       await this.commit(input.actor, [
         ...(input.sourceDraftId
@@ -270,7 +275,7 @@ export class D1DraftRepository implements DraftRepository {
             revisionId,
             draftId,
             checksum,
-            JSON.stringify(document),
+            payload.documentJson,
             record.revision.label,
             document.schemaVersion,
             document.rendererVersion,
@@ -279,6 +284,7 @@ export class D1DraftRepository implements DraftRepository {
             record.revision.actionCategory,
             record.revision.actionContext,
           ),
+        ...payload.statements,
         this.database
           .prepare(`UPDATE drafts SET latest_revision_id = ? WHERE id = ?`)
           .bind(revisionId, draftId),
@@ -293,7 +299,7 @@ export class D1DraftRepository implements DraftRepository {
           input.actor,
           requestHash,
           201,
-          responseJson,
+          record,
           now,
         ),
       ]);
@@ -340,7 +346,7 @@ export class D1DraftRepository implements DraftRepository {
             input.actor,
             requestHash,
             200,
-            JSON.stringify(current),
+            current,
             now,
           ),
         ]);
@@ -383,6 +389,10 @@ export class D1DraftRepository implements DraftRepository {
       revision,
       updatedAt: now,
     };
+    const payload =
+      this.storageFormat === 'compact-v1'
+        ? await prepareRevisionPayload(this.database, revision)
+        : { documentJson: JSON.stringify(document), statements: [] };
     const revisionInsert = this.database
       .prepare(
         `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context)
@@ -396,7 +406,7 @@ export class D1DraftRepository implements DraftRepository {
         revision.sequence,
         revision.parentRevisionId,
         checksum,
-        JSON.stringify(document),
+        payload.documentJson,
         revision.label,
         document.schemaVersion,
         document.rendererVersion,
@@ -413,6 +423,7 @@ export class D1DraftRepository implements DraftRepository {
       const [, revisionWrite] = await this.commit(input.actor, [
         this.mutationGuard(current, input.actor, checkoutHash),
         revisionInsert,
+        ...payload.statements,
         ...new D1LibraryProjection(this.database).statements(revision, current.revision.sequence),
         ...assetStatements,
         ...additionalStatements,
@@ -433,13 +444,13 @@ export class D1DraftRepository implements DraftRepository {
           },
           revisionId,
         ),
-        this.guardedIdempotencyStatement(
+        this.idempotencyStatement(
           'draft.save',
           input.idempotencyKey,
           input.actor,
           requestHash,
           200,
-          JSON.stringify(record),
+          record,
           now,
           revisionId,
         ),
@@ -532,7 +543,7 @@ export class D1DraftRepository implements DraftRepository {
       )
       .bind(draftId)
       .all<RevisionRow>();
-    return result.results.map(parseRevision);
+    return Promise.all(result.results.map((row) => parseRevision(this.database, row)));
   }
 
   async restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord> {
@@ -543,7 +554,7 @@ export class D1DraftRepository implements DraftRepository {
     if (!source) throw new NotFoundError(`Revision ${input.revisionId} was not found`);
     return this.saveDraft({
       ...input,
-      document: parseRevision(source).document,
+      document: (await parseRevision(this.database, source)).document,
       idempotencyKey: `restore:${input.idempotencyKey.slice(0, 92)}`,
       action: { category: 'restore', context: 'revision-history' },
       label: `Restored revision ${source.sequence}`,
@@ -573,7 +584,7 @@ export class D1DraftRepository implements DraftRepository {
         .bind(crypto.randomUUID(), revisionId, label, actor, new Date().toISOString()),
       this.auditStatement(actor, 'revision.label', revisionId, requestId, { draftId }),
     ]);
-    return { ...parseRevision(source), label };
+    return { ...(await parseRevision(this.database, source)), label };
   }
 
   async renameDraft(
@@ -1015,11 +1026,13 @@ export class D1DraftRepository implements DraftRepository {
   ): Promise<DraftRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT response_json,status_code,request_hash,request_version,expires_at FROM idempotency_keys WHERE scope = ? AND actor = ? AND idempotency_key = ?`,
+        `SELECT response_json,response_version,status_code,request_hash,request_version,expires_at,expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now') AS expired FROM idempotency_keys WHERE scope = ? AND actor = ? AND idempotency_key = ?`,
       )
       .bind(scope, input.actor, input.idempotencyKey)
       .first<{
         response_json: string;
+        response_version: number;
+        expired: number;
         status_code: number;
         request_hash: string;
         request_version: number;
@@ -1032,7 +1045,7 @@ export class D1DraftRepository implements DraftRepository {
     }
     if (!row) return null;
     await this.assertEditor(input.actor);
-    if (row.expires_at <= new Date().toISOString())
+    if (row.expired === 1)
       throw new ConflictError(
         'This request receipt expired; reload and reconcile the saved revision',
       );
@@ -1064,6 +1077,25 @@ export class D1DraftRepository implements DraftRepository {
     }
     if (row.request_hash !== requestHash)
       throw new ConflictError('This request identity was already used with different input');
+    if (row.response_version === 2) {
+      const source = await this.database
+        .prepare(
+          'SELECT id,draft_id,checksum,document_json FROM revisions WHERE id=? AND draft_id=?',
+        )
+        .bind(record.latestRevisionId, record.id)
+        .first<RevisionRow>();
+      if (
+        !source ||
+        source.id !== record.revision.id ||
+        source.checksum !== record.revision.checksum
+      )
+        throw new Error('REQUEST_RECEIPT_CORRUPT');
+      const document = (await readRevisionDocument(
+        this.database,
+        source,
+      )) as DraftRecord['document'];
+      return { ...record, document, revision: { ...record.revision, document } };
+    }
     return record;
   }
 
@@ -1073,34 +1105,33 @@ export class D1DraftRepository implements DraftRepository {
     actor: string,
     requestHash: string,
     statusCode: number,
-    responseJson: string,
+    record: DraftRecord,
     now: string,
+    revisionId?: string,
   ): D1PreparedStatement {
+    const responseVersion = this.storageFormat === 'compact-v1' ? 2 : 1;
+    const responseJson = JSON.stringify(
+      responseVersion === 2
+        ? { ...record, document: undefined, revision: { ...record.revision, document: undefined } }
+        : record,
+    );
     const expires = new Date(Date.parse(now) + 90 * 86_400_000).toISOString();
     return this.database
       .prepare(
-        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at,request_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 2)`,
+        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at,request_version,response_version) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 2, ?${revisionId ? ' WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)' : ''}`,
       )
-      .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires);
-  }
-
-  private guardedIdempotencyStatement(
-    scope: string,
-    key: string,
-    actor: string,
-    requestHash: string,
-    statusCode: number,
-    responseJson: string,
-    now: string,
-    revisionId: string,
-  ): D1PreparedStatement {
-    const expires = new Date(Date.parse(now) + 90 * 86_400_000).toISOString();
-    return this.database
-      .prepare(
-        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at,request_version)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, 2 WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
-      )
-      .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires, revisionId);
+      .bind(
+        scope,
+        key,
+        actor,
+        requestHash,
+        statusCode,
+        responseJson,
+        now,
+        expires,
+        responseVersion,
+        ...(revisionId ? [revisionId] : []),
+      );
   }
 
   private auditStatement(

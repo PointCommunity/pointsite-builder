@@ -119,6 +119,12 @@ it('reads Library without history scans or writes, rebuilds in bounded batches, 
   expect(await library.list(draft.id)).toEqual(before);
   expect((await projection.backfill(draft.id)).processed).toBe(0);
   await database
+    .prepare(
+      "UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z' WHERE json_extract(response_json,'$.latestRevisionId') IN (SELECT id FROM revisions WHERE draft_id=? AND sequence=2)",
+    )
+    .bind(draft.id)
+    .run();
+  await database
     .prepare('DELETE FROM revisions WHERE draft_id=? AND sequence=2')
     .bind(draft.id)
     .run();

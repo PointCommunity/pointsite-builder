@@ -16,6 +16,7 @@ const RuntimeConfigSchema = z
     GITHUB_CLIENT_SECRET: z.string().min(20).optional(),
     SESSION_SECRET: z.string().min(32).optional(),
     PRODUCTION_ENABLED: z.literal('false'),
+    DRAFT_STORAGE_FORMAT: z.enum(['legacy', 'compact-v1']).default('legacy'),
   })
   .superRefine((value, context) => {
     if (value.ENVIRONMENT !== 'local' && value.DEV_AUTH_EMAIL) {
@@ -56,6 +57,7 @@ export interface RuntimeConfig {
   builderOrigin: string;
   devAuthEmail?: string;
   productionEnabled: false;
+  draftStorageFormat: 'legacy' | 'compact-v1';
   github?: {
     appId: string;
     installationId: string;
@@ -94,6 +96,7 @@ export function parseConfig(input: Record<string, unknown>): RuntimeConfig {
     builderOrigin: value.BUILDER_ORIGIN.replace(/\/$/, ''),
     ...(value.DEV_AUTH_EMAIL ? { devAuthEmail: value.DEV_AUTH_EMAIL.toLowerCase() } : {}),
     productionEnabled: false,
+    draftStorageFormat: value.DRAFT_STORAGE_FORMAT,
     ...(github ? { github } : {}),
   };
 }

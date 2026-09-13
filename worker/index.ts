@@ -40,7 +40,7 @@ export default {
     const roles = new D1RoleDirectory(env.DB);
     const legacy = new MediaService(new D1MediaRepository(env.DB), new D1PrivateBucket(env.DB));
     const draftAssets = new D1DraftAssets(env.DB, legacy, env.ASSETS);
-    const repository = new D1DraftRepository(env.DB, draftAssets);
+    const repository = new D1DraftRepository(env.DB, draftAssets, config.draftStorageFormat);
     const media = new MediaService(
       new D1MediaRepository(env.DB),
       new D1PrivateBucket(env.DB),

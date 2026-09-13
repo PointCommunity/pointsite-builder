@@ -1,3 +1,4 @@
+import { readRevisionDocument } from '../repositories/revision-payloads';
 import type { RevisionRecord } from '../repositories/contracts';
 import { ApiError } from '../http/errors';
 import type { SiteDocument } from '../../site-kit/types';
@@ -66,11 +67,18 @@ export class D1LibraryProjection {
     let previous = state?.sequence ?? 0;
     const rows = await this.database
       .prepare(
-        `SELECT id,sequence,document_json,created_at FROM revisions
+        `SELECT id,draft_id,checksum,sequence,document_json,created_at FROM revisions
       WHERE draft_id=? AND sequence>? ORDER BY sequence LIMIT 8`,
       )
       .bind(draftId, previous)
-      .all<{ id: string; sequence: number; document_json: string; created_at: string }>();
+      .all<{
+        id: string;
+        draft_id: string;
+        checksum: string;
+        sequence: number;
+        document_json: string;
+        created_at: string;
+      }>();
     if (!rows.results.length) return { processed: 0, sequence: previous };
     const statements = [
       this.database
@@ -88,7 +96,10 @@ export class D1LibraryProjection {
           {
             draftId,
             sequence: row.sequence,
-            document: JSON.parse(row.document_json) as RevisionRecord['document'],
+            document: (await readRevisionDocument(
+              this.database,
+              row,
+            )) as RevisionRecord['document'],
             createdAt: row.created_at,
           },
           previous,

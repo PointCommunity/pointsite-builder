@@ -195,7 +195,8 @@ export class D1AdminService {
         `SELECT
       (SELECT COALESCE(SUM(byte_size),0) FROM draft_asset_versions)
         +(SELECT COALESCE(SUM(byte_size),0) FROM media_object_chunks) AS privateMediaBytes,
-      (SELECT COALESCE(SUM(length(CAST(document_json AS BLOB))),0) FROM revisions) AS revisionPayloadBytes,
+      (SELECT COALESCE(SUM(length(CAST(document_json AS BLOB))),0) FROM revisions)
+        +(SELECT COALESCE(SUM(length(payload)),0) FROM revision_payloads) AS revisionPayloadBytes,
       (SELECT COALESCE(SUM(length(CAST(response_json AS BLOB))),0) FROM idempotency_keys) AS receiptPayloadBytes,
       (SELECT COUNT(*) FROM audit_events WHERE occurred_at>=? AND occurred_at<=?) AS auditEvents`,
       )

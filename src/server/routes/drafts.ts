@@ -1,3 +1,4 @@
+import { MAX_DRAFT_DOCUMENT_BYTES } from '../../shared/draft-limits';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { defaultSiteDocument } from '../../site-kit/default-site';
@@ -46,7 +47,7 @@ const TouchCheckoutSchema = ClientSchema.extend({
   activity: z.boolean().optional(),
 });
 
-export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;
+export { MAX_DRAFT_DOCUMENT_BYTES } from '../../shared/draft-limits';
 
 function validationError(error: z.ZodError): ApiError {
   return new ApiError(
