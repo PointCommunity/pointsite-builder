@@ -65,6 +65,13 @@ export interface CandidateTuple {
 }
 
 export type StagingPublishResponse =
+  | {
+      environment: 'staging';
+      jobId: string;
+      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+      publicationProtocol: 2;
+      candidateChecksum: string;
+    }
   | StagingPublishResult
   | {
       status: 'running';

@@ -61,8 +61,23 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
       });
-      return context.json(result, result.status === 'running' ? 202 : 201);
+      return context.json(
+        result,
+        result.status === 'running' || result.status === 'queued' ? 202 : 201,
+      );
     } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
+        );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
           409,
@@ -129,6 +144,18 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         201,
       );
     } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
+        );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
           409,
@@ -181,6 +208,18 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
           409,
           error.message,
           'Publication cannot continue; refresh the saved draft and publication status',
+        );
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
         );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(

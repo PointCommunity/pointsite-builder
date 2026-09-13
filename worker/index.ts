@@ -15,6 +15,8 @@ import { GitHubProductionReader } from '../src/server/github/client';
 import { RetentionService } from '../src/server/maintenance/retention';
 import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration';
 import { FeedbackService, parseFeedbackConfig } from '../src/server/feedback/service';
+import { PUBLICATION_WORKFLOW_REVISION } from '../src/server/publish/renderer-contract';
+import { dispatchPendingPublication } from '../src/server/publish/dispatch';
 import { D1PublicationRunner } from '../src/server/publish/runner';
 
 declare const __BUILDER_SOURCE_REVISION__: string;
@@ -33,6 +35,10 @@ class D1RoleDirectory implements RoleDirectory {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const config = parseConfig(env as unknown as Record<string, unknown>);
+    if (config.github) await dispatchPendingPublication(env.DB, config.github);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);
     const feedbackConfig =
@@ -78,7 +84,7 @@ export default {
         ? {
             publisher: new StagingPublisher(
               repository,
-              config.github,
+              { ...config.github, workflowRevision: PUBLICATION_WORKFLOW_REVISION },
               media,
               new D1PublishJobStore(env.DB),
               new D1PublishPreflightStore(env.DB),

@@ -69,6 +69,7 @@ interface BaseInput {
   actor: string;
   requestId: string;
   now?: string;
+  publicationProtocol?: 2;
 }
 
 type PassedInput = BaseInput & {
@@ -138,8 +139,21 @@ export class D1PublishPreflightStore {
   }
 
   async recordPassed(input: PassedInput): Promise<PublishPreflightRecord> {
+    const guard =
+      input.publicationProtocol === 2
+        ? this.database
+            .prepare(
+              `SELECT json(CASE WHEN EXISTS (
+      SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
+      JOIN user_roles u ON u.email=? AND u.active=1 AND u.role IN ('publisher','administrator')
+      WHERE d.id=? AND d.status='active' AND r.id=? AND r.checksum=?
+    ) THEN 'true' ELSE 'publication preflight authority changed' END)`,
+            )
+            .bind(input.actor, input.draftId, input.revisionId, input.revisionChecksum)
+        : undefined;
     const existing = await this.getByKey(input.idempotencyKey);
     if (existing) {
+      if (guard) await guard.first();
       if (matchesPassed(existing, input)) return existing;
       throw new Error('IDEMPOTENCY_CONFLICT');
     }
@@ -147,6 +161,7 @@ export class D1PublishPreflightStore {
     const now = input.now ?? new Date().toISOString();
     try {
       await this.database.batch([
+        ...(guard ? [guard] : []),
         this.database
           .prepare(
             `INSERT INTO publish_preflights (${selection}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -176,7 +191,10 @@ export class D1PublishPreflightStore {
       ]);
     } catch (error) {
       const raced = await this.getByKey(input.idempotencyKey);
-      if (raced && matchesPassed(raced, input)) return raced;
+      if (raced && matchesPassed(raced, input)) {
+        if (guard) await guard.first();
+        return raced;
+      }
       throw error;
     }
     const created = await this.getByKey(input.idempotencyKey);

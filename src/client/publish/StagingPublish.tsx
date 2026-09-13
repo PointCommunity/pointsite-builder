@@ -97,9 +97,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     setActionError(null);
     try {
       const currentJob = snapshot?.job;
-      if (currentJob?.status === 'running' || currentJob?.status === 'queued')
+      if (
+        currentJob?.publicationProtocol !== 2 &&
+        (currentJob?.status === 'running' || currentJob?.status === 'queued')
+      )
         await api.continueStagingPublication(currentJob.id);
       if (
+        currentJob?.publicationProtocol !== 2 &&
         lifecycle.phase !== 'waiting' &&
         currentJob?.status === 'succeeded' &&
         currentJob.evidence.verificationStatus !== 'passed'
@@ -347,7 +351,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
                 {busy
                   ? 'Checking…'
                   : lifecycle.phase === 'paused'
-                    ? 'Continue verification'
+                    ? lifecycle.step === 2
+                      ? 'Check publication status'
+                      : 'Continue verification'
                     : lifecycle.phase === 'unavailable'
                       ? 'Try loading again'
                       : lifecycle.phase === 'waiting'
@@ -379,13 +385,21 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         <p>{lifecycle.guidance}</p>
         {lifecycle.phase === 'waiting' && snapshot?.availability.state === 'busy' ? (
           <p>
-            Another publication is currently{' '}
-            {snapshot.availability.phase === 'queued' ? 'preparing' : 'publishing'}. If it does not
-            finish, Builder can safely recover the slot after{' '}
-            <time dateTime={snapshot.availability.retryAt}>
-              {new Date(snapshot.availability.retryAt).toLocaleString()}
-            </time>
-            .
+            {snapshot.availability.retryAt ? (
+              <>
+                Another publication is currently{' '}
+                {snapshot.availability.phase === 'queued' ? 'preparing' : 'publishing'}. Builder can
+                check recovery after{' '}
+                <time dateTime={snapshot.availability.retryAt}>
+                  {new Date(snapshot.availability.retryAt).toLocaleString()}
+                </time>
+                .
+              </>
+            ) : snapshot.availability.phase === 'review' ? (
+              'Staging is reserved for review of the captured version.'
+            ) : (
+              'Staging stays reserved until the captured publication is finished or safely reconciled.'
+            )}
           </p>
         ) : null}
       </div>
@@ -437,6 +451,12 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           </div>
           {snapshot?.job ? (
             <>
+              {snapshot.job.publicationProtocol === 2 ? (
+                <div>
+                  <dt>Captured revision ID</dt>
+                  <dd>{snapshot.job.revisionId}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Publish job</dt>
                 <dd>{snapshot.job.id}</dd>
@@ -456,6 +476,11 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           {snapshot?.job?.commitUrl ? (
             <a href={snapshot.job.commitUrl} target="_blank" rel="noreferrer">
               Commit evidence
+            </a>
+          ) : null}
+          {snapshot?.job?.dispatch?.workflowUrl ? (
+            <a href={snapshot.job.dispatch.workflowUrl} target="_blank" rel="noreferrer">
+              Cloud publication progress
             </a>
           ) : null}
           {snapshot?.job?.evidence.workflowUrl ? (

@@ -496,8 +496,10 @@
       backend runner input routes are wired. Migration 0021 adds an immutable run reservation,
       compact build identity, commit/deployment intents and native deployment acknowledgment. Build
       authorization, Git commit verification, deployment authorization and final verification have
-      local D1 and signed-token coverage. User-facing capture/dispatch, live workflow execution,
-      slot release, acceptance and Production promotion remain pending.
+      local D1 and signed-token coverage. Builder now captures cloud jobs after a metadata
+      preflight, validates the immutable runtime and reviewed caller, and polls metadata without
+      uploading media. Live workflow execution, slot release, exact acceptance and Production
+      promotion remain pending.
     </p>
     <p>
       Read-only GitHub checks on 13 September verified public repository IDs 1357847426 for
@@ -565,6 +567,29 @@
       metadata provide current-deployment checks without exposing private drafts or adding visitor
       editing access. All cloud execution, pins, callback reconciliation and release evidence remain
       implementation gates, not completed claims.
+    </p>
+
+    <p>
+      Migration 0022 records sanitized dispatch failures. The native
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/"
+        >scheduled handler</a
+      >
+      examines held destination slots once per minute, selecting at most one eligible unreserved
+      Staging job. It rechecks the captured actor, destination base and repository permission before
+      dispatch. Atomic exponential backoff allows at most six automatic attempts (1, 2, 4, 8, 16 and
+      32 minute delays); uncertain responses reuse the same job and nonce. The first native
+      reservation stops further dispatch. Exhaustion preserves the slot and exposes required
+      reconciliation. Browser status GETs do not dispatch, renew leases or read document/image
+      payloads. Later editor revisions remain separate from the captured version.
+    </p>
+    <p>
+      Budget the schedule as 1,440 invocations per day plus bounded slot lookups, independently of
+      historical job count. It creates no Queue or paid service. Cloudflare's
+      <a href="https://developers.cloudflare.com/workers/platform/limits/">published Free limits</a>
+      still apply: 10 ms CPU per invocation and five Cron Triggers per account. Account trigger
+      capacity, real dispatch CPU and the complete workload budget remain release checks. Deploy the
+      additive migrations before the Worker/trigger configuration; keep the reviewed Staging caller
+      installed and legacy deployment activity reconciled before accepting cloud captures.
     </p>
 
     <h2>Current implementation evidence and migration sequence</h2>

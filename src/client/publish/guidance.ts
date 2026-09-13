@@ -78,8 +78,11 @@ export function getPublishingNextStep(
       };
     case 'paused':
       return {
-        title: 'Continue verification',
-        guidance: 'Select the button below to check this exact Staging version now.',
+        title: lifecycle.step === 2 ? 'Check cloud publication status' : 'Continue verification',
+        guidance:
+          lifecycle.step === 2
+            ? lifecycle.guidance
+            : 'Select the button below to check this exact Staging version now.',
         effect: 'This checks the existing Staging version only. It does not publish again.',
         primaryAction: 'Continue verification',
       };
@@ -153,6 +156,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
   switch (code) {
     case 'FORBIDDEN':
     case 'UNAUTHENTICATED':
+    case 'PUBLISH_AUTHORITY_CHANGED':
       return {
         title: 'Your access changed',
         guidance:
@@ -213,6 +217,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Close and reopen Publish to load the current workflow. Builder will show whether a new Staging candidate is needed.',
       };
+    case 'PUBLICATION_RUNTIME_UNAVAILABLE':
     case 'PUBLISHING_NOT_CONFIGURED':
     case 'APPROVALS_NOT_CONFIGURED':
     case 'PRODUCTION_BASE_UNAVAILABLE':

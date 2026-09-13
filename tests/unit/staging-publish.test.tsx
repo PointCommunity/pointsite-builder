@@ -176,6 +176,38 @@ describe('guided Staging publishing', () => {
     expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
   });
 
+  it('polls a captured cloud job with GET only after reload and later edits', async () => {
+    const cloud: StagingWorkflowSnapshot = {
+      ...ready,
+      availability: { state: 'busy', phase: 'running' },
+      job: {
+        ...job,
+        publicationProtocol: 2,
+        status: 'running',
+        revisionId: 'different-captured-revision',
+        requestedAt: new Date().toISOString(),
+        completedAt: null,
+        stagingCommitSha: null,
+        commitUrl: null,
+      },
+    };
+    const load = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(cloud);
+    const continueJob = vi.spyOn(api, 'continueStagingPublication');
+    const verifyJob = vi.spyOn(api, 'refreshStagingVerification');
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    expect(await screen.findByText(/Your newer saved edits are separate/)).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Check now' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(continueJob).not.toHaveBeenCalled();
+    expect(verifyJob).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it('runs private preflight and publication from one intentional action', async () => {
     const load = vi
       .spyOn(api, 'getStagingWorkflow')
@@ -214,7 +246,7 @@ describe('guided Staging publishing', () => {
     expect(screen.getByRole('button', { name: 'Check availability' })).toBeEnabled();
     expect(screen.getByText(/selected draft and private preflight remain safe/i)).toBeVisible();
     expect(screen.getByText(/another publication is currently publishing/i)).toBeVisible();
-    expect(screen.getByText(/safely recover the slot after/i)).toBeVisible();
+    expect(screen.getByText(/check recovery after/i)).toBeVisible();
 
     await act(() => vi.advanceTimersByTimeAsync(10_000));
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));

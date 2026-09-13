@@ -136,6 +136,19 @@ export class GitHubStagingClient {
     }
   }
 
+  async assertPublicationCaller(baseSha: string, expectedBlob: string): Promise<void> {
+    Sha.parse(baseSha);
+    Sha.parse(expectedBlob);
+    try {
+      const caller = ContentResponse.parse(
+        await this.call('GET', `contents/.github/workflows/publish-candidate.yml?ref=${baseSha}`),
+      );
+      if (caller.sha !== expectedBlob) throw new Error('PUBLICATION_RUNTIME_UNAVAILABLE');
+    } catch {
+      throw new Error('PUBLICATION_RUNTIME_UNAVAILABLE');
+    }
+  }
+
   async advanceCommit(input: StagingUploadInput): Promise<StagingUploadResult> {
     Sha.parse(input.expectedBaseSha);
     if (

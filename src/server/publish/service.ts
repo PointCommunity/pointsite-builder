@@ -9,7 +9,7 @@ import type {
 import type { MediaService } from '../media/service';
 import type { DraftRepository } from '../repositories/contracts';
 import { buildCandidate } from './candidate';
-import { STAGING_RENDERER_CONTRACT } from './renderer-contract';
+import { STAGING_RENDERER_CONTRACT, PUBLICATION_CALLER_BLOB } from './renderer-contract';
 import type { D1PublishJobStore, PublishJobRecord } from './jobs';
 import type { D1PublishPreflightStore } from './preflights';
 import { checksumDocument } from '../../site-kit/canonicalize';
@@ -19,6 +19,7 @@ export interface PublisherConfig {
   appId: string;
   installationId: string;
   privateKey: string;
+  workflowRevision?: string;
 }
 
 interface PublishInput {
@@ -39,6 +40,7 @@ interface StagingClient {
     expectedBaseSha: string,
     contract: Record<string, string>,
   ): Promise<void>;
+  assertPublicationCaller?(baseSha: string, expectedBlob: string): Promise<void>;
   advanceCommit(input: StagingUploadInput): Promise<StagingUploadResult>;
   verificationForCommit(commitSha: string): Promise<
     | { status: 'pending' }
@@ -72,14 +74,16 @@ export class StagingPublisher {
 
   async workflowForDraft(draftId: string) {
     if (!this.jobs || !this.preflights) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
-    const draft = await this.repository.getDraft(draftId);
+    const draft = this.config.workflowRevision
+      ? await this.jobs.draftHead(draftId)
+      : await this.repository.getDraft(draftId);
     const contractChecksum = await this.rendererContractChecksum();
     const now = new Date().toISOString();
     const [currentStagingSha, job, latestPreflight, availability] = await Promise.all([
       this.currentBaseSha(),
       this.jobs.getLatestForDraft(draftId),
       this.preflights.getLatestForDraft(draftId),
-      this.jobs.availability(now),
+      this.config.workflowRevision ? this.jobs.cloudAvailability() : this.jobs.availability(now),
     ]);
     const preflight = !latestPreflight
       ? { state: 'required' as const, reason: 'not-validated' as const }
@@ -102,12 +106,20 @@ export class StagingPublisher {
       reviewUrl: 'https://staging.pointatx.org',
       preflight,
       availability,
-      job: job ? this.workflowJob(job, now) : null,
+      job: job
+        ? {
+            ...this.workflowJob(job, now),
+            ...(job.candidate.publicationProtocol === 2
+              ? { dispatch: await this.jobs.dispatchStatus(job.id) }
+              : {}),
+          }
+        : null,
     };
   }
 
   async preflight(input: PreflightInput) {
     if (!this.preflights) throw new Error('PREFLIGHTS_NOT_CONFIGURED');
+    if (this.config.workflowRevision) return this.cloudPreflight(input);
     const draft = await this.repository.getDraft(input.draftId);
     if (draft.status !== 'active') throw new Error('DRAFT_REVISION_DRIFT');
     const contractChecksum = await this.rendererContractChecksum();
@@ -181,6 +193,102 @@ export class StagingPublisher {
     }
   }
 
+  private async cloudPreflight(input: PreflightInput) {
+    if (!this.jobs || !this.preflights) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    const draft = await this.repository.getDraft(input.draftId);
+    if (
+      draft.status !== 'active' ||
+      draft.revision.id !== input.expectedRevisionId ||
+      draft.revision.checksum !== input.expectedRevisionChecksum
+    )
+      throw new Error('DRAFT_REVISION_DRIFT');
+    const client = await this.client();
+    const baseSha = await client.currentMainSha();
+    await this.assertCloudRuntime(client, baseSha);
+    const prepared = await this.jobs.prepareInputs(draft, this.config.workflowRevision!);
+    const passed = await this.preflights.recordPassed({
+      ...input,
+      publicationProtocol: 2,
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      candidateChecksum: prepared.candidateChecksum,
+      schemaVersion: draft.document.schemaVersion,
+      rendererVersion: draft.document.rendererVersion,
+      rendererContractChecksum: await this.rendererContractChecksum(),
+      validatedBaseSha: baseSha,
+      fileCount: prepared.candidate.fileCount,
+    });
+    return {
+      state: 'passed' as const,
+      revisionId: passed.revisionId,
+      revisionChecksum: passed.revisionChecksum,
+      candidateChecksum: passed.candidateChecksum!,
+      validatedAt: passed.completedAt,
+    };
+  }
+
+  private async assertCloudRuntime(client: StagingClient, baseSha: string) {
+    if (!client.assertPublicationCaller) throw new Error('PUBLICATION_RUNTIME_UNAVAILABLE');
+    await client.assertPublicationCaller(baseSha, PUBLICATION_CALLER_BLOB);
+    await client.assertRendererCompatible(this.config.workflowRevision!, STAGING_RENDERER_CONTRACT);
+  }
+
+  private async captureCloud(input: PublishInput) {
+    const jobs = this.jobs!,
+      preflights = this.preflights!;
+    const existing = await jobs.capturedRetry(
+      input.idempotencyKey,
+      input.actor,
+      input.expectedBaseSha,
+      {
+        draftId: input.draftId,
+        revisionId: input.expectedRevisionId,
+        revisionChecksum: input.expectedRevisionChecksum,
+        workflowRevision: this.config.workflowRevision!,
+      },
+    );
+    if (existing) return this.cloudResult(existing);
+    const draft = await this.repository.getDraft(input.draftId);
+    if (
+      draft.status !== 'active' ||
+      draft.revision.id !== input.expectedRevisionId ||
+      draft.revision.checksum !== input.expectedRevisionChecksum
+    )
+      throw new Error('DRAFT_REVISION_DRIFT');
+    const preflight = await preflights.getLatestCurrent(
+      draft.id,
+      draft.revision.id,
+      draft.revision.checksum,
+      await this.rendererContractChecksum(),
+    );
+    if (!preflight?.candidateChecksum) throw new Error('PREFLIGHT_REQUIRED');
+    if ((await jobs.cloudAvailability()).state === 'busy') throw new Error('PUBLISH_SLOT_BUSY');
+    const client = await this.client();
+    if ((await client.currentMainSha()) !== input.expectedBaseSha)
+      throw new Error('STAGING_BASE_DRIFT');
+    await this.assertCloudRuntime(client, input.expectedBaseSha);
+    const job = await jobs.captureStaging({
+      draft,
+      workflowRevision: this.config.workflowRevision!,
+      baseSha: input.expectedBaseSha,
+      actor: input.actor,
+      idempotencyKey: input.idempotencyKey,
+      requestId: input.requestId,
+      preflightId: preflight.id,
+    });
+    return this.cloudResult(job);
+  }
+
+  private cloudResult(job: PublishJobRecord) {
+    return {
+      environment: 'staging' as const,
+      jobId: job.id,
+      status: job.status,
+      publicationProtocol: 2 as const,
+      candidateChecksum: job.candidateChecksum,
+    };
+  }
+
   async refreshVerification(id: string, actor: string, requestId: string) {
     if (!this.jobs) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
     const job = await this.jobs.getById(id);
@@ -212,6 +320,7 @@ export class StagingPublisher {
 
   async publish(input: PublishInput) {
     if (!this.jobs || !this.preflights) throw new Error('PUBLISH_JOBS_NOT_CONFIGURED');
+    if (this.config.workflowRevision) return this.captureCloud(input);
     const draft = await this.repository.getDraft(input.draftId);
     if (
       draft.status !== 'active' ||
@@ -470,6 +579,9 @@ export class StagingPublisher {
       id: job.id,
       status: leaseExpired ? ('cancelled' as const) : job.status,
       candidateChecksum: job.candidateChecksum,
+      ...(candidate.publicationProtocol === 2
+        ? { publicationProtocol: 2 as const, workflowRevision: candidate.workflowRevision }
+        : {}),
       draftId: candidate.draftId,
       revisionId: candidate.revisionId,
       revisionChecksum: candidate.revisionChecksum,
@@ -492,12 +604,22 @@ export class StagingPublisher {
       appId: this.config.appId,
       installationId: this.config.installationId,
       privateKey: this.config.privateKey,
+      ...(this.config.workflowRevision ? { repository: 'pointsite-staging' } : {}),
     });
     return new GitHubStagingClient('PointCommunity/pointsite-staging', token);
   }
 
   private rendererContractChecksum(): Promise<string> {
-    return checksumDocument(STAGING_RENDERER_CONTRACT);
+    return checksumDocument(
+      this.config.workflowRevision
+        ? {
+            renderer: STAGING_RENDERER_CONTRACT,
+            workflowRevision: this.config.workflowRevision,
+            callerBlob: PUBLICATION_CALLER_BLOB,
+            publicationProtocol: 2,
+          }
+        : STAGING_RENDERER_CONTRACT,
+    );
   }
 
   private preflightFailureCode(error: unknown): string {

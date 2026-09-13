@@ -682,11 +682,11 @@ paths:
     post:
       operationId: publishStaging
       description: >-
-        Starts or resumes the exact preflighted candidate under the shared publication lease.
-        Each request uploads at most 20 blobs and checkpoints completed blob identities.
-        Returns 202 while work remains or 201 after every file is uploaded and the exact
-        non-forced Staging branch update completes. Running is not release success.
-        Continue the returned job with POST; GET never advances publishing.
+        Captures the exact metadata-preflighted revision, owned assets, renderer and destination
+        base into a durable cloud job. Returns 202 for queued/running work; the native schedule
+        dispatches independently of the browser with bounded retries. GET status never advances
+        publishing. An identical retry returns the captured job even after later editor changes.
+        Legacy jobs retain their explicit POST continuation contract during cutover.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -707,12 +707,18 @@ paths:
           description: Staging candidate commit and durable publish job
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/StagingPublishResult' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CapturedStagingJob'
+                  - $ref: '#/components/schemas/StagingPublishResult'
         '202':
-          description: Upload checkpointed; continue the same job to finish publishing
+          description: Captured cloud job or legacy upload checkpoint
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/StagingPublishProgress' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CapturedStagingJob'
+                  - $ref: '#/components/schemas/StagingPublishProgress'
         '409': { $ref: '#/components/responses/Error' }
   /publish/staging/preflight:
     post:
@@ -1490,10 +1496,10 @@ components:
             state: { type: string, const: available }
         - type: object
           additionalProperties: false
-          required: [state, phase, retryAt]
+          required: [state, phase]
           properties:
             state: { type: string, const: busy }
-            phase: { type: string, enum: [queued, running] }
+            phase: { type: string, enum: [queued, running, review, recovery] }
             retryAt: { type: string, format: date-time }
     StagingWorkflowJob:
       type: object
@@ -1514,6 +1520,18 @@ components:
         ]
       properties:
         id: { type: string, format: uuid }
+        publicationProtocol: { type: integer, const: 2 }
+        workflowRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        dispatch:
+          type: object
+          additionalProperties: false
+          required: [attempts, retryAt, needsAttention]
+          properties:
+            attempts: { type: integer, minimum: 0 }
+            retryAt: { type: string, format: date-time }
+            needsAttention: { type: boolean }
+            failureCode: { type: string, pattern: '^PUBLISH_[A-Z_]+$' }
+            workflowUrl: { type: string, format: uri }
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
         candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
         draftId: { type: string, format: uuid }
@@ -1573,6 +1591,16 @@ components:
         stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         stagingCommitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         productionBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    CapturedStagingJob:
+      type: object
+      additionalProperties: false
+      required: [environment, jobId, status, publicationProtocol, candidateChecksum]
+      properties:
+        environment: { type: string, const: staging }
+        jobId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        publicationProtocol: { type: integer, const: 2 }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
     StagingPublishProgress:
       type: object
       additionalProperties: false

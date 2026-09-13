@@ -3,6 +3,15 @@ export type VerificationStatus = 'pending' | 'passed' | 'failed';
 
 export interface StagingWorkflowJob {
   id: string;
+  publicationProtocol?: 2;
+  workflowRevision?: string;
+  dispatch?: {
+    attempts: number;
+    retryAt: string;
+    needsAttention: boolean;
+    failureCode?: string;
+    workflowUrl?: string;
+  };
   status: PublishJobStatus;
   candidateChecksum: string;
   draftId: string;
@@ -49,7 +58,8 @@ export interface StagingWorkflowSnapshot {
         reason: 'not-validated' | 'revision-changed' | 'renderer-contract-changed' | 'failed';
       };
   availability:
-    { state: 'available' } | { state: 'busy'; phase: 'queued' | 'running'; retryAt: string };
+    | { state: 'available' }
+    | { state: 'busy'; phase: 'queued' | 'running' | 'review' | 'recovery'; retryAt?: string };
   job: StagingWorkflowJob | null;
   approval: StagingAcceptanceSummary | null;
 }
@@ -124,16 +134,42 @@ export function deriveStagingWorkflow(input: {
     job && job.stagingCommitSha && currentStagingSha !== job.stagingCommitSha,
   );
 
-  if (!revisionChanged && job && (job.status === 'queued' || job.status === 'running'))
+  const captured = job?.publicationProtocol === 2;
+  if (captured && job.dispatch?.needsAttention)
+    return state(
+      'paused',
+      2,
+      'Publication needs attention',
+      'Automatic dispatch retries stopped. Your captured version is saved. Ask a site maintainer to reconcile this job before trying again.',
+      { canRefresh: true },
+    );
+  if (
+    (!revisionChanged || captured) &&
+    job &&
+    (job.status === 'queued' || job.status === 'running')
+  ) {
+    if (captured && input.monitoringPaused)
+      return state(
+        'paused',
+        2,
+        'Automatic monitoring paused',
+        'Your captured publication continues in the cloud. Check status to read its latest progress.',
+        { canRefresh: true },
+      );
     return state(
       'publishing',
       2,
       'Publishing to protected Staging',
-      'The exact candidate is being created. This workflow will continue automatically.',
+      captured
+        ? revisionChanged
+          ? 'The captured version continues in the cloud. Your newer saved edits are separate from this publication.'
+          : 'The captured version continues in the cloud, even after you close Builder.'
+        : 'The exact candidate is being created. This workflow will continue automatically.',
       { canRefresh: true, shouldPoll: true },
     );
-
-  const completedCurrentJob = !revisionChanged && !stagingChanged && job?.status === 'succeeded';
+  }
+  const completedCurrentJob =
+    (!revisionChanged || captured) && !stagingChanged && job?.status === 'succeeded';
   const preflightPassed =
     preflight.state === 'passed' &&
     preflight.revisionId === input.revisionId &&
@@ -159,7 +195,7 @@ export function deriveStagingWorkflow(input: {
       { canRefresh: true, shouldPoll: true },
     );
 
-  if (!job || revisionChanged)
+  if (!job || (revisionChanged && !captured))
     return state(
       'ready',
       2,
@@ -209,7 +245,9 @@ export function deriveStagingWorkflow(input: {
       'verifying',
       3,
       'Verifying the exact Staging candidate',
-      'Build, deployment, live routes, accessibility, responsive behavior, and security checks are running.',
+      captured
+        ? 'The cloud build, deployment identity, and live file checks are running.'
+        : 'Build, deployment, live routes, accessibility, responsive behavior, and security checks are running.',
       { canRefresh: true, shouldPoll: true },
     );
   }

@@ -18,6 +18,8 @@ const eligible = `FROM publication_runs pr JOIN publication_slots ps ON ps.job_i
       OR (ps.target='production' AND j.environment='production-merge' AND u.role='administrator'))`;
 
 /** Dispatch only captured jobs. A lost response leaves the same job and nonce retryable. */
+export const MAX_DISPATCH_ATTEMPTS = 6;
+
 export async function dispatchPublication(
   database: D1Database,
   config: PublisherConfig,
@@ -41,8 +43,8 @@ export async function dispatchPublication(
   const reserved = await database
     .prepare(
       `UPDATE publication_runs
-    SET dispatch_after=strftime('%Y-%m-%dT%H:%M:%fZ','now','+60 seconds'),dispatch_count=dispatch_count+1
-    WHERE job_id=? AND dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    SET dispatch_after=strftime('%Y-%m-%dT%H:%M:%fZ','now','+' || (60 << dispatch_count) || ' seconds'),dispatch_count=dispatch_count+1,dispatch_error=NULL
+    WHERE job_id=? AND dispatch_count<${MAX_DISPATCH_ATTEMPTS} AND dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       AND EXISTS (SELECT 1 ${eligible} AND u.github_login=?)`,
     )
     .bind(jobId, jobId, input.github_login)
@@ -93,7 +95,7 @@ export async function dispatchPublication(
       const seconds = Number.isFinite(retry) ? Math.min(3600, Math.max(60, Math.ceil(retry))) : 60;
       await database
         .prepare(
-          "UPDATE publication_runs SET dispatch_after=strftime('%Y-%m-%dT%H:%M:%fZ','now',?) WHERE job_id=?",
+          "UPDATE publication_runs SET dispatch_after=MAX(dispatch_after,strftime('%Y-%m-%dT%H:%M:%fZ','now',?)) WHERE job_id=?",
         )
         .bind(`+${seconds} seconds`, jobId)
         .run();
@@ -105,6 +107,37 @@ export async function dispatchPublication(
       error instanceof Error && /^PUBLISH_[A-Z_]+$/.test(error.message)
         ? error.message
         : 'PUBLISH_DISPATCH_UNCONFIRMED';
+    await database
+      .prepare('UPDATE publication_runs SET dispatch_error=? WHERE job_id=?')
+      .bind(code, jobId)
+      .run();
     throw new Error(code);
+  }
+}
+
+/** One of at most two held slots per invocation; idle cost does not grow with job history. */
+export async function dispatchPendingPublication(
+  database: D1Database,
+  config: PublisherConfig,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const row = await database
+    .prepare(
+      `SELECT pr.job_id FROM publication_slots ps
+    JOIN publication_runs pr ON pr.job_id=ps.job_id JOIN publish_jobs j ON j.id=ps.job_id
+    JOIN publication_inputs pi ON pi.job_id=j.id JOIN drafts d ON d.id=pi.draft_id
+    JOIN user_roles u ON u.email=j.requested_by
+    WHERE ps.target='staging' AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL
+      AND pr.dispatch_count<${MAX_DISPATCH_ATTEMPTS} AND pr.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      AND d.status='active' AND u.active=1 AND u.role IN ('publisher','administrator')
+    ORDER BY pr.dispatch_after,pr.job_id LIMIT 1`,
+    )
+    .first<{ job_id: string }>();
+  if (!row) return;
+  try {
+    await dispatchPublication(database, config, row.job_id, fetcher);
+  } catch (error) {
+    if (error instanceof Error && /^PUBLISH_[A-Z_]+$/.test(error.message)) return;
+    throw new Error('PUBLISH_DISPATCH_UNCONFIRMED');
   }
 }

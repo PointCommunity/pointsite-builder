@@ -17,7 +17,13 @@ import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
-import { dispatchPublication } from '../../src/server/publish/dispatch';
+import { StagingPublisher } from '../../src/server/publish/service';
+import { D1PublishPreflightStore } from '../../src/server/publish/preflights';
+import {
+  PUBLICATION_CALLER_BLOB,
+  PUBLICATION_WORKFLOW_REVISION,
+} from '../../src/server/publish/renderer-contract';
+import { dispatchPendingPublication, dispatchPublication } from '../../src/server/publish/dispatch';
 import { publicationGitHubFixture } from '../fixtures/publication-github';
 
 const actor = 'editor@pointatx.org';
@@ -285,7 +291,10 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
       });
     throw new Error('Unexpected URL');
   };
-  await dispatchPublication(database, config, job.id, fetcher);
+  await Promise.all([
+    dispatchPendingPublication(database, config, fetcher),
+    dispatchPendingPublication(database, config, fetcher),
+  ]);
   expect(calls).toHaveLength(4);
   expect(calls[0].body).toEqual({
     repositories: ['pointsite-staging'],
@@ -307,6 +316,8 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
   await expect(dispatchPublication(database, config, job.id, fetcher)).rejects.toThrow(
     'PUBLISH_DISPATCH_BACKOFF',
   );
+  expect(calls).toHaveLength(4);
+  await dispatchPendingPublication(database, config, fetcher);
   expect(calls).toHaveLength(4);
   const resetBackoff = () =>
     database
@@ -339,6 +350,168 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
       .bind(job.id)
       .first('held'),
   ).toBe(1);
+  await resetBackoff();
+  calls.length = 0;
+  await dispatchPendingPublication(database, config, fetcher);
+  expect(calls).toHaveLength(0);
+  expect(await new D1PublishJobStore(database).dispatchStatus(job.id)).toMatchObject({
+    attempts: 6,
+    needsAttention: true,
+  });
+}, 30_000);
+
+it('captures cloud inputs without reading image bytes and polls only metadata after later edits', async () => {
+  const { database, repository, createInput } = await fixture();
+  await database.prepare("UPDATE user_roles SET role='publisher' WHERE email=?").bind(actor).run();
+  const draft = await repository.createDraft(createInput);
+  const jobs = new D1PublishJobStore(database),
+    preflights = new D1PublishPreflightStore(database);
+  const client = {
+    currentMainSha: vi.fn(() => Promise.resolve('b'.repeat(40))),
+    assertRendererCompatible: vi.fn(async () => {}),
+    assertPublicationCaller: vi.fn(async () => {}),
+    advanceCommit: vi.fn(),
+    verificationForCommit: vi.fn(),
+  };
+  const publisher = new StagingPublisher(
+    repository,
+    {
+      appId: '123',
+      installationId: '456',
+      privateKey: 'unused',
+      workflowRevision: PUBLICATION_WORKFLOW_REVISION,
+    },
+    undefined,
+    jobs,
+    preflights,
+    () => Promise.resolve(client),
+  );
+  const input = {
+    draftId: draft.id,
+    expectedRevisionId: draft.revision.id,
+    expectedRevisionChecksum: draft.revision.checksum,
+    actor,
+    idempotencyKey: 'cloud-preflight-fixture',
+    requestId: 'cloud-fixture',
+  };
+  const reads = vi.spyOn(database, 'prepare');
+  const passed = await publisher.preflight(input);
+  expect(passed.state).toBe('passed');
+  expect(client.assertPublicationCaller).toHaveBeenCalledWith(
+    'b'.repeat(40),
+    PUBLICATION_CALLER_BLOB,
+  );
+  expect(client.assertRendererCompatible).toHaveBeenCalledWith(
+    PUBLICATION_WORKFLOW_REVISION,
+    expect.any(Object),
+  );
+  const capture = {
+    ...input,
+    expectedBaseSha: 'b'.repeat(40),
+    idempotencyKey: 'cloud-capture-fixture',
+  };
+  const job = await publisher.publish(capture);
+  expect(job).toMatchObject({
+    status: 'queued',
+    publicationProtocol: 2,
+    candidateChecksum: passed.candidateChecksum,
+  });
+  const externalCalls = client.currentMainSha.mock.calls.length;
+  expect(await publisher.publish(capture)).toEqual(job);
+  expect(client.currentMainSha.mock.calls).toHaveLength(externalCalls);
+  expect(client.advanceCommit).not.toHaveBeenCalled();
+  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(/draft_asset_chunks/);
+  const document = structuredClone(draft.document);
+  document.media[0].alt = 'Later edit';
+  await repository.saveDraft({
+    draftId: draft.id,
+    ...(await acquireDraftProof(repository, draft.id, actor)),
+    document,
+    actor,
+    idempotencyKey: 'cloud-captured-later-edit',
+    requestId: 'later-edit',
+    action: { category: 'control-change', context: 'library-attachment' },
+  });
+  const fullRead = vi.spyOn(repository, 'getDraft');
+  fullRead.mockClear();
+  reads.mockClear();
+  const status = await publisher.workflowForDraft(draft.id);
+  expect(status).toMatchObject({
+    preflight: { state: 'required', reason: 'revision-changed' },
+    availability: { state: 'busy', phase: 'queued' },
+    job: {
+      id: job.jobId,
+      revisionId: draft.revision.id,
+      publicationProtocol: 2,
+      dispatch: { attempts: 0, needsAttention: false },
+    },
+  });
+  expect(await publisher.publish(capture)).toEqual(job);
+  await expect(
+    publisher.publish({ ...capture, expectedRevisionChecksum: 'f'.repeat(64) }),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
+  await expect(publisher.publish(capture)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
+  expect(fullRead).not.toHaveBeenCalled();
+  reads.mockClear();
+  await publisher.workflowForDraft(draft.id);
+  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(
+    /INSERT|UPDATE|DELETE|document_json|draft_asset_chunks/,
+  );
+  await expect(publisher.continuePublication(job.jobId!, actor, 'old-tab')).rejects.toThrow(
+    'PUBLISH_JOB_NOT_CLAIMABLE',
+  );
+}, 30_000);
+
+it('rechecks cloud preflight authority atomically and rejects changed preflight at capture', async () => {
+  const { database, repository, createInput } = await fixture();
+  await database.prepare("UPDATE user_roles SET role='publisher' WHERE email=?").bind(actor).run();
+  const draft = await repository.createDraft(createInput);
+  const jobs = new D1PublishJobStore(database),
+    preflights = new D1PublishPreflightStore(database);
+  const prepared = await jobs.prepareInputs(draft, PUBLICATION_WORKFLOW_REVISION);
+  const input = {
+    draftId: draft.id,
+    revisionId: draft.revision.id,
+    revisionChecksum: draft.revision.checksum,
+    actor,
+    idempotencyKey: 'cloud-guarded-preflight',
+    requestId: 'guard',
+    publicationProtocol: 2 as const,
+    rendererContractChecksum: 'c'.repeat(64),
+    candidateChecksum: prepared.candidateChecksum,
+    schemaVersion: draft.document.schemaVersion,
+    rendererVersion: draft.document.rendererVersion,
+    validatedBaseSha: 'b'.repeat(40),
+    fileCount: prepared.candidate.fileCount,
+  };
+  const passed = await preflights.recordPassed(input);
+  await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
+  await expect(preflights.recordPassed(input)).rejects.toThrow();
+  await expect(
+    preflights.recordPassed({ ...input, idempotencyKey: 'revoked-cloud-preflight' }),
+  ).rejects.toThrow();
+  expect(await preflights.getByKey('revoked-cloud-preflight')).toBeNull();
+  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
+  await preflights.recordFailed({
+    ...input,
+    idempotencyKey: 'invalidate-cloud-preflight',
+    failureCode: 'PREFLIGHT_CANDIDATE_DRIFT',
+  });
+  await expect(
+    jobs.captureStaging({
+      draft,
+      workflowRevision: PUBLICATION_WORKFLOW_REVISION,
+      baseSha: 'b'.repeat(40),
+      actor,
+      idempotencyKey: 'rejected-cloud-capture',
+      requestId: 'capture',
+      preflightId: passed.id,
+    }),
+  ).rejects.toThrow();
+  expect(await jobs.getByKey('rejected-cloud-capture')).toBeNull();
+  expect(await jobs.cloudAvailability()).toEqual({ state: 'available' });
 }, 30_000);
 
 it('authorizes immutable builds, commits with fresh authority, and holds the slot through native deployment verification', async () => {

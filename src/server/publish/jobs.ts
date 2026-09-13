@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DraftRecord } from '../repositories/contracts';
+import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -75,6 +76,7 @@ export class D1PublishJobStore {
     actor: string;
     idempotencyKey: string;
     requestId: string;
+    preflightId?: string;
   }): Promise<PublishJobRecord> {
     z.string()
       .regex(/^[A-Za-z0-9._:-]{16,100}$/)
@@ -114,6 +116,26 @@ export class D1PublishJobStore {
     try {
       await this.database.batch([
         authority,
+        ...(input.preflightId
+          ? [
+              this.database
+                .prepare(
+                  `SELECT json(CASE WHEN EXISTS (
+          SELECT 1 FROM publish_preflights WHERE id=? AND draft_id=? AND revision_id=?
+            AND revision_checksum=? AND candidate_checksum=? AND status='passed'
+            AND id=(SELECT id FROM publish_preflights WHERE draft_id=? ORDER BY completed_at DESC,rowid DESC LIMIT 1)
+        ) THEN 'true' ELSE 'publication preflight changed' END)`,
+                )
+                .bind(
+                  input.preflightId,
+                  input.draft.id,
+                  input.draft.revision.id,
+                  input.draft.revision.checksum,
+                  prepared.candidateChecksum,
+                  input.draft.id,
+                ),
+            ]
+          : []),
         this.database
           .prepare(
             `SELECT json(CASE WHEN EXISTS (
@@ -172,9 +194,114 @@ export class D1PublishJobStore {
     return created;
   }
 
+  async capturedRetry(
+    key: string,
+    actor: string,
+    baseSha: string,
+    candidate: {
+      draftId: string;
+      revisionId: string;
+      revisionChecksum: string;
+      workflowRevision: string;
+    },
+  ) {
+    const job = await this.getByKey(key);
+    if (!job) return null;
+    if (
+      job.requestedBy !== actor ||
+      job.baseSha !== baseSha ||
+      job.candidate.publicationProtocol !== 2 ||
+      Object.entries(candidate).some(([name, value]) => job.candidate[name] !== value)
+    )
+      throw new Error('IDEMPOTENCY_CONFLICT');
+    const authorized = await this.database
+      .prepare(
+        `SELECT 1 FROM user_roles WHERE email=? AND active=1
+      AND role IN ('publisher','administrator')`,
+      )
+      .bind(actor)
+      .first();
+    if (!authorized) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+    return job;
+  }
+
+  prepareInputs(draft: DraftRecord, workflowRevision: string) {
+    return preparePublicationInputs(this.database, draft, crypto.randomUUID(), workflowRevision);
+  }
+
+  async draftHead(draftId: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT r.id,r.checksum FROM drafts d
+      JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id WHERE d.id=?`,
+      )
+      .bind(draftId)
+      .first<{ id: string; checksum: string }>();
+    if (!row) throw new Error('DRAFT_NOT_FOUND');
+    return { revision: row };
+  }
+
+  async cloudAvailability() {
+    const row = await this.database
+      .prepare(
+        `SELECT j.status FROM publication_slots s
+      JOIN publish_jobs j ON j.id=s.job_id WHERE s.target='staging'`,
+      )
+      .first<{ status: PublishJobStatus }>();
+    if (row)
+      return {
+        state: 'busy' as const,
+        phase:
+          row.status === 'succeeded'
+            ? ('review' as const)
+            : row.status === 'queued' || row.status === 'running'
+              ? row.status
+              : ('recovery' as const),
+      };
+    // A legacy process may still have an external effect after its lease expires.
+    const legacy = await this.database
+      .prepare(
+        `SELECT status FROM publish_jobs
+      WHERE environment='staging' AND status IN ('queued','running') LIMIT 1`,
+      )
+      .first<{ status: 'queued' | 'running' }>();
+    return legacy
+      ? { state: 'busy' as const, phase: legacy.status }
+      : { state: 'available' as const };
+  }
+
+  async dispatchStatus(id: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT dispatch_count,dispatch_after,dispatch_error,
+      COALESCE(run_id,reserved_run_id) AS run_id FROM publication_runs WHERE job_id=?`,
+      )
+      .bind(id)
+      .first<{
+        dispatch_count: number;
+        dispatch_after: string;
+        dispatch_error: string | null;
+        run_id: string | null;
+      }>();
+    if (!row) return undefined;
+    return {
+      attempts: row.dispatch_count,
+      retryAt: row.dispatch_after,
+      needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
+      ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
+      ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)
+        ? {
+            workflowUrl: `https://github.com/PointCommunity/pointsite-staging/actions/runs/${row.run_id}`,
+          }
+        : {}),
+    };
+  }
+
   async getByKey(key: string): Promise<PublishJobRecord | null> {
     const row = await this.database
-      .prepare(`SELECT ${selection} FROM publish_jobs WHERE idempotency_key=?`)
+      .prepare(
+        `SELECT ${selection} FROM publish_jobs WHERE idempotency_key=? AND environment='staging'`,
+      )
       .bind(key)
       .first<JobRow>();
     return row ? fromRow(row) : null;

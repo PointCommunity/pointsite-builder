@@ -224,3 +224,32 @@ describe('Staging workflow lifecycle', () => {
     expect(derive(accepted).guidance).toContain('draft and its history remain safe');
   });
 });
+
+it('holds captured cloud jobs across edits, bounded monitoring, and dispatch exhaustion', () => {
+  const current = snapshot();
+  current.job!.publicationProtocol = 2;
+  current.job!.revisionId = 'older-captured-revision';
+  current.job!.status = 'queued';
+  current.availability = { state: 'busy', phase: 'queued' };
+  expect(derive(current)).toMatchObject({
+    phase: 'publishing',
+    canPublish: false,
+    shouldPoll: true,
+  });
+  expect(derive(current, true)).toMatchObject({
+    phase: 'paused',
+    canPublish: false,
+    shouldPoll: false,
+  });
+  current.job!.dispatch = { attempts: 6, retryAt: new Date().toISOString(), needsAttention: true };
+  expect(derive(current)).toMatchObject({ phase: 'paused', canPublish: false, shouldPoll: false });
+  delete current.job!.dispatch;
+  current.job!.status = 'succeeded';
+  current.job!.evidence.verificationStatus = 'passed';
+  current.availability = { state: 'busy', phase: 'review' };
+  expect(derive(current)).toMatchObject({
+    phase: 'review-ready',
+    canPublish: false,
+    canAccept: true,
+  });
+});
