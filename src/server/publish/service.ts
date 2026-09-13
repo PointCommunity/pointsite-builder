@@ -103,6 +103,7 @@ export class StagingPublisher {
               };
     return {
       currentStagingSha,
+      ...(this.config.workflowRevision ? { publicationProtocol: 2 as const } : {}),
       reviewUrl: 'https://staging.pointatx.org',
       preflight,
       availability,

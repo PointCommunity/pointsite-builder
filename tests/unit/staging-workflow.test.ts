@@ -245,6 +245,8 @@ it('holds captured cloud jobs across edits, bounded monitoring, and dispatch exh
   expect(derive(current)).toMatchObject({ phase: 'paused', canPublish: false, shouldPoll: false });
   delete current.job!.dispatch;
   current.job!.status = 'succeeded';
+  current.job!.workflowRevision = 'a'.repeat(40);
+  current.job!.evidence.artifactDigest = 'b'.repeat(64);
   current.job!.evidence.verificationStatus = 'passed';
   current.availability = { state: 'busy', phase: 'review' };
   expect(derive(current)).toMatchObject({
@@ -252,4 +254,20 @@ it('holds captured cloud jobs across edits, bounded monitoring, and dispatch exh
     canPublish: false,
     canAccept: true,
   });
+  current.approval = {
+    id: crypto.randomUUID(),
+    publishJobId: current.job!.id,
+    decision: 'approved',
+    createdAt: new Date().toISOString(),
+  };
+  current.availability = { state: 'available' };
+  expect(derive(current)).toMatchObject({ phase: 'ready', canPublish: true, canAccept: false });
+});
+
+it('requires a fresh cloud capture before accepting a legacy publication after cutover', () => {
+  const old = snapshot({ publicationProtocol: 2 });
+  old.job!.evidence.verificationStatus = 'passed';
+  expect(derive(old)).toMatchObject({ phase: 'ready', canPublish: true, canAccept: false });
+  old.availability = { state: 'busy', phase: 'running' };
+  expect(derive(old)).toMatchObject({ phase: 'waiting', canPublish: false, canAccept: false });
 });

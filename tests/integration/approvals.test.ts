@@ -164,3 +164,22 @@ describe('exact staging approval', () => {
     ).resolves.toMatchObject({ eligible: false, reason: 'CANDIDATE_DRIFT' });
   });
 });
+
+it('requires cloud evidence for new decisions in the configured publishing runtime', async () => {
+  const { database } = await setup();
+  const service = new D1ApprovalService(database, {
+    appId: '123',
+    installationId: '456',
+    privateKey: 'unused',
+  });
+  await expect(
+    service.record({
+      publishJobId: 'job-1',
+      expectedTuple: tuple,
+      decision: 'approved',
+      actor: 'publisher@pointatx.org',
+      requestId: 'legacy-cutover',
+      idempotencyKey: 'legacy-cutover-acceptance',
+    }),
+  ).rejects.toThrow('APPROVAL_CLOUD_CANDIDATE_REQUIRED');
+});

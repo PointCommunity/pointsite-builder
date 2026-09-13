@@ -15,7 +15,7 @@ const expectation: DeploymentExpectation = {
   artifactDigest: 'e'.repeat(64),
   workerVersionId: '10000000-0000-4000-8000-000000000001',
 };
-function fixture(input = expectation, change = '') {
+function fixture(input = expectation, change = '', token?: string) {
   const staging = input.target === 'staging';
   const repository = `PointCommunity/${staging ? 'pointsite-staging' : 'pointsite'}`;
   const environment = staging ? 'staging' : 'github-pages';
@@ -26,7 +26,10 @@ function fixture(input = expectation, change = '') {
   let lists = 0;
   return vi.fn<typeof fetch>((url, init) => {
     expect(init?.redirect).toBe('error');
-    expect(new Headers(init?.headers).has('authorization')).toBe(false);
+    const address = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+    expect(new Headers(init?.headers).get('authorization')).toBe(
+      token && address.startsWith(`${api}/`) ? `Bearer ${token}` : null,
+    );
     if (change === 'provider')
       return Promise.resolve(new Response('private provider response', { status: 500 }));
     const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
@@ -116,4 +119,10 @@ it('refuses incomplete, substituted, changed or unavailable native and live evid
     verifyDeploymentProof({ ...expectation, workerVersionId: undefined }, unused),
   ).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
   expect(unused).not.toHaveBeenCalled();
+});
+
+it('sends the repository token only to fixed GitHub proof endpoints, never to the live site', async () => {
+  const fetcher = fixture(expectation, '', 'fixture-token');
+  await verifyDeploymentProof(expectation, fetcher, 'fixture-token');
+  expect(fetcher).toHaveBeenCalledTimes(6);
 });

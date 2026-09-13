@@ -52,17 +52,8 @@ export interface AuditItem {
 export type { CapacityReport } from '../server/admin/service';
 import type { CapacityReport } from '../server/admin/service';
 
-export interface CandidateTuple {
-  siteId: 'pointsite';
-  revisionId: string;
-  revisionChecksum: string;
-  schemaVersion: number;
-  rendererVersion: string;
-  candidateChecksum: string;
-  stagingBaseSha: string;
-  stagingCommitSha: string;
-  productionBaseSha: string;
-}
+export type { CandidateTuple } from '../server/approvals/service';
+import type { CandidateTuple } from '../server/approvals/service';
 
 export type StagingPublishResponse =
   | {
@@ -344,11 +335,33 @@ export const api = {
       body: '{}',
     }),
   productionBase: () => request<{ sha: string }>('/approvals/production-base'),
-  acceptStaging: (publishJobId: string, expectedTuple: CandidateTuple, note?: string) =>
+  revokeStaging: (
+    publishJobId: string,
+    expectedTuple: CandidateTuple,
+    expectedApprovalId: string,
+  ) =>
     request<{ id: string; decision: string; tuple: CandidateTuple }>('/approvals', {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({
+        publishJobId,
+        expectedTuple,
+        expectedApprovalId,
+        decision: 'revoked',
+        note: 'Staging acceptance revoked in Builder',
+      }),
+    }),
+  acceptStaging: (
+    publishJobId: string,
+    expectedTuple: CandidateTuple,
+    note?: string,
+    expectedApprovalId?: string | null,
+  ) =>
+    request<{ id: string; decision: string; tuple: CandidateTuple }>('/approvals', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({
+        ...(expectedApprovalId !== undefined ? { expectedApprovalId } : {}),
         publishJobId,
         expectedTuple,
         decision: 'approved',

@@ -17,6 +17,7 @@ import { D1PublishJobStore } from '../../src/server/publish/jobs';
 import { D1PublicationRunner } from '../../src/server/publish/runner';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
+import { D1ApprovalService } from '../../src/server/approvals/service';
 import { StagingPublisher } from '../../src/server/publish/service';
 import { D1PublishPreflightStore } from '../../src/server/publish/preflights';
 import {
@@ -559,6 +560,8 @@ it('authorizes immutable builds, commits with fresh authority, and holds the slo
   const workerVersionId = crypto.randomUUID();
   const jobUrl = `https://github.com/PointCommunity/pointsite-staging/actions/runs/${String(claims.run_id)}/job/${String(claims.check_run_id)}`;
   let completed = false;
+  let publishedWorkerVersion = workerVersionId;
+  let productionBase = 'f'.repeat(40);
   const provider: typeof fetch = async (url, init) => {
     const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
     if (path.includes('/check-runs/'))
@@ -594,18 +597,21 @@ it('authorizes immutable builds, commits with fresh authority, and holds the slo
         candidateChecksum: job.candidateChecksum,
         workflowRevision: 'a'.repeat(40),
         artifactDigest: github.build.artifactDigest,
-        workerVersionId,
+        workerVersionId: publishedWorkerVersion,
       });
+    if (path === 'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main')
+      return Response.json({ object: { sha: productionBase } });
     return github.fetcher(url, init);
+  };
+  const config = {
+    appId: '123',
+    installationId: '456',
+    privateKey: await exportPKCS8(keys.privateKey),
   };
   const runner = new D1PublicationRunner(
     database,
     () => Promise.resolve(keys.publicKey),
-    {
-      appId: '123',
-      installationId: '456',
-      privateKey: await exportPKCS8(keys.privateKey),
-    },
+    config,
     provider,
   );
   await runner.reserve(
@@ -668,6 +674,157 @@ it('authorizes immutable builds, commits with fresh authority, and holds the slo
   expect(await database.prepare('SELECT COUNT(*) AS n FROM publication_slots').first('n')).toBe(1);
   await expect(runner.inputs(job.id, token)).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
   await expect(runner.commitBuild(job.id, token)).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+
+  const approvals = new D1ApprovalService(database, config, provider);
+  const expectedTuple = {
+    siteId: 'pointsite' as const,
+    revisionId: draft.revision.id,
+    revisionChecksum: draft.revision.checksum,
+    schemaVersion: draft.document.schemaVersion,
+    rendererVersion: draft.document.rendererVersion,
+    candidateChecksum: job.candidateChecksum,
+    stagingBaseSha: job.baseSha,
+    stagingCommitSha: github.build.commitSha,
+    productionBaseSha: productionBase,
+    publicationProtocol: 2 as const,
+    workflowRevision: 'a'.repeat(40),
+    artifactDigest: github.build.artifactDigest,
+  };
+  const decision = {
+    publishJobId: job.id,
+    expectedTuple,
+    decision: 'approved' as const,
+    actor: subject,
+    requestId: 'accept-cloud',
+    idempotencyKey: 'cloud-exact-acceptance',
+    expectedApprovalId: null,
+  };
+  for (const role of ['viewer', 'editor']) {
+    await database.prepare('UPDATE user_roles SET role=? WHERE email=?').bind(role, subject).run();
+    await expect(approvals.record(decision)).rejects.toThrow('APPROVAL_AUTHORITY_CHANGED');
+  }
+  await database
+    .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+    .bind(subject)
+    .run();
+  await expect(
+    approvals.record({
+      ...decision,
+      expectedTuple: { ...expectedTuple, artifactDigest: '0'.repeat(64) },
+    }),
+  ).rejects.toThrow('APPROVAL_TUPLE_MISMATCH');
+  const originalEvidence = JSON.stringify((await jobs.getById(job.id))!.evidence);
+  for (const change of [
+    { verificationStatus: 'failed' },
+    { runId: '99999' },
+    { checkRunId: '99999' },
+    { artifactDigest: '0'.repeat(64) },
+    { workerVersionId: undefined },
+  ]) {
+    await database
+      .prepare('UPDATE publish_jobs SET evidence_json=? WHERE id=?')
+      .bind(JSON.stringify({ ...JSON.parse(originalEvidence), ...change }), job.id)
+      .run();
+    await expect(approvals.record(decision)).rejects.toThrow('APPROVAL_EVIDENCE_INCOMPLETE');
+  }
+  await database
+    .prepare('UPDATE publish_jobs SET evidence_json=? WHERE id=?')
+    .bind(originalEvidence, job.id)
+    .run();
+  publishedWorkerVersion = crypto.randomUUID();
+  await expect(approvals.record(decision)).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
+  publishedWorkerVersion = workerVersionId;
+  github.state.main = job.baseSha;
+  await expect(approvals.record(decision)).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
+  github.state.main = github.build.commitSha;
+  productionBase = '0'.repeat(40);
+  await expect(approvals.record(decision)).rejects.toThrow('PRODUCTION_BASE_DRIFT');
+  productionBase = expectedTuple.productionBaseSha;
+  github.state.permission = 'read';
+  await expect(approvals.record(decision)).rejects.toThrow('PUBLISH_GITHUB_AUTHORITY_CHANGED');
+  github.state.permission = 'write';
+  github.state.beforePermission = async () => {
+    await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(subject).run();
+  };
+  await expect(approvals.record(decision)).rejects.toThrow('APPROVAL_STATE_CHANGED');
+  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(subject).run();
+  github.state.beforePermission = () => Promise.resolve();
+  expect(await approvals.getLatestForJob(job.id)).toBeNull();
+  expect(await jobs.cloudAvailability()).toEqual({ state: 'busy', phase: 'review' });
+
+  const [accepted, duplicate] = await Promise.all([
+    approvals.record(decision),
+    approvals.record(decision),
+  ]);
+  expect(accepted.id).toBe(duplicate.id);
+  expect(await jobs.cloudAvailability()).toEqual({ state: 'available' });
+  expect(await approvals.getLatestForJob(job.id)).toMatchObject({
+    id: accepted.id,
+    tuple: expectedTuple,
+  });
+  expect(
+    await database
+      .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='approval.approved'")
+      .first('n'),
+  ).toBe(1);
+  await expect(
+    database.prepare("UPDATE approvals SET decision='revoked' WHERE id=?").bind(accepted.id).run(),
+  ).rejects.toThrow('CLOUD_APPROVAL_IMMUTABLE');
+  await expect(approvals.record({ ...decision, expectedApprovalId: accepted.id })).rejects.toThrow(
+    'IDEMPOTENCY_CONFLICT',
+  );
+  await expect(
+    approvals.record({ ...decision, idempotencyKey: 'different-cloud-acceptance' }),
+  ).rejects.toThrow('APPROVAL_STATE_CHANGED');
+  const revoked = await approvals.record({
+    ...decision,
+    decision: 'revoked',
+    expectedApprovalId: accepted.id,
+    idempotencyKey: 'cloud-revoked-acceptance',
+  });
+  // A lost acknowledgment returns its historical receipt; it never reinstates the old decision.
+  expect((await approvals.record(decision)).id).toBe(accepted.id);
+  expect(await approvals.getLatestForJob(job.id)).toMatchObject({
+    id: revoked.id,
+    decision: 'revoked',
+  });
+  expect(await approvals.eligibility(expectedTuple, productionBase)).toMatchObject({
+    eligible: false,
+    reason: 'NOT_APPROVED',
+  });
+  await database
+    .prepare("UPDATE user_roles SET role='administrator' WHERE email=?")
+    .bind(subject)
+    .run();
+  const approveAgain = {
+    ...decision,
+    expectedApprovalId: revoked.id,
+    idempotencyKey: 'cloud-reapprove-acceptance',
+  };
+  // A newer revocation arriving during provider reads wins at the committing boundary.
+  github.state.beforePermission = async () => {
+    github.state.beforePermission = () => Promise.resolve();
+    await approvals.record({
+      ...decision,
+      decision: 'revoked',
+      expectedApprovalId: revoked.id,
+      idempotencyKey: 'cloud-raced-revocation',
+    });
+  };
+  await expect(approvals.record(approveAgain)).rejects.toThrow('APPROVAL_STATE_CHANGED');
+  const latest = await approvals.getLatestForJob(job.id);
+  const acceptedAgain = await approvals.record({ ...approveAgain, expectedApprovalId: latest!.id });
+  expect(acceptedAgain.decision).toBe('approved');
+  expect(await approvals.eligibility(expectedTuple, productionBase)).toMatchObject({
+    eligible: true,
+  });
+  expect(
+    await approvals.eligibility(
+      { ...expectedTuple, artifactDigest: '0'.repeat(64) },
+      productionBase,
+    ),
+  ).toMatchObject({ eligible: false, reason: 'CANDIDATE_DRIFT' });
+  expect(github.state.mutations).toBe(1);
 }, 30_000);
 
 it('captures once, rejects duplicate runners, and serves pinned inputs after further editing', async () => {

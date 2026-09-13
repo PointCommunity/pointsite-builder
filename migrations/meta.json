@@ -133,6 +133,12 @@
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null,
       "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0023_cloud_acceptance",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
     }
   ]
 }

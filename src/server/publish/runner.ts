@@ -293,7 +293,7 @@ export class D1PublicationRunner {
     if (!row.deploy_authorized_at || row.result_sha !== build.commitSha || !row.check_run_id)
       throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
     await this.guard(scope, identity, 'finalize').first();
-    await this.publisher(row);
+    const githubToken = await this.publisher(row);
     const evidence = {
       ...(await verifyDeploymentProof(
         {
@@ -308,6 +308,7 @@ export class D1PublicationRunner {
           artifactDigest: build.artifactDigest,
         },
         this.request,
+        githubToken,
       )),
       verificationStatus: 'passed',
     };

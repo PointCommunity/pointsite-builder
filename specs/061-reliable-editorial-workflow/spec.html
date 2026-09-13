@@ -498,8 +498,9 @@
       authorization, Git commit verification, deployment authorization and final verification have
       local D1 and signed-token coverage. Builder now captures cloud jobs after a metadata
       preflight, validates the immutable runtime and reviewed caller, and polls metadata without
-      uploading media. Live workflow execution, slot release, exact acceptance and Production
-      promotion remain pending.
+      uploading media. Exact cloud acceptance and completed-slot release now have local role, drift,
+      duplicate and revocation-race coverage. Live workflow execution, complete recovery and
+      Production promotion remain pending.
     </p>
     <p>
       Read-only GitHub checks on 13 September verified public repository IDs 1357847426 for
@@ -590,6 +591,19 @@
       capacity, real dispatch CPU and the complete workload budget remain release checks. Deploy the
       additive migrations before the Worker/trigger configuration; keep the reviewed Staging caller
       installed and legacy deployment activity reconciled before accepting cloud captures.
+    </p>
+
+    <p>
+      Exact cloud acceptance extends the existing tuple with publication protocol, immutable runtime
+      revision and static artifact digest. The browser submits the previous decision identity it
+      reviewed. The server verifies the current signed execution/deployment evidence, original build
+      identity, live Staging release and expected Production base, then atomically rechecks the
+      accepting actor's role, held slot, unchanged evidence and previous decision. Accepted and
+      rejected decisions release only their own completed Staging slot; revocation never releases an
+      unrelated job. Migration 0023 makes cloud decisions append-only and binds their request
+      receipts; retries cannot reactivate a later revoked approval. After cutover, old candidates
+      must be recaptured through the verified cloud workflow before any new acceptance. Later draft
+      edits do not change the captured tuple or inherit its approval.
     </p>
 
     <h2>Current implementation evidence and migration sequence</h2>

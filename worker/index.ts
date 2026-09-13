@@ -94,7 +94,7 @@ export default {
       media,
       library: new D1LibraryService(env.DB, repository, draftAssets),
       admin: new D1AdminService(env.DB),
-      approvals: new D1ApprovalService(env.DB),
+      approvals: new D1ApprovalService(env.DB, config.github),
       productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
       retention: new RetentionService(env.DB),
       ownershipMigration: new D1OwnershipMigration(env.DB, env.ASSETS),

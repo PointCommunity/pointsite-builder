@@ -1,3 +1,5 @@
+import type { CandidateTuple } from '../api';
+
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
 
@@ -26,6 +28,7 @@ export interface StagingWorkflowJob {
   completedAt: string | null;
   evidence: {
     verificationStatus?: VerificationStatus;
+    artifactDigest?: string;
     failureCode?: string;
     failedChecks?: string[];
     failedCheckUrls?: Record<string, string>;
@@ -40,9 +43,11 @@ export interface StagingAcceptanceSummary {
   publishJobId: string;
   decision: 'approved' | 'rejected' | 'revoked';
   createdAt: string;
+  tuple?: CandidateTuple;
 }
 
 export interface StagingWorkflowSnapshot {
+  publicationProtocol?: 2;
   currentStagingSha: string;
   reviewUrl: string;
   preflight:
@@ -126,6 +131,23 @@ export function deriveStagingWorkflow(input: {
     );
 
   const { job, approval, currentStagingSha, preflight, availability } = input.snapshot;
+  if (input.snapshot.publicationProtocol === 2 && job && job.publicationProtocol !== 2) {
+    if (availability.state === 'busy')
+      return state(
+        'waiting',
+        2,
+        'Previous publication needs reconciliation',
+        'Your draft is saved. The previous publication must finish or be reconciled before cloud publishing can start.',
+        { canRefresh: true, shouldPoll: true },
+      );
+    return state(
+      'ready',
+      1,
+      'Publish this version through the cloud workflow',
+      'Create a fresh captured candidate with verified build and deployment evidence before accepting it.',
+      { canPublish: true, canRefresh: true },
+    );
+  }
 
   const revisionChanged =
     Boolean(job) &&
@@ -168,8 +190,9 @@ export function deriveStagingWorkflow(input: {
       { canRefresh: true, shouldPoll: true },
     );
   }
+  const capturedReview = captured && approval?.publishJobId !== job?.id;
   const completedCurrentJob =
-    (!revisionChanged || captured) && !stagingChanged && job?.status === 'succeeded';
+    (!revisionChanged || capturedReview) && !stagingChanged && job?.status === 'succeeded';
   const preflightPassed =
     preflight.state === 'passed' &&
     preflight.revisionId === input.revisionId &&
@@ -195,7 +218,7 @@ export function deriveStagingWorkflow(input: {
       { canRefresh: true, shouldPoll: true },
     );
 
-  if (!job || (revisionChanged && !captured))
+  if (!job || (revisionChanged && !capturedReview))
     return state(
       'ready',
       2,
@@ -223,6 +246,18 @@ export function deriveStagingWorkflow(input: {
     );
 
   const verification = job.evidence.verificationStatus;
+  if (
+    captured &&
+    verification === 'passed' &&
+    (!job.workflowRevision || !job.evidence.artifactDigest)
+  )
+    return state(
+      'failed',
+      3,
+      'Staging evidence is incomplete',
+      'The captured build identity is missing. Acceptance stays locked until this publication is reconciled.',
+      { canRefresh: true },
+    );
   if (verification === 'failed')
     return state(
       'failed',

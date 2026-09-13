@@ -17,10 +17,27 @@ const proofSchema = z.strictObject({
 });
 export type DeploymentExpectation = z.infer<typeof proofSchema>;
 
+export const PublicationEvidenceSchema = z.strictObject({
+  format: z.literal(2),
+  verificationStatus: z.literal('passed'),
+  deploymentId: identifier,
+  runId: identifier,
+  checkRunId: identifier,
+  dispatchRevision: sha,
+  commitSha: sha,
+  workflowRevision: sha,
+  candidateChecksum: digest,
+  artifactDigest: digest,
+  workerVersionId: z.uuid().optional(),
+  jobUrl: z.url(),
+  deploymentUrl: z.url(),
+});
+
 /** Native execution identity, current Git state and live release metadata identify different facts. */
 export async function verifyDeploymentProof(
   expected: DeploymentExpectation,
   fetcher: typeof fetch = fetch,
+  githubToken?: string,
 ) {
   try {
     const input = proofSchema.parse(expected);
@@ -38,6 +55,9 @@ export async function verifyDeploymentProof(
           accept: 'application/vnd.github+json',
           'user-agent': 'PointSite-Builder',
           'cache-control': 'no-cache',
+          ...(githubToken && url.startsWith(`${api}/`)
+            ? { authorization: `Bearer ${githubToken}` }
+            : {}),
         },
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),

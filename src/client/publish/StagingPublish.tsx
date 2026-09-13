@@ -173,6 +173,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     try {
       const production = await api.productionBase();
       const tuple: CandidateTuple = {
+        ...(currentJob.publicationProtocol === 2
+          ? {
+              publicationProtocol: 2 as const,
+              workflowRevision: currentJob.workflowRevision!,
+              artifactDigest: currentJob.evidence.artifactDigest!,
+            }
+          : {}),
         siteId: 'pointsite',
         revisionId: currentJob.revisionId,
         revisionChecksum: currentJob.revisionChecksum,
@@ -183,7 +190,30 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         stagingCommitSha: currentJob.stagingCommitSha,
         productionBaseSha: production.sha,
       };
-      await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
+      if (currentJob.publicationProtocol === 2)
+        await api.acceptStaging(
+          currentJob.id,
+          tuple,
+          'Protected Staging reviewed in Builder',
+          snapshot?.approval?.id ?? null,
+        );
+      else await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
+      await loadWorkflow();
+    } catch (error) {
+      setActionError(actionFailure(error));
+      await loadWorkflow();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    const approval = snapshot?.approval;
+    if (!approval?.tuple || approval.decision !== 'approved') return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.revokeStaging(approval.publishJobId, approval.tuple, approval.id);
       await loadWorkflow();
     } catch (error) {
       setActionError(actionFailure(error));
@@ -235,6 +265,14 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           {verificationFailed ? failedChecksTitle : nextStep.title}
         </h3>
         <p>{nextStep.guidance}</p>
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.revisionId !== draft.revision.id &&
+        ['review-ready', 'accepted'].includes(lifecycle.phase) ? (
+          <p>
+            <strong>Newer edits are not included.</strong> Review the version captured for Staging;
+            your latest draft remains separate.
+          </p>
+        ) : null}
 
         {verificationFailed ? (
           <div className="publish-failure-recovery">
@@ -372,6 +410,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
             Open accepted Staging site
           </a>
+        ) : null}
+        {snapshot?.approval?.decision === 'approved' &&
+        snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.approval?.tuple ? (
+          <button className="button" type="button" disabled={busy} onClick={() => void revoke()}>
+            {busy ? 'Revoking…' : 'Revoke Staging acceptance'}
+          </button>
         ) : null}
       </section>
 

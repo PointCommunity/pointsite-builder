@@ -208,6 +208,58 @@ describe('guided Staging publishing', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it('accepts the exact cloud artifact and prior decision, then revokes that recorded tuple', async () => {
+    const tuple = {
+      siteId: 'pointsite' as const,
+      revisionId: job.revisionId,
+      revisionChecksum: job.revisionChecksum,
+      schemaVersion: job.schemaVersion,
+      rendererVersion: job.rendererVersion,
+      candidateChecksum: job.candidateChecksum,
+      stagingBaseSha: job.stagingBaseSha,
+      stagingCommitSha: job.stagingCommitSha,
+      productionBaseSha: 'e'.repeat(40),
+      publicationProtocol: 2 as const,
+      workflowRevision: 'f'.repeat(40),
+      artifactDigest: '1'.repeat(64),
+    };
+    const cloud = {
+      ...reviewReady,
+      job: {
+        ...reviewReady.job!,
+        publicationProtocol: 2 as const,
+        workflowRevision: tuple.workflowRevision,
+        evidence: { verificationStatus: 'passed' as const, artifactDigest: tuple.artifactDigest },
+      },
+    };
+    const acceptedCloud = { ...cloud, approval: { ...accepted.approval!, tuple } };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(cloud)
+      .mockResolvedValueOnce(acceptedCloud)
+      .mockResolvedValue(cloud);
+    vi.spyOn(api, 'productionBase').mockResolvedValue({ sha: tuple.productionBaseSha });
+    const approve = vi
+      .spyOn(api, 'acceptStaging')
+      .mockResolvedValue({ id: acceptedCloud.approval.id, decision: 'approved', tuple });
+    const revoke = vi
+      .spyOn(api, 'revokeStaging')
+      .mockResolvedValue({ id: crypto.randomUUID(), decision: 'revoked', tuple });
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept this Staging version' }));
+    await waitFor(() =>
+      expect(approve).toHaveBeenCalledWith(
+        job.id,
+        tuple,
+        'Protected Staging reviewed in Builder',
+        null,
+      ),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke Staging acceptance' }));
+    await waitFor(() =>
+      expect(revoke).toHaveBeenCalledWith(job.id, tuple, acceptedCloud.approval.id),
+    );
+  });
+
   it('runs private preflight and publication from one intentional action', async () => {
     const load = vi
       .spyOn(api, 'getStagingWorkflow')

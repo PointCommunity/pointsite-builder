@@ -157,6 +157,8 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
     case 'FORBIDDEN':
     case 'UNAUTHENTICATED':
     case 'PUBLISH_AUTHORITY_CHANGED':
+    case 'APPROVAL_AUTHORITY_CHANGED':
+    case 'PUBLISH_GITHUB_AUTHORITY_CHANGED':
       return {
         title: 'Your access changed',
         guidance:
@@ -194,12 +196,15 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       };
     case 'APPROVAL_JOB_NOT_SUCCEEDED':
     case 'APPROVAL_EVIDENCE_INCOMPLETE':
+    case 'PUBLICATION_VERIFICATION_UNCONFIRMED':
       return {
         title: 'Staging is not ready to accept',
         guidance:
           'Return to the failed checks shown in this workflow. Resolve them before trying to accept this version again.',
       };
     case 'APPROVAL_TUPLE_MISMATCH':
+    case 'APPROVAL_STATE_CHANGED':
+    case 'PRODUCTION_BASE_DRIFT':
       return {
         title: 'The Staging version changed',
         guidance:
@@ -240,6 +245,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
             ? 'Your draft and private preflight remain safe. Wait for Builder to show that Staging is available, then continue without queuing a duplicate.'
             : 'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
       };
+    case 'APPROVAL_CLOUD_CANDIDATE_REQUIRED':
     case 'PREFLIGHT_REQUIRED':
     case 'PREFLIGHT_CANDIDATE_DRIFT':
       return {

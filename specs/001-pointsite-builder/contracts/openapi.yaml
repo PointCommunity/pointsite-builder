@@ -871,6 +871,11 @@ paths:
   /approvals:
     post:
       operationId: recordApproval
+      description: >-
+        Cloud decisions bind the exact artifact and runtime, current verified Staging deployment,
+        accepting actor and last-seen decision. Cloud requests require expectedApprovalId (null
+        for no previous decision). Fresh native evidence and expected Production base are checked
+        before approval. Decisions are append-only; retries cannot reinstate a revoked acceptance.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -884,6 +889,10 @@ paths:
               properties:
                 publishJobId: { type: string, minLength: 1, maxLength: 100 }
                 expectedTuple: { $ref: '#/components/schemas/CandidateTuple' }
+                expectedApprovalId:
+                  oneOf:
+                    - { type: string, format: uuid }
+                    - { type: 'null' }
                 decision: { type: string, enum: [approved, rejected, revoked] }
                 note: { type: string, maxLength: 500 }
       responses:
@@ -1454,6 +1463,7 @@ components:
       additionalProperties: false
       required: [currentStagingSha, reviewUrl, preflight, availability, job, approval]
       properties:
+        publicationProtocol: { type: integer, const: 2 }
         currentStagingSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         reviewUrl: { type: string, format: uri }
         preflight: { $ref: '#/components/schemas/StagingPreflightSummary' }
@@ -1562,6 +1572,7 @@ components:
       additionalProperties: false
       required: [id, publishJobId, decision, createdAt]
       properties:
+        tuple: { $ref: '#/components/schemas/CandidateTuple' }
         id: { type: string, format: uuid }
         publishJobId: { type: string, format: uuid }
         decision: { type: string, enum: [approved, rejected, revoked] }
@@ -1581,7 +1592,14 @@ components:
           stagingCommitSha,
           productionBaseSha,
         ]
+      dependentRequired:
+        publicationProtocol: [workflowRevision, artifactDigest]
+        workflowRevision: [publicationProtocol, artifactDigest]
+        artifactDigest: [publicationProtocol, workflowRevision]
       properties:
+        publicationProtocol: { type: integer, const: 2 }
+        workflowRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
         siteId: { type: string, const: pointsite }
         revisionId: { type: string, format: uuid }
         revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }

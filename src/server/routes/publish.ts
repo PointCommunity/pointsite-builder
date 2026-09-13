@@ -42,6 +42,7 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
             publishJobId: approval.publishJobId,
             decision: approval.decision,
             createdAt: approval.createdAt,
+            tuple: approval.tuple,
           }
         : null,
     });
