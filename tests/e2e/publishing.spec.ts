@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { draftAssetFixture } from './draft-asset-fixture';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
+import type { StagingWorkflowSnapshot } from '../../src/client/publish/workflow';
 
 type Scenario =
   'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out' | 'accepted' | 'busy';
@@ -204,6 +205,104 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
 
+test('cloud recovery retains the captured revision and keyboard focus', async ({ page }) => {
+  await mockPublishing(page, 'immediate');
+  const jobId = '30000000-0000-4000-8000-000000000011';
+  const requestedAt = new Date().toISOString();
+  const workflow: StagingWorkflowSnapshot = {
+    publicationProtocol: 2,
+    currentStagingSha: 'c'.repeat(40),
+    reviewUrl: 'https://staging.pointatx.org',
+    preflight: {
+      state: 'passed',
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      candidateChecksum: 'b'.repeat(64),
+      validatedAt: requestedAt,
+    },
+    availability: { state: 'busy', phase: 'running' },
+    approval: null,
+    job: {
+      id: jobId,
+      publicationProtocol: 2,
+      workflowRevision: 'e'.repeat(40),
+      status: 'queued',
+      candidateChecksum: 'b'.repeat(64),
+      draftId: draft.id,
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      schemaVersion: draft.revision.schemaVersion,
+      rendererVersion: draft.revision.rendererVersion,
+      stagingBaseSha: 'c'.repeat(40),
+      stagingCommitSha: null,
+      commitUrl: null,
+      requestedAt,
+      completedAt: null,
+      evidence: { verificationStatus: 'pending' },
+      dispatch: {
+        attempts: 6,
+        retryAt: '2026-01-01T00:00:00.000Z',
+        needsAttention: true,
+        reserved: false,
+        canReconcileStopped: false,
+      },
+    },
+  };
+  const actions: string[] = [];
+  const published: unknown[] = [];
+  await page.route('**/api/publish/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/publish/staging/workflow') return route.fulfill({ json: workflow });
+    if (path === `/api/publish/jobs/${jobId}/recovery`) {
+      const body = request.postDataJSON() as { action: string; expectedAttempts: number };
+      expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+      actions.push(body.action);
+      expect(body.expectedAttempts).toBe(body.action === 'retry' ? 6 : 0);
+      if (body.action === 'retry')
+        workflow.job!.dispatch = { ...workflow.job!.dispatch!, attempts: 0, needsAttention: false };
+      else {
+        workflow.job!.status = 'cancelled';
+        workflow.availability = { state: 'available' };
+      }
+      return route.fulfill({ json: { recovered: true } });
+    }
+    if (path === '/api/publish/staging') {
+      published.push(request.postDataJSON() as unknown);
+      workflow.job!.status = 'queued';
+      workflow.availability = { state: 'busy', phase: 'running' };
+      return route.fulfill({
+        status: 202,
+        json: { jobId, status: 'queued', publicationProtocol: 2 },
+      });
+    }
+    throw new Error(`Unexpected cloud browser operation: ${path}`);
+  });
+  await openPublishing(page);
+  const retry = page.getByRole('button', { name: 'Retry queued publication' });
+  await expect(retry).toBeEnabled();
+  const accessibility = await new AxeBuilder({ page }).include('.publish-panel').analyze();
+  expect(accessibility.violations).toEqual([]);
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await expect(retry).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  const cancel = page.getByRole('button', { name: 'Cancel queued publication' });
+  await cancel.focus();
+  await page.keyboard.press('Enter');
+  await expect(cancel).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await page.getByRole('button', { name: 'Try publishing again' }).click();
+  await expect.poll(() => published.length).toBe(1);
+  expect(published[0]).toMatchObject({
+    draftId: draft.id,
+    expectedRevisionId: draft.revision.id,
+    expectedRevisionChecksum: draft.revision.checksum,
+    expectedBaseSha: 'c'.repeat(40),
+  });
+  expect(actions).toEqual(['retry', 'cancel']);
+});
+
 test('automatically advances an immediate exact verification', async ({ page }) => {
   await page.clock.install();
   const requests = await mockPublishing(page, 'immediate');
@@ -314,7 +413,7 @@ test('waits for an occupied shared Staging slot without publishing or exposing a
   await expect(page.getByText('Staging is currently in use')).toBeVisible();
   await expect(page.getByText(/without queuing or interrupting/i)).toBeVisible();
   await expect(page.getByText(/another publication is currently publishing/i)).toBeVisible();
-  await expect(page.getByText(/safely recover the slot after/i)).toBeVisible();
+  await expect(page.getByText(/check recovery after/i)).toBeVisible();
   await page.clock.runFor(10_000);
   expect(publicationRequests).toBe(0);
 });

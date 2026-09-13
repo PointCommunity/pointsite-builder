@@ -49,6 +49,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
   const [actionError, setActionError] = useState<DisplayActionFailure | null>(null);
   const publishRequest = useRef<{ scope: string; key: string } | null>(null);
   const recoveryRequest = useRef<{ scope: string; key: string } | null>(null);
+  const nextActionHeading = useRef<HTMLHeadingElement>(null);
 
   const loadWorkflow = useCallback(async () => {
     try {
@@ -171,6 +172,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       setMonitoringStartedAt(Date.now());
       setMonitoringPaused(false);
       await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -207,6 +209,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       setMonitoringStartedAt(action === 'retry' ? Date.now() : null);
       setMonitoringPaused(false);
       await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -249,6 +252,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         );
       else await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
       await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -265,6 +269,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     try {
       await api.revokeStaging(approval.publishJobId, approval.tuple, approval.id);
       await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -311,7 +316,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
 
       <section className="publish-next-action" aria-labelledby="publish-next-action-title">
         <p className="eyebrow">Your next step · {roleLabel}</p>
-        <h3 id="publish-next-action-title">
+        <h3 id="publish-next-action-title" ref={nextActionHeading} tabIndex={-1}>
           {verificationFailed ? failedChecksTitle : nextStep.title}
         </h3>
         <p>{nextStep.guidance}</p>
