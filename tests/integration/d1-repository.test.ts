@@ -13,6 +13,8 @@ import { D1StorageCompaction } from '../../src/server/maintenance/storage-compac
 import { RetentionService } from '../../src/server/maintenance/retention';
 import { D1LibraryProjection } from '../../src/server/media/library-projection';
 import { AuthorizationError } from '../../src/server/auth/roles';
+import { createApp } from '../../src/server/index';
+import type { RevisionSummary } from '../../src/server/repositories/contracts';
 
 let miniflare: Miniflare | undefined;
 
@@ -58,6 +60,124 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('pages and searches retained metadata without reading revision payloads', async () => {
+    const { database } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const writer = new D1DraftRepository(database, undefined, 'compact-v1');
+    const first = await writer.createDraft({
+      name: 'History pages',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const labeled = await writer.labelRevision(
+      first.id,
+      first.latestRevisionId,
+      'Oldest named revision',
+      actor,
+      'label',
+      await acquireDraftProof(writer, first.id, actor),
+    );
+    const ids = [first.latestRevisionId];
+    // Imported public fixture history. Listing must not fetch or decode its documents.
+    for (let sequence = 2; sequence <= 205; sequence++) {
+      const id = crypto.randomUUID();
+      await database
+        .prepare(
+          `INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+        SELECT ?,draft_id,?,?,checksum,?,schema_version,renderer_version,created_by,created_at FROM revisions WHERE id=?`,
+        )
+        .bind(
+          id,
+          sequence,
+          ids.at(-1)!,
+          JSON.stringify(defaultSiteDocument),
+          first.latestRevisionId,
+        )
+        .run();
+      ids.push(id);
+    }
+    await database
+      .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+      .bind(ids.at(-1)!, first.id)
+      .run();
+    const queries: string[] = [];
+    const metered = new D1DraftRepository({
+      prepare: (sql: string) => {
+        queries.push(sql);
+        if (/revision_payloads|document_json/.test(sql)) throw new Error('Listing read a document');
+        return database.prepare(sql);
+      },
+    } as D1Database);
+    const app = createApp({
+      repository: metered,
+      authenticate: () => Promise.resolve({ email: actor, role: 'viewer' }),
+      environment: 'test',
+      version: 'test',
+    });
+    const url = `https://builder.pointatx.org/api/drafts/${first.id}/revisions`;
+    const dashboard = await app.request('https://builder.pointatx.org/api/drafts?view=summary');
+    expect(dashboard.status).toBe(200);
+    const listed = await dashboard.json<{
+      items: Array<{ id: string; revision: RevisionSummary }>;
+    }>();
+    expect(listed.items).toHaveLength(1);
+    expect(listed.items[0].id).toBe(first.id);
+    expect(listed.items[0]).not.toHaveProperty('document');
+    expect(listed.items[0].revision).not.toHaveProperty('document');
+    expect(queries).toHaveLength(1);
+    queries.length = 0;
+    const legacy = await writer.listDrafts();
+    expect(legacy[0].document).toEqual(defaultSiteDocument);
+    expect(legacy[0].revision.document).toEqual(defaultSiteDocument);
+    const get = async (query = '') => {
+      const response = await app.request(`${url}${query}`);
+      expect(response.status).toBe(200);
+      const body = await response.json<{ items: RevisionSummary[]; nextCursor: string | null }>();
+      expect(body.items.every((item) => !('document' in item))).toBe(true);
+      return body;
+    };
+    const newest = await get();
+    expect(newest.items).toHaveLength(100);
+    expect(newest.nextCursor).toBe('106');
+    expect(queries).toHaveLength(2);
+    const current = await writer.getDraft(first.id);
+    const changed = structuredClone(current.document);
+    changed.site.shortName = 'New save between pages';
+    await writer.saveDraft({
+      action: { category: 'text-edit', context: 'site-settings' },
+      draftId: first.id,
+      document: changed,
+      actor,
+      ...(await acquireDraftProof(writer, first.id, actor)),
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'save',
+    });
+    const older = await get(`?cursor=${newest.nextCursor}`);
+    expect(older.items.map((item) => item.sequence)).toEqual(
+      Array.from({ length: 100 }, (_, index) => 105 - index),
+    );
+    const oldest = await get(`?cursor=${older.nextCursor}`);
+    expect(oldest.items.map((item) => item.sequence)).toEqual([5, 4, 3, 2, 1]);
+    expect(oldest.nextCursor).toBeNull();
+    expect((await get('?query=oldest&filter=named')).items.map((item) => item.id)).toEqual([
+      first.latestRevisionId,
+    ]);
+    expect((await get('?filter=current')).items[0].sequence).toBe(206);
+    for (const query of [
+      '?cursor=0',
+      '?cursor=-1',
+      '?cursor=1.5',
+      '?cursor=9007199254740992',
+      '?filter=invalid',
+      `?query=${'a'.repeat(101)}`,
+    ])
+      expect((await app.request(`${url}${query}`)).status).toBe(422);
+    expect((await app.request(url.replace(first.id, crypto.randomUUID()))).status).toBe(404);
+    expect(await writer.getRevision(first.latestRevisionId)).toEqual(labeled);
+  });
+
   it('preserves legacy data when conversion is interrupted before commit or a receipt differs', async () => {
     const { database, repository } = await repositoryFixture();
     const actor = 'editor@pointatx.org';

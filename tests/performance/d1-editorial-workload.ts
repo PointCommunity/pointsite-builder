@@ -15,6 +15,11 @@ const workload = {
   mediaEntriesPerDraft: 100,
   startingRevisions: 800,
   actionsPerDay: 400,
+  libraryListings: 80,
+  dashboardRefreshes: 40,
+  historyVisits: 16,
+  foregroundChecks: 2700,
+  passiveContextChecks: 360,
   retryFraction: 0.1,
   retentionDays: 90,
   mediaBudgetBytes: 100_000_000,
@@ -258,6 +263,61 @@ async function measureStorage() {
     f.meter.reset();
     for (let index = 0; index < 4; index++) await f.library.list(sessions[index].draft.id);
     const libraryCosts = { ...f.meter.totals };
+    f.meter.reset();
+    const listed = await f.repository.listDraftSummaries();
+    assert.equal(listed.length, workload.drafts);
+    assert(listed.every((item) => !('document' in item) && !('document' in item.revision)));
+    const dashboardCosts = { ...f.meter.totals };
+    assert.equal(dashboardCosts.queries, 1);
+    f.meter.reset();
+    for (let index = 0; index < 4; index++) {
+      const history = await f.repository.listRevisions(sessions[index].draft.id);
+      assert(history.every((item) => !('document' in item)));
+    }
+    const historyCosts = { ...f.meter.totals };
+    assert.equal(historyCosts.queries, 8);
+    f.meter.reset();
+    for (let index = 0; index < 4; index++)
+      await f.repository.assertCheckout(sessions[index].draft.id, actor, sessions[index].token);
+    const observationCosts = { ...f.meter.totals };
+    f.meter.reset();
+    for (let index = 0; index < 4; index++)
+      await f.repository.touchCheckout({
+        draftId: sessions[index].draft.id,
+        actor,
+        clientId: `workload-client-${index}`,
+        token: sessions[index].token,
+        requestId: 'passive-context',
+        activity: false,
+      });
+    const passiveContextCosts = { ...f.meter.totals };
+    assert.equal(passiveContextCosts.rowsWritten, 0);
+    f.meter.reset();
+    await f.meter.database
+      .prepare('SELECT role,active FROM user_roles WHERE email=?')
+      .bind(actor)
+      .first();
+    const authenticationCosts = { ...f.meter.totals };
+    const modeledRequests =
+      workload.actionsPerDay * (1 + workload.retryFraction) +
+      workload.libraryListings +
+      workload.dashboardRefreshes +
+      workload.historyVisits +
+      workload.foregroundChecks +
+      workload.passiveContextChecks;
+    const editorDay = { queries: 0, rowsRead: 0, rowsWritten: 0, requests: modeledRequests };
+    // Scale explicitly counted read-only samples; changed saves/retries were executed in full.
+    for (const [cost, count] of [
+      [saveCosts, 1],
+      [libraryCosts, workload.libraryListings / 4],
+      [dashboardCosts, workload.dashboardRefreshes],
+      [historyCosts, workload.historyVisits / 4],
+      [observationCosts, workload.foregroundChecks / 4],
+      [passiveContextCosts, workload.passiveContextChecks / 4],
+      [authenticationCosts, modeledRequests],
+    ] as const)
+      for (const key of ['queries', 'rowsRead', 'rowsWritten'] as const)
+        editorDay[key] += cost[key] * count;
     const bytesPerAction = Math.ceil((endingBytes - startingBytes) / workload.actionsPerDay);
     const projectedDatabaseBytes =
       startingBytes +
@@ -272,6 +332,12 @@ async function measureStorage() {
       saveCosts,
       maximumSaveAndRetryQueries,
       libraryCosts,
+      dashboardCosts,
+      historyCosts,
+      observationCosts,
+      passiveContextCosts,
+      authenticationCosts,
+      modeledEditorDay: editorDay,
       growthDatabaseBytes:
         startingBytes + bytesPerAction * 1600 * workload.retentionDays + workload.mediaBudgetBytes,
     };
@@ -290,7 +356,7 @@ const evidence = {
   library,
   storage,
   limitations:
-    'Local emulator row counters and allocated SQLite bytes; Node repository/codec execution. Storage is a linear projection including measured revision, receipt, audit and index growth plus a media reserve. Actual Worker CPU, provider billing, all action distributions, daily observation/dashboard/history/publishing/maintenance and other account consumers remain separate gates.',
+    'Local emulator row counters and allocated SQLite bytes; Node repository/codec execution. Changed saves and retries are executed in full. Editor-day totals scale the declared read-only samples and one measured authentication lookup per modeled request; foreground observation is conservatively every four seconds. Storage is a linear projection including measured revision, receipt, audit and index growth plus a media reserve. Actual Worker CPU, provider billing, broader action distributions, startup and active context writes, publishing, maintenance and other account consumers remain separate gates.',
 };
 await mkdir('artifacts', { recursive: true });
 await writeFile('artifacts/d1-editorial-workload.json', `${JSON.stringify(evidence, null, 2)}\n`);

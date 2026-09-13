@@ -180,7 +180,12 @@ export function createDraftRoutes(
 
   routes.get('/', async (context) => {
     requireRole(context.get('actor'), 'viewer');
-    const items = await repository.listDrafts();
+    const view = context.req.query('view');
+    if (view !== undefined && view !== 'summary')
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Unknown draft list view');
+    // Already-open clients still need the original document-bearing response.
+    const items =
+      view === 'summary' ? await repository.listDraftSummaries() : await repository.listDrafts();
     return context.json({ items, nextCursor: null });
   });
 

@@ -24,7 +24,14 @@ for (const flow of ['cancel', 'submit'] as const) {
       const path = new URL(route.request().url()).pathname;
       let body: unknown = {};
       if (path === '/api/me') body = { email: 'viewer@pointatx.org', role: 'viewer' };
-      if (path === '/api/drafts') body = { items: [draft], nextCursor: null };
+      if (path === '/api/drafts')
+        body = {
+          items: [
+            { ...draft, document: undefined, revision: { ...draft.revision, document: undefined } },
+          ],
+          nextCursor: null,
+        };
+      if (path === `/api/drafts/${draftId}`) body = draft;
       if (path === '/api/drafts/checkouts') body = { items: [] };
       if (path === '/api/feedback') body = { mode: 'production' };
       if (path === '/api/feedback/launch') {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
   DraftCheckoutAvailability,
-  DraftRecord,
+  DraftSummary,
   Role,
 } from '../../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../../shared/draft-lifecycle';
@@ -11,7 +11,7 @@ function DeleteDraftDialog({
   onCancel,
   onConfirm,
 }: {
-  draft: DraftRecord;
+  draft: DraftSummary;
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 }) {
@@ -133,14 +133,14 @@ export function DraftList({
   onDelete,
   checkouts = [],
 }: {
-  drafts: DraftRecord[];
+  drafts: DraftSummary[];
   role: Role;
-  onOpen: (draft: DraftRecord, trigger?: HTMLButtonElement) => void | Promise<void>;
+  onOpen: (draft: DraftSummary, trigger?: HTMLButtonElement) => void | Promise<void>;
   onCreate: (name: string) => Promise<void>;
-  onDuplicate: (draft: DraftRecord) => Promise<void>;
-  onArchive: (draft: DraftRecord) => Promise<void>;
-  onUnarchive: (draft: DraftRecord) => Promise<void>;
-  onDelete: (draft: DraftRecord) => Promise<void>;
+  onDuplicate: (draft: DraftSummary) => Promise<void>;
+  onArchive: (draft: DraftSummary) => Promise<void>;
+  onUnarchive: (draft: DraftSummary) => Promise<void>;
+  onDelete: (draft: DraftSummary) => Promise<void>;
   checkouts?: DraftCheckoutAvailability[];
 }) {
   const [name, setName] = useState('');
@@ -163,7 +163,7 @@ export function DraftList({
       setBusy(false);
     }
   };
-  const [deleteTarget, setDeleteTarget] = useState<DraftRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DraftSummary | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const canEdit = role !== 'viewer';
   const closeDeleteDialog = () => {

@@ -119,6 +119,11 @@ paths:
   /drafts:
     get:
       operationId: listDrafts
+      parameters:
+        - name: view
+          in: query
+          description: Request document-free summaries. Omit only for legacy clients that need full documents.
+          schema: { type: string, enum: [summary] }
       responses:
         '200':
           description: Draft summaries visible to actor
@@ -126,6 +131,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DraftList'
+        '422': { $ref: '#/components/responses/Error' }
     post:
       operationId: createDraft
       parameters:
@@ -271,6 +277,18 @@ paths:
       - $ref: '#/components/parameters/DraftId'
     get:
       operationId: listRevisions
+      parameters:
+        - name: cursor
+          in: query
+          description: Exclusive sequence cursor from the preceding page.
+          schema: { type: string, pattern: '^[1-9][0-9]{0,15}$' }
+        - name: query
+          in: query
+          description: Search retained revision names, sequence numbers and people.
+          schema: { type: string, maxLength: 100 }
+        - name: filter
+          in: query
+          schema: { type: string, enum: [all, named, current], default: all }
       responses:
         '200':
           description: Revision metadata newest first
@@ -278,6 +296,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RevisionList'
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /drafts/checkouts:
     get:
       operationId: listDraftCheckouts
@@ -1121,13 +1141,15 @@ components:
         role: { type: string, enum: [viewer, editor, publisher, administrator] }
     DraftSummary:
       type: object
-      required: [id, siteId, name, status, latestRevisionId, createdBy, createdAt, updatedAt]
+      required:
+        [id, siteId, name, status, latestRevisionId, revision, createdBy, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         siteId: { type: string, const: pointsite }
         name: { type: string }
         status: { type: string, enum: [active, archived, deleted] }
         latestRevisionId: { type: string, format: uuid }
+        revision: { $ref: '#/components/schemas/RevisionSummary' }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1139,7 +1161,8 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/Draft' }
+          maxItems: 100
+          items: { $ref: '#/components/schemas/DraftSummary' }
         nextCursor: { type: ['string', 'null'] }
     Draft:
       allOf:
@@ -1149,7 +1172,7 @@ components:
           properties:
             document: { $ref: '#/components/schemas/SiteDocument' }
             revision: { $ref: '#/components/schemas/Revision' }
-    Revision:
+    RevisionSummary:
       type: object
       required:
         [
@@ -1158,7 +1181,6 @@ components:
           sequence,
           parentRevisionId,
           checksum,
-          document,
           label,
           schemaVersion,
           rendererVersion,
@@ -1173,7 +1195,6 @@ components:
         sequence: { type: integer, minimum: 1 }
         parentRevisionId: { type: [string, 'null'], format: uuid }
         checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
-        document: { $ref: '#/components/schemas/SiteDocument' }
         schemaVersion: { type: integer }
         rendererVersion: { type: string }
         actionCategory:
@@ -1218,6 +1239,13 @@ components:
         label: { type: [string, 'null'] }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
+    Revision:
+      allOf:
+        - $ref: '#/components/schemas/RevisionSummary'
+        - type: object
+          required: [document]
+          properties:
+            document: { $ref: '#/components/schemas/SiteDocument' }
     DraftAction:
       type: object
       additionalProperties: false
@@ -1267,7 +1295,8 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/Revision' }
+          maxItems: 100
+          items: { $ref: '#/components/schemas/RevisionSummary' }
         nextCursor: { type: ['string', 'null'] }
     LibraryMetadata:
       type: object

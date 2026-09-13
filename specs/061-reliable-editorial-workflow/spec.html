@@ -537,7 +537,8 @@
       retain their original hash contract and must not bypass draft or label matching. The browser
       sends the exact base revision and preserves it through retries. Tests cover altered input,
       repeated content with a different revision, lost acknowledgement, concurrent retry, no-op,
-      expired receipt, and revoked checkout. Receipt payload compaction remains pending.
+      expired receipt, and revoked checkout. Receipt payload compaction is implemented below;
+      production activation remains gated.
     </p>
     <p>
       Passive view-state persistence sends activity=false. Checkout validation and context writes
@@ -642,6 +643,38 @@
       CPU measurements. Dashboard, foreground observation, history, publishing, maintenance, other
       account consumers, additional action distributions and live usage still need inclusion before
       claiming complete free-tier suitability.
+    </p>
+    <p>
+      History read contract: list immutable revision metadata without document bodies or payload
+      decoding, in pages of 100 plus one lookahead row. Use an exclusive sequence cursor so newer
+      saves cannot duplicate older pages. Search and named/current filters apply on the server
+      across retained history; the browser cancels stale searches and offers an explicit next-page
+      action. Restore continues to load exactly one selected revision through the guarded save path.
+      Validate cursor/search input, missing drafts, older named revisions, page boundaries,
+      concurrent newer saves and zero payload reads during listing. Search may examine retained
+      metadata; routine unfiltered pages use the draft/sequence index.
+    </p>
+    <p>
+      Updated dashboard requests opt into <code>view=summary</code>, use the existing 100-draft
+      bound and return draft/revision summaries in one query, without loading document JSON or
+      compact payloads. Opening an editor or preview fetches that selected draft explicitly,
+      including feedback return and automatic recovery. Lifecycle actions retain the revision and
+      checksum from the displayed summary. Verify summary-only responses, both preview roles and
+      archived previews, and unchanged checkout/proof behavior. Requests without this opt-in retain
+      the document-bearing response for already-open clients. Their legacy read costs remain a
+      rollout consideration until those clients refresh.
+    </p>
+    <p>
+      Expanded local fixture (2026-09-12): one dashboard summary costs 36 row reads in one query;
+      one History page costs 102 reads in two queries; a checkout observation costs three reads;
+      passive context costs five reads and zero writes. Scaling the measured read-only samples to 80
+      Library listings, 40 dashboard refreshes, 16 History visits, 2,700 foreground checks and 360
+      passive context checks, plus one measured role lookup per modeled request, produces 180,632
+      row reads, 7,208 row writes and 3,636 requests for the editor day. Changed saves and 40
+      retries were executed in full. The latest allocation-based 90-day estimate is 270,552,032
+      bytes; the fourfold growth estimate is 769,404,032 bytes and fails the target. Startup, active
+      context writes, broader action mixes, publishing, maintenance, runtime CPU, provider billing
+      and other account consumers remain outside this subtotal.
     </p>
     <ol>
       <li>

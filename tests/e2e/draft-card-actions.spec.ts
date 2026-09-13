@@ -46,7 +46,14 @@ async function installDrafts(page: Page, role: Role = 'administrator') {
       path === '/api/me'
         ? { email: 'fixture@example.test', role, repositoryPermission: 'admin' }
         : path === '/api/drafts'
-          ? { items: drafts, nextCursor: null }
+          ? {
+              items: drafts.map((item) => ({
+                ...item,
+                document: undefined,
+                revision: { ...item.revision, document: undefined },
+              })),
+              nextCursor: null,
+            }
           : path === '/api/drafts/checkouts'
             ? {
                 items: drafts.map(({ id }, index) => ({

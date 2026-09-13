@@ -3,6 +3,7 @@ import type {
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRecord,
+  DraftSummary,
 } from '../server/repositories/contracts';
 import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
@@ -57,7 +58,7 @@ export function App() {
     return saved === 'light' ? 'light' : 'dark';
   });
   const [actor, setActor] = useState<ActorResponse | null>(null);
-  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [selected, setSelected] = useState<DraftRecord | null>(null);
   const [checkout, setCheckout] = useState<DraftCheckout | null>(null);
   const [checkouts, setCheckouts] = useState<DraftCheckoutAvailability[]>([]);
@@ -78,7 +79,7 @@ export function App() {
     'loading',
   );
   const runLifecycle = async <T,>(
-    draft: DraftRecord,
+    draft: DraftSummary,
     operation: (context: LibraryMutationContext) => Promise<T>,
   ): Promise<T> => {
     if (draft.status === 'deleted') throw new Error('Refresh the draft list before continuing.');
@@ -117,7 +118,7 @@ export function App() {
   useEffect(() => {
     let active = true;
     void Promise.all([api.me(), api.listDrafts()])
-      .then(([identity, items]) => {
+      .then(async ([identity, items]) => {
         if (!active) return;
         setActor(identity);
         setDrafts(items);
@@ -130,7 +131,8 @@ export function App() {
             returningDraft &&
             (identity.role === 'viewer' || returningDraft.status !== 'active')
           ) {
-            setSelected(returningDraft);
+            const current = await api.getDraft(returningDraft.id);
+            if (active) setSelected(current);
             return;
           }
         }
@@ -346,7 +348,7 @@ export function App() {
           onOpen={async (draft, trigger) => {
             checkoutTrigger.current = trigger ?? null;
             if (actor.role === 'viewer' || draft.status !== 'active') {
-              setSelected(draft);
+              setSelected(await api.getDraft(draft.id));
               return;
             }
             try {

@@ -5,10 +5,21 @@ import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { DraftRepository } from '../repositories/contracts';
+import { REVISION_PAGE_SIZE } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
 import { draftMutationProof, type ApiVariables } from './drafts';
 
 const LabelSchema = z.strictObject({ label: z.string().trim().min(1).max(100) });
+const HistoryQuerySchema = z.strictObject({
+  cursor: z
+    .string()
+    .regex(/^[1-9]\d{0,15}$/)
+    .transform(Number)
+    .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER))
+    .optional(),
+  query: z.string().trim().max(100).optional(),
+  filter: z.enum(['all', 'named', 'current']).optional(),
+});
 const RestoreSchema = z.strictObject({
   revisionId: z.uuid(),
   expectedChecksum: z.string().regex(/^[a-f0-9]{64}$/),
@@ -44,8 +55,16 @@ export function createRevisionRoutes(
 
   routes.get('/:draftId/revisions', async (context) => {
     requireRole(context.get('actor'), 'viewer');
-    const items = await repository.listRevisions(context.req.param('draftId'));
-    return context.json({ items, nextCursor: null });
+    const { cursor, ...options } = parse(HistoryQuerySchema, context.req.query());
+    const rows = await repository.listRevisions(context.req.param('draftId'), {
+      ...options,
+      beforeSequence: cursor,
+    });
+    const items = rows.slice(0, REVISION_PAGE_SIZE);
+    return context.json({
+      items,
+      nextCursor: rows.length > REVISION_PAGE_SIZE ? String(items.at(-1)!.sequence) : null,
+    });
   });
 
   routes.patch('/:draftId/revisions/:revisionId', async (context) => {

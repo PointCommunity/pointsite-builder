@@ -1,23 +1,86 @@
-import { useEffect, useState } from 'react';
-import type { RevisionRecord } from '../../server/repositories/contracts';
+import { useEffect, useRef, useState } from 'react';
+import type { RevisionSummary } from '../../server/repositories/contracts';
 import { draftActionCategoryLabel, draftActionContextLabel } from '../../shared/draft-actions';
 import { api } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 
 export function RevisionHistory({ editable }: { editable: boolean }) {
   const { draft, restoreRevision, labelRevision } = useEditor();
-  const [items, setItems] = useState<RevisionRecord[]>([]);
+  const [items, setItems] = useState<RevisionSummary[]>([]);
   const [error, setError] = useState('');
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'named' | 'current'>('all');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadedKey, setLoadedKey] = useState('');
+  const pending = useRef<AbortController | null>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const key = JSON.stringify([draft.id, draft.revision.id, query.trim(), filter]);
   useEffect(() => {
-    void api
-      .listRevisions(draft.id)
-      .then(setItems)
-      .catch(() => setError('Revision history could not be loaded.'));
-  }, [draft.id, draft.revision.id]);
+    const controller = new AbortController();
+    pending.current = controller;
+    const timer = window.setTimeout(
+      () => {
+        setLoading(true);
+        setError('');
+        void api
+          .listRevisions(draft.id, { query: query.trim(), filter, signal: controller.signal })
+          .then((page) => {
+            if (controller.signal.aborted) return;
+            setItems(page.items);
+            setNextCursor(page.nextCursor);
+            setLoadedKey(key);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setError('Revision history could not be loaded.');
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) setLoading(false);
+          });
+      },
+      query.trim() ? 250 : 0,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      pending.current?.abort();
+    };
+  }, [draft.id, key, query, filter]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loading || loadedKey !== key) return;
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
+    setLoading(true);
+    setError('');
+    const trigger = moreButton.current;
+    const moveFocus = document.activeElement === trigger;
+    try {
+      const page = await api.listRevisions(draft.id, {
+        cursor: nextCursor,
+        query: query.trim(),
+        filter,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      setItems((current) => [...current, ...page.items]);
+      setNextCursor(page.nextCursor);
+      if (moveFocus && page.items[0])
+        window.requestAnimationFrame(() => {
+          if (
+            !controller.signal.aborted &&
+            (document.activeElement === trigger || document.activeElement === document.body)
+          )
+            document.getElementById(`history-revision-${page.items[0].id}`)?.focus();
+        });
+    } catch {
+      if (!controller.signal.aborted) setError('Older revisions could not be loaded. Try again.');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  };
   const visible = items.filter((revision) => {
     if (filter === 'named' && !revision.label) return false;
     if (filter === 'current' && revision.id !== draft.revision.id) return false;
@@ -43,6 +106,7 @@ export function RevisionHistory({ editable }: { editable: boolean }) {
           <span>Find a revision</span>
           <input
             type="search"
+            maxLength={100}
             placeholder="Search by name, number, or person"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -65,11 +129,11 @@ export function RevisionHistory({ editable }: { editable: boolean }) {
       </div>
       {error ? <p role="alert">{error}</p> : null}
       <p role="status" aria-live="polite">
-        {status}
+        {loading ? 'Loading revision history…' : status}
       </p>
       <ol>
         {visible.map((revision) => (
-          <li key={revision.id}>
+          <li key={revision.id} id={`history-revision-${revision.id}`} tabIndex={-1}>
             <div>
               <strong>{revision.label || `Revision ${revision.sequence}`}</strong>
               <span>
@@ -146,6 +210,17 @@ export function RevisionHistory({ editable }: { editable: boolean }) {
           </li>
         ))}
       </ol>
+      {nextCursor && loadedKey === key ? (
+        <button
+          ref={moreButton}
+          className="button"
+          type="button"
+          disabled={loading}
+          onClick={() => void loadMore()}
+        >
+          Load older revisions
+        </button>
+      ) : null}
     </section>
   );
 }

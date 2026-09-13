@@ -4,6 +4,7 @@ import type {
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRecord,
+  DraftSummary,
   EditorViewState,
   RevisionRecord,
   Role,
@@ -182,7 +183,7 @@ export const api = {
       signal: AbortSignal.timeout(10_000),
     }),
   me: () => request<ActorResponse>('/me'),
-  listDrafts: async () => (await request<{ items: DraftRecord[] }>('/drafts')).items,
+  listDrafts: async () => (await request<{ items: DraftSummary[] }>('/drafts?view=summary')).items,
   getDraft: (id: string) => request<DraftRecord>(`/drafts/${id}`),
   createDraft: (name: string, fromRevisionId?: string) =>
     request<DraftRecord>('/drafts', {
@@ -262,8 +263,24 @@ export const api = {
       headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION }),
     }),
-  listRevisions: async (id: string) =>
-    (await request<{ items: RevisionRecord[] }>(`/drafts/${id}/revisions`)).items,
+  listRevisions: (
+    id: string,
+    options: {
+      cursor?: string;
+      query?: string;
+      filter?: 'all' | 'named' | 'current';
+      signal?: AbortSignal;
+    } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (options.cursor) query.set('cursor', options.cursor);
+    if (options.query) query.set('query', options.query);
+    if (options.filter) query.set('filter', options.filter);
+    return request<{ items: Omit<RevisionRecord, 'document'>[]; nextCursor: string | null }>(
+      `/drafts/${id}/revisions?${query}`,
+      { signal: options.signal },
+    );
+  },
   labelRevision: (context: LibraryMutationContext, revisionId: string, label: string) =>
     request<RevisionRecord>(`/drafts/${context.draftId}/revisions/${revisionId}`, {
       method: 'PATCH',

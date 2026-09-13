@@ -4,6 +4,12 @@ import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
 import { createRequestHash, saveRequestHash } from './request-hash';
+import {
+  REVISION_PAGE_SIZE,
+  type RevisionListOptions,
+  type RevisionSummary,
+  type DraftSummary,
+} from './contracts';
 import type {
   AuditEventRecord,
   AcquireCheckoutCommand,
@@ -60,7 +66,20 @@ export class InMemoryRepository implements DraftRepository {
     return [...this.#drafts.values()]
       .filter((draft) => (status ? draft.status === status : draft.status !== 'deleted'))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 100)
       .map(clone);
+  }
+
+  async listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]> {
+    return [...this.#drafts.values()]
+      .filter((draft) => (status ? draft.status === status : draft.status !== 'deleted'))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 100)
+      .map(({ document, revision: { document: revisionDocument, ...revision }, ...draft }) => {
+        void document;
+        void revisionDocument;
+        return clone({ ...draft, revision });
+      });
   }
 
   async getDraft(id: string): Promise<DraftRecord> {
@@ -204,9 +223,31 @@ export class InMemoryRepository implements DraftRepository {
     return clone(updated);
   }
 
-  async listRevisions(draftId: string): Promise<RevisionRecord[]> {
+  async listRevisions(
+    draftId: string,
+    options: RevisionListOptions = {},
+  ): Promise<RevisionSummary[]> {
     if (!this.#drafts.has(draftId)) throw new NotFoundError(`Draft ${draftId} was not found`);
-    return clone([...(this.#revisions.get(draftId) ?? [])].reverse());
+    const query = options.query?.trim().toLowerCase() ?? '';
+    return clone(
+      [...(this.#revisions.get(draftId) ?? [])]
+        .reverse()
+        .filter(
+          (revision) =>
+            revision.sequence < (options.beforeSequence ?? Number.MAX_SAFE_INTEGER) &&
+            (options.filter !== 'named' || revision.label !== null) &&
+            (options.filter !== 'current' ||
+              revision.id === this.#drafts.get(draftId)!.latestRevisionId) &&
+            `${revision.label ?? ''} ${revision.sequence} ${revision.createdBy}`
+              .toLowerCase()
+              .includes(query),
+        )
+        .slice(0, REVISION_PAGE_SIZE + 1)
+        .map(({ document, ...summary }) => {
+          void document;
+          return summary;
+        }),
+    );
   }
 
   async restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord> {

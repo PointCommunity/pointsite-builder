@@ -84,6 +84,17 @@ export interface DraftRecord {
   deletedAt: string | null;
 }
 
+export type RevisionSummary = Omit<RevisionRecord, 'document'>;
+export type DraftSummary = Omit<DraftRecord, 'document' | 'revision'> & {
+  revision: RevisionSummary;
+};
+export const REVISION_PAGE_SIZE = 100;
+export interface RevisionListOptions {
+  beforeSequence?: number;
+  query?: string;
+  filter?: 'all' | 'named' | 'current';
+}
+
 export interface AuditEventRecord {
   id: string;
   occurredAt: string;
@@ -137,11 +148,12 @@ export interface RestoreRevisionInput extends DraftMutationProof {
 
 export interface DraftRepository {
   listDrafts(status?: DraftStatus): Promise<DraftRecord[]>;
+  listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]>;
   getDraft(id: string): Promise<DraftRecord>;
   getRevision(id: string): Promise<RevisionRecord>;
   createDraft(input: CreateDraftInput): Promise<DraftRecord>;
   saveDraft(input: SaveDraftInput): Promise<DraftRecord>;
-  listRevisions(draftId: string): Promise<RevisionRecord[]>;
+  listRevisions(draftId: string, options?: RevisionListOptions): Promise<RevisionSummary[]>;
   restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord>;
   labelRevision(
     draftId: string,

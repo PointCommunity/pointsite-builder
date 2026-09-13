@@ -172,7 +172,14 @@ async function installApi(
         viewState: null,
       };
     } else if (path === '/api/drafts' && method === 'GET')
-      body = { items: drafts, nextCursor: null };
+      body = {
+        items: drafts.map((item) => ({
+          ...item,
+          document: undefined,
+          revision: { ...item.revision, document: undefined },
+        })),
+        nextCursor: null,
+      };
     else if (path === '/api/drafts' && method === 'POST') {
       const input = request.postDataJSON() as { name: string };
       const created = {
@@ -235,6 +242,7 @@ async function installApi(
         updatedAt: new Date().toISOString(),
       } as DraftRecord;
       drafts[index] = updated;
+      if (updated.id === draft.id) Object.assign(draft, updated);
       body = updated;
     } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'DELETE') {
       const id = path.split('/').at(-1);
@@ -949,6 +957,16 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   await expect(sourceCard.getByRole('button', { name: 'Duplicate' })).toBeVisible();
   await expect(sourceCard.getByRole('button', { name: 'Unarchive' })).toBeVisible();
   await expect(sourceCard.getByRole('button', { name: 'Delete' })).toBeVisible();
+  const previewRead = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === '/api/drafts/10000000-0000-4000-8000-000000000001',
+  );
+  await sourceCard.getByRole('button', { name: 'Open editor' }).click();
+  await previewRead;
+  await expect(page.locator('iframe.preview-frame')).toBeVisible();
+  await expect(page.locator('.visual-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: '← All drafts' }).click();
 
   const deleteTrigger = sourceCard.getByRole('button', { name: 'Delete' });
   await deleteTrigger.click();

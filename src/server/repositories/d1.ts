@@ -1,4 +1,10 @@
 import { prepareRevisionPayload, readRevisionDocument } from './revision-payloads';
+import {
+  REVISION_PAGE_SIZE,
+  type RevisionListOptions,
+  type RevisionSummary,
+  type DraftSummary,
+} from './contracts';
 import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
@@ -65,31 +71,28 @@ interface RevisionRow {
   action_context: RevisionRecord['actionContext'];
 }
 
-const DRAFT_SELECT = `
-  SELECT d.id, d.site_id, d.name, d.status, d.latest_revision_id,
+const DRAFT_FIELDS = `d.id, d.site_id, d.name, d.status, d.latest_revision_id,
     d.created_by, d.created_at, d.updated_at, d.deleted_at,
     r.id AS revision_id, r.sequence, r.parent_revision_id, r.checksum,
-    r.document_json,
     COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
     r.schema_version, r.renderer_version,
     r.created_by AS revision_created_by, r.created_at AS revision_created_at,
-    r.action_category, r.action_context
-  FROM drafts d
+    r.action_category, r.action_context`;
+const DRAFT_FROM = ` FROM drafts d
   JOIN revisions r ON r.id = d.latest_revision_id
 `;
+const DRAFT_SELECT = `SELECT ${DRAFT_FIELDS},r.document_json ${DRAFT_FROM}`;
 
-async function parseRevision(database: D1Database, row: RevisionRow): Promise<RevisionRecord> {
-  const document = migrateDocument(await readRevisionDocument(database, row)).document;
+function revisionSummary(row: Omit<RevisionRow, 'document_json'>): RevisionSummary {
   return {
     id: row.id,
     draftId: row.draft_id,
     sequence: row.sequence,
     parentRevisionId: row.parent_revision_id,
     checksum: row.checksum,
-    document,
     label: row.label,
-    schemaVersion: document.schemaVersion,
-    rendererVersion: document.rendererVersion,
+    schemaVersion: row.schema_version,
+    rendererVersion: row.renderer_version,
     createdBy: row.created_by,
     createdAt: row.created_at,
     actionCategory: row.action_category,
@@ -97,21 +100,23 @@ async function parseRevision(database: D1Database, row: RevisionRow): Promise<Re
   };
 }
 
-async function parseDraft(database: D1Database, row: DraftRow): Promise<DraftRecord> {
-  const revision = await parseRevision(database, {
+async function parseRevision(database: D1Database, row: RevisionRow): Promise<RevisionRecord> {
+  const document = migrateDocument(await readRevisionDocument(database, row)).document;
+  return {
+    ...revisionSummary(row),
+    document,
+    schemaVersion: document.schemaVersion,
+    rendererVersion: document.rendererVersion,
+  };
+}
+
+function draftSummary(row: Omit<DraftRow, 'document_json'>): DraftSummary {
+  const revision = revisionSummary({
+    ...row,
     id: row.revision_id,
     draft_id: row.id,
-    sequence: row.sequence,
-    parent_revision_id: row.parent_revision_id,
-    checksum: row.checksum,
-    document_json: row.document_json,
-    label: row.label,
-    schema_version: row.schema_version,
-    renderer_version: row.renderer_version,
     created_by: row.revision_created_by,
     created_at: row.revision_created_at,
-    action_category: row.action_category,
-    action_context: row.action_context,
   });
   return {
     id: row.id,
@@ -119,13 +124,23 @@ async function parseDraft(database: D1Database, row: DraftRow): Promise<DraftRec
     name: row.name,
     status: row.status,
     latestRevisionId: row.latest_revision_id,
-    document: revision.document,
     revision,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
+}
+
+async function parseDraft(database: D1Database, row: DraftRow): Promise<DraftRecord> {
+  const revision = await parseRevision(database, {
+    ...row,
+    id: row.revision_id,
+    draft_id: row.id,
+    created_by: row.revision_created_by,
+    created_at: row.revision_created_at,
+  });
+  return { ...draftSummary(row), document: revision.document, revision };
 }
 
 export class D1DraftRepository implements DraftRepository {
@@ -166,13 +181,24 @@ export class D1DraftRepository implements DraftRepository {
 
   async listDrafts(status?: DraftStatus): Promise<DraftRecord[]> {
     const query = status
-      ? `${DRAFT_SELECT} WHERE d.status = ? ORDER BY d.updated_at DESC LIMIT 100`
-      : `${DRAFT_SELECT} WHERE d.status != 'deleted' ORDER BY d.updated_at DESC LIMIT 100`;
+      ? `${DRAFT_SELECT} WHERE d.status=? ORDER BY d.updated_at DESC LIMIT 100`
+      : `${DRAFT_SELECT} WHERE d.status!='deleted' ORDER BY d.updated_at DESC LIMIT 100`;
+    const result = await (
+      status ? this.database.prepare(query).bind(status) : this.database.prepare(query)
+    ).all<DraftRow>();
+    return Promise.all(result.results.map((row) => parseDraft(this.database, row)));
+  }
+
+  async listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]> {
+    const select = `SELECT ${DRAFT_FIELDS} ${DRAFT_FROM}`;
+    const query = status
+      ? `${select} WHERE d.status = ? ORDER BY d.updated_at DESC LIMIT 100`
+      : `${select} WHERE d.status != 'deleted' ORDER BY d.updated_at DESC LIMIT 100`;
     const statement = status
       ? this.database.prepare(query).bind(status)
       : this.database.prepare(query);
-    const result = await statement.all<DraftRow>();
-    return Promise.all(result.results.map((row) => parseDraft(this.database, row)));
+    const result = await statement.all<Omit<DraftRow, 'document_json'>>();
+    return result.results.map(draftSummary);
   }
 
   async getDraft(id: string): Promise<DraftRecord> {
@@ -532,18 +558,39 @@ export class D1DraftRepository implements DraftRepository {
     throw new ConflictError('The draft has a newer revision or checkout changed');
   }
 
-  async listRevisions(draftId: string): Promise<RevisionRecord[]> {
+  async listRevisions(
+    draftId: string,
+    options: RevisionListOptions = {},
+  ): Promise<RevisionSummary[]> {
+    const draft = await this.database
+      .prepare('SELECT latest_revision_id FROM drafts WHERE id=?')
+      .bind(draftId)
+      .first<{ latest_revision_id: string }>();
+    if (!draft) throw new NotFoundError(`Draft ${draftId} was not found`);
     const result = await this.database
       .prepare(
-        `SELECT r.id, r.draft_id, r.sequence, r.parent_revision_id, r.checksum, r.document_json,
+        `WITH summaries AS (SELECT r.id, r.draft_id, r.sequence, r.parent_revision_id, r.checksum,
         COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
         r.schema_version, r.renderer_version, r.created_by, r.created_at,
         r.action_category, r.action_context
-        FROM revisions r WHERE r.draft_id = ? ORDER BY r.sequence DESC LIMIT 100`,
+        FROM revisions r WHERE r.draft_id=? AND r.sequence<?)
+        SELECT * FROM summaries WHERE (?!='named' OR label IS NOT NULL)
+          AND (?!='current' OR id=?)
+          AND (?='' OR instr(lower(COALESCE(label,'') || ' ' || sequence || ' ' || created_by),?)>0)
+        ORDER BY sequence DESC LIMIT ?`,
       )
-      .bind(draftId)
-      .all<RevisionRow>();
-    return Promise.all(result.results.map((row) => parseRevision(this.database, row)));
+      .bind(
+        draftId,
+        options.beforeSequence ?? Number.MAX_SAFE_INTEGER,
+        options.filter ?? 'all',
+        options.filter ?? 'all',
+        draft.latest_revision_id,
+        options.query?.trim().toLowerCase() ?? '',
+        options.query?.trim().toLowerCase() ?? '',
+        REVISION_PAGE_SIZE + 1,
+      )
+      .all<Omit<RevisionRow, 'document_json'>>();
+    return result.results.map(revisionSummary);
   }
 
   async restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord> {
