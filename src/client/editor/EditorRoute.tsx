@@ -49,6 +49,10 @@ const panelLabels: Record<Panel, string> = {
   admin: 'Admin',
 };
 
+function isAuthorityUnavailable(error: unknown): boolean {
+  return error instanceof ClientApiError && [401, 403, 404, 409, 410].includes(error.status);
+}
+
 function Workspace({
   role,
   canPublish,
@@ -71,6 +75,8 @@ function Workspace({
     saveState,
     autosave,
     reloadLatest,
+    discardLocal,
+    stopAutosave,
     retryAutosave,
     copyRecoveryData,
     renameDraft,
@@ -103,9 +109,18 @@ function Workspace({
   const leaseExpired = Boolean(
     leaseExpiresAt && checkoutPhase(leaseExpiresAt, leaseNow) === 'expired',
   );
-  const checkoutUnavailable = leaseLost || leaseExpired;
+  const checkoutUnavailable = leaseLost || leaseExpired || autosave.errorKind === 'authority';
+  useEffect(() => {
+    if (checkoutUnavailable) stopAutosave();
+  }, [checkoutUnavailable, stopAutosave]);
   const editable =
-    role !== 'viewer' && draft.status === 'active' && Boolean(checkout) && !checkoutUnavailable;
+    role !== 'viewer' &&
+    draft.status === 'active' &&
+    Boolean(checkout) &&
+    !checkoutUnavailable &&
+    autosave.recovery !== 'blocked' &&
+    autosave.recovery !== 'clearing' &&
+    autosave.recovery !== 'checking';
   const viewState = useCallback(
     (): EditorViewState => ({
       draftId: draft.id,
@@ -132,12 +147,18 @@ function Workspace({
           .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
           .then(() => api.releaseCheckout(draft.id, checkout.clientId, checkout.token))
           .then(onClose)
-          .catch(() => setLeaseLost(true));
+          .catch((error) => {
+            if (isAuthorityUnavailable(error)) onClose();
+            else
+              setRecoveryStatus(
+                'The checkout could not be released. Retry leaving when connected.',
+              );
+          });
       else onClose();
     } else setRecoveryStatus('Copy the pending draft before discarding changes and leaving.');
   };
   useEffect(() => {
-    if (!checkout) return;
+    if (!checkout || checkoutUnavailable) return;
     const clock = window.setInterval(() => setLeaseNow(Date.now()), 1_000);
     let lastTouch = 0;
     const activity = (event: Event) => {
@@ -154,7 +175,7 @@ function Workspace({
           setLeaseLost(false);
         })
         .catch((error) => {
-          if (error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+          if (isAuthorityUnavailable(error)) setLeaseLost(true);
         });
     };
     for (const name of ['pointerdown', 'keydown', 'touchstart', 'focus', 'online'])
@@ -164,14 +185,14 @@ function Workspace({
       for (const name of ['pointerdown', 'keydown', 'touchstart', 'focus', 'online'])
         window.removeEventListener(name, activity, true);
     };
-  }, [checkout, draft.id, viewState]);
+  }, [checkout, checkoutUnavailable, draft.id, viewState]);
   useEffect(() => {
     if (!checkout || checkoutUnavailable) return;
     let active = true;
     const validate = () => {
       if (globalThis.document.visibilityState !== 'visible') return;
       void api.validateCheckout(draft.id, checkout.token).catch((error) => {
-        if (active && error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+        if (active && isAuthorityUnavailable(error)) setLeaseLost(true);
       });
     };
     const timer = window.setInterval(validate, 4_000);
@@ -186,10 +207,10 @@ function Workspace({
     if (!checkout || checkoutUnavailable) return;
     const persist = window.setTimeout(() => {
       void api
-        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
+        .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState(), false)
         .then((next) => setLeaseExpiresAt(next.expiresAt))
         .catch((error) => {
-          if (error instanceof ClientApiError && error.status === 409) setLeaseLost(true);
+          if (isAuthorityUnavailable(error)) setLeaseLost(true);
         });
     }, 250);
     return () => window.clearTimeout(persist);
@@ -203,6 +224,32 @@ function Workspace({
       setRecoveryStatus(
         'The pending draft could not be copied. Keep this page open and try again.',
       );
+    }
+  };
+  const discardPending = async (leave: boolean) => {
+    try {
+      if (leave) await discardLocal();
+      else await reloadLatest();
+    } catch {
+      setRecoveryStatus('Recovery could not be cleared safely. Keep this tab open and retry.');
+      return;
+    }
+    setRecoveryStatus('');
+    setRecoveryCopied(false);
+    if (leave) {
+      if (checkout) {
+        try {
+          await api.releaseCheckout(draft.id, checkout.clientId, checkout.token);
+        } catch (error) {
+          if (!isAuthorityUnavailable(error)) {
+            setRecoveryStatus(
+              'Pending changes were discarded locally. The checkout could not be released. Retry leaving when connected.',
+            );
+            return;
+          }
+        }
+      }
+      onClose();
     }
   };
   const closePublishing = () => {
@@ -302,6 +349,19 @@ function Workspace({
         </div>
       </header>
       <div className="autosave-recovery-slot">
+        <p className="pending-journal-status" aria-live="off">
+          {autosave.recovery === 'protected'
+            ? 'Pending changes protected on this browser.'
+            : autosave.recovery === 'writing'
+              ? autosave.pendingCount
+                ? 'Protecting pending changes…'
+                : 'Clearing recovery copy…'
+              : autosave.recovery === 'unavailable'
+                ? 'Refresh recovery unavailable.'
+                : autosave.recovery === 'blocked'
+                  ? 'Pending recovery needs attention.'
+                  : '\u00a0'}
+        </p>
         {leaseExpiresAt &&
         checkoutPhase(leaseExpiresAt, leaseNow) === 'warning' &&
         !checkoutUnavailable ? (
@@ -316,15 +376,24 @@ function Workspace({
         {checkoutUnavailable ? (
           <section className="autosave-recovery" role="alert">
             <p>
-              This editing session is now read only because its checkout expired or moved to another
-              device. Copy pending changes before leaving.
+              This editing session is now read only because access changed, or its checkout expired
+              or moved to another device. Copy pending changes before leaving.
             </p>
           </section>
         ) : null}
-        {autosave.alert || recoveryStatus ? (
+        {autosave.alert ||
+        recoveryStatus ||
+        autosave.recovery === 'blocked' ||
+        autosave.recovery === 'unavailable' ? (
           <section className="autosave-recovery" role="alert" aria-label="Autosave recovery">
-            <p>{recoveryStatus || autosave.alert}</p>
-            {!autosave.canLeave ? (
+            <p>{recoveryStatus || autosave.alert || autosave.recoveryMessage}</p>
+            {autosave.recovery === 'blocked' || autosave.recovery === 'unavailable' ? (
+              <button className="button" type="button" onClick={retryAutosave}>
+                Retry recovery
+              </button>
+            ) : null}
+            {!autosave.canLeave &&
+            (autosave.recovery !== 'blocked' || autosave.pendingCount > 0) ? (
               <button className="button" type="button" onClick={() => void copyPendingDraft()}>
                 Copy pending draft
               </button>
@@ -334,7 +403,7 @@ function Workspace({
                 className="button"
                 type="button"
                 disabled={!recoveryCopied}
-                onClick={() => void reloadLatest()}
+                onClick={() => void discardPending(false)}
               >
                 Load latest version
               </button>
@@ -343,8 +412,11 @@ function Workspace({
               <button
                 className="button button--danger"
                 type="button"
-                disabled={!recoveryCopied}
-                onClick={onClose}
+                disabled={
+                  autosave.recovery === 'clearing' ||
+                  (!recoveryCopied && autosave.recovery !== 'blocked')
+                }
+                onClick={() => void discardPending(true)}
               >
                 Discard pending changes and leave
               </button>

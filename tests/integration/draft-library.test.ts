@@ -5,6 +5,7 @@ import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1DraftAssets } from '../../src/server/media/draft-assets';
 import { D1LibraryService } from '../../src/server/media/library';
+import { D1LibraryProjection } from '../../src/server/media/library-projection';
 import { createApp } from '../../src/server';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
@@ -47,6 +48,12 @@ beforeEach(async () => {
         .replace(/\s+/g, ' ')
         .trim(),
     );
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES (?,'editor',1,'fixture','fixture','fixture')",
+    )
+    .bind(actor)
+    .run();
   repository = new D1DraftRepository(database);
   const assets = new D1DraftAssets(database, {
     read: vi.fn().mockRejectedValue(new Error('Unexpected legacy read')),
@@ -70,6 +77,52 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await miniflare.dispose();
+});
+
+it('reads Library without history scans or writes, rebuilds in bounded batches, and invalidates on retention', async () => {
+  let current = draft;
+  for (let index = 0; index < 20; index++) {
+    const document = structuredClone(current.document);
+    document.site.shortName = `Revision ${index}`;
+    if (index === 5) document.media[0].alt = 'Changed image description';
+    current = await repository.saveDraft({
+      ...context(current),
+      document,
+      action: { category: 'text-edit', context: 'site-settings' },
+    });
+  }
+  const before = await library.list(draft.id);
+  await expect(
+    database
+      .prepare('UPDATE revisions SET parent_revision_id=NULL WHERE id=?')
+      .bind(current.revision.id)
+      .run(),
+  ).rejects.toThrow('revision parent is immutable');
+  const queries = vi.spyOn(database, 'prepare');
+  await library.list(draft.id);
+  const sql = queries.mock.calls.flat().join(' ');
+  expect(sql).not.toMatch(/json_each|\bINSERT\b|\bUPDATE\b|\bDELETE\b|LAG\(/);
+  queries.mockRestore();
+  await database.batch([
+    database.prepare('DELETE FROM draft_library_history WHERE draft_id=?').bind(draft.id),
+    database.prepare('DELETE FROM draft_library_retained_paths WHERE draft_id=?').bind(draft.id),
+    database.prepare('DELETE FROM draft_library_projection WHERE draft_id=?').bind(draft.id),
+  ]);
+  await expect(library.list(draft.id)).rejects.toThrow('Library history is being prepared');
+  const projection = new D1LibraryProjection(database);
+  for (let step = 0; step < 3; step++) {
+    const result = await projection.backfill(draft.id);
+    expect(result.processed).toBeLessThanOrEqual(8);
+  }
+  expect(await library.list(draft.id)).toEqual(before);
+  expect((await projection.backfill(draft.id)).processed).toBe(0);
+  await database
+    .prepare('DELETE FROM revisions WHERE draft_id=? AND sequence=2')
+    .bind(draft.id)
+    .run();
+  await expect(library.list(draft.id)).rejects.toThrow('Library history is being prepared');
+  for (let step = 0; step < 3; step++) await projection.backfill(draft.id);
+  expect(await library.list(draft.id)).toEqual(before);
 });
 
 it('persists an upload exactly once, scopes its bytes, and rejects key reuse and duplicate files', async () => {
@@ -101,6 +154,41 @@ it('persists an upload exactly once, scopes its bytes, and rejects key reuse and
       .bind(draft.id)
       .first('count'),
   ).toBe(1);
+});
+
+it('backfills legacy media without linkedMedia and preserves extrema when revision clocks go backwards', async () => {
+  const document = { media: [{ ...draft.document.media[0], alt: 'Legacy edit' }] };
+  for (const [sequence, createdAt] of [
+    [2, '2020-01-01T00:00:00.000Z'],
+    [3, '2019-01-01T00:00:00.000Z'],
+  ] as const) {
+    await database
+      .prepare(
+        `INSERT INTO revisions(id,draft_id,sequence,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        draft.id,
+        sequence,
+        'a'.repeat(64),
+        JSON.stringify(document),
+        1,
+        '1.0.0',
+        actor,
+        createdAt,
+      )
+      .run();
+  }
+  expect((await new D1LibraryProjection(database).backfill(draft.id)).processed).toBe(2);
+  expect(
+    await database
+      .prepare(
+        'SELECT created_at,updated_at FROM draft_library_history WHERE draft_id=? AND item_id=?',
+      )
+      .bind(draft.id, document.media[0].id)
+      .first(),
+  ).toEqual({ created_at: '2019-01-01T00:00:00.000Z', updated_at: draft.createdAt });
 });
 
 it('archives unused items, protects retained history, and restores the same identity', async () => {

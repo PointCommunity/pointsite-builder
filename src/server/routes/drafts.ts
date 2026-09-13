@@ -27,6 +27,7 @@ const SaveDraftSchema = z.strictObject({
   label: z.string().trim().max(100).optional(),
 });
 const ClientSchema = z.strictObject({ clientId: z.string().min(16).max(100) });
+const AcquireCheckoutSchema = ClientSchema.extend({ resumeOnly: z.boolean().optional() });
 const ViewStateSchema = z.strictObject({
   draftId: z.uuid(),
   panel: z.enum(['layout', 'forms', 'library', 'preview', 'history', 'settings', 'admin']),
@@ -37,7 +38,10 @@ const ViewStateSchema = z.strictObject({
   scrollPositions: z.record(z.string().max(40), z.number().min(0).max(1_000_000)),
   updatedAt: z.string(),
 });
-const TouchCheckoutSchema = ClientSchema.extend({ viewState: ViewStateSchema.optional() });
+const TouchCheckoutSchema = ClientSchema.extend({
+  viewState: ViewStateSchema.optional(),
+  activity: z.boolean().optional(),
+});
 
 export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;
 
@@ -94,13 +98,14 @@ export function createDraftRoutes(
     const actor = requireRole(context.get('actor'), 'editor');
     if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
-    const parsed = ClientSchema.safeParse(raw);
+    const parsed = AcquireCheckoutSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
     return context.json(
       await repository.acquireCheckout({
         draftId: context.req.param('draftId'),
         actor: actor.email,
         clientId: parsed.data.clientId,
+        resumeOnly: parsed.data.resumeOnly,
         requestId: context.get('requestId'),
       }),
     );
@@ -122,6 +127,7 @@ export function createDraftRoutes(
           actor: actor.email,
           clientId: parsed.data.clientId,
           token,
+          activity: parsed.data.activity,
           requestId: context.get('requestId'),
         },
         parsed.data.viewState,
@@ -216,10 +222,13 @@ export function createDraftRoutes(
     const checkoutToken = context.req.header('x-draft-checkout');
     if (!checkoutToken)
       throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
+    const expectedRevision = z.uuid().optional().safeParse(context.req.header('x-draft-revision'));
+    if (!expectedRevision.success) throw validationError(expectedRevision.error);
     try {
       const draft = await repository.saveDraft({
         draftId: context.req.param('draftId'),
         expectedChecksum: preconditionChecksum(context.req.header('if-match')),
+        expectedRevisionId: expectedRevision.data,
         document: document.data,
         actor: actor.email,
         idempotencyKey: context.req.header('idempotency-key') ?? '',

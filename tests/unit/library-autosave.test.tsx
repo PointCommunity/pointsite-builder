@@ -112,6 +112,7 @@ it('adopts the committed draft and uses its checksum in subsequent saves', async
     expect.anything(),
     expect.any(String),
     'token',
+    result.draft.latestRevisionId,
   );
 });
 

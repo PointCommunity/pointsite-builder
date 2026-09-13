@@ -4,6 +4,7 @@ import type { SiteDocument } from '../../src/site-kit/types';
 import { createApp } from '../../src/server/index';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 import type { Actor } from '../../src/server/auth/roles';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
 
 const origin = 'https://builder.pointatx.org';
 const requestHeaders = {
@@ -46,6 +47,104 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('rejects automatic acquisition or transfer while allowing explicit Open editor', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Automatic recovery authority',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'automatic-create-001',
+      requestId: 'create',
+    });
+    const resume = (clientId: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}/checkout`, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({ clientId, resumeOnly: true }),
+      });
+    expect((await resume('browser-client-0001')).status).toBe(409);
+    const first = await checkout(app, draft.id);
+    const resumed = await resume('browser-client-0001');
+    expect(resumed.status).toBe(200);
+    expect(await responseJson<{ expiresAt: string }>(resumed)).toMatchObject({
+      expiresAt: first.expiresAt,
+    });
+    expect((await resume('browser-client-0002')).status).toBe(409);
+    await checkout(app, draft.id, 'browser-client-0002');
+    expect((await resume('browser-client-0001')).status).toBe(409);
+  });
+
+  it('validates and enforces the exact revision header, then replays a saved request', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Exact base',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'header-create-0001',
+      requestId: 'create',
+    });
+    const owned = await checkout(app, draft.id);
+    const headers = {
+      ...requestHeaders,
+      'idempotency-key': 'header-save-00001',
+      'if-match': `"${draft.revision.checksum}"`,
+      'x-draft-checkout': owned.token,
+      'x-draft-revision': draft.revision.id,
+    };
+    const body = JSON.stringify({
+      document: { ...draft.document, site: { ...draft.document.site, shortName: 'Header saved' } },
+      action: { category: 'control-change', context: 'site-settings' },
+    });
+    const save = (revision: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'x-draft-revision': revision },
+        body,
+      });
+    expect((await save('invalid')).status).toBe(422);
+    expect((await save(crypto.randomUUID())).status).toBe(412);
+    const first = await save(draft.revision.id);
+    expect(first.status).toBe(200);
+    const repeated = await save(draft.revision.id);
+    expect(repeated.status).toBe(200);
+    expect(await repeated.text()).toBe(await first.text());
+    expect(await repository.listRevisions(draft.id)).toHaveLength(2);
+  });
+  it('reports unavailable readiness when the authentication role database is down', async () => {
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.reject(new Error('private role query')),
+      environment: 'test',
+      version: 'test',
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const response = await app.request(`${origin}/api/ready`);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ ready: false });
+  });
+
+  it('keeps liveness available while authenticated database readiness fails without leaking provider errors', async () => {
+    let available = false;
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.resolve({ email: 'viewer@pointatx.org', role: 'viewer' }),
+      environment: 'test',
+      version: 'test',
+      readiness: () => (available ? Promise.resolve() : Promise.reject(new Error('private SQL'))),
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const failed = await app.request(`${origin}/api/ready`);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get('Cache-Control')).toBe('no-store');
+    await expect(failed.json()).resolves.toEqual({ ready: false });
+    available = true;
+    const ready = await app.request(`${origin}/api/ready`);
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toEqual({ ready: true });
+  });
+
   it('exposes public process health without private state', async () => {
     const { app } = appFor({ email: 'viewer@pointatx.org', role: 'viewer' });
     const response = await app.request(`${origin}/api/health`);

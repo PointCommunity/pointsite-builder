@@ -6,6 +6,7 @@ import { getPlatformProxy, unstable_readConfig } from 'wrangler';
 import { z } from 'zod';
 import { D1OwnershipMigration } from '../src/server/maintenance/asset-migration';
 import { candidateImagePath } from '../src/server/publish/candidate';
+import { D1LibraryProjection } from '../src/server/media/library-projection';
 
 export function migrationMode(args: string[]): 'status' | 'apply' {
   if (args.length !== 1 || !['--status', '--apply'].includes(args[0]))
@@ -29,7 +30,9 @@ export async function runMigration(
 }
 
 async function main() {
-  const mode = migrationMode(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  const libraryIndex = args.includes('--library-index');
+  const mode = migrationMode(args.filter((arg) => arg !== '--library-index'));
   const config = z
     .object({
       name: z.literal('pointsite-builder'),
@@ -98,9 +101,24 @@ async function main() {
         return fetch(new URL(path, 'https://builder.pointatx.org'), { redirect: 'error' });
       },
     };
-    await runMigration(mode, new D1OwnershipMigration(platform.env.DB, assets), (status) =>
-      console.log(JSON.stringify(status)),
-    );
+    if (libraryIndex) {
+      const projection = new D1LibraryProjection(platform.env.DB);
+      for (let step = 0; step < 10_000; step++) {
+        const pending = await platform.env.DB.prepare(
+          `SELECT d.id FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id
+          LEFT JOIN draft_library_projection p ON p.draft_id=d.id WHERE COALESCE(p.sequence,0)<>r.sequence
+          ORDER BY d.id LIMIT 1`,
+        ).first<{ id: string }>();
+        console.log(JSON.stringify({ operation: 'library-index', complete: !pending, step }));
+        if (!pending || mode === 'status') return;
+        await projection.backfill(pending.id);
+      }
+      throw new Error('ASSET_MIGRATION_STEP_LIMIT');
+    } else {
+      await runMigration(mode, new D1OwnershipMigration(platform.env.DB, assets), (status) =>
+        console.log(JSON.stringify(status)),
+      );
+    }
   } finally {
     await platform?.dispose();
     await rm(directory, { recursive: true, force: true });

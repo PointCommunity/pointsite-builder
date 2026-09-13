@@ -15,6 +15,7 @@ import { ConflictError, NotFoundError } from '../repositories/memory';
 import type { D1DraftAssets } from './draft-assets';
 import { validateImageUpload } from './policy';
 import { defaultSiteDocument } from '../../site-kit/default-site';
+import { D1LibraryProjection } from './library-projection';
 
 const managedIds = new Set(defaultSiteDocument.media.map((item) => item.id));
 
@@ -100,6 +101,8 @@ export class D1LibraryService {
 
   async list(draftId: string): Promise<LibrarySnapshot> {
     const draft = await this.repository.getDraft(draftId);
+    const projection = new D1LibraryProjection(this.database);
+    const generation = await projection.requireCoverage(draftId, draft.revision.sequence);
     const rows = await this.database
       .prepare(
         'SELECT item_id,item_json,created_at,updated_at,archived_at FROM draft_library_items WHERE draft_id=?',
@@ -118,25 +121,12 @@ export class D1LibraryService {
         },
       ]),
     );
-    // Revision timestamps provide a deterministic baseline for legacy catalog records.
+    // Retained-history aggregates are maintained with writes, never during Library reads.
     const historyRows = await this.database
       .prepare(
-        `WITH entries AS (
-        SELECT json_extract(item.value,'$.id') AS item_id,r.sequence,r.created_at,
-          item.value AS signature,json_extract(item.value,'$.sourcePath') AS source_path
-        FROM revisions r,json_each(r.document_json,'$.media') item WHERE r.draft_id=?
-        UNION ALL
-        SELECT json_extract(item.value,'$.id'),r.sequence,r.created_at,item.value,NULL
-        FROM revisions r,json_each(r.document_json,'$.linkedMedia') item WHERE r.draft_id=?
-      ), changes AS (
-        SELECT *,LAG(signature) OVER (PARTITION BY item_id ORDER BY sequence) AS previous
-        FROM entries
-      )
-      SELECT 'item' AS kind,item_id,MIN(created_at) AS created_at,
-        MAX(CASE WHEN previous IS NULL OR previous<>signature THEN created_at END) AS updated_at,
-        NULL AS source_path FROM changes GROUP BY item_id
-      UNION ALL
-      SELECT DISTINCT 'path',NULL,NULL,NULL,source_path FROM entries WHERE source_path IS NOT NULL`,
+        `SELECT 'item' AS kind,item_id,created_at,updated_at,NULL AS source_path
+        FROM draft_library_history WHERE draft_id=? UNION ALL
+        SELECT 'path',NULL,NULL,NULL,source_path FROM draft_library_retained_paths WHERE draft_id=?`,
       )
       .bind(draftId, draftId)
       .all<{
@@ -196,14 +186,8 @@ export class D1LibraryService {
         );
     }
     const result = [...items.values()];
-    if (current.some((item) => !rows.results.some((row) => row.item_id === item.id))) {
-      await this.database
-        .prepare(
-          `INSERT OR IGNORE INTO draft_library_items (draft_id,item_id,item_json,created_at,updated_at,archived_at) SELECT ?,json_extract(value,'$.id'),value,json_extract(value,'$.createdAt'),json_extract(value,'$.updatedAt'),NULL FROM json_each(?) WHERE EXISTS (SELECT 1 FROM drafts WHERE id=?)`,
-        )
-        .bind(draftId, JSON.stringify(result.filter((item) => !item.archivedAt)), draftId)
-        .run();
-    }
+    if (generation !== (await projection.requireCoverage(draftId, draft.revision.sequence)))
+      throw new ConflictError('Library history changed; reload before continuing');
     return {
       draftId,
       revisionId: draft.latestRevisionId,

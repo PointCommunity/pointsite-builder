@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { afterEach, describe, expect, it } from 'vitest';
 import { D1AdminService } from '../../src/server/admin/service';
@@ -15,14 +15,13 @@ async function fixture() {
     d1Databases: { DB: crypto.randomUUID() },
   });
   const database = await miniflare.getD1Database('DB');
-  await database.exec(
-    (await readFile('migrations/0001_initial.sql', 'utf8')).replace(/\s+/g, ' ').trim(),
-  );
-  await database.exec(
-    (await readFile('migrations/0006_free_only_auth_media.sql', 'utf8'))
-      .replace(/\s+/g, ' ')
-      .trim(),
-  );
+  for (const file of (await readdir('migrations')).filter((name) => name.endsWith('.sql')).sort())
+    await database.exec(
+      (await readFile(`migrations/${file}`, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
   return {
     database,
     service: new D1AdminService(database, {
@@ -73,10 +72,17 @@ describe('administrator service', () => {
     ).rejects.toThrow(/one active administrator/i);
   });
 
-  it('reports measured capacity and 70 percent warning state', async () => {
+  it('separates measured storage and audit activity from unknown provider quotas', async () => {
     const { service } = await fixture();
     const report = await service.capacity();
-    expect(report.privateMedia).toMatchObject({ used: 0, warning: false, unit: 'bytes' });
-    expect(report.writesToday.limit).toBe(100_000);
+    expect(report.storage).toMatchObject({
+      privateMediaBytes: 0,
+      revisionPayloadBytes: 0,
+      receiptPayloadBytes: 0,
+    });
+    expect(report.providerUsage.state).toBe('unknown');
+    expect(report.activity.periodStart).toBe(`${report.measuredAt.slice(0, 10)}T00:00:00.000Z`);
+    expect(report.activity.periodEnd).toBe(report.measuredAt);
+    expect(report).not.toHaveProperty('writesToday');
   });
 });

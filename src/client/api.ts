@@ -48,12 +48,8 @@ export interface AuditItem {
   metadata: Record<string, string | number | boolean | null>;
 }
 
-export interface CapacityReport {
-  privateMedia: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  revisionData: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  writesToday: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  measuredAt: string;
-}
+export type { CapacityReport } from '../server/admin/service';
+import type { CapacityReport } from '../server/admin/service';
 
 export interface CandidateTuple {
   siteId: 'pointsite';
@@ -201,12 +197,14 @@ export const api = {
     action: DraftAction,
     idempotencyKey: string,
     checkoutToken: string,
+    expectedRevisionId: string,
   ) =>
     request<DraftRecord>(`/drafts/${id}`, {
       method: 'PUT',
       headers: mutationHeaders(idempotencyKey, {
         'if-match': `"${checksum}"`,
         'x-draft-checkout': checkoutToken,
+        'x-draft-revision': expectedRevisionId,
       }),
       body: JSON.stringify({ document, action }),
     }),
@@ -214,21 +212,27 @@ export const api = {
     (await request<{ items: DraftCheckoutAvailability[] }>('/drafts/checkouts')).items,
   ownedCheckout: () =>
     request<{ draftId: string; expiresAt: string } | null>('/drafts/checkout/owned'),
-  acquireCheckout: (id: string, clientId: string) =>
+  acquireCheckout: (id: string, clientId: string, resumeOnly = false) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, ...(resumeOnly ? { resumeOnly } : {}) }),
     }),
   validateCheckout: (id: string, token: string) =>
     request<{ active: true }>(`/drafts/${id}/checkout`, {
       headers: { 'x-draft-checkout': token },
     }),
-  touchCheckout: (id: string, clientId: string, token: string, viewState?: EditorViewState) =>
+  touchCheckout: (
+    id: string,
+    clientId: string,
+    token: string,
+    viewState?: EditorViewState,
+    activity = true,
+  ) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'PATCH',
       headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
-      body: JSON.stringify({ clientId, ...(viewState ? { viewState } : {}) }),
+      body: JSON.stringify({ clientId, activity, ...(viewState ? { viewState } : {}) }),
     }),
   releaseCheckout: (id: string, clientId: string, token: string) =>
     request<void>(`/drafts/${id}/checkout`, {

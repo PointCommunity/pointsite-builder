@@ -9,41 +9,38 @@ import {
 } from './audit-language';
 
 const roles: Role[] = ['viewer', 'editor', 'publisher', 'administrator'];
-const bytes = (value: number) => `${(value / 1024 / 1024).toFixed(1)} MB`;
+const bytes = (value: number | null) =>
+  value === null ? 'Unknown' : `${(value / 1024 / 1024).toFixed(1)} MiB`;
 
 function Capacity({ report }: { report: CapacityReport }) {
   const items = [
-    ['Private media', report.privateMedia],
-    ['Revision data', report.revisionData],
-    ['Writes today', report.writesToday],
+    ['Allocated database storage', report.storage.allocatedBytes],
+    ['Private media payload', report.storage.privateMediaBytes],
+    ['Revision payload', report.storage.revisionPayloadBytes],
+    ['Request receipt payload', report.storage.receiptPayloadBytes],
   ] as const;
   return (
     <section className="admin-card" aria-labelledby="capacity-title">
       <h3 id="capacity-title">Capacity</h3>
       <div className="capacity-grid">
         {items.map(([label, item]) => (
-          <div
-            className={item.warning ? 'capacity-meter capacity-meter--warning' : 'capacity-meter'}
-            key={label}
-          >
+          <div className="capacity-meter" key={label}>
             <div>
               <strong>{label}</strong>
-              <span>
-                {item.unit === 'bytes'
-                  ? `${bytes(item.used)} of ${bytes(item.limit)}`
-                  : `${item.used.toLocaleString()} of ${item.limit.toLocaleString()}`}
-              </span>
+              <span>{bytes(item)}</span>
             </div>
-            <progress value={item.percent} max="100">
-              {item.percent}%
-            </progress>
-            <span>
-              {item.percent}%{item.warning ? ' — action recommended' : ''}
-            </span>
           </div>
         ))}
       </div>
-      <small>Measured {new Date(report.measuredAt).toLocaleString()}. Warnings begin at 70%.</small>
+      <p>
+        {report.activity.auditEvents.toLocaleString()} audit events since{' '}
+        {new Date(report.activity.periodStart).toUTCString()}.
+      </p>
+      <p>Provider usage: unknown. {report.providerUsage.reason}</p>
+      <small>
+        Measured {new Date(report.measuredAt).toLocaleString()}. Payload sizes exclude indexes and
+        other database records.
+      </small>
     </section>
   );
 }

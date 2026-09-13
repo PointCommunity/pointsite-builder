@@ -12,6 +12,7 @@ import {
 import type { SiteDocument } from '../../site-kit/types';
 import type { DraftCheckout, DraftRecord } from '../../server/repositories/contracts';
 import { api } from '../api';
+import { PendingJournal } from './pending-journal';
 import type {
   LibraryMutationContext,
   LibraryMutationResult,
@@ -33,12 +34,18 @@ interface EditorValue {
     update: (document: SiteDocument) => SiteDocument,
     mutation: AutosaveMutation,
   ) => boolean;
-  stageDocument: (document: SiteDocument) => void;
+  stageDocument: (
+    document: SiteDocument,
+    mutation?: AutosaveMutation,
+    renderDocument?: boolean,
+  ) => void;
   completeDocument: (document: SiteDocument, mutation: AutosaveMutation) => boolean;
   flushTextAction: () => void;
   retryAutosave: () => void;
   copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
+  discardLocal: () => Promise<void>;
+  stopAutosave: () => void;
   renameDraft: (name: string) => Promise<void>;
   runLibraryMutation: (
     operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
@@ -66,7 +73,16 @@ export function EditorProvider({
     () =>
       new ActionAutosaveController({
         initialDraft,
-        persist: ({ document, action, expectedChecksum, idempotencyKey }) =>
+        ...(checkout && typeof indexedDB !== 'undefined'
+          ? {
+              journal: new PendingJournal({
+                actor: checkout.actor,
+                draftId: initialDraft.id,
+                clientId: checkout.clientId,
+              }),
+            }
+          : { recoveryUnavailable: Boolean(checkout) }),
+        persist: ({ document, action, expectedChecksum, expectedRevisionId, idempotencyKey }) =>
           api.saveDraft(
             initialDraft.id,
             expectedChecksum,
@@ -74,6 +90,7 @@ export function EditorProvider({
             action,
             idempotencyKey,
             checkout?.token ?? '',
+            expectedRevisionId,
           ),
       }),
   );
@@ -169,8 +186,7 @@ export function EditorProvider({
   }, [controller]);
 
   const reloadLatest = useCallback(async () => {
-    const latest = await api.getDraft(initialDraft.id);
-    controller.replaceWithLatest(latest);
+    await controller.discardAndReplace(() => api.getDraft(initialDraft.id));
   }, [controller, initialDraft.id]);
 
   const renameDraft = useCallback(
@@ -207,12 +223,15 @@ export function EditorProvider({
       saveState: autosave.state,
       autosave,
       updateDocument: (update, mutation) => controller.mutate(update, mutation),
-      stageDocument: (document) => controller.stage(document),
+      stageDocument: (document, mutation, renderDocument) =>
+        controller.stage(document, mutation, renderDocument),
       completeDocument: (document, mutation) => controller.complete(document, mutation),
       flushTextAction: controller.flushTextAction,
       retryAutosave: controller.retry,
       copyRecoveryData,
       reloadLatest,
+      discardLocal: () => controller.discardAndReplace(),
+      stopAutosave: controller.stopForAuthority,
       renameDraft,
       runLibraryMutation,
     }),
@@ -223,7 +242,8 @@ export function EditorProvider({
     () => ({
       document: autosave.document,
       updateDocument: (update, mutation) => controller.mutate(update, mutation),
-      stageDocument: (document) => controller.stage(document),
+      stageDocument: (document, mutation, renderDocument) =>
+        controller.stage(document, mutation, renderDocument),
       completeDocument: (document, mutation) => controller.complete(document, mutation),
     }),
     [autosave.document, controller],
@@ -232,7 +252,13 @@ export function EditorProvider({
   return (
     <EditorContext.Provider value={value}>
       <EditorDocumentContext.Provider value={documentValue}>
-        {children}
+        {autosave.recovery === 'checking' ? (
+          <main className="state-page">
+            <p role="status">Checking this browser for pending changes…</p>
+          </main>
+        ) : (
+          children
+        )}
       </EditorDocumentContext.Provider>
     </EditorContext.Provider>
   );

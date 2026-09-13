@@ -88,6 +88,7 @@ function HeroTextResizeHandle({
   kind: HeroTextKind;
   align: Extract<SiteElement, { type: 'hero' }>['align'];
 }) {
+  const { document, stageDocument } = useEditorDocument();
   const getItemById = usePointPuck((state) => state.getItemById);
   const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
   const dispatch = usePointPuck((state) => state.dispatch);
@@ -162,6 +163,11 @@ function HeroTextResizeHandle({
     const startWidth = renderedWidth(button);
     const containerWidth = container.getBoundingClientRect().width;
     const originalInlineWidth = box.style.getPropertyValue('--point-hero-text-width');
+    const sourceProps = getItemById(componentId)?.props as unknown as
+      Record<string, unknown> | undefined;
+    const source = SiteElementSchema.safeParse(sourceProps?.block);
+    if (!source.success || source.data.type !== 'hero') return;
+    const elementId = source.data.id;
     let latest = startWidth;
     const move = (nextEvent: globalThis.PointerEvent) => {
       latest = heroTextWidthFromDrag(
@@ -171,6 +177,17 @@ function HeroTextResizeHandle({
         align === 'center',
       );
       box.style.setProperty('--point-hero-text-width', `${latest}%`);
+      const pending = structuredClone(document);
+      const element = pending.pages
+        .flatMap((page) =>
+          page.blocks.flatMap((section) => section.items.map((item) => item.element)),
+        )
+        .find((item) => item.id === elementId);
+      if (element?.type === 'hero') {
+        element[widthKey] = { ...element[widthKey], [breakpoint]: latest };
+        // Keep the DOM gesture alive; changing Puck's document here remounts its resize handle.
+        stageDocument(pending, { category: 'resize', context: 'element-layout' }, false);
+      }
     };
     const cleanup = () => {
       ownerDocument.removeEventListener('pointermove', move);
@@ -179,6 +196,7 @@ function HeroTextResizeHandle({
       cancelActiveResize.current = null;
     };
     const restore = () => {
+      stageDocument(document, { category: 'resize', context: 'element-layout' }, false);
       if (originalInlineWidth)
         box.style.setProperty('--point-hero-text-width', originalInlineWidth);
       else box.style.removeProperty('--point-hero-text-width');
@@ -1167,7 +1185,7 @@ function VisualEditorImpl({
           const target = changed.pages.find((candidate) => candidate.id === pageId);
           if (target) target.blocks = sections;
           queueMicrotask(() => {
-            if (mutation.transient) stageDocument(changed);
+            if (mutation.transient) stageDocument(changed, mutation);
             else completeDocument(changed, mutation);
           });
         }}

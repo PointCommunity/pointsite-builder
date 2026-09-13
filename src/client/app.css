@@ -354,6 +354,13 @@ textarea {
 .autosave-recovery-slot:empty {
   min-height: 0;
 }
+
+.pending-journal-status {
+  min-height: 1.5rem;
+  margin: 0;
+  padding: 0 1rem;
+  font-size: 0.8rem;
+}
 .autosave-recovery {
   display: flex;
   align-items: center;

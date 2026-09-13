@@ -322,7 +322,10 @@ function ImageForm({
                   required
                   maxLength={300}
                   value={metadata.altText}
-                  onChange={(event) => setMetadata({ ...metadata, altText: event.target.value })}
+                  onChange={(event) => {
+                    const altText = event.target.value;
+                    setMetadata((current) => ({ ...current, altText }));
+                  }}
                 />
               </label>
             )}

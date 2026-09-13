@@ -51,6 +51,12 @@ beforeEach(async () => {
         .replace(/\s+/g, ' ')
         .trim(),
     );
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES (?,'editor',1,'fixture','fixture','fixture')",
+    )
+    .bind(actor)
+    .run();
   repository = new D1DraftRepository(database);
   library = new D1LibraryService(
     database,

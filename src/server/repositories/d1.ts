@@ -1,9 +1,11 @@
-import { checksumDocument } from '../../site-kit/canonicalize';
+import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
 import type { D1DraftAssets } from '../media/draft-assets';
+import { D1LibraryProjection } from '../media/library-projection';
 import type {
   AuditEventRecord,
+  AcquireCheckoutCommand,
   CheckoutCommand,
   CreateDraftInput,
   DeletedDraftReceipt,
@@ -18,6 +20,8 @@ import type {
   SaveDraftInput,
 } from './contracts';
 import { ConflictError, NotFoundError } from './memory';
+import { createRequestHash, saveRequestHash } from './request-hash';
+import { AuthorizationError } from '../auth/roles';
 
 interface DraftRow {
   id: string;
@@ -128,6 +132,35 @@ export class D1DraftRepository implements DraftRepository {
     private readonly assets?: D1DraftAssets,
   ) {}
 
+  private async assertEditor(actor: string): Promise<void> {
+    const allowed = await this.database
+      .prepare(
+        "SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role IN ('editor','publisher','administrator')",
+      )
+      .bind(actor)
+      .first();
+    if (!allowed) throw new AuthorizationError();
+  }
+
+  private async commit(actor: string, statements: D1PreparedStatement[]): Promise<D1Result[]> {
+    try {
+      const results = await this.database.batch([
+        this.database
+          .prepare(
+            `SELECT json(CASE WHEN EXISTS (
+          SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role IN ('editor','publisher','administrator')
+        ) THEN 'true' ELSE 'actor-forbidden' END)`,
+          )
+          .bind(actor),
+        ...statements,
+      ]);
+      return results.slice(1);
+    } catch (error) {
+      await this.assertEditor(actor);
+      throw error;
+    }
+  }
+
   async listDrafts(status?: DraftStatus): Promise<DraftRecord[]> {
     const query = status
       ? `${DRAFT_SELECT} WHERE d.status = ? ORDER BY d.updated_at DESC LIMIT 100`
@@ -163,7 +196,8 @@ export class D1DraftRepository implements DraftRepository {
   }
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
-    const prior = await this.readIdempotent('draft.create', input.actor, input.idempotencyKey);
+    const requestHash = await createRequestHash(input);
+    const prior = await this.readIdempotent('draft.create', input, requestHash);
     if (prior) return prior;
 
     const now = new Date().toISOString();
@@ -208,49 +242,71 @@ export class D1DraftRepository implements DraftRepository {
       deletedAt: null,
     };
     const responseJson = JSON.stringify(record);
-    const requestHash = await checksumDocument({ name: input.name, document });
-    await this.database.batch([
-      this.database
-        .prepare(
-          `INSERT INTO drafts (id,site_id,name,status,created_by,created_at,updated_at) VALUES (?, 'pointsite', ?, 'active', ?, ?, ?)`,
-        )
-        .bind(draftId, input.name, input.actor, now, now),
-      ...prepared.statements,
-      this.database
-        .prepare(
-          `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) VALUES (?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
+    try {
+      await this.commit(input.actor, [
+        ...(input.sourceDraftId
+          ? [
+              this.database
+                .prepare(
+                  `SELECT json(CASE WHEN EXISTS (
+          SELECT 1 FROM drafts WHERE id=? AND status!='deleted'
+        ) THEN 'true' ELSE 'source-draft-deleted' END)`,
+                )
+                .bind(input.sourceDraftId),
+            ]
+          : []),
+        this.database
+          .prepare(
+            `INSERT INTO drafts (id,site_id,name,status,created_by,created_at,updated_at) VALUES (?, 'pointsite', ?, 'active', ?, ?, ?)`,
+          )
+          .bind(draftId, input.name, input.actor, now, now),
+        ...prepared.statements,
+        this.database
+          .prepare(
+            `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) VALUES (?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            revisionId,
+            draftId,
+            checksum,
+            JSON.stringify(document),
+            record.revision.label,
+            document.schemaVersion,
+            document.rendererVersion,
+            input.actor,
+            now,
+            record.revision.actionCategory,
+            record.revision.actionContext,
+          ),
+        this.database
+          .prepare(`UPDATE drafts SET latest_revision_id = ? WHERE id = ?`)
+          .bind(revisionId, draftId),
+        ...new D1LibraryProjection(this.database).statements(record.revision, 0),
+        this.auditStatement(input.actor, 'draft.create', draftId, input.requestId, {
           revisionId,
-          draftId,
-          checksum,
-          JSON.stringify(document),
-          record.revision.label,
-          document.schemaVersion,
-          document.rendererVersion,
+          sequence: 1,
+        }),
+        this.idempotencyStatement(
+          'draft.create',
+          input.idempotencyKey,
           input.actor,
+          requestHash,
+          201,
+          responseJson,
           now,
-          record.revision.actionCategory,
-          record.revision.actionContext,
         ),
-      this.database
-        .prepare(`UPDATE drafts SET latest_revision_id = ? WHERE id = ?`)
-        .bind(revisionId, draftId),
-      this.auditStatement(input.actor, 'draft.create', draftId, input.requestId, {
-        revisionId,
-        sequence: 1,
-      }),
-      this.idempotencyStatement(
-        'draft.create',
-        input.idempotencyKey,
-        input.actor,
-        requestHash,
-        201,
-        responseJson,
-        now,
-      ),
-    ]);
-    return record;
+      ]);
+      return record;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed: idempotency_keys')
+      ) {
+        const replay = await this.readIdempotent('draft.create', input, requestHash);
+        if (replay) return replay;
+      }
+      throw error;
+    }
   }
 
   async saveDraft(
@@ -262,17 +318,39 @@ export class D1DraftRepository implements DraftRepository {
       await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
     const current = await this.getDraft(input.draftId);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
+    const requestHash = await saveRequestHash(input);
+    const prior = await this.readIdempotent('draft.save', input, requestHash);
+    if (prior) return prior;
     if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
       throw new ConflictError('The draft has a newer revision');
-    const prior = await this.readIdempotent('draft.save', input.actor, input.idempotencyKey);
-    if (prior) return prior;
     if (current.revision.checksum !== input.expectedChecksum)
       throw new ConflictError('The draft has a newer revision');
 
     const document = migrateDocument(input.document).document;
     const checksum = await checksumDocument(document);
-    if (checksum === current.revision.checksum && !additionalStatements.length) return current;
     const now = new Date().toISOString();
+    const checkoutHash = input.checkoutToken ? await hashToken(input.checkoutToken) : null;
+    if (checksum === current.revision.checksum && !additionalStatements.length) {
+      try {
+        await this.commit(input.actor, [
+          this.saveGuard(current, input, checkoutHash),
+          this.idempotencyStatement(
+            'draft.save',
+            input.idempotencyKey,
+            input.actor,
+            requestHash,
+            200,
+            JSON.stringify(current),
+            now,
+          ),
+        ]);
+      } catch (error) {
+        const replay = await this.replayAfterSaveRace(error, input, requestHash);
+        if (replay) return replay;
+        throw error;
+      }
+      return current;
+    }
     const assetStatements =
       (await this.assets?.prepareSave({
         draftId: input.draftId,
@@ -305,13 +383,6 @@ export class D1DraftRepository implements DraftRepository {
       revision,
       updatedAt: now,
     };
-    const requestHash = await checksumDocument({
-      draftId: current.id,
-      expectedChecksum: input.expectedChecksum,
-      document,
-      action: input.action,
-    });
-    const checkoutHash = input.checkoutToken ? await hashToken(input.checkoutToken) : null;
     const revisionInsert = checkoutHash
       ? this.database
           .prepare(
@@ -319,7 +390,7 @@ export class D1DraftRepository implements DraftRepository {
              SELECT ?, d.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM drafts d
              JOIN draft_checkouts c ON c.draft_id=d.id
              WHERE d.id=? AND d.latest_revision_id=? AND d.status='active' AND lower(c.actor)=lower(?)
-               AND c.token_hash=? AND c.expires_at>?`,
+               AND c.token_hash=? AND c.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
           )
           .bind(
             revisionId,
@@ -338,7 +409,6 @@ export class D1DraftRepository implements DraftRepository {
             current.revision.id,
             input.actor,
             checkoutHash,
-            now,
           )
       : this.database
           .prepare(
@@ -360,19 +430,11 @@ export class D1DraftRepository implements DraftRepository {
             current.id,
             current.revision.id,
           );
-    const [, revisionWrite] = await this.database
-      .batch([
-        // Invalid JSON aborts the entire transaction before any queued Library or asset writes.
-        this.database
-          .prepare(
-            `SELECT json(CASE WHEN EXISTS (
-          SELECT 1 FROM drafts d WHERE d.id=? AND d.latest_revision_id=? AND d.status='active'
-          AND (? IS NULL OR EXISTS (SELECT 1 FROM draft_checkouts c WHERE c.draft_id=d.id
-            AND lower(c.actor)=lower(?) AND c.token_hash=? AND c.expires_at>?))
-        ) THEN 'true' ELSE 'draft-write-conflict' END)`,
-          )
-          .bind(current.id, current.revision.id, checkoutHash, input.actor, checkoutHash, now),
+    try {
+      const [, revisionWrite] = await this.commit(input.actor, [
+        this.saveGuard(current, input, checkoutHash),
         revisionInsert,
+        ...new D1LibraryProjection(this.database).statements(revision, current.revision.sequence),
         ...assetStatements,
         ...additionalStatements,
         this.database
@@ -380,24 +442,6 @@ export class D1DraftRepository implements DraftRepository {
             `UPDATE drafts SET latest_revision_id = ?, updated_at = ? WHERE id = ? AND latest_revision_id = ? AND EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
           )
           .bind(revisionId, now, current.id, current.revision.id, revisionId),
-        ...(checkoutHash
-          ? [
-              this.database
-                .prepare(
-                  `UPDATE draft_checkouts SET last_activity_at=?,expires_at=?,updated_at=?
-                 WHERE draft_id=? AND lower(actor)=lower(?) AND token_hash=? AND EXISTS (SELECT 1 FROM revisions WHERE id=?)`,
-                )
-                .bind(
-                  now,
-                  checkoutExpiry(now),
-                  now,
-                  current.id,
-                  input.actor,
-                  checkoutHash,
-                  revisionId,
-                ),
-            ]
-          : []),
         this.guardedAuditStatement(
           input.actor,
           'draft.save',
@@ -420,18 +464,55 @@ export class D1DraftRepository implements DraftRepository {
           now,
           revisionId,
         ),
-      ])
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.message.includes('malformed JSON'))
-          throw new ConflictError('The draft has a newer revision or checkout changed');
-        throw error;
-      });
-    if ((revisionWrite?.meta.changes ?? 0) !== 1) {
-      if (input.checkoutToken)
-        await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
-      throw new ConflictError('The draft has a newer revision');
+      ]);
+      if ((revisionWrite?.meta.changes ?? 0) !== 1) {
+        if (input.checkoutToken)
+          await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
+        throw new ConflictError('The draft has a newer revision');
+      }
+      return record;
+    } catch (error) {
+      const replay = await this.replayAfterSaveRace(error, input, requestHash);
+      if (replay) return replay;
+      throw error;
     }
-    return record;
+  }
+
+  private saveGuard(
+    current: DraftRecord,
+    input: SaveDraftInput,
+    checkoutHash: string | null,
+  ): D1PreparedStatement {
+    // Invalid JSON aborts the transaction before any queued Library, asset or receipt writes.
+    return this.database
+      .prepare(
+        `SELECT json(CASE WHEN EXISTS (
+      SELECT 1 FROM drafts d WHERE d.id=? AND d.latest_revision_id=? AND d.status='active'
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM draft_checkouts c WHERE c.draft_id=d.id
+        AND lower(c.actor)=lower(?) AND c.token_hash=? AND c.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')))
+    ) THEN 'true' ELSE 'draft-write-conflict' END)`,
+      )
+      .bind(current.id, current.revision.id, checkoutHash, input.actor, checkoutHash);
+  }
+
+  private async replayAfterSaveRace(
+    error: unknown,
+    input: SaveDraftInput,
+    requestHash: string,
+  ): Promise<DraftRecord | null> {
+    if (
+      !(error instanceof Error) ||
+      (!error.message.includes('malformed JSON') &&
+        !error.message.includes('UNIQUE constraint failed: idempotency_keys'))
+    )
+      return null;
+    if (input.checkoutToken)
+      await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
+    if ((await this.getDraft(input.draftId)).status !== 'active')
+      throw new ConflictError('Only active drafts can be saved');
+    const prior = await this.readIdempotent('draft.save', input, requestHash);
+    if (prior) return prior;
+    throw new ConflictError('The draft has a newer revision or checkout changed');
   }
 
   async listRevisions(draftId: string): Promise<RevisionRecord[]> {
@@ -477,7 +558,7 @@ export class D1DraftRepository implements DraftRepository {
       .bind(revisionId, draftId)
       .first<RevisionRow>();
     if (!source) throw new NotFoundError(`Revision ${revisionId} was not found`);
-    await this.database.batch([
+    await this.commit(actor, [
       this.database
         .prepare(
           'INSERT INTO revision_labels (id,revision_id,label,created_by,created_at) VALUES (?, ?, ?, ?, ?)',
@@ -497,7 +578,7 @@ export class D1DraftRepository implements DraftRepository {
     const current = await this.getDraft(draftId);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be renamed');
     const now = new Date().toISOString();
-    await this.database.batch([
+    await this.commit(actor, [
       this.database
         .prepare('UPDATE drafts SET name = ?, updated_at = ? WHERE id = ? AND status = ?')
         .bind(name, now, draftId, 'active'),
@@ -520,7 +601,7 @@ export class D1DraftRepository implements DraftRepository {
     if (!allowed) throw new ConflictError(`Cannot change ${current.status} draft to ${status}`);
     const now = new Date().toISOString();
     const deletedAt = null;
-    await this.database.batch([
+    await this.commit(actor, [
       this.database
         .prepare(
           `UPDATE drafts SET status = ?, updated_at = ?, deleted_at = ? WHERE id = ? AND status = ?`,
@@ -562,7 +643,7 @@ export class D1DraftRepository implements DraftRepository {
       .bind(draftId)
       .all<{ id: string }>();
     try {
-      await this.database.batch([
+      await this.commit(actor, [
         // The CHECK constraint aborts the entire batch if lifecycle or lease state changed.
         this.database
           .prepare(
@@ -637,13 +718,53 @@ export class D1DraftRepository implements DraftRepository {
     }));
   }
 
-  async acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout> {
+  async acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout> {
     const draft = await this.getDraft(input.draftId);
     if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
     const now = input.now ?? new Date().toISOString();
     const prior = await this.checkoutRow(input.draftId);
     const token = crypto.randomUUID();
     const tokenHash = await hashToken(token);
+    if (input.resumeOnly) {
+      if (!prior) throw new ConflictError('There is no current checkout to resume');
+      const [resumed] = await this.commit(input.actor, [
+        this.database
+          .prepare(
+            `UPDATE draft_checkouts SET token_hash=?,updated_at=? WHERE draft_id=? AND token_hash=?
+         AND lower(actor)=lower(?) AND client_id=? AND expires_at>COALESCE(?,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+         AND EXISTS (SELECT 1 FROM drafts WHERE id=draft_checkouts.draft_id AND status='active')`,
+          )
+          .bind(
+            tokenHash,
+            now,
+            input.draftId,
+            prior.token_hash,
+            input.actor,
+            input.clientId,
+            input.now ?? null,
+          ),
+      ]);
+      if (resumed?.meta.changes !== 1)
+        throw new ConflictError('This editing client no longer owns the draft checkout');
+      await this.auditStatement(
+        input.actor,
+        'draft.checkout.resumed',
+        input.draftId,
+        input.requestId,
+        {},
+      ).run();
+      return {
+        draftId: input.draftId,
+        actor: input.actor,
+        clientId: input.clientId,
+        token,
+        acquiredAt: prior.acquired_at,
+        lastActivityAt: prior.last_activity_at,
+        expiresAt: prior.expires_at,
+        event: 'resumed',
+        viewState: await this.readViewState(input.actor),
+      };
+    }
     const expiresAt = checkoutExpiry(now);
     const event =
       !prior || prior.expires_at <= now
@@ -652,29 +773,31 @@ export class D1DraftRepository implements DraftRepository {
           ? 'resumed'
           : 'transferred';
     const acquiredAt = event === 'acquired' ? now : prior!.acquired_at;
-    const result = await this.database
-      .prepare(
-        `INSERT INTO draft_checkouts (draft_id,actor,client_id,token_hash,acquired_at,last_activity_at,expires_at,updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    const [result] = await this.commit(input.actor, [
+      this.database
+        .prepare(
+          `INSERT INTO draft_checkouts (draft_id,actor,client_id,token_hash,acquired_at,last_activity_at,expires_at,updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? FROM drafts WHERE id=? AND status='active'
          ON CONFLICT(draft_id) DO UPDATE SET actor=excluded.actor, client_id=excluded.client_id,
            token_hash=excluded.token_hash, acquired_at=excluded.acquired_at,
            last_activity_at=excluded.last_activity_at, expires_at=excluded.expires_at, updated_at=excluded.updated_at
          WHERE draft_checkouts.expires_at <= ? OR lower(draft_checkouts.actor) = lower(?)`,
-      )
-      .bind(
-        input.draftId,
-        input.actor,
-        input.clientId,
-        tokenHash,
-        acquiredAt,
-        now,
-        expiresAt,
-        now,
-        now,
-        input.actor,
-      )
-      .run();
-    if ((result.meta.changes ?? 0) !== 1) {
+        )
+        .bind(
+          input.draftId,
+          input.actor,
+          input.clientId,
+          tokenHash,
+          acquiredAt,
+          now,
+          expiresAt,
+          now,
+          input.draftId,
+          now,
+          input.actor,
+        ),
+    ]);
+    if ((result?.meta.changes ?? 0) !== 1) {
       await this.auditStatement(
         input.actor,
         'draft.checkout.denied',
@@ -716,71 +839,85 @@ export class D1DraftRepository implements DraftRepository {
     const now = input.now ?? new Date().toISOString();
     const tokenHash = await hashToken(input.token);
     const expiresAt = checkoutExpiry(now);
-    const result = await this.database
-      .prepare(
-        `UPDATE draft_checkouts SET last_activity_at = ?, expires_at = ?, updated_at = ?
-         WHERE draft_id = ? AND lower(actor) = lower(?) AND client_id = ? AND token_hash = ? AND expires_at > ?
-           AND EXISTS (SELECT 1 FROM drafts WHERE id = ? AND status = 'active')`,
-      )
-      .bind(
-        now,
-        expiresAt,
-        now,
-        input.draftId,
-        input.actor,
-        input.clientId,
-        tokenHash,
-        now,
-        input.draftId,
-      )
-      .run();
-    if ((result.meta.changes ?? 0) !== 1)
-      throw new ConflictError('This editing client no longer owns the draft checkout');
-    if (viewState) {
-      await this.database
+    const statements = [
+      this.database
         .prepare(
-          `INSERT INTO editor_view_states (actor,draft_id,panel,page_id,selected_element_id,preview_viewport,preview_zoom,scroll_positions_json,updated_at)
+          `SELECT json(CASE WHEN EXISTS (
+      SELECT 1 FROM draft_checkouts c JOIN drafts d ON d.id=c.draft_id
+      WHERE c.draft_id=? AND lower(c.actor)=lower(?) AND c.client_id=? AND c.token_hash=?
+        AND c.expires_at>COALESCE(?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) AND d.status='active'
+    ) THEN 'true' ELSE 'checkout-write-conflict' END)`,
+        )
+        .bind(input.draftId, input.actor, input.clientId, tokenHash, input.now ?? null),
+    ];
+    if (input.activity !== false)
+      statements.push(
+        this.database
+          .prepare(
+            'UPDATE draft_checkouts SET last_activity_at=?,expires_at=?,updated_at=? WHERE draft_id=?',
+          )
+          .bind(now, expiresAt, now, input.draftId),
+      );
+    if (viewState) {
+      statements.push(
+        this.database
+          .prepare(
+            `INSERT INTO editor_view_states (actor,draft_id,panel,page_id,selected_element_id,preview_viewport,preview_zoom,scroll_positions_json,updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(actor) DO UPDATE SET draft_id=excluded.draft_id,panel=excluded.panel,page_id=excluded.page_id,
              selected_element_id=excluded.selected_element_id,preview_viewport=excluded.preview_viewport,
-             preview_zoom=excluded.preview_zoom,scroll_positions_json=excluded.scroll_positions_json,updated_at=excluded.updated_at`,
-        )
-        .bind(
-          input.actor,
-          input.draftId,
-          viewState.panel,
-          viewState.pageId,
-          viewState.selectedElementId,
-          viewState.previewViewport,
-          viewState.previewZoom,
-          JSON.stringify(viewState.scrollPositions),
-          now,
-        )
-        .run();
+             preview_zoom=excluded.preview_zoom,scroll_positions_json=excluded.scroll_positions_json,updated_at=excluded.updated_at
+           WHERE editor_view_states.draft_id IS NOT excluded.draft_id OR editor_view_states.panel IS NOT excluded.panel
+             OR editor_view_states.page_id IS NOT excluded.page_id OR editor_view_states.selected_element_id IS NOT excluded.selected_element_id
+             OR editor_view_states.preview_viewport IS NOT excluded.preview_viewport OR editor_view_states.preview_zoom IS NOT excluded.preview_zoom
+             OR editor_view_states.scroll_positions_json IS NOT excluded.scroll_positions_json`,
+          )
+          .bind(
+            input.actor,
+            input.draftId,
+            viewState.panel,
+            viewState.pageId,
+            viewState.selectedElementId,
+            viewState.previewViewport,
+            viewState.previewZoom,
+            canonicalize(viewState.scrollPositions),
+            now,
+          ),
+      );
     }
-    const row = (await this.checkoutRow(input.draftId))!;
+    try {
+      await this.commit(input.actor, statements);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('malformed JSON'))
+        throw new ConflictError('This editing client no longer owns the draft checkout');
+      throw error;
+    }
+    const row = await this.checkoutRow(input.draftId);
+    if (!row || row.client_id !== input.clientId || row.token_hash !== tokenHash)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     return {
       draftId: input.draftId,
       actor: input.actor,
       clientId: input.clientId,
       token: input.token,
       acquiredAt: row.acquired_at,
-      lastActivityAt: now,
-      expiresAt,
+      lastActivityAt: row.last_activity_at,
+      expiresAt: row.expires_at,
       event: 'resumed',
-      viewState: viewState ?? (await this.readViewState(input.actor)),
+      viewState: await this.readViewState(input.actor),
     };
   }
 
   async releaseCheckout(input: CheckoutCommand): Promise<void> {
     const tokenHash = await hashToken(input.token);
-    const result = await this.database
-      .prepare(
-        `DELETE FROM draft_checkouts WHERE draft_id = ? AND lower(actor) = lower(?) AND client_id = ? AND token_hash = ?`,
-      )
-      .bind(input.draftId, input.actor, input.clientId, tokenHash)
-      .run();
-    if ((result.meta.changes ?? 0) === 1)
+    const [result] = await this.commit(input.actor, [
+      this.database
+        .prepare(
+          `DELETE FROM draft_checkouts WHERE draft_id = ? AND lower(actor) = lower(?) AND client_id = ? AND token_hash = ?`,
+        )
+        .bind(input.draftId, input.actor, input.clientId, tokenHash),
+    ]);
+    if ((result?.meta.changes ?? 0) === 1)
       await this.auditStatement(
         input.actor,
         'draft.checkout.released',
@@ -790,21 +927,21 @@ export class D1DraftRepository implements DraftRepository {
       ).run();
   }
 
-  async assertCheckout(
-    draftId: string,
-    actor: string,
-    token: string,
-    now = new Date().toISOString(),
-  ): Promise<void> {
+  async assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void> {
     const tokenHash = await hashToken(token);
     const row = await this.database
       .prepare(
         `SELECT 1 AS valid FROM draft_checkouts c JOIN drafts d ON d.id = c.draft_id
-       WHERE c.draft_id = ? AND lower(c.actor) = lower(?) AND c.token_hash = ? AND c.expires_at > ? AND d.status = 'active'`,
+         JOIN user_roles u ON u.email=c.actor AND u.active=1 AND u.role IN ('editor','publisher','administrator')
+       WHERE c.draft_id = ? AND lower(c.actor) = lower(?) AND c.token_hash = ?
+         AND c.expires_at > COALESCE(?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) AND d.status = 'active'`,
       )
-      .bind(draftId, actor, tokenHash, now)
+      .bind(draftId, actor, tokenHash, now ?? null)
       .first<{ valid: number }>();
-    if (!row) throw new ConflictError('This editing client no longer owns the draft checkout');
+    if (!row) {
+      await this.assertEditor(actor);
+      throw new ConflictError('This editing client no longer owns the draft checkout');
+    }
   }
 
   async ownedCheckout(
@@ -861,21 +998,61 @@ export class D1DraftRepository implements DraftRepository {
 
   private async readIdempotent(
     scope: string,
-    actor: string,
-    key: string,
+    input: CreateDraftInput | SaveDraftInput,
+    requestHash: string,
   ): Promise<DraftRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT response_json,status_code FROM idempotency_keys WHERE scope = ? AND actor = ? AND idempotency_key = ? AND expires_at > ?`,
+        `SELECT response_json,status_code,request_hash,request_version,expires_at FROM idempotency_keys WHERE scope = ? AND actor = ? AND idempotency_key = ?`,
       )
-      .bind(scope, actor, key, new Date().toISOString())
-      .first<{ response_json: string; status_code: number }>();
+      .bind(scope, input.actor, input.idempotencyKey)
+      .first<{
+        response_json: string;
+        status_code: number;
+        request_hash: string;
+        request_version: number;
+        expires_at: string;
+      }>();
     if (row?.status_code === 410) {
       if (scope === 'draft.create')
         throw new ConflictError('This request belongs to a permanently deleted draft');
       throw new NotFoundError('This request belongs to a permanently deleted draft');
     }
-    return row ? (JSON.parse(row.response_json) as DraftRecord) : null;
+    if (!row) return null;
+    await this.assertEditor(input.actor);
+    if (row.expires_at <= new Date().toISOString())
+      throw new ConflictError(
+        'This request receipt expired; reload and reconcile the saved revision',
+      );
+    const record = JSON.parse(row.response_json) as DraftRecord;
+    if (row.request_version === 1) {
+      if ('sourceDraftId' in input && input.sourceDraftId)
+        throw new ConflictError(
+          'This legacy copy request requires reconciliation with the saved draft',
+        );
+      const document = migrateDocument(input.document).document;
+      requestHash = await checksumDocument(
+        'draftId' in input
+          ? {
+              draftId: input.draftId,
+              expectedChecksum: input.expectedChecksum,
+              document,
+              action: input.action,
+            }
+          : { name: input.name, document },
+      );
+      if (
+        'draftId' in input &&
+        (record.id !== input.draftId ||
+          (input.label ?? null) !== record.revision.label ||
+          (input.expectedRevisionId &&
+            input.expectedRevisionId !== record.revision.parentRevisionId))
+      )
+        throw new ConflictError('This request identity was already used with different input');
+    }
+    if (row.request_hash !== requestHash)
+      throw new ConflictError('This request identity was already used with different input');
+    return record;
   }
 
   private idempotencyStatement(
@@ -887,10 +1064,10 @@ export class D1DraftRepository implements DraftRepository {
     responseJson: string,
     now: string,
   ): D1PreparedStatement {
-    const expires = new Date(Date.parse(now) + 24 * 60 * 60 * 1_000).toISOString();
+    const expires = new Date(Date.parse(now) + 90 * 86_400_000).toISOString();
     return this.database
       .prepare(
-        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at,request_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 2)`,
       )
       .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires);
   }
@@ -905,11 +1082,11 @@ export class D1DraftRepository implements DraftRepository {
     now: string,
     revisionId: string,
   ): D1PreparedStatement {
-    const expires = new Date(Date.parse(now) + 24 * 60 * 60 * 1_000).toISOString();
+    const expires = new Date(Date.parse(now) + 90 * 86_400_000).toISOString();
     return this.database
       .prepare(
-        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
+        `INSERT INTO idempotency_keys (scope,idempotency_key,actor,request_hash,status_code,response_json,created_at,expires_at,request_version)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, 2 WHERE EXISTS (SELECT 1 FROM revisions WHERE id = ?)`,
       )
       .bind(scope, key, actor, requestHash, statusCode, responseJson, now, expires, revisionId);
   }
