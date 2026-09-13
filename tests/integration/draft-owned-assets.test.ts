@@ -1752,8 +1752,37 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
     });
     expect(later.revision.id).not.toBe(draft.revision.id);
     prepare.mockClear();
+    const productionApp = createApp({
+      repository,
+      production,
+      environment: 'test',
+      version: 'test',
+      authenticate: () =>
+        Promise.resolve({ email: subject, role: 'administrator', repositoryPermission: 'write' }),
+    });
+    const captureThroughHttp = async () => {
+      const response = await productionApp.request(
+        'https://builder.pointatx.org/api/publish/production',
+        {
+          method: 'POST',
+          headers: {
+            origin: 'https://builder.pointatx.org',
+            'sec-fetch-site': 'same-origin',
+            'content-type': 'application/json',
+            'idempotency-key': promotion.idempotencyKey,
+          },
+          body: JSON.stringify({
+            stagingJobId: promotion.stagingJobId,
+            approvalId: promotion.approvalId,
+            tuple: promotion.tuple,
+          }),
+        },
+      );
+      expect(response.status).toBe(202);
+      return response.json<{ id: string; status: string }>();
+    };
     const [promoted, repeated] = await Promise.all([
-      production.capture(promotion),
+      captureThroughHttp(),
       production.capture(promotion),
     ]);
     expect(promoted).toEqual(repeated);
@@ -1806,6 +1835,9 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
         idempotencyKey: 'production-captured-retry',
         requestId: 'retry-production',
       };
+      await expect(production.recoverQueued({ ...recovery, jobId: job.id })).rejects.toThrow(
+        'PUBLICATION_RECOVERY_CHANGED',
+      );
       for (const role of ['viewer', 'editor', 'publisher']) {
         await database
           .prepare('UPDATE user_roles SET role=? WHERE email=?')
@@ -1959,7 +1991,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       );
       const [retried, duplicateRetry] = await Promise.all([
         retrying.retryCaptured(recovery),
-        production.retryCaptured(recovery),
+        production.recoverQueued(recovery),
       ]);
       expect(retried).toEqual(duplicateRetry);
       expect(retried.jobId).not.toBe(promoted.id);

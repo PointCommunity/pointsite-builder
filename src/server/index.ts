@@ -25,6 +25,8 @@ import type { D1OwnershipMigration } from './maintenance/asset-migration';
 import { createAssetMigrationRoutes } from './routes/asset-migration';
 import { createPublicationRunnerRoutes } from './routes/publication-runner';
 import type { D1PublicationRunner } from './publish/runner';
+import type { D1ProductionPublisher } from './publish/promotion';
+import { createProductionRoutes } from './routes/production';
 
 export interface AppDependencies {
   repository: DraftRepository;
@@ -49,6 +51,7 @@ export interface AppDependencies {
   feedback?: FeedbackService;
   ownershipMigration?: D1OwnershipMigration;
   publicationRunner?: D1PublicationRunner;
+  production?: D1ProductionPublisher;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -120,6 +123,7 @@ export function createApp(dependencies: AppDependencies) {
   app.route('/api/feedback', createFeedbackRoutes(dependencies.feedback, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
+  app.route('/api/publish', createProductionRoutes(dependencies.production));
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
   app.route(
     '/api/admin/asset-migration',

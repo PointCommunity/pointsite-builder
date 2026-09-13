@@ -760,6 +760,15 @@
       rollback must subsequently bind a selected retained release, fresh authority and current
       destination evidence, and verify restored output before recording another release.
     </p>
+    <p>
+      Production HTTP integration contract: accept only an Administrator's exact Staging job,
+      acceptance ID and captured tuple. Bind request receipts to the authenticated actor and reject
+      cross-origin requests, substituted fields and malformed keys before invoking the service.
+      Expose destination-specific job recovery with the same current-role checks as capture. A
+      Production endpoint cannot recover a Staging job. Keep runtime configuration disabled until
+      rollback and the remaining release gates are complete; route tests inject the real service
+      boundary without activating live publication.
+    </p>
     <ul>
       <li>
         T2: Additive migration 0014 creates per-draft item/date/path summaries. Draft saves update

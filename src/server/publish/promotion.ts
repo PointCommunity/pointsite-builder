@@ -6,7 +6,12 @@ import { PublicationBuildSchema, publicationJson } from './build-proof';
 import { PublicationEvidenceSchema, verifyDeploymentProof } from './deployment-proof';
 import type { PublisherConfig } from './service';
 import { retryCapturedPublication } from './retry';
-import { QueuedRecoverySchema, type QueuedRecoveryInput } from './recovery';
+import {
+  QueuedRecoverySchema,
+  recoverQueuedPublication,
+  type QueuedRecoveryInput,
+} from './recovery';
+import { reconcileCompletedPublication } from './reconcile';
 
 /** Shared by dispatch and every signed runner boundary; aliases belong to their job queries. */
 export const currentPromotion = `EXISTS (
@@ -25,7 +30,7 @@ export const currentPromotion = `EXISTS (
       AND publish_job_id=promotion.staging_job_id ORDER BY created_at DESC,rowid DESC LIMIT 1)
 )`;
 
-const CaptureSchema = z.strictObject({
+export const ProductionCaptureSchema = z.strictObject({
   stagingJobId: z.uuid(),
   approvalId: z.uuid(),
   tuple: CloudCandidateTupleSchema,
@@ -41,6 +46,19 @@ export class D1ProductionPublisher {
     private readonly callerBlob: string,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
+
+  async recoverQueued(value: QueuedRecoveryInput): Promise<{ recovered: true; jobId?: string }> {
+    const input = QueuedRecoverySchema.parse(value);
+    const source = await this.database
+      .prepare("SELECT 1 FROM publish_jobs WHERE id=? AND environment='production-merge'")
+      .bind(input.jobId)
+      .first();
+    if (!source) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+    if (input.action === 'retry-captured') return this.retryCaptured(input);
+    if (input.action === 'verify-completed')
+      return reconcileCompletedPublication(this.database, input, this.fetcher);
+    return recoverQueuedPublication(this.database, input, this.fetcher);
+  }
 
   async retryCaptured(value: QueuedRecoveryInput) {
     const input = QueuedRecoverySchema.parse(value);
@@ -118,8 +136,8 @@ export class D1ProductionPublisher {
     );
   }
 
-  async capture(value: z.infer<typeof CaptureSchema>) {
-    const input = CaptureSchema.parse(value);
+  async capture(value: z.infer<typeof ProductionCaptureSchema>) {
+    const input = ProductionCaptureSchema.parse(value);
     z.string()
       .regex(/^[a-f0-9]{40}$/)
       .parse(this.callerBlob);

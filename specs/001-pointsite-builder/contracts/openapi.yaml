@@ -770,15 +770,102 @@ paths:
               schema: { $ref: '#/components/schemas/GitSha' }
   /publish/production:
     post:
-      operationId: prepareProductionPullRequest
+      operationId: captureAcceptedProductionCandidate
+      description: >-
+        Administrator only. Capture the exact current Staging acceptance and immutable inputs,
+        with fresh repository permission, native evidence and expected Production base checks.
+        Requires same-origin JSON, Fetch Metadata and a request-bound Idempotency-Key. Duplicate
+        requests return the existing job. Worker configuration remains disabled until rollback
+        and the remaining coordinated rollout gates are complete.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stagingJobId, approvalId, tuple]
+              properties:
+                stagingJobId: { type: string, format: uuid }
+                approvalId: { type: string, format: uuid }
+                tuple:
+                  allOf:
+                    - $ref: '#/components/schemas/CandidateTuple'
+                    - type: object
+                      required: [publicationProtocol, workflowRevision, artifactDigest]
       responses:
-        '403':
-          description: Always disabled until production-preparation configuration and approval exist
+        '202':
+          description: Immutable Production job queued or running
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema: { $ref: '#/components/schemas/ProductionJobReceipt' }
+        '200':
+          description: Existing completed job receipt; no new publication
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductionJobReceipt' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /publish/production/jobs/{jobId}/recovery:
+    post:
+      operationId: recoverProductionPublication
+      description: >-
+        Administrator only, with same-origin JSON and a stable Idempotency-Key. Recover only the
+        selected Production job. Captured retry preserves the exact unrevoked acceptance and
+        requires an unchanged destination or the cancelled parent's recorded commit, at most three
+        times. Cancellation/reconciliation never repeats a deployment. A recorded completion can
+        be verified against successful native execution and current live identity. New publication
+        remains forbidden after deployment authorization; missing acknowledgments need separate
+        recovery. Worker configuration remains disabled pending the coordinated rollout.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, expectedAttempts]
+              properties:
+                action:
+                  {
+                    type: string,
+                    enum: [retry, cancel, reconcile, retry-captured, verify-completed],
+                  }
+                expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
+      responses:
+        '200':
+          description: Exact recovery committed or its historical receipt replayed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [recovered]
+                properties:
+                  recovered: { type: boolean, const: true }
+                  jobId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /publish/jobs/{jobId}:
     get:
       operationId: getJob
@@ -1682,6 +1769,13 @@ components:
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
         publicationProtocol: { type: integer, const: 2 }
         candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ProductionJobReceipt:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
     StagingPublishProgress:
       type: object
       additionalProperties: false

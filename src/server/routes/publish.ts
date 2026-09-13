@@ -294,8 +294,5 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
       throw error;
     }
   });
-  routes.post('/production', () => {
-    throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');
-  });
   return routes;
 }
