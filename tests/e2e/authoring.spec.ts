@@ -2720,8 +2720,8 @@ test('uploads one independent image immediately into the unified Library', async
   await page.getByRole('button', { name: 'Library' }).click();
   await page.getByRole('button', { name: 'Upload image' }).click();
   await page.getByLabel('Image file').setInputFiles({
-    name: 'gathering.png',
-    mimeType: 'image/png',
+    name: 'gathering.unusual',
+    mimeType: 'application/octet-stream',
     buffer: previewPng,
   });
   await page.getByLabel('Alternative text').fill('People gathering');
