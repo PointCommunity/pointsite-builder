@@ -135,9 +135,9 @@ test('machine operations accept empty HTTP streams and reject content before inv
   const methods = Object.fromEntries(
     ['reserve', 'claim', 'commitBuild', 'authorizeDeployment', 'finalize'].map((method) => [
       method,
-      async () => {
+      () => {
         calls.push(method);
-        return { ok: true };
+        return Promise.resolve({ ok: true });
       },
     ]),
   );
