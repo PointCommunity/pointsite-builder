@@ -34,6 +34,7 @@
     "test:performance": "npm run build && tsx tests/performance/api-load.mjs && node scripts/verify-budgets.mjs"
   },
   "dependencies": {
+    "@jsquash/webp": "1.5.0",
     "@phosphor-icons/react": "2.1.10",
     "@puckeditor/core": "0.23.0",
     "hono": "4.13.7",

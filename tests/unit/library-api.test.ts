@@ -1,4 +1,9 @@
 import { api } from '../../src/client/api';
+import { compressImage } from '../../src/client/media/compress-image';
+
+vi.mock('../../src/client/media/compress-image', () => ({
+  compressImage: vi.fn((file: File) => Promise.resolve(file)),
+}));
 
 const context = {
   draftId: 'draft-one',
@@ -49,6 +54,7 @@ it('retains checkout guards and explicit replacement confirmation without forcin
   const metadata = { displayName: 'New image', altText: 'Fresh description', tags: ['New'] };
   await api.uploadLibraryImage(context, file, metadata.altText);
   await api.replaceLibraryImage(context, 'item-one', file, metadata);
+  expect(compressImage).toHaveBeenCalledWith(file);
   const [path, init] = fetcher.mock.calls[1] as [string, RequestInit];
   expect(path).toBe('/api/drafts/draft-one/library/items/item-one/replacement');
   expect(init.headers).toMatchObject({

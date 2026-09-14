@@ -12,6 +12,7 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'linked-media.ts': 'edd07dd69ae91f4103b65cd565105701e5ce94cc',
   'migrations.ts': 'a69f786b8e7533d19e6d19a170f96cd49a9f4a66',
   'presets.ts': '00f8bf6df9e55c2eac6a92bb5388a32dc21563ff',
+  'publication-media.ts': 'cf382d8b22fa57fbc2b9f44a381dfe0e7225c553',
   'registry.tsx': 'a3f70045894ec6cc724ea60335297a581f7080f3',
   'schema.ts': 'dc2b58e51e2f1220cfa81ce668443f9c2be8c269',
   'site.css': '8642d939d731e99ca8927d46b83fd9ae4be2ac18',

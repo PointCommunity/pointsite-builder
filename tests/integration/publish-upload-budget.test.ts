@@ -38,6 +38,25 @@ async function setup(imageCount = 100) {
       id: crypto.randomUUID(),
       sourcePath: `/assets/uploads/budget-${document.media.length}.png`,
     });
+  // Every image must be reachable for this test to exercise the upload ceiling.
+  for (let offset = 0; offset < document.media.length; offset += 60) {
+    const section = structuredClone(document.pages[0].blocks[0]);
+    section.id = crypto.randomUUID();
+    section.layout = 'flow';
+    section.items = document.media.slice(offset, offset + 60).map((media) => ({
+      ...structuredClone(section.items[0]),
+      id: crypto.randomUUID(),
+      element: {
+        id: crypto.randomUUID(),
+        type: 'image' as const,
+        mediaId: media.id,
+        alt: 'Budget image',
+        aspect: 'natural' as const,
+        fit: 'contain' as const,
+      },
+    }));
+    document.pages[0].blocks.push(section);
+  }
   const draft = await repository.createDraft({
     name: 'Publish test',
     document,

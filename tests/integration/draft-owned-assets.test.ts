@@ -21,6 +21,27 @@ const png = new Uint8Array(
 it('packages more than 100 owned images with two reads and enforces size before loading chunks', async () => {
   const { database, repository, assets, createInput, legacy, template } = await fixture();
   const draft = await repository.createDraft(createInput);
+  const placement = structuredClone(draft.document.pages[0].blocks[0].items[0]);
+  let section = structuredClone(draft.document.pages[0].blocks[0]);
+  section.items = [];
+  const placeLastImage = () => {
+    if (!section.items.length || section.items.length === 60) {
+      section = { ...section, id: crypto.randomUUID(), layout: 'flow', items: [] };
+      draft.document.pages[0].blocks.push(section);
+    }
+    section.items.push({
+      ...structuredClone(placement),
+      id: crypto.randomUUID(),
+      element: {
+        id: crypto.randomUUID(),
+        type: 'image',
+        mediaId: draft.document.media.at(-1)!.id,
+        alt: 'Image',
+        aspect: 'natural',
+        fit: 'contain',
+      },
+    });
+  };
   const seed: D1PreparedStatement[] = [];
   for (let index = 0; index < 101; index++) {
     const image = await assets.prepareImage(draft.id, png, {
@@ -35,6 +56,7 @@ it('packages more than 100 owned images with two reads and enforces size before 
       sourcePath: image.sourcePath,
       alt: 'Image',
     });
+    placeLastImage();
   }
   await database.batch(seed);
   const prepare = vi.fn((query: string) => database.prepare(query));
@@ -108,6 +130,7 @@ it('packages more than 100 owned images with two reads and enforces size before 
         .bind(draft.id, path, id),
     ]);
     draft.document.media.push({ id: crypto.randomUUID(), sourcePath: path, alt: 'Large' });
+    placeLastImage();
   }
   const capped = prepare;
   await expect(

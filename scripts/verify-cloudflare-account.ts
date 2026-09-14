@@ -8,12 +8,13 @@ export const POINTSITE_CLOUDFLARE_ACCOUNT_ID = 'bc890091d86ddf9ce669e96e79d47746
 type WranglerIdentity = {
   loggedIn?: unknown;
   email?: unknown;
+  authType?: unknown;
   accounts?: unknown;
 };
 
 export function validatePointSiteCloudflareIdentity(value: unknown): {
   accountId: string;
-  email: string;
+  email: string | null;
 } {
   if (!value || typeof value !== 'object') {
     throw new Error('Wrangler returned an invalid response; refusing PointSite Cloudflare access.');
@@ -31,7 +32,9 @@ export function validatePointSiteCloudflareIdentity(value: unknown): {
       return (account as Record<string, unknown>).id === POINTSITE_CLOUDFLARE_ACCOUNT_ID;
     });
 
-  if (identity.email !== POINTSITE_CLOUDFLARE_EMAIL || !hasExpectedAccount) {
+  const apiToken =
+    identity.authType === 'User API Token' || identity.authType === 'Account API Token';
+  if ((!apiToken && identity.email !== POINTSITE_CLOUDFLARE_EMAIL) || !hasExpectedAccount) {
     throw new Error(
       `PointSite Cloudflare account mismatch. Expected ${POINTSITE_CLOUDFLARE_EMAIL} / ${POINTSITE_CLOUDFLARE_ACCOUNT_ID}; refusing to continue.`,
     );
@@ -39,7 +42,7 @@ export function validatePointSiteCloudflareIdentity(value: unknown): {
 
   return {
     accountId: POINTSITE_CLOUDFLARE_ACCOUNT_ID,
-    email: POINTSITE_CLOUDFLARE_EMAIL,
+    email: apiToken ? null : POINTSITE_CLOUDFLARE_EMAIL,
   };
 }
 
@@ -50,7 +53,7 @@ async function main(): Promise<void> {
   });
   const identity = validatePointSiteCloudflareIdentity(JSON.parse(stdout) as unknown);
   process.stdout.write(
-    `Verified PointSite Cloudflare account ${identity.email} / ${identity.accountId}.\n`,
+    `Verified PointSite Cloudflare account ${identity.accountId} (${identity.email ?? 'API token'}).\n`,
   );
 }
 
