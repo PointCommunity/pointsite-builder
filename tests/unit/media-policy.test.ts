@@ -111,4 +111,34 @@ describe('media upload policy', () => {
       contentType,
     });
   });
+
+  it('accepts simple lossy and lossless WebP containers emitted by encoders', () => {
+    const lossy = webp();
+    lossy.set(new TextEncoder().encode('VP8 '), 12);
+    lossy.set([0x9d, 1, 0x2a], 23);
+    new DataView(lossy.buffer).setUint16(26, 640, true);
+    new DataView(lossy.buffer).setUint16(28, 480, true);
+    const lossless = webp().slice(0, 25);
+    lossless.set(new TextEncoder().encode('VP8L'), 12);
+    lossless[20] = 0x2f;
+    new DataView(lossless.buffer).setUint32(21, 639 | (479 << 14), true);
+    for (const bytes of [lossy, lossless]) {
+      expect(
+        validateImageUpload({
+          filename: 'image.webp',
+          contentType: 'image/webp',
+          bytes,
+          altText: 'Image',
+        }),
+      ).toMatchObject({ width: 640, height: 480 });
+      expect(() =>
+        validateImageUpload({
+          filename: 'image.webp',
+          contentType: 'image/webp',
+          bytes: bytes.slice(0, 24),
+          altText: 'Image',
+        }),
+      ).toThrow();
+    }
+  });
 });

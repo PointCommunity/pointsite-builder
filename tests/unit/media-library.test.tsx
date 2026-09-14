@@ -6,9 +6,15 @@ import type {
   LibraryMutationResult,
   LibrarySnapshot,
 } from '../../src/shared/library';
+import { compressImage } from '../../src/client/media/compress-image';
+
+vi.mock('../../src/client/media/compress-image', () => ({ compressImage: vi.fn() }));
 
 const revokeObjectURL = vi.fn();
 beforeEach(() => {
+  vi.mocked(compressImage)
+    .mockReset()
+    .mockImplementation((file) => Promise.resolve(file));
   revokeObjectURL.mockClear();
   URL.createObjectURL = vi.fn(() => 'blob:proposed-image');
   URL.revokeObjectURL = revokeObjectURL;
@@ -181,6 +187,37 @@ const imageFile = () =>
     { type: 'image/png' },
   );
 
+it('preserves the validated filename when alternative text changes in the same render batch', async () => {
+  setup([]);
+  await screen.findByText('Your Library is empty');
+  fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
+  const dialog = screen.getByRole('dialog', { name: 'Upload image' });
+  let finish!: (file: File) => void;
+  vi.mocked(compressImage).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const selected = imageFile();
+  try {
+    fireEvent.change(within(dialog).getByLabelText('Image file'), {
+      target: { files: [selected] },
+    });
+    await act(async () => {
+      finish(selected);
+      await Promise.resolve();
+      fireEvent.change(within(dialog).getByLabelText('Alternative text'), {
+        target: { value: 'People gathering' },
+      });
+    });
+    fireEvent.load(await within(dialog).findByRole('img'));
+    expect(within(dialog).getByRole('button', { name: 'Upload image' })).toBeEnabled();
+  } finally {
+    vi.mocked(compressImage).mockImplementation((file) => Promise.resolve(file));
+  }
+});
+
 it('adds a validated upload once immediately without placement controls', async () => {
   const { client } = setup([]);
   await screen.findByText('Your Library is empty');
@@ -216,10 +253,15 @@ it('requires valid bytes, decoded preview, fresh alt text, and final confirmatio
     'Alternative text or accessible description',
   );
   expect(alternativeText).toHaveValue('');
+  vi.mocked(compressImage).mockRejectedValueOnce(
+    new Error('Image format is unsupported or invalid.'),
+  );
   fireEvent.change(within(dialog).getByLabelText('Image file'), {
     target: { files: [new File(['bad bytes'], 'wrong.png', { type: 'image/png' })] },
   });
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent('PNG signature is invalid');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    'Image format is unsupported or invalid.',
+  );
   expect(within(dialog).getByRole('button', { name: 'Review replacement' })).toBeDisabled();
   const file = imageFile();
   fireEvent.change(within(dialog).getByLabelText('Image file'), { target: { files: [file] } });

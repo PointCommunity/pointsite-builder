@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { validateImageUpload } from '../../server/media/policy';
+import { compressImage } from './compress-image';
 import { isDirectVideoUrl, youtubeVideoId } from '../../site-kit/linked-media';
 import { isSafeHttpsUrl } from '../../site-kit/url-policy';
 import type {
@@ -178,6 +178,7 @@ function ImageForm({
   const [preview, setPreview] = useState('');
   const [validation, setValidation] = useState('');
   const [validating, setValidating] = useState(false);
+  const [compression, setCompression] = useState('');
   const [decoded, setDecoded] = useState(false);
   const [metadata, setMetadata] = useState<LibraryMetadata>({
     displayName: item?.displayName ?? '',
@@ -186,9 +187,11 @@ function ImageForm({
   });
   const [confirming, setConfirming] = useState(false);
   const selection = useRef(0);
+  const preparation = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
       selection.current += 1;
+      preparation.current?.abort();
     },
     [],
   );
@@ -200,9 +203,12 @@ function ImageForm({
   );
   const chooseFile = async (next: File | undefined) => {
     const current = ++selection.current;
+    preparation.current?.abort();
+    preparation.current = new AbortController();
     setFile(null);
     setPreview('');
     setValidation('');
+    setCompression('');
     setConfirming(false);
     setDecoded(false);
     if (!next) {
@@ -211,22 +217,15 @@ function ImageForm({
     }
     setValidating(true);
     try {
-      if (next.size > 5 * 1024 * 1024) throw new Error('Image must be at most 5 MiB');
-      const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(new Error('Image could not be read. Choose it again.'));
-        reader.readAsArrayBuffer(next);
-      });
-      validateImageUpload({
-        filename: next.name,
-        contentType: next.type,
-        bytes: new Uint8Array(bytes),
-        altText: 'Proposed image',
-      });
+      const optimized = await compressImage(next, preparation.current.signal);
       if (current !== selection.current) return;
-      setFile(next);
-      setPreview(URL.createObjectURL(next));
+      setFile(optimized);
+      setPreview(URL.createObjectURL(optimized));
+      setCompression(
+        optimized.size < next.size
+          ? `Optimized image: ${Math.round((1 - optimized.size / next.size) * 100)}% smaller (${(optimized.size / 1024).toFixed(1)} KiB).`
+          : 'Original image kept: already smaller or animated.',
+      );
       if (!item) setMetadata((value) => ({ ...value, displayName: next.name }));
     } catch (cause) {
       if (current === selection.current)
@@ -283,7 +282,10 @@ function ImageForm({
             else void onSubmit(file, metadata);
           }}
         >
-          <p>JPEG, PNG, WebP or AVIF. Up to 5 MiB and 8,000 pixels per side.</p>
+          <p>
+            JPEG, PNG, WebP or AVIF. Automatically optimized before upload. Up to 20 MiB before
+            compression, 5 MiB after, 8,000 pixels per side and 32 megapixels.
+          </p>
           {item ? (
             <p>Choose a replacement, then write fresh alternative text describing the new image.</p>
           ) : null}
@@ -300,7 +302,8 @@ function ImageForm({
                 }}
               />
             </label>
-            {validating ? <p role="status">Validating image…</p> : null}
+            {validating ? <p role="status">Optimizing image…</p> : null}
+            {compression ? <p role="status">{compression}</p> : null}
             {preview ? (
               <img
                 className="library-image-preview"
@@ -322,7 +325,10 @@ function ImageForm({
                   required
                   maxLength={300}
                   value={metadata.altText}
-                  onChange={(event) => setMetadata({ ...metadata, altText: event.target.value })}
+                  onChange={(event) => {
+                    const altText = event.target.value;
+                    setMetadata((current) => ({ ...current, altText }));
+                  }}
                 />
               </label>
             )}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Automatic image compression and used-only publishing</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { max-width: 70ch; margin: 3rem auto; padding: 0 1rem; background: #141814; color: #edf2ed; font: 1rem/1.6 system-ui; }
+      a { color: #abd898; }
+    </style>
+  </head>
+  <body>
+    <h1>Automatic image compression and used-only publishing</h1>
+    <p>September 13, 2026: the user requested an urgent focused implementation without creating a GitHub issue. Existing reliability and recovery work remains separate.</p>
+    <h2>Uploads and replacements</h2>
+    <p>Detect JPEG, PNG, WebP and AVIF from their bytes regardless of filename or declared MIME type. Encode still JPEG and AVIF images as quality-90 WebP; encode PNG and existing WebP losslessly. Preserve displayed dimensions, orientation, transparency, Library identity and placements. Keep original bytes when encoding would grow them, normalizing extension and MIME type. Preserve animated originals. Reject unsupported or corrupt inputs with an actionable error.</p>
+    <p>Bound sources to 20 MiB, 8,000 pixels per side and 32 megapixels; stored uploads remain at most 5 MiB. Use a terminable browser worker with a 60-second timeout. Load the codec on demand, release resources, and show the resulting preview and saved bytes. Normalize decoded colors to sRGB; new encodings omit EXIF/GPS metadata. Do not upload an extra original. Existing versions and other drafts stay intact.</p>
+    <h2>Publishing</h2>
+    <p>Include local images used by exported pages, backgrounds, page metadata, selected people and direct asset links. Hidden routes remain included because the renderer exports them. Keep the immutable document and revision checksum intact. Mark new manifests as referenced-media publications. Existing manifests retain their previous meaning. Exclude unused image files from static output; keep fonts and fail if a required image is missing.</p>
+    <h2>Verification and release</h2>
+    <p>Check real encoding, renamed inputs, alpha, opaque pixels, orientation, limits, cancellation, failure cleanup, replacement links and used-only checksums. Run Chromium, Firefox and WebKit plus full Builder QA sequentially. Rehearse the static export. Release compatible static verification first, then the exact clean reviewed Builder main revision. No database migration or public Production content publication is part of this release.</p>
+    <p><a href="https://developers.google.com/speed/webp/docs/riff_container">WebP container specification</a>: accept VP8, VP8L and VP8X headers. Native browser decoding plus the pinned libwebp WebAssembly encoder avoids server image-processing costs.</p>
+  </body>
+</html>

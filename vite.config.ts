@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import { execFileSync } from 'node:child_process';
 
 export default defineConfig({
+  worker: { format: 'es' },
   define: {
     __BUILDER_SOURCE_REVISION__: JSON.stringify(
       execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),

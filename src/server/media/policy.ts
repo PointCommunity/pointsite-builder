@@ -59,13 +59,21 @@ function dimensionsFor(bytes: Uint8Array, mime: SupportedMime): { width: number;
     throw new Error('JPEG dimensions are missing');
   }
   if (mime === 'image/webp') {
-    if (
-      bytes.length < 30 ||
-      ascii(bytes, 0, 4) !== 'RIFF' ||
-      ascii(bytes, 8, 4) !== 'WEBP' ||
-      ascii(bytes, 12, 4) !== 'VP8X'
-    )
+    if (bytes.length < 25 || ascii(bytes, 0, 4) !== 'RIFF' || ascii(bytes, 8, 4) !== 'WEBP')
       throw new Error('WebP signature or dimensions are invalid');
+    const chunk = ascii(bytes, 12, 4);
+    if (chunk === 'VP8L' && bytes[20] === 0x2f) {
+      const bits = view.getUint32(21, true);
+      if (bits >>> 29) throw new Error('WebP version is not supported');
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (bytes.length < 30) throw new Error('WebP signature or dimensions are invalid');
+    if (chunk === 'VP8 ' && ascii(bytes, 23, 3) === '\x9d\x01\x2a')
+      return {
+        width: view.getUint16(26, true) & 0x3fff,
+        height: view.getUint16(28, true) & 0x3fff,
+      };
+    if (chunk !== 'VP8X') throw new Error('WebP signature or dimensions are invalid');
     const uint24 = (offset: number) =>
       (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8) | ((bytes[offset + 2] ?? 0) << 16);
     return { width: uint24(24) + 1, height: uint24(27) + 1 };
@@ -81,6 +89,42 @@ function dimensionsFor(bytes: Uint8Array, mime: SupportedMime): { width: number;
       return { width: view.getUint32(offset + 8), height: view.getUint32(offset + 12) };
   }
   throw new Error('AVIF dimensions are missing');
+}
+
+/** Inspect bytes before browser decoding; filenames and MIME declarations are not evidence. */
+export function inspectImage(bytes: Uint8Array) {
+  let contentType: SupportedMime;
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47])) contentType = 'image/png';
+  else if (startsWith(bytes, [0xff, 0xd8, 0xff])) contentType = 'image/jpeg';
+  else if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WEBP')
+    contentType = 'image/webp';
+  else if (ascii(bytes, 4, 4) === 'ftyp' && ['avif', 'avis'].includes(ascii(bytes, 8, 4)))
+    contentType = 'image/avif';
+  else throw new Error('Image format is unsupported or invalid. Choose JPEG, PNG, WebP or AVIF.');
+  const dimensions = dimensionsFor(bytes, contentType);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let animated =
+    contentType === 'image/webp' && ascii(bytes, 12, 4) === 'VP8X' && Boolean((bytes[20] ?? 0) & 2);
+  if (contentType === 'image/png') {
+    for (let offset = 8; offset + 12 <= bytes.length;) {
+      if (ascii(bytes, offset + 4, 4) === 'acTL') animated = true;
+      const length = view.getUint32(offset);
+      if (offset + length + 12 > bytes.length) break;
+      offset += length + 12;
+    }
+  }
+  if (contentType === 'image/avif') {
+    const end = Math.min(view.getUint32(0), bytes.length);
+    for (let offset = 8; offset + 4 <= end; offset += 4)
+      if (ascii(bytes, offset, 4) === 'avis') animated = true;
+  }
+  return {
+    ...dimensions,
+    contentType,
+    extension: contentType === 'image/jpeg' ? 'jpg' : contentType.slice(6),
+    animated,
+    lossless: contentType === 'image/png' || contentType === 'image/webp',
+  };
 }
 
 export function validateImageUpload(input: ImageUploadInput) {
