@@ -707,6 +707,15 @@
         reproduce the response race with a controlled browser test, and repeat full QA before
         releasing the combined candidate.
       </p>
+      <p>
+        Pages deployed and all 97 public files passed HTTPS checksum verification. Recovery capture
+        exposed an incorrect GitHub API assumption: the deployment's App attribution is null, while
+        the native GitHub Actions check run directly identifies its deployment. Replace the
+        attribution assumption with that exact check-run/deployment link across publication,
+        verification recovery and rollback. Preserve source, environment, run, status and OIDC
+        gates; reject missing or substituted links in regression tests before another Canary
+        release.
+      </p>
       <dl>
         <dt>Depends on</dt>
         <dd>H18, H24.</dd>

@@ -70,7 +70,7 @@ async function fixture() {
       id,
       sha: state.main,
       environment: 'github-pages',
-      performed_via_github_app: { id: 15368, slug: 'github-actions' },
+      performed_via_github_app: null,
     });
     if (path.includes('/deployments?environment=github-pages&per_page='))
       return Response.json(
@@ -95,6 +95,7 @@ async function fixture() {
         head_sha: state.main,
         details_url: 'https://github.com/PointCommunity/pointsite/actions/runs/12345/job/23456',
         app: { id: 15368, slug: 'github-actions' },
+        deployment: { id: state.deployment + (state.executing ? 1 : 0) },
       });
     if (path === 'https://pointatx.org/__pointsite_release.json')
       return Response.json(state.release);

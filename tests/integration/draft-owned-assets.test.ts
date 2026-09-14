@@ -379,6 +379,7 @@ it.each(['staging', 'production'] as const)(
           head_sha: 'b'.repeat(40),
           details_url: jobUrl,
           app: { id: 15368, slug: 'github-actions' },
+          deployment: { id: 1 },
         });
       if (path === `${apiRoot}/git/ref/heads/main`)
         return Response.json({ object: { sha: build.commitSha } });
@@ -1418,6 +1419,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
           head_sha: job.baseSha,
           details_url: jobUrl,
           app: { id: 15368, slug: 'github-actions' },
+          deployment: { id: 1 },
         });
       if (path.includes('/statuses?'))
         return Response.json([
@@ -2263,6 +2265,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
             head_sha: productionBase,
             details_url: productionJobUrl,
             app: { id: 15368, slug: 'github-actions' },
+            deployment: { id: 2 },
           });
         if (path.includes('/statuses?'))
           return Response.json([
@@ -3534,6 +3537,7 @@ it.each([
           head_sha: verification ? provider.build.commitSha : originalBase,
           details_url: `https://github.com/PointCommunity/${repositoryName}/actions/runs/${verification ? '56789/job/78901' : '12345/job/34567'}`,
           app: { id: 15368, slug: 'github-actions' },
+          deployment: verification ? null : { id: 45678 },
         });
       }
       if (url.includes('/statuses?'))
@@ -3594,7 +3598,7 @@ it.each([
             id: 45678,
             sha: originalBase,
             environment,
-            performed_via_github_app: { id: 15368, slug: 'github-actions' },
+            performed_via_github_app: null,
           },
         ]);
       return provider.fetcher(value, init);

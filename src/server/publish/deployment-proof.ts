@@ -56,6 +56,33 @@ export const PublicationEvidenceSchema = z.strictObject({
   deploymentUrl: z.url(),
 });
 
+/** Actions environment deployments can have null App attribution; the native check owns the link. */
+export function verifyDeploymentCheck(
+  value: unknown,
+  expected: {
+    repository: string;
+    runId: string;
+    checkRunId: string;
+    dispatchRevision: string;
+    deploymentId: number;
+  },
+) {
+  return z
+    .object({
+      id: z
+        .number()
+        .int()
+        .refine((id) => String(id) === expected.checkRunId),
+      head_sha: z.literal(expected.dispatchRevision),
+      details_url: z.literal(
+        `https://github.com/${expected.repository}/actions/runs/${expected.runId}/job/${expected.checkRunId}`,
+      ),
+      app: z.object({ id: z.literal(15368), slug: z.literal('github-actions') }),
+      deployment: z.object({ id: z.literal(expected.deploymentId) }),
+    })
+    .parse(value);
+}
+
 /** Native execution identity, current Git state and live release metadata identify different facts. */
 export async function verifyDeploymentProof(
   expected: DeploymentExpectation,
@@ -105,6 +132,7 @@ export async function verifyDeploymentProof(
             `https://github.com/${repository}/actions/runs/${runId}/job/${checkRunId}`,
           ),
           app: z.object({ id: z.literal(15368), slug: z.literal('github-actions') }),
+          deployment: z.object({ id: z.number().int().positive() }).nullish(),
         })
         .parse(await read(`${api}/check-runs/${checkRunId}`));
     if (input.verification) {
@@ -137,15 +165,12 @@ export async function verifyDeploymentProof(
       id: z.number().int().positive(),
       sha: z.literal(input.dispatchRevision),
       environment: z.literal(environment),
-      performed_via_github_app: z.object({
-        id: z.literal(15368),
-        slug: z.literal('github-actions'),
-      }),
     });
     const [deployment] = z
       .array(deploymentSchema)
       .length(1)
       .parse(await read(deploymentsUrl));
+    verifyDeploymentCheck(original, { ...input, repository, deploymentId: deployment.id });
     const [status] = z
       .array(
         z.object({

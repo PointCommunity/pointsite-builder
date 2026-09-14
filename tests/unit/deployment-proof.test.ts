@@ -42,6 +42,8 @@ function fixture(input = expectation, change = '', token?: string) {
         status: change === 'pending' ? 'in_progress' : 'completed',
         conclusion: change === 'failed' ? 'failure' : 'success',
         details_url: change === 'run' ? `${jobUrl}1` : jobUrl,
+        deployment:
+          change === 'missing-deployment' ? null : { id: change === 'deployment' ? 9 : 1 },
       };
     else if (path === `${api}/git/ref/heads/main`)
       result = { object: { sha: change === 'base' ? input.dispatchRevision : input.commitSha } };
@@ -52,7 +54,7 @@ function fixture(input = expectation, change = '', token?: string) {
           id: change === 'drift' && lists > 1 ? 2 : 1,
           sha: input.dispatchRevision,
           environment,
-          performed_via_github_app: app,
+          performed_via_github_app: null,
         },
       ];
     } else if (path === `${api}/deployments/1/statuses?per_page=1`)
@@ -101,6 +103,8 @@ it('refuses incomplete, substituted, changed or unavailable native and live evid
     'pending',
     'failed',
     'run',
+    'deployment',
+    'missing-deployment',
     'base',
     'drift',
     'inactive',

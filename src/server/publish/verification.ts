@@ -5,6 +5,7 @@ import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import { PublicationBuildSchema, publicationJson } from './build-proof';
 import {
   PublicationEvidenceSchema,
+  verifyDeploymentCheck,
   verifyDeploymentProof,
   verifyStagingDeployment,
 } from './deployment-proof';
@@ -865,14 +866,19 @@ export class D1PublicationVerifier {
           id: z.number().int().positive(),
           sha: z.literal(source.dispatch_revision),
           environment: z.literal(environment),
-          performed_via_github_app: z.object({
-            id: z.literal(15368),
-            slug: z.literal('github-actions'),
-          }),
         }),
       )
       .length(1)
       .parse(await read(`/deployments?environment=${environment}&per_page=1`));
+    const execution = await read(`/check-runs/${source.check_run_id}`);
+    z.object({ status: z.literal('completed') }).parse(execution);
+    verifyDeploymentCheck(execution, {
+      repository: `PointCommunity/${repository}`,
+      runId: source.run_id,
+      checkRunId: source.check_run_id,
+      dispatchRevision: source.dispatch_revision,
+      deploymentId: deployment.id,
+    });
     const recordedWorker =
       input.target === 'staging' &&
       source.deployment_json !== null &&

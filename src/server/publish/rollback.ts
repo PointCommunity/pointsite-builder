@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import { publicationJson } from './build-proof';
-import { PublicationEvidenceSchema, verifyDeploymentProof } from './deployment-proof';
+import {
+  PublicationEvidenceSchema,
+  verifyDeploymentCheck,
+  verifyDeploymentProof,
+} from './deployment-proof';
 import { verifyTerminalRun } from './recovery';
 import { rollbackSource, type RollbackSource } from './rollback-source';
 import { verifyPublicationRunner } from './runner-auth';
@@ -103,11 +107,7 @@ export class D1CloudRollback {
       const deployment = z.object({
         id: z.number().int().positive(),
         environment: z.literal('github-pages'),
-        sha: sha.optional(),
-        performed_via_github_app: z.object({
-          id: z.literal(15368),
-          slug: z.literal('github-actions'),
-        }),
+        sha,
       });
       const deployments = z
         .array(deployment)
@@ -127,6 +127,18 @@ export class D1CloudRollback {
         )
         .length(1)
         .parse(await read(`/deployments/${latest.id}/statuses?per_page=1`));
+      const linkedJob =
+        /^https:\/\/github\.com\/PointCommunity\/pointsite\/actions\/runs\/([1-9][0-9]*)\/job\/([1-9][0-9]*)$/.exec(
+          status.log_url,
+        );
+      if (!linkedJob) throw new Error('Unconfirmed deployment job');
+      verifyDeploymentCheck(await read(`/check-runs/${linkedJob[2]}`), {
+        repository: 'PointCommunity/pointsite',
+        runId: linkedJob[1],
+        checkRunId: linkedJob[2],
+        dispatchRevision: latest.sha,
+        deploymentId: latest.id,
+      });
       if (execution) {
         if (
           latest.sha !== base ||
