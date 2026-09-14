@@ -67,6 +67,69 @@ export class D1DeletionReceipts {
       throw new Error('DELETION_COMMIT_UNCONFIRMED');
   }
 
+  /** Runtime uses the leased workspace. Keep independent proof until bounded workspace cleanup succeeds. */
+  async retire() {
+    const state = await this.control
+      .prepare(
+        `SELECT epoch,strftime('%Y-%m-%dT%H:%M:%fZ','now','-90 days') AS cutoff
+        FROM workspace_recovery WHERE id=1 AND mode='active'`,
+      )
+      .first<{ epoch: number; cutoff: string }>();
+    if (!state) throw new Error('WORKSPACE_RECOVERY_CHANGED');
+    const rows = (
+      await this.control
+        .prepare(
+          `SELECT id FROM deletion_receipts INDEXED BY deletion_receipts_resolved
+        WHERE state!='pending' AND resolved_at<? ORDER BY resolved_at,id LIMIT 20`,
+        )
+        .bind(state.cutoff)
+        .all<{ id: string }>()
+    ).results;
+    if (!rows.length) return { receipts: 0, proofs: 0, replays: 0 };
+    const ids = JSON.stringify(rows.map((row) => row.id));
+    const [replays, proofs, remaining] = await this.workspace.batch<{ receipt_id: string }>([
+      this.workspace
+        .prepare(
+          `DELETE FROM deletion_replays WHERE rowid IN
+        (SELECT rowid FROM deletion_replays INDEXED BY deletion_replays_receipt
+          WHERE receipt_id IN (SELECT value FROM json_each(?)) LIMIT 20)`,
+        )
+        .bind(ids),
+      this.workspace
+        .prepare(
+          'DELETE FROM deletion_commits WHERE receipt_id IN (SELECT value FROM json_each(?))',
+        )
+        .bind(ids),
+      this.workspace
+        .prepare(
+          `SELECT value AS receipt_id FROM json_each(?) selected
+        WHERE EXISTS(SELECT 1 FROM deletion_replays WHERE receipt_id=selected.value)`,
+        )
+        .bind(ids),
+    ]);
+    const retained = new Set(remaining.results.map((row) => row.receipt_id));
+    const eligible = rows.filter((row) => !retained.has(row.id)).map((row) => row.id);
+    const [, retired] = await this.control.batch([
+      this.control
+        .prepare(
+          `SELECT json(CASE WHEN EXISTS(SELECT 1 FROM workspace_recovery
+        WHERE id=1 AND mode='active' AND epoch=?) THEN 'true' ELSE 'recovery-changed' END)`,
+        )
+        .bind(state.epoch),
+      this.control
+        .prepare(
+          `DELETE FROM deletion_receipts
+        WHERE id IN (SELECT value FROM json_each(?)) AND state!='pending' AND resolved_at<?`,
+        )
+        .bind(JSON.stringify(eligible), state.cutoff),
+    ]);
+    return {
+      receipts: retired.meta.changes,
+      proofs: proofs.meta.changes,
+      replays: replays.meta.changes,
+    };
+  }
+
   /** Run only after quarantine drains all leases, before restoration can erase commit proofs. */
   async settlePending(epoch: number, recoveryId: string) {
     await assertRecoveryDrained(this.workspace, this.control, epoch, recoveryId);

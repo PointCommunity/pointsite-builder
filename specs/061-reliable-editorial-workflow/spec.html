@@ -699,6 +699,27 @@
       enter the control store. Delayed confirmation and duplicate requests remain safe.
     </p>
     <p>
+      Deletion-receipt retention increment: retain unresolved receipts without an age cutoff. Retire
+      at most twenty resolved receipts per scheduled pass, strictly more than ninety days after
+      resolution, using the independent database clock and an indexed age query. This exceeds D1's
+      documented seven-day Free and thirty-day Paid Time Travel windows; external backups are not
+      supported recovery inputs. Quarantine or an epoch change stops retirement. Remove matching
+      workspace commit proofs and at most twenty replay markers before removing independent
+      receipts; remaining replay markers keep their receipt for the next pass. A failed workspace
+      transaction leaves all independent receipts intact. A lost control-store response is safe to
+      retry. Pending receipts and unrelated workspace content are never removed. Replayed metadata
+      restored from an older bookmark may remain conservatively retained; native recovery rehearsal
+      and aggregate metadata storage measurements remain separate release gates.
+    </p>
+    <p>
+      Implement this increment by first testing bounded selection, the ninety-day boundary,
+      unresolved receipt preservation, interrupted transactions, quarantine races and replay-marker
+      draining against local D1. Add only the age and receipt lookup indexes, extend the existing
+      deletion-receipt service, then call it from the existing guarded schedule. Run focused
+      recovery tests followed by the required sequential local quality, performance and browser
+      suites.
+    </p>
+    <p>
       Provider telemetry contract: the existing schedule may refresh one content-free D1 snapshot
       every five minutes using a separately configured read-only Analytics/D1 credential. An atomic
       database-clock claim limits refreshes across Worker instances. Query account-wide and
@@ -1233,7 +1254,9 @@
         task-owned test table was removed. The operator helper uses this native HTTP API. No
         workspace restore, application deployment or production migration was performed. Provision
         both migration directories with the full reviewed release; the live Worker does not yet have
-        the recovery binding. Independent receipt retention remains a separate release gate.
+        the recovery binding. Bounded independent receipt retirement is implemented on the Issue
+        branch; native migration, recovery rehearsal and total storage/query measurements remain
+        release gates.
       </li>
     </ul>
     <h2>Approved publishing size reduction</h2>

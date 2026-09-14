@@ -92,6 +92,164 @@ async function fixture() {
   return { database, control };
 }
 
+async function retentionFixture() {
+  const value = await fixture();
+  for (const [db, path] of [
+    [value.control, 'recovery-migrations/0004_receipt_retention.sql'],
+    [value.database, 'migrations/0033_deletion_retention.sql'],
+  ] as const)
+    await db.exec(
+      (await readFile(path, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+  const receipts = new D1DeletionReceipts(
+    await openRecoveryDatabase(value.database, value.control),
+    value.control,
+  );
+  const seed = async (days: number, state = 'committed') => {
+    const id = crypto.randomUUID();
+    await value.control
+      .prepare(
+        `INSERT INTO deletion_receipts
+      (id,target_json,target_hash,state,prepared_at,resolved_at)
+      VALUES (?,'{}',?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now',?),
+        CASE WHEN ?='pending' THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now',?) END)`,
+      )
+      .bind(id, 'a'.repeat(64), state, `-${days} days`, state, `-${days} days`)
+      .run();
+    await value.database
+      .prepare('INSERT INTO deletion_commits(receipt_id,target_hash) VALUES (?,?)')
+      .bind(id, 'a'.repeat(64))
+      .run();
+    return id;
+  };
+  return { ...value, receipts, seed };
+}
+
+it('bounds resolved deletion retention while keeping unresolved receipts, recent receipts and content', async () => {
+  const { database, control, receipts, seed } = await retentionFixture();
+  const pending = await seed(200, 'pending');
+  const recent = await seed(89);
+  for (let index = 0; index < 21; index++) await seed(91, index % 2 ? 'committed' : 'cancelled');
+  expect(await receipts.retire()).toEqual({ receipts: 20, proofs: 20, replays: 0 });
+  expect(await receipts.retire()).toEqual({ receipts: 1, proofs: 1, replays: 0 });
+  expect(await receipts.retire()).toEqual({ receipts: 0, proofs: 0, replays: 0 });
+  for (const id of [pending, recent]) {
+    expect(
+      await control.prepare('SELECT id FROM deletion_receipts WHERE id=?').bind(id).first('id'),
+    ).toBe(id);
+    expect(
+      await database
+        .prepare('SELECT receipt_id FROM deletion_commits WHERE receipt_id=?')
+        .bind(id)
+        .first('receipt_id'),
+    ).toBe(id);
+  }
+  expect(await database.prepare('SELECT value FROM content').first('value')).toBe('before restore');
+  const plan = await control
+    .prepare(
+      `EXPLAIN QUERY PLAN SELECT id FROM deletion_receipts
+    INDEXED BY deletion_receipts_resolved WHERE state!='pending' AND resolved_at<?
+    ORDER BY resolved_at,id LIMIT 20`,
+    )
+    .bind(new Date().toISOString())
+    .all<{ detail: string }>();
+  expect(plan.results.map((row) => row.detail).join(' ')).toContain(
+    'USING INDEX deletion_receipts_resolved',
+  );
+});
+
+it('drains replay markers in bounded batches before retiring their independent deletion receipt', async () => {
+  const { database, control, receipts, seed } = await retentionFixture();
+  const id = await seed(91);
+  for (let index = 0; index < 21; index++)
+    await database
+      .prepare('INSERT INTO deletion_replays(recovery_id,receipt_id,target_hash) VALUES (?,?,?)')
+      .bind(crypto.randomUUID(), id, 'a'.repeat(64))
+      .run();
+  expect(await receipts.retire()).toEqual({ receipts: 0, proofs: 1, replays: 20 });
+  expect(await control.prepare('SELECT id FROM deletion_receipts').first('id')).toBe(id);
+  expect(await receipts.retire()).toEqual({ receipts: 1, proofs: 0, replays: 1 });
+});
+
+it('keeps a receipt exactly at the independent database cutoff', async () => {
+  const { database, control } = await retentionFixture();
+  const id = crypto.randomUUID();
+  const pinned = {
+    prepare: (query: string) =>
+      query.startsWith('SELECT epoch,strftime')
+        ? {
+            first: async () => {
+              const state = await control.prepare(query).first<{ epoch: number; cutoff: string }>();
+              await control
+                .prepare(
+                  `INSERT INTO deletion_receipts
+        (id,target_json,target_hash,state,prepared_at,resolved_at) VALUES (?,'{}',?,'committed',?,?)`,
+                )
+                .bind(id, 'a'.repeat(64), state!.cutoff, state!.cutoff)
+                .run();
+              return state;
+            },
+          }
+        : control.prepare(query),
+    batch: control.batch.bind(control),
+  } as D1Database;
+  expect(await new D1DeletionReceipts(database, pinned).retire()).toEqual({
+    receipts: 0,
+    proofs: 0,
+    replays: 0,
+  });
+  expect(await control.prepare('SELECT id FROM deletion_receipts').first('id')).toBe(id);
+});
+
+it('keeps independent receipts when workspace cleanup rolls back or quarantine wins after cleanup', async () => {
+  const { database, control, seed } = await retentionFixture();
+  const id = await seed(91);
+  const broken = {
+    prepare: database.prepare.bind(database),
+    batch: (items: D1PreparedStatement[]) =>
+      database.batch([...items, database.prepare("SELECT json('injected failure')")]),
+  } as D1Database;
+  await expect(new D1DeletionReceipts(broken, control).retire()).rejects.toThrow();
+  expect(
+    await database.prepare('SELECT receipt_id FROM deletion_commits').first('receipt_id'),
+  ).toBe(id);
+  expect(await control.prepare('SELECT id FROM deletion_receipts').first('id')).toBe(id);
+  const raced = {
+    prepare: database.prepare.bind(database),
+    batch: async (items: D1PreparedStatement[]) => {
+      const result = await database.batch(items);
+      await quarantineWorkspace(control, 1, crypto.randomUUID());
+      return result;
+    },
+  } as D1Database;
+  await expect(new D1DeletionReceipts(raced, control).retire()).rejects.toThrow();
+  expect(await control.prepare('SELECT id FROM deletion_receipts').first('id')).toBe(id);
+  await expect(new D1DeletionReceipts(database, control).retire()).rejects.toThrow(
+    'WORKSPACE_RECOVERY_CHANGED',
+  );
+});
+
+it('retries retention after an uncertain control-store response without touching recent proofs', async () => {
+  const { database, control, receipts, seed } = await retentionFixture();
+  await seed(91);
+  const recent = await seed(1);
+  const lost = {
+    prepare: control.prepare.bind(control),
+    batch: async (items: D1PreparedStatement[]) => {
+      await control.batch(items);
+      throw new Error('lost response');
+    },
+  } as unknown as D1Database;
+  await expect(new D1DeletionReceipts(database, lost).retire()).rejects.toThrow('lost response');
+  expect(await receipts.retire()).toEqual({ receipts: 0, proofs: 0, replays: 0 });
+  expect(
+    await database.prepare('SELECT receipt_id FROM deletion_commits').first('receipt_id'),
+  ).toBe(recent);
+});
+
 it('guards reads and whole transactions, preserves results and refuses unguarded statements', async () => {
   const { database, control } = await fixture();
   const guarded = await openRecoveryDatabase(database, control);

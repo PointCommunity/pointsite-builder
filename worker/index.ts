@@ -58,6 +58,7 @@ export default {
       ).dispatchPending();
     await refreshProviderUsage(database, config.analyticsToken);
     await retirePublicationMetadata(database);
+    if (env.RECOVERY_DB) await new D1DeletionReceipts(database, env.RECOVERY_DB).retire();
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const config = parseConfig(env as unknown as Record<string, unknown>);

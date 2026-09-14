@@ -312,6 +312,16 @@
           Never rewind the separate recovery database together with the workspace.
         </dd>
       </dl>
+      <p>
+        Scheduled cleanup keeps pending deletion receipts until incident settlement. Resolved
+        receipts remain for more than ninety days, beyond the supported Time Travel window. Each
+        pass removes at most twenty expired receipts and twenty replay markers, clearing matching
+        workspace commit proofs before independent receipts. Remaining replay markers keep their
+        receipt. Quarantine or an epoch change stops cleanup; an interrupted pass safely retries.
+        Historical metadata restored from a bookmark may remain conservatively retained. Do not use
+        external database backups or rewind the recovery database: these are not supported inputs
+        for this retention contract.
+      </p>
       <ol>
         <li>
           Record status, a new incident UUID and the current epoch. Run the helper with
