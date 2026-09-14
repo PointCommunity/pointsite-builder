@@ -4,7 +4,16 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { request as httpRequest } from 'node:http';
 import { afterEach, expect, test } from 'vitest';
+import { Hono } from 'hono';
 import { createNativeHandler, startNativeServer } from '../../server/http';
+import {
+  createPublicationRunnerRoutes,
+  createPublicationVerificationRoutes,
+  createRollbackRunnerRoutes,
+} from '../../src/server/routes/publication-runner';
+import type { D1PublicationRunner } from '../../src/server/publish/runner';
+import type { D1PublicationVerifier } from '../../src/server/publish/verification';
+import type { D1CloudRollback } from '../../src/server/publish/rollback';
 
 const cleanups: (() => Promise<void>)[] = [];
 // Node fetch normalizes Host. Use the native HTTP client to exercise ingress Host validation.
@@ -119,4 +128,53 @@ test('readiness fails closed while liveness remains available', async () => {
   expect(response.status).toBe(503);
   expect(await response.text()).toBe('{"ready":false}');
   expect((await handler(new Request('http://probe.internal/healthz'))).status).toBe(200);
+});
+
+test('machine operations accept empty HTTP streams and reject content before invoking authority', async () => {
+  const calls: string[] = [];
+  const methods = Object.fromEntries(
+    ['reserve', 'claim', 'commitBuild', 'authorizeDeployment', 'finalize'].map((method) => [
+      method,
+      async () => {
+        calls.push(method);
+        return { ok: true };
+      },
+    ]),
+  );
+  const app = new Hono();
+  app.route(
+    '/api/publish',
+    createPublicationRunnerRoutes(methods as unknown as D1PublicationRunner),
+  );
+  app.route(
+    '/api/verify',
+    createPublicationVerificationRoutes(methods as unknown as D1PublicationVerifier),
+  );
+  app.route('/api/rollback', createRollbackRunnerRoutes(methods as unknown as D1CloudRollback));
+  const handler = createNativeHandler({
+    origin: 'https://builder-canary.eaglepass.io',
+    publicRoot: '.',
+    ready: async () => {},
+    runtime: { fetch: async (request) => app.fetch(request) },
+  });
+  const started = await startNativeServer(handler, { hostname: '127.0.0.1', port: 0 });
+  cleanups.push(() => started.stop());
+  const address = started.server.address();
+  if (!address || typeof address === 'string') throw new Error('No test server address');
+  const headers = { host: 'builder-canary.eaglepass.io', authorization: 'Bearer test-credential' };
+  for (const [family, operations] of [
+    ['publish', ['reserve', 'claim', 'commit', 'authorize-deployment', 'finalize']],
+    ['verify', ['reserve', 'claim', 'finalize']],
+    ['rollback', ['reserve', 'claim', 'authorize-deployment', 'finalize']],
+  ] as const) {
+    for (const operation of operations) {
+      const url = `http://127.0.0.1:${address.port}/api/${family}/10000000-0000-4000-8000-000000000001/${operation}`;
+      for (const body of [undefined, new Uint8Array(), new TextEncoder().encode('{}')]) {
+        const before = calls.length;
+        const response = await fetch(url, { method: 'POST', headers, body });
+        expect(response.status, `${family}/${operation}`).toBe(body?.length ? 401 : 200);
+        expect(calls.length - before).toBe(body?.length ? 0 : 1);
+      }
+    }
+  }
 });

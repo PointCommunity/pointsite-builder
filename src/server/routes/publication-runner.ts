@@ -7,6 +7,22 @@ import type { D1PublicationVerifier } from '../publish/verification';
 import { publicationJson } from '../publish/build-proof';
 import type { D1CloudRollback } from '../publish/rollback';
 
+async function requireEmptyBody(request: Request) {
+  // Node supplies a stream even for an empty POST. Reject bytes, not the stream itself.
+  const reader = request.body?.getReader();
+  if (!reader) return;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      if (value.byteLength) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+}
+
 function machineRoutes(configured: boolean) {
   const routes = new Hono<{ Variables: ApiVariables }>();
   const credential = (context: Context<{ Variables: ApiVariables }>) => {
@@ -49,7 +65,7 @@ export function createRollbackRunnerRoutes(rollback?: D1CloudRollback) {
   ] as const) {
     routes.post(`/:jobId/${path}`, async (context) => {
       const token = credential(context);
-      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      await requireEmptyBody(context.req.raw);
       return context.json(await rollback![method](context.req.param('jobId'), token));
     });
   }
@@ -75,8 +91,8 @@ export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
   const { routes, credential } = machineRoutes(Boolean(runner));
   routes.post('/:jobId/claim', async (context) => {
     // This operation has no client-supplied scope or claim body.
-    if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const token = credential(context);
+    await requireEmptyBody(context.req.raw);
     await runner!.claim(context.req.param('jobId'), token);
     return context.json({ claimed: true });
   });
@@ -88,7 +104,7 @@ export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {
   ] as const) {
     routes.post(`/:jobId/${path}`, async (context) => {
       const token = credential(context);
-      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      await requireEmptyBody(context.req.raw);
       return context.json(await runner![method](context.req.param('jobId'), token));
     });
   }
@@ -128,7 +144,7 @@ export function createPublicationVerificationRoutes(verifier?: D1PublicationVeri
   for (const operation of ['reserve', 'claim', 'finalize'] as const) {
     routes.post(`/:jobId/${operation}`, async (context) => {
       const token = credential(context);
-      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      await requireEmptyBody(context.req.raw);
       return context.json(await verifier![operation](context.req.param('jobId'), token));
     });
   }

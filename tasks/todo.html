@@ -686,6 +686,13 @@
     </article>
     <article id="h25">
       <h3>H25 — Execute the Pages cutover</h3>
+      <p>
+        September 14 verification found that native HTTP represents an empty POST as a stream, while
+        publication, verification and rollback machine routes rejected every stream. Before retrying
+        the first Pages publication: reproduce with real HTTP, reject actual bytes in the shared
+        route guard, rerun sequential QA, and deploy a new verified Canary image. Keep DNS on the
+        existing Staging Worker until the Pages deployment is ready.
+      </p>
       <dl>
         <dt>Depends on</dt>
         <dd>H18, H24.</dd>
