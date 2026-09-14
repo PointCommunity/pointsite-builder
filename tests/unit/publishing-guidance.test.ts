@@ -88,7 +88,7 @@ describe('non-technical publishing guidance', () => {
     ['INTERNAL_ERROR', 'The publishing service needs attention', /support reference/i],
     [
       'CANDIDATE_MEDIA_TOO_LARGE',
-      'Draft media exceeds the publishing limit',
+      'Page images exceed the publishing limit',
       /20 MiB.*reduce image sizes/i,
     ],
     ['REQUEST_FAILED', 'Builder could not complete that action', /try the same action once/i],

@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { buildCandidate } from '../../src/server/publish/candidate';
+import { publicationMediaPaths } from '../../src/site-kit/publication-media';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
 function draft(): DraftRecord {
@@ -43,7 +44,7 @@ function draft(): DraftRecord {
   };
 }
 
-it('packages every local image through its owner, independently of source storage', async () => {
+it('packages referenced images through their owner without changing Library inventory', async () => {
   const source = draft();
   const stored = new Map(
     source.document.media.map((item) => [item.sourcePath, Uint8Array.from([1, 2, 3])]),
@@ -69,19 +70,19 @@ it('packages every local image through its owner, independently of source storag
   };
   const candidate = await buildCandidate(source, media as never);
   const otherBefore = await buildCandidate(otherDraft, media as never);
-  expect(candidate.files).toContainEqual({
+  expect(candidate.files).not.toContainEqual({
     path: 'public/assets/builder/99999999-9999-4999-8999-999999999999.png',
     content: 'AQID',
     encoding: 'base64',
   });
-  for (const item of source.document.media) {
+  for (const sourcePath of publicationMediaPaths(source.document)) {
     expect(media.readManyForDraft).toHaveBeenCalledWith(
       source.id,
-      expect.arrayContaining([item.sourcePath]),
+      expect.arrayContaining([sourcePath]),
       20 * 1024 * 1024,
     );
     expect(candidate.files).toContainEqual({
-      path: `public${item.sourcePath}`,
+      path: `public${sourcePath}`,
       content: 'AQID',
       encoding: 'base64',
     });
@@ -90,8 +91,8 @@ it('packages every local image through its owner, independently of source storag
   expect(await buildCandidate(otherDraft, media as never)).toEqual(otherBefore);
   const published = structuredClone(candidate);
   const publishedDocument = JSON.parse(published.files[0].content) as typeof source.document;
-  for (const item of publishedDocument.media) {
-    expect(published.files.find((file) => file.path === `public${item.sourcePath}`)?.content).toBe(
+  for (const sourcePath of publicationMediaPaths(publishedDocument)) {
+    expect(published.files.find((file) => file.path === `public${sourcePath}`)?.content).toBe(
       'AQID',
     );
   }
@@ -125,7 +126,7 @@ it('binds every image byte into the candidate checksum and reads duplicate paths
   };
   const first = await buildCandidate(source, media as never);
   expect(media.readManyForDraft).toHaveBeenCalledOnce();
-  expect(media.readManyForDraft.mock.calls[0][1]).toHaveLength(source.document.media.length - 1);
+  expect(media.readManyForDraft.mock.calls[0][1]).toEqual(publicationMediaPaths(source.document));
   media.readManyForDraft.mockResolvedValue(
     new Map(
       source.document.media.map((item) => [
@@ -201,6 +202,10 @@ it.each([
 it('preserves external published snapshot and YouTube links', async () => {
   const source = draft();
   source.document.media = [];
+  source.document.pages.forEach((page) => {
+    page.blocks = [];
+    page.metadata.ogImageMediaId = undefined;
+  });
   source.document.linkedMedia = [
     {
       id: crypto.randomUUID(),

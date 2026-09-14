@@ -3,6 +3,7 @@ import { checksumDocument } from '../../site-kit/canonicalize';
 import { assertNoPrivateBuilderLinks } from '../../shared/private-media-links';
 import type { DraftRecord } from '../repositories/contracts';
 import { candidateImagePath } from './candidate';
+import { publicationMediaPaths } from '../../site-kit/publication-media';
 
 export const PublicationAssetSchema = z.strictObject({
   assetId: z.uuid(),
@@ -35,7 +36,7 @@ export async function preparePublicationInputs(
     (await checksumDocument(draft.document)) !== draft.revision.checksum
   )
     throw new Error('PUBLICATION_REVISION_MISMATCH');
-  const paths = [...new Set(draft.document.media.map((item) => item.sourcePath))].sort();
+  const paths = publicationMediaPaths(draft.document);
   if (paths.length > 500 || paths.some((path) => !candidateImagePath.test(path))) {
     throw new Error('CANDIDATE_MEDIA_PATH_INVALID');
   }
@@ -67,6 +68,7 @@ export async function preparePublicationInputs(
     schemaVersion: draft.document.schemaVersion,
     rendererVersion: draft.document.rendererVersion,
     publicationProtocol: 2,
+    mediaSelection: 'referenced',
     workflowRevision,
     fileCount: assets.length + 2,
   };

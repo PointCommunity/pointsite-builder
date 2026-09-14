@@ -91,7 +91,7 @@ describe('HTTP security controls', () => {
     await expect(response.json()).resolves.toEqual({
       code: 'CANDIDATE_MEDIA_TOO_LARGE',
       message:
-        'Draft media exceeds the 20 MiB publishing limit. Reduce image sizes before publishing.',
+        'Page images exceed the 20 MiB publishing limit. Reduce image sizes before publishing.',
       requestId: 'request-media-limit',
     });
   });

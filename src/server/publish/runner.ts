@@ -1,6 +1,7 @@
 import type { JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
 import { checksumDocument } from '../../site-kit/canonicalize';
+import { publicationMediaPaths } from '../../site-kit/publication-media';
 import { SiteDocumentSchema } from '../../site-kit/schema';
 import { assertNoPrivateBuilderLinks } from '../../shared/private-media-links';
 import {
@@ -448,7 +449,10 @@ export class D1PublicationRunner {
     const candidate = z
       .record(z.string(), z.union([z.string(), z.number()]))
       .parse(JSON.parse(row.candidate_json));
-    const paths = [...new Set(document.media.map((item) => item.sourcePath))].sort();
+    const paths =
+      candidate.mediaSelection === 'referenced'
+        ? publicationMediaPaths(document)
+        : [...new Set(document.media.map((item) => item.sourcePath))].sort();
     if (
       (await checksumDocument(document)) !== row.checksum ||
       (await checksumDocument({ ...candidate, assets })) !== row.candidate_checksum ||

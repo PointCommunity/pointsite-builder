@@ -20,7 +20,7 @@ export function errorResponse(error: unknown, requestId: string): Response {
     error = new ApiError(
       422,
       'CANDIDATE_MEDIA_TOO_LARGE',
-      'Draft media exceeds the 20 MiB publishing limit. Reduce image sizes before publishing.',
+      'Page images exceed the 20 MiB publishing limit. Reduce image sizes before publishing.',
     );
   }
   const safeError =

@@ -582,6 +582,7 @@ export class StagingPublisher {
         rendererVersion: z.string(),
         fileCount: z.number().int().positive().optional(),
         publicationProtocol: z.literal(2).optional(),
+        mediaSelection: z.literal('referenced').optional(),
         workflowRevision: z
           .string()
           .regex(/^[a-f0-9]{40}$/)

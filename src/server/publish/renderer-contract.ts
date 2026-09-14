@@ -12,6 +12,7 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'linked-media.ts': 'edd07dd69ae91f4103b65cd565105701e5ce94cc',
   'migrations.ts': 'a69f786b8e7533d19e6d19a170f96cd49a9f4a66',
   'presets.ts': '00f8bf6df9e55c2eac6a92bb5388a32dc21563ff',
+  'publication-media.ts': 'cf382d8b22fa57fbc2b9f44a381dfe0e7225c553',
   'registry.tsx': 'a3f70045894ec6cc724ea60335297a581f7080f3',
   'schema.ts': 'dc2b58e51e2f1220cfa81ce668443f9c2be8c269',
   'site.css': '8642d939d731e99ca8927d46b83fd9ae4be2ac18',
@@ -24,13 +25,13 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = '9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818';
-export const PUBLICATION_CALLER_BLOB = '7e5bc570c1dbb9e8b7a27d2bee732084c6a3a31a';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = '76db851e2a31cc0d275fd1ed0a3df81eb9695bb2';
+export const PUBLICATION_WORKFLOW_REVISION = '0fa7347d7c0f5a8faf5bd9e51a2df1f64c769478';
+export const PUBLICATION_CALLER_BLOB = '8b0d8760f19e6b9b272cfc564b1d35c7df4f5215';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'a9def7cc07045848d8a35bcf8d2ee0d009b47f57';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = '79d887468a80f24663851af1224f82bb3806ac97';
+export const VERIFICATION_WORKFLOW_REVISION = '0fa7347d7c0f5a8faf5bd9e51a2df1f64c769478';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: 'ae5def5a570d2171e188458695545ffd7e50db28',
-  production: 'd2a284c1a12acd8683329926363e6013783d0a25',
+  staging: '4734aa7cc83daab6e2dd69b842b6b39ffec6e923',
+  production: 'f0595289854f3061091e2986b100c4b1f4f28541',
 });

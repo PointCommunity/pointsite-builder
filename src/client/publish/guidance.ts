@@ -267,9 +267,9 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       };
     case 'CANDIDATE_MEDIA_TOO_LARGE':
       return {
-        title: 'Draft media exceeds the publishing limit',
+        title: 'Page images exceed the publishing limit',
         guidance:
-          'The total media in this draft must fit within 20 MiB. Reduce image sizes, save the draft, then check and publish again.',
+          'Images used by pages must fit within 20 MiB. Unused Library images are excluded. Reduce image sizes, save the draft, then check and publish again.',
       };
     case 'INTERNAL_ERROR':
       return {
