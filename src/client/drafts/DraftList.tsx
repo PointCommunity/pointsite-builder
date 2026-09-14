@@ -177,7 +177,7 @@ export function DraftList({
           <p className="eyebrow">Workspace</p>
           <h1 id="drafts-title">Website drafts</h1>
           <p className="safety-note">
-            Review and accept on protected Staging. Production publishing requires an Administrator.
+            Review and accept on public Staging. Production publishing requires an Administrator.
           </p>
         </div>
         {canEdit ? (

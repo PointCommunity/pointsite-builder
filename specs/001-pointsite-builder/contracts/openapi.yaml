@@ -1167,7 +1167,7 @@ components:
     githubSession:
       type: apiKey
       in: cookie
-      name: __Secure-pointsite_builder_session
+      name: __Host-pointsite_builder_session
   parameters:
     LibraryRevision:
       name: X-Draft-Revision

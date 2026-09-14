@@ -1294,6 +1294,12 @@
       Anonymous readers may view published staging content; Builder drafts, sessions and mutation
       authorization remain private. The staging domain remains https://staging.pointatx.org.
     </p>
+    <p>
+      Before cutover, replace the shared parent-domain session with a Secure, HttpOnly, host-only
+      Builder cookie. Reject the previous session payload kind even if copied into the new cookie,
+      and expire the old parent-domain cookie on login and logout. Users sign in again; Pages never
+      needs a valid Builder credential. Test cookie scope and retired-token replay.
+    </p>
     <ol>
       <li>
         Update the staging workflow and shared runtime, then check signed bootstrap and Pages

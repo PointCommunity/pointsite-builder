@@ -54,7 +54,7 @@ describe('GitHub collaborator authentication', () => {
     const authenticator = new GitHubAuthenticator(github, gateway(), codec);
     const request = (cookie?: string) =>
       new Request('https://builder.pointatx.org/api/me', {
-        headers: cookie ? { cookie: `__Secure-pointsite_builder_session=${cookie}` } : {},
+        headers: cookie ? { cookie: `__Host-pointsite_builder_session=${cookie}` } : {},
       });
 
     await expect(authenticator.verifySession(request())).rejects.toBeInstanceOf(
@@ -75,7 +75,7 @@ describe('GitHub collaborator authentication', () => {
     const authenticator = new GitHubAuthenticator(github, gateway(), codec);
     const actor = await authenticateRequest(
       new Request('https://builder.pointatx.org/api/me', {
-        headers: { cookie: `__Secure-pointsite_builder_session=${token}` },
+        headers: { cookie: `__Host-pointsite_builder_session=${token}` },
       }),
       config,
       {
@@ -106,7 +106,7 @@ describe('GitHub collaborator authentication', () => {
       codec,
     );
     const request = new Request('https://builder.pointatx.org/api/me', {
-      headers: { cookie: `__Secure-pointsite_builder_session=${token}` },
+      headers: { cookie: `__Host-pointsite_builder_session=${token}` },
     });
 
     await expect(
@@ -122,7 +122,7 @@ describe('GitHub collaborator authentication', () => {
     const codec = new GitHubSessionCodec(github.sessionSecret);
     const token = await codec.encode(identity, new Date('2026-09-05T00:00:00Z'));
     const request = new Request('https://builder.pointatx.org/api/me', {
-      headers: { cookie: `__Secure-pointsite_builder_session=${token}` },
+      headers: { cookie: `__Host-pointsite_builder_session=${token}` },
     });
     await expect(
       authenticateRequest(
