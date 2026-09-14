@@ -16,6 +16,12 @@ export class ApiError extends Error {
 }
 
 export function errorResponse(error: unknown, requestId: string): Response {
+  if (error instanceof Error && error.message === 'CANDIDATE_MEDIA_TOO_LARGE')
+    error = new ApiError(
+      422,
+      'CANDIDATE_MEDIA_TOO_LARGE',
+      'Page images exceed the 20 MiB publishing limit. Reduce image sizes before publishing.',
+    );
   const safeError =
     error instanceof ApiError
       ? error

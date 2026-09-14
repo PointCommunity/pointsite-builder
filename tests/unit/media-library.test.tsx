@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MediaLibrary, type MediaClient } from '../../src/client/media/MediaLibrary';
 import type {
   LibraryItem,

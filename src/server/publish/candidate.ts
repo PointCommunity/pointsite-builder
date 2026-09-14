@@ -1,4 +1,5 @@
 import { checksumDocument } from '../../site-kit/canonicalize';
+import { publicationMediaPaths } from '../../site-kit/publication-media';
 import type { DraftRecord } from '../repositories/contracts';
 import type { MediaService } from '../media/service';
 import { assertNoPrivateBuilderLinks } from '../../shared/private-media-links';
@@ -27,10 +28,12 @@ export async function buildCandidate(draft: DraftRecord, media?: MediaService) {
   const content = `${JSON.stringify(draft.document, null, 2)}\n`;
   const mediaFiles: CandidateFile[] = [];
   let mediaBytes = 0;
-  const sourcePaths = [...new Set(draft.document.media.map((item) => item.sourcePath))].sort();
-  for (const sourcePath of sourcePaths) {
+  for (const { sourcePath } of draft.document.media) {
     if (!candidateImagePath.test(sourcePath)) throw new Error('CANDIDATE_MEDIA_PATH_INVALID');
   }
+  const sourcePaths = publicationMediaPaths(draft.document);
+  if (sourcePaths.some((path) => !candidateImagePath.test(path)))
+    throw new Error('CANDIDATE_MEDIA_PATH_INVALID');
   if (sourcePaths.length && !media) throw new Error('CANDIDATE_MEDIA_NOT_CONFIGURED');
   const objects = sourcePaths.length
     ? await media!
@@ -66,6 +69,7 @@ export async function buildCandidate(draft: DraftRecord, media?: MediaService) {
       revisionId: draft.revision.id,
       revisionChecksum: draft.revision.checksum,
       candidateChecksum,
+      mediaSelection: 'referenced',
       source: 'PointCommunity/pointsite-builder',
     },
     null,
