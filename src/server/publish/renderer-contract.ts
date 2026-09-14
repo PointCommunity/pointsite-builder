@@ -1,5 +1,5 @@
 /**
- * Git blob identities for the canonical site-kit files synchronized to protected Staging.
+ * Git blob identities for the canonical site-kit files synchronized to Staging.
  * Update these values only when the matching files have been reviewed and synced there.
  */
 export const STAGING_RENDERER_CONTRACT = Object.freeze({
@@ -25,13 +25,13 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = '0fa7347d7c0f5a8faf5bd9e51a2df1f64c769478';
-export const PUBLICATION_CALLER_BLOB = '8b0d8760f19e6b9b272cfc564b1d35c7df4f5215';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'a9def7cc07045848d8a35bcf8d2ee0d009b47f57';
+export const PUBLICATION_WORKFLOW_REVISION = '74559f2755369d1685be0192a5b5251e42b6dadb';
+export const PUBLICATION_CALLER_BLOB = 'c70dbf33ae892536c3ceab9ffffd22a544caa36d';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'e58a47af8ce2cdf6af3f16f164a734bcb6138acd';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = '0fa7347d7c0f5a8faf5bd9e51a2df1f64c769478';
+export const VERIFICATION_WORKFLOW_REVISION = '74559f2755369d1685be0192a5b5251e42b6dadb';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: '4734aa7cc83daab6e2dd69b842b6b39ffec6e923',
-  production: 'f0595289854f3061091e2986b100c4b1f4f28541',
+  staging: '8573cf8b2ae9d8da2c86385549a3d60066eb2448',
+  production: '3f940812820283c80ffed2b4c7a6191478ff3397',
 });
