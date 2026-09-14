@@ -81,7 +81,9 @@ export class D1ProductionPublisher {
         artifact_digest: string;
       }>();
     const occupied = await this.database
-      .prepare("SELECT 1 FROM publication_slots WHERE target='production'")
+      .prepare(
+        "SELECT 1 FROM publication_slots WHERE target='production' UNION ALL SELECT 1 FROM publication_rollbacks WHERE status IN ('queued','running') LIMIT 1",
+      )
       .first();
     const job = row
       ? {

@@ -36,7 +36,32 @@ function Capacity({ report }: { report: CapacityReport }) {
         {report.activity.auditEvents.toLocaleString()} audit events since{' '}
         {new Date(report.activity.periodStart).toUTCString()}.
       </p>
-      {report.providerUsage.state === 'unknown' ? (
+      {report.nativeStorage ? (
+        <div>
+          <h4>Homelab storage</h4>
+          <p>
+            SQLite workspace{report.nativeStorage.offVolume ? ' · private off-volume backups' : ''}
+          </p>
+          <p>
+            Backup:{' '}
+            {report.nativeStorage.backup.state === 'succeeded' &&
+            report.nativeStorage.backup.lastSucceededAt &&
+            Date.parse(report.measuredAt) -
+              Date.parse(report.nativeStorage.backup.lastSucceededAt) >
+              26 * 3_600_000
+              ? 'overdue'
+              : report.nativeStorage.backup.state}
+            .
+          </p>
+          <p>
+            Last successful backup:{' '}
+            {report.nativeStorage.backup.lastSucceededAt
+              ? new Date(report.nativeStorage.backup.lastSucceededAt).toLocaleString()
+              : 'None recorded'}
+            .
+          </p>
+        </div>
+      ) : report.providerUsage.state === 'unknown' ? (
         <p>Provider usage: unknown. {report.providerUsage.reason}</p>
       ) : (
         <div>

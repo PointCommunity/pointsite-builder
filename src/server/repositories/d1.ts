@@ -26,6 +26,7 @@ import type {
   RestoreRevisionInput,
   RevisionRecord,
   SaveDraftInput,
+  ProductionDraftSource,
 } from './contracts';
 import { ConflictError, NotFoundError } from './memory';
 import { createRequestHash, saveRequestHash } from './request-hash';
@@ -151,6 +152,7 @@ export class D1DraftRepository implements DraftRepository {
     private readonly assets?: D1DraftAssets,
     private readonly storageFormat: 'legacy' | 'compact-v1' = 'legacy',
     private readonly deletionReceipts?: D1DeletionReceipts,
+    private readonly productionSource?: () => Promise<ProductionDraftSource>,
   ) {}
 
   private async assertEditor(actor: string): Promise<void> {
@@ -228,9 +230,15 @@ export class D1DraftRepository implements DraftRepository {
   }
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
-    const requestHash = await createRequestHash(input);
+    const importProduction = this.productionSource && !input.sourceDraftId;
+    const requestHash = importProduction
+      ? await checksumDocument({ name: input.name, source: 'current-production' })
+      : await createRequestHash(input);
     const prior = await this.readIdempotent('draft.create', input, requestHash);
     if (prior) return prior;
+
+    await this.assertEditor(input.actor);
+    const source = importProduction ? await this.productionSource() : undefined;
 
     const now = new Date().toISOString();
     const draftId = crypto.randomUUID();
@@ -238,12 +246,13 @@ export class D1DraftRepository implements DraftRepository {
     const prepared = this.assets
       ? await this.assets.prepareCreate({
           draftId,
-          document: migrateDocument(input.document).document,
+          document: migrateDocument(source?.document ?? input.document).document,
           sourceDraftId: input.sourceDraftId,
+          sourceObjects: source?.assets,
           actor: input.actor,
           now,
         })
-      : { document: migrateDocument(input.document).document, statements: [] };
+      : { document: migrateDocument(source?.document ?? input.document).document, statements: [] };
     const document = prepared.document;
     const checksum = await checksumDocument(document);
     const record: DraftRecord = {
@@ -296,6 +305,15 @@ export class D1DraftRepository implements DraftRepository {
           )
           .bind(draftId, input.name, input.actor, now, now),
         ...prepared.statements,
+        ...(source
+          ? [
+              this.database
+                .prepare(
+                  'INSERT INTO draft_production_sources(draft_id,provenance_json) VALUES (?,?)',
+                )
+                .bind(draftId, JSON.stringify(source.provenance)),
+            ]
+          : []),
         this.database
           .prepare(
             `INSERT INTO revisions (id,draft_id,sequence,parent_revision_id,checksum,document_json,label,schema_version,renderer_version,created_by,created_at,action_category,action_context) VALUES (?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -321,6 +339,7 @@ export class D1DraftRepository implements DraftRepository {
         this.auditStatement(input.actor, 'draft.create', draftId, input.requestId, {
           revisionId,
           sequence: 1,
+          ...(source?.provenance ?? {}),
         }),
         this.idempotencyStatement(
           'draft.create',

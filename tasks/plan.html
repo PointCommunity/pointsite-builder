@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 61 — Homelab Builder implementation plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101218;
+        color: #edf0f8;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 1080px;
+        margin: auto;
+        padding: 32px 24px 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+      }
+      h2 {
+        margin-top: 36px;
+        color: #a8c9ff;
+      }
+      a {
+        color: #9fd7ff;
+      }
+      code {
+        color: #d5c0ff;
+        overflow-wrap: anywhere;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #424957;
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .status {
+        padding: 16px;
+        border-left: 4px solid #ffc770;
+        background: #25221c;
+      }
+      pre {
+        overflow: auto;
+        padding: 16px;
+        background: #202633;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #61: Homelab Builder implementation plan</h1>
+    <p class="status">
+      Plan established before homelab implementation, September 14, 2026. Implementation and Canary
+      deployment are authorized. Production promotion remains gated on Chris's exact-candidate
+      approval. Task completion requires evidence, not a checkbox.
+    </p>
+    <p>
+      <a href="todo.html">Ordered tasks</a> ·
+      <a href="../specs/061-reliable-editorial-workflow/spec.html#homelab-supersession"
+        >Controlling scope revision</a
+      >
+      · <a href="https://github.com/PointCommunity/pointsite-builder/issues/61">Owning Issue</a>
+    </p>
+
+    <h2>Outcome and scope</h2>
+    <p>
+      Run the authenticated Builder in the homelab with durable, independent drafts. Start from the
+      current public Production website, preserving its content and media. Finish the existing
+      reliable autosave, immutable Staging publication, Staging acceptance, Administrator-only
+      public Production publication, and public-content rollback work. Public websites remain
+      statically hosted on GitHub Pages and do not depend on homelab availability for serving
+      already-published content.
+    </p>
+    <table>
+      <tr>
+        <th>Environment</th>
+        <th>Hosting and storage</th>
+        <th>Allowed publication</th>
+      </tr>
+      <tr>
+        <td>builder-canary.eaglepass.io</td>
+        <td>
+          Homelab; separate namespace, persistent SQLite workspace, recovery metadata, credentials
+          and host-only sessions
+        </td>
+        <td>
+          Explicit Staging candidates; public Production promotion and rollback disabled on the
+          backend
+        </td>
+      </tr>
+      <tr>
+        <td>builder.eaglepass.io</td>
+        <td>Homelab; independent Production workspace and recovery metadata</td>
+        <td>
+          Staging; public Production only through the existing fresh Administrator and
+          accepted-candidate gates
+        </td>
+      </tr>
+      <tr>
+        <td>staging.pointatx.org</td>
+        <td>GitHub Pages; approved public access fallback</td>
+        <td>
+          Only explicitly selected, frozen candidates. Staging is shared, so stale jobs must fail
+          against current native deployment and source identities.
+        </td>
+      </tr>
+      <tr>
+        <td>pointatx.org</td>
+        <td>Existing GitHub Pages website</td>
+        <td>
+          Keep existing content until an Administrator explicitly selects and approves a content
+          publication
+        </td>
+      </tr>
+    </table>
+    <p>
+      Application release approval and public-content approval are independent. Promoting the
+      Builder image never copies Canary drafts, roles, publication jobs, or approvals into
+      Production and never automatically publishes public content. Existing builder.pointatx.org and
+      D1 data stay intact as a fallback until a separately authorized retirement.
+    </p>
+
+    <h2>Evidence and implementation choices</h2>
+    <ul>
+      <li>
+        Inspected Builder source at <code>cea7bf987d655cb0c42811009dedbdfd4da203ef</code>, plus
+        preserved uncommitted Issue #61 rollback work. The current worktree is unfinished and is not
+        a releasable candidate.
+      </li>
+      <li>
+        <code>worker/index.ts</code> wires Hono, SQL repositories, GitHub authentication and
+        scheduled publication dispatch. <code>src/server/repositories/d1.ts</code> and related
+        services use SQLite SQL through D1's prepared-statement contract. Reuse business services
+        with a small local SQLite adapter instead of rewriting repositories or running Cloudflare's
+        development emulator in Production.
+      </li>
+      <li>
+        <a href="https://nodejs.org/download/release/v22.18.0/docs/api/sqlite.html"
+          >Node's SQLite API</a
+        >
+        provides <code>DatabaseSync</code> and consistent online backups. Verify the pinned Node
+        runtime and SQL semantics before committing to the adapter. Keep one application replica and
+        atomic batch transactions.
+      </li>
+      <li>
+        <code>src/server/github/client.ts</code> currently reads only Production's main SHA.
+        <code>src/server/routes/drafts.ts</code> creates new drafts from a bundled default document.
+        Therefore current-Production seeding requires explicit source verification and import work;
+        it is not already implemented.
+      </li>
+      <li>
+        Production has structured <code>content/site.ts</code>, renderers and public assets, rather
+        than an existing Builder JSON export. First import must validate a pinned source commit, map
+        all supported content, verify assets, and record provenance. Subsequent Builder-authored
+        releases can use their validated immutable document export. Unknown source formats fail
+        visibly rather than creating a stale or partial draft.
+      </li>
+      <li>
+        <a
+          href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-user-authorization-callback-url"
+          >GitHub Apps support multiple registered callback URLs</a
+        >. Preserve the existing callback while adding each new explicit origin, and keep sessions
+        isolated with independent secrets. Never relax origin, state or repository-permission
+        checks.
+      </li>
+      <li>
+        <a
+          href="https://docs.github.com/en/enterprise-cloud%40latest/pages/getting-started-with-github-pages/changing-the-visibility-of-your-github-pages-site"
+          >Private Pages access has repository and organization requirements</a
+        >. This task uses the previously approved public Staging fallback; private draft APIs and
+        media remain authenticated.
+      </li>
+      <li>
+        Homelab <code>AGENTS.md</code> declares Gitea <code>ops/homelab</code>, branch
+        <code>master</code>, authoritative. Argo discovers separate app directories. Its existing
+        charts provide ingress, TLS, 1Password and persistent-volume patterns. Live preflight found
+        9/9 nodes Ready and all listed Argo applications Synced/Healthy; storage, backup and network
+        evidence must also be checked before deployment.
+      </li>
+    </ul>
+
+    <h2>Architecture and limits</h2>
+    <p>
+      Keep React/Puck and the existing Hono application. Add a Node runtime entry point, static-file
+      delivery, graceful shutdown and a bounded non-overlapping scheduler. Use Node SQLite on a Ceph
+      RWO volume with one writer, WAL, foreign keys, a busy timeout and transactional migration
+      checksums. Use the same schema in both fresh environments. Media remain in the existing
+      private SQL storage model; do not add object storage merely for this move.
+    </p>
+    <p>
+      Backups must use SQLite's consistent backup API, integrity checks and atomic publication of
+      completed backup files. Keep workspace and deletion/recovery authority separately
+      identifiable; restoring a workspace must not restore older deletion authority, revive expired
+      checkouts or replay completed publication work. Store private backups outside the application
+      data volume through the existing homelab backup facility, with a concrete retention schedule
+      and a disposable restore rehearsal before release. A backup failure must be visible; never
+      copy an active SQLite main file without its consistency protocol.
+    </p>
+    <p>
+      Native restore keeps the live control database, replays committed deletion receipts into a
+      disposable backup copy, clears checkouts and preflights, and compares protected roles,
+      publication state and schema with the current workspace before replacement. A mismatch keeps
+      access quarantined and refuses the restore; it never revives older authority or publication
+      jobs. Restore accepts backups at most 35 days old, inside the 90-day deletion-receipt window.
+      Recovery increments the session epoch, invalidating pre-recovery sessions and OAuth state.
+      Future image rollback requires demonstrated schema compatibility with the preceding digest;
+      unknown migrations are not silently accepted.
+    </p>
+    <p>
+      Use current Production as a verified draft source, not as a writable database. Capture the
+      exact source commit before collecting content and media; reject a source change that
+      invalidates the import. Import must preserve routes, text, forms, links, theme intent and
+      image bytes. Every created draft owns its independent media and history. Existing old drafts
+      are neither imported nor deleted. The initial trusted Administrator must be established
+      through the existing verified GitHub identity and role model, never a first-visitor privilege
+      grant.
+    </p>
+    <p>
+      Source capture follows the currently deployed Pages artifact, including content rollback. New
+      publication attestations record <code>sourceCommit</code>; rollback records the original
+      content commit rather than the current branch or runner commit. Capture checks the current
+      native Pages deployment before and after reading immutable input/output manifests and
+      hash-verified public images. Only the recorded original-site baseline may use the reviewed
+      legacy conversion. Unknown formats and changing deployments fail without creating a draft. A
+      lost-response retry returns its original draft before contacting Production again.
+    </p>
+    <p>
+      Reconcile unfinished public rollback work before host changes are considered releasable.
+      Remove homelab dependence on D1 quota analytics, Worker deployment APIs and Time Travel.
+      Retain useful autosave, checkout, SQL efficiency, deletion protection and publication
+      integrity. Provider-specific code retained for the old Worker path must not execute or require
+      credentials in the homelab path. Admin status must show actual local storage/readiness and
+      backup freshness, not fabricated D1 usage.
+    </p>
+    <p>
+      Canary and Production may target the same public Staging repository only through explicit
+      publication, immutable input capture, Git compare-and-swap, native workflow concurrency and
+      deployment-identity checks. A candidate from one Builder must invalidate stale acceptance in
+      the other. Production runner authentication must trust only the Production Builder origin.
+      Canary cannot obtain a Production publication capability through UI or direct API. Workflow
+      inputs accept only the two explicit native Builder origins; Production callbacks use its fixed
+      origin. Signed OIDC audiences include that origin, job and nonce. A shared
+      <code>pointsite-pages-TARGET</code> concurrency group spans each complete publication,
+      verification and rollback run without cancelling the active run. Queued stale work still must
+      pass expected-base and native deployment checks. See the
+      <a
+        href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency"
+        >GitHub concurrency contract</a
+      >.
+    </p>
+
+    <p>
+      Native HTTP uses the official <code>@hono/node-server</code> adapter, pinned to 2.1.1
+      (registry metadata checked September 14). Hono documents this adapter for Node
+      request/response conversion and static serving. Reuse it instead of hand-writing stream and
+      cookie handling; application origin, body-limit and private-path guards remain explicit.
+    </p>
+    <h2>Implementation order and checkpoints</h2>
+    <ol>
+      <li>Align scope and release governance; inventory owned unfinished work and preserve it.</li>
+      <li>
+        Prove SQLite transaction/migration/backup compatibility with real existing SQL before
+        runtime conversion.
+      </li>
+      <li>
+        Deliver an authenticated Node vertical slice: sign in, create, edit, autosave, refresh,
+        restart and reopen an independent draft.
+      </li>
+      <li>
+        Validate current-Production import and restore safety; provide truthful storage operations.
+      </li>
+      <li>
+        Complete trusted Pages publishing and rollback; bind new origins and prove cross-environment
+        isolation.
+      </li>
+      <li>
+        Package exact source locally, validate GitOps/secret/backup configuration and complete full
+        sequential QA.
+      </li>
+      <li>
+        Deploy and verify Canary, complete Pages infrastructure cutover with existing content, then
+        present exact-candidate PM testing.
+      </li>
+      <li>
+        After explicit approval, promote the same digest to Production, verify persistence and live
+        behavior, retain rollback and clean up owned testing resources.
+      </li>
+    </ol>
+    <p>
+      Task dependencies, expected files, acceptance criteria and commands are maintained in
+      <a href="todo.html">the task list</a>. No automatic sub-agent delegation is assumed. Complete
+      full suites sequentially, including across repositories.
+    </p>
+
+    <h2>Project structure and style</h2>
+    <p>
+      <code>src/server/</code> owns existing business services. New Node hosting and SQLite adapter
+      code belongs under <code>server/</code>; focused tests belong under
+      <code>tests/integration/</code> or <code>tests/unit/</code>. Reuse <code>scripts/</code> for
+      native build, backup and verification commands. Public-site workflow changes remain in the
+      existing Staging and Production worktrees. Homelab desired state belongs only in the canonical
+      <code>apps/builder-canary/</code> and <code>apps/builder/</code> charts.
+    </p>
+    <p>
+      Use strict TypeScript, existing error envelopes, Zod at trust boundaries, prepared SQL and
+      project formatting. Reuse helpers before adding abstractions. Example from the existing
+      repository style:
+    </p>
+    <pre><code>const row = await database
+  .prepare('SELECT role, active FROM user_roles WHERE email = ?')
+  .bind(email)
+  .first&lt;{ role: RoleRecord['role']; active: number }&gt;();
+return row ? { role: row.role, active: row.active === 1 } : null;</code></pre>
+
+    <h2>Verification commands and release evidence</h2>
+    <p>
+      From the Builder task worktree, inventory local QA artifacts before installing dependencies.
+      Run focused native tests during each slice. Final gates, in order: <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, <code>git diff --check</code>. Keep Vitest at four
+      workers and Playwright at two. Record exact source and tree with
+      <code>git rev-parse HEAD</code> and <code>git rev-parse HEAD^{tree}</code>; obtain passing
+      exact-head GitHub Quality before release.
+    </p>
+    <p>
+      Container build must use a clean, pushed source archive on this workstation and explicit
+      <code>linux/amd64</code>. Publish to Zot and record the registry digest. Validate each new
+      chart with <code>helm dependency build apps/builder-canary</code>,
+      <code>helm lint apps/builder-canary</code> and
+      <code>helm template builder-canary apps/builder-canary</code> before its Gitea commit. Apply
+      the corresponding Production commands only to the prepared Production configuration after the
+      approval gate.
+    </p>
+    <p>
+      After Gitea reconciliation, use <code>argocd app get builder-canary --refresh</code>, bounded
+      health waits and live probes to prove the reconciled GitOps revision, image ID, readiness,
+      TLS, authenticated UI, private-media denial, persistence and release metadata. Verify
+      unchanged unrelated cluster health. The source/tree, image digest and Canary configuration
+      commit together identify the approval candidate. Any change to that candidate requires renewed
+      QA and approval.
+    </p>
+
+    <h2>Risks, rollback and boundaries</h2>
+    <table>
+      <tr>
+        <th>Risk</th>
+        <th>Required mitigation</th>
+      </tr>
+      <tr>
+        <td>SQL behavior differs from D1</td>
+        <td>
+          Native tests using real migrations, trigger failures, atomic batches, compressed documents
+          and BLOB media; do not rely only on Miniflare tests.
+        </td>
+      </tr>
+      <tr>
+        <td>Seed misses current Production content</td>
+        <td>
+          Commit-pinned route/content/form/link/media inventory and browser comparison. Unsupported
+          structures block import. Never silently fall back to the historical bundled default.
+        </td>
+      </tr>
+      <tr>
+        <td>Canary crosses into Production</td>
+        <td>
+          Independent databases, secrets and sessions; disabled Production API/dispatcher; exact
+          runner origin checks; negative cross-environment tests.
+        </td>
+      </tr>
+      <tr>
+        <td>Restore resurrects deleted drafts or jobs</td>
+        <td>
+          Preserve deletion authority outside the restored workspace, quarantine writes, fence
+          sessions/jobs, replay receipts and rehearse against disposable copies.
+        </td>
+      </tr>
+      <tr>
+        <td>Schema prevents image rollback</td>
+        <td>
+          Additive, backward-compatible migrations and rehearsal against the preceding image. Record
+          any incompatibility before promotion; never assume a Git revert restores data.
+        </td>
+      </tr>
+      <tr>
+        <td>DNS or callback cutover breaks access</td>
+        <td>
+          Prepare and verify new origins first, preserve old callback/Worker/data and existing
+          public output, record reversible DNS and workflow changes.
+        </td>
+      </tr>
+      <tr>
+        <td>Backup or homelab outage</td>
+        <td>
+          Visible backup failure/readiness; tested private off-volume backups. Already-published
+          Pages remain independent. Do not call homelab storage backed up until restore has passed.
+        </td>
+      </tr>
+    </table>
+    <ul>
+      <li>
+        Always: preserve backend authorization, pending-only browser recovery, 90-day revision
+        retention, private data, unrelated work and exact release provenance.
+      </li>
+      <li>
+        Already authorized: necessary code, schema, dependency, CI/governance and homelab
+        configuration changes implementing this plan; Canary deployment; the agreed Pages hosting
+        transition.
+      </li>
+      <li>
+        Requires explicit later action: exact-candidate Builder Production promotion; real
+        public-content promotion; destructive data restore/deletion; old-host retirement; paid
+        resources.
+      </li>
+      <li>
+        Never: build on Kubernetes nodes, deploy dirty/unpushed/failing source, copy Canary data
+        into Production, expose secrets/drafts in Git or Pages, treat passing QA as PM approval, or
+        clean unrelated resources.
+      </li>
+    </ul>
+    <h2>Completion criteria</h2>
+    <p>
+      Every task has source-linked or runtime evidence. The fresh homelab Builder preserves
+      independent drafts and authentication; current Production import is complete; Pages publishing
+      and recovery are verified; backups are restored in a disposable rehearsal; Canary is healthy
+      and approved; the same image is live in Production with rollback retained. Keep Issue #61 open
+      until the existing final PM completion gate is satisfied. Report any unexercised real
+      public-content publication separately.
+    </p>
+  </body>
+</html>

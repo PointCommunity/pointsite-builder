@@ -193,7 +193,11 @@ export class D1PublicationVerifier {
         headers,
         body: JSON.stringify({
           event_type: 'verify-publication',
-          client_payload: { verificationId: id, nonce: row.nonce },
+          client_payload: {
+            verificationId: id,
+            nonce: row.nonce,
+            builderOrigin: this.config.builderOrigin ?? 'https://builder.pointatx.org',
+          },
         }),
       });
       if (response.status !== 204) {
@@ -252,6 +256,7 @@ export class D1PublicationVerifier {
     if (!row) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
     const scope: PublicationRunnerScope = {
+      builderOrigin: this.config.builderOrigin,
       purpose: 'verification',
       jobId: id,
       target: row.target,
@@ -730,6 +735,7 @@ export class D1PublicationVerifier {
     const identity = await verifyPublicationRunner(
       token,
       {
+        builderOrigin: this.config.builderOrigin,
         purpose: 'verification',
         jobId: id,
         target: row.target,

@@ -1,4 +1,5 @@
 import type { SiteDocument } from '../../site-kit/types';
+import type { DraftAssetObject } from '../media/draft-assets';
 import type {
   DraftAction,
   DraftActionCategory,
@@ -114,6 +115,18 @@ export interface CreateDraftInput {
   actor: string;
   idempotencyKey: string;
   requestId: string;
+}
+
+export interface ProductionDraftSource {
+  document: SiteDocument;
+  assets: Map<string, DraftAssetObject>;
+  provenance: {
+    sourceCommit: string;
+    deploymentId: string;
+    artifactDigest: string;
+    documentChecksum: string;
+    capturedAt: string;
+  };
 }
 
 export interface DeletedDraftReceipt {

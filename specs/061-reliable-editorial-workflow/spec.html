@@ -57,11 +57,55 @@
   </head>
   <body>
     <h1>Issue #61: Reliable autosave and cloud publishing</h1>
+    <section class="status" id="homelab-supersession">
+      <h2>September 14 scope revision: homelab Builder</h2>
+      <p>
+        Chris explicitly authorized implementation of a fresh homelab Builder, new drafts from
+        current public Production, and a Canary-first application release pipeline. This revision
+        supersedes earlier requirements below that prohibit hosting migration, require D1, require
+        protected public-site Staging, or require direct Builder Production deployment. Earlier D1
+        measurements and provider recovery work remain historical evidence, not prerequisites for
+        the homelab release. All other editorial integrity and authorization requirements remain.
+      </p>
+      <p>
+        The controlling implementation documents are the
+        <a href="../../tasks/plan.html">homelab implementation plan</a> and
+        <a href="../../tasks/todo.html">dependency-ordered tasks and verification gates</a>.
+        Implementation is authorized. Production promotion requires Chris's explicit approval of the
+        exact healthy Canary source, image digest, and deployment configuration.
+      </p>
+      <ul>
+        <li>
+          Builder Canary: https://builder-canary.eaglepass.io; Builder Production:
+          https://builder.eaglepass.io.
+        </li>
+        <li>
+          Independent persistent SQLite databases and session secrets; GitHub sign-in remains
+          required.
+        </li>
+        <li>
+          Preserve old Cloudflare Builder and D1 data. No migration or deletion of existing drafts.
+        </li>
+        <li>
+          Public-site Staging and Production use GitHub Pages. Public Staging is the approved
+          fallback.
+        </li>
+        <li>
+          Seed from verified current public Production source and assets; never silently substitute
+          stale defaults.
+        </li>
+        <li>
+          Promote the same reviewed image digest without rebuilding; retain the previous Production
+          digest.
+        </li>
+      </ul>
+    </section>
     <p>
       <a href="https://github.com/PointCommunity/pointsite-builder/issues/61"
         >Owning Issue and approved product requirements</a
       >. Research captured September 12, 2026; this is the implementation specification, not a
-      completion report.
+      completion report. The September 14 revision above takes precedence over the historical
+      provider-specific design below.
     </p>
     <p class="status">
       <strong
@@ -661,6 +705,55 @@
     </p>
 
     <h2>Current implementation evidence and migration sequence</h2>
+    <p>
+      Cloud rollback completion plan: an Administrator selects a retained verified release and the
+      current Production state. Capture an immutable rollback job, current repository base, native
+      deployment and release-ledger boundary with an idempotency key. Share the Production exclusion
+      boundary with ordinary publication. A terminal interrupted Production run may be superseded
+      only by an explicit rollback request after native run/attempt verification. Recheck local
+      role, repository permission, base, deployment and held job before deployment. Separate
+      rollback OIDC audience and reviewed caller/runtime pins prevent publication or verification
+      tokens from authorizing restoration. Reserve before creating a native deployment, and retain
+      uncertain deployment authorization until a terminal run is reconciled.
+    </p>
+    <p>
+      Restore the initial captured public archive by its exact immutable Git/blob/hash manifest.
+      Restore later releases by rebuilding their public captured inputs using the recorded renderer
+      revision and dependency lock in a credential-free subprocess. Require the original complete
+      output digest before deploying. No synthetic draft or browser-owned backup is created.
+      Rollback deploys static bytes through GitHub Pages without reverting repository history; the
+      captured current main remains the expected base. Replace only the release metadata file
+      excluded from the output digest, then verify every public file and native deployment. Append
+      the rollback to the release ledger only after independent finalization, preserving the
+      original source identity and the new deployment identity. Interrupted or repeated requests
+      must never deploy twice.
+    </p>
+    <ol>
+      <li>
+        Implement and test rollback capture, mutual exclusion, OIDC boundaries and immutable
+        evidence.
+      </li>
+      <li>
+        Implement bounded archive restoration and pinned rebuild; test exact output and input
+        substitution.
+      </li>
+      <li>
+        Wire the cloud workflow, Administrator controls, terminal recovery and retained release
+        history.
+      </li>
+      <li>
+        Measure query/storage/CPU budgets, provision scoped credentials and rehearse native
+        recovery.
+      </li>
+      <li>
+        Run complete local QA, coordinate reviewed merges and migrations, deploy Builder and verify
+        live.
+      </li>
+      <li>
+        Cut Staging over to Pages, verify HTTPS and exact output, then present the Production
+        Showcase.
+      </li>
+    </ol>
     <p>
       Database recovery is a scoped infrastructure operation, separate from routine publication
       recovery in Builder. Before a rewind, quarantine must drain, pending deletion receipts must

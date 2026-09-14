@@ -40,6 +40,34 @@ it('accepts only the exact signed staging or production execution identity', asy
   }
 });
 
+it('binds native runner tokens to their Builder and refuses Canary authority over Production', async () => {
+  const origins = ['https://builder-canary.eaglepass.io', 'https://builder.eaglepass.io'];
+  for (const builderOrigin of origins) {
+    const expected = { ...scope, builderOrigin };
+    const token = await sign(claims(expected));
+    expect(await verifyPublicationRunner(token, expected, resolver)).toMatchObject({
+      runId: '12345',
+    });
+    await expect(
+      verifyPublicationRunner(
+        token,
+        { ...expected, builderOrigin: origins.find((value) => value !== builderOrigin) },
+        resolver,
+      ),
+    ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+    await expect(verifyPublicationRunner(token, scope, resolver)).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+  }
+  const forbidden = { ...scope, target: 'production' as const, builderOrigin: origins[0] };
+  await expect(
+    verifyPublicationRunner(await sign(claims(forbidden)), forbidden, resolver),
+  ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+  expect(() =>
+    publicationRunnerAudience(scope.jobId, scope.nonce, undefined, 'https://attacker.example'),
+  ).toThrow();
+});
+
 it('rejects substitution of each repository, caller, reusable workflow and run binding', async () => {
   const mutations = {
     iss: 'https://untrusted.example',

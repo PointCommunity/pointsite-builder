@@ -6,7 +6,7 @@ import { publicationJson } from './build-proof';
 import { publicationDestinations } from './runner-auth';
 
 const TerminalRunSchema = z.object({
-  purpose: z.literal('verification').optional(),
+  purpose: z.enum(['verification', 'rollback']).optional(),
   target: z.enum(['staging', 'production']),
   run_id: z.string().regex(/^[1-9][0-9]{0,19}$/),
   run_attempt: z.string().regex(/^[1-9][0-9]{0,19}$/),
@@ -24,7 +24,12 @@ export async function verifyTerminalRun(
     const input = TerminalRunSchema.parse(value);
     const destination = publicationDestinations[input.target];
     const repository = `PointCommunity/${destination.repository}`;
-    const caller = input.purpose === 'verification' ? 'verify-publication' : 'publish-candidate';
+    const caller =
+      input.purpose === 'verification'
+        ? 'verify-publication'
+        : input.purpose === 'rollback'
+          ? 'rollback-production'
+          : 'publish-candidate';
     const url = `https://api.github.com/repos/${repository}/actions/runs/${input.run_id}`;
     const read = async (path: string) => {
       const response = await fetcher(path, {
@@ -67,7 +72,7 @@ export async function verifyTerminalRun(
         .array(
           z.object({
             path: z.literal(
-              `PointCommunity/pointsite-staging/.github/workflows/${input.purpose === 'verification' ? 'verify-runtime' : input.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${input.workflow_revision}`,
+              `PointCommunity/pointsite-staging/.github/workflows/${input.purpose === 'verification' ? 'verify-runtime' : input.purpose === 'rollback' ? 'rollback-runtime' : input.target === 'staging' ? 'publish-runtime' : 'publish-production-runtime'}.yml@${input.workflow_revision}`,
             ),
             sha: z.literal(input.workflow_revision),
           }),

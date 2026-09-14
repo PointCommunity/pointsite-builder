@@ -3,6 +3,30 @@ import type { CandidateTuple } from '../api';
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
 
+export type RollbackSnapshot =
+  | { enabled: false }
+  | {
+      enabled: true;
+      releases: { id: string; kind: string; verifiedAt: string; artifactDigest: string }[];
+      publicationJobId: string | null;
+      job: {
+        id: string;
+        status: 'queued' | 'running' | 'succeeded' | 'cancelled';
+        sourceReleaseId: string;
+        requestedAt: string;
+        attempts: number;
+        canVerify: boolean;
+        workflowUrl: string | null;
+      } | null;
+    };
+export type RollbackSelection = {
+  sourceReleaseId: string;
+  previousReleaseId: string;
+  baseSha: string;
+  previousDeploymentId: string;
+  replaceJobId?: string;
+};
+
 export interface PublicationVerificationState {
   id: string;
   status: 'queued' | 'running' | 'passed' | 'failed';

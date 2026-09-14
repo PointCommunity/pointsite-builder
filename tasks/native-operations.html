@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Builder — Native storage operations</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      background: #101218;
+      color: #edf0f8;
+      font: 16px/1.6 system-ui;
+    }
+    body {
+      max-width: 980px;
+      margin: auto;
+      padding: 32px;
+    }
+    h1,
+    h2 {
+      line-height: 1.25;
+    }
+    h2,
+    a {
+      color: #a8c9ff;
+    }
+    code {
+      color: #d5c0ff;
+      overflow-wrap: anywhere;
+    }
+    li {
+      margin: 12px 0;
+    }
+    .gate {
+      border-left: 4px solid #ffc770;
+      padding: 16px;
+      background: #25221c;
+    }
+  </style>
+  <body>
+    <h1>Builder native storage operations</h1>
+    <p>
+      September 14, 2026. <a href="todo.html#h11">Tasks H11–H13</a>. Commands run inside the
+      selected Builder pod with its mounted environment and volumes. They have no HTTP endpoint.
+      Confirm the namespace, hostname and running image before operating. This document describes
+      the implementation; live storage and Canary qualification remain pending.
+    </p>
+    <h2>Normal operation</h2>
+    <p>
+      One application replica owns SQLite workspace and independent recovery-control files. Both use
+      WAL, full synchronization and foreign keys. The image contains schema migrations and a
+      checksum ledger; changed, unknown or untracked schema prevents startup. Persistent files
+      remain outside the container filesystem.
+    </p>
+    <p>
+      Startup requires an off-volume backup directory and makes the first backup before readiness.
+      Subsequent backups run every 24 hours through the application scheduler. SQLite's online
+      backup API creates a self-contained workspace copy, then a newer control copy. A manifest
+      records environment, instance, timestamps, file sizes and SHA-256 checksums; incomplete
+      directories are never restore candidates.
+    </p>
+    <p>
+      Keep the newest successful copy on each of seven days and four weeks. A
+      <code>pinned</code> marker preserves selected recovery evidence. Monitor Admin for failures or
+      a last-success timestamp older than 24 hours. A failed copy does not delete a preceding
+      successful backup. Backup snapshots include private draft content; keep storage private.
+    </p>
+    <h2>Read status or force a backup</h2>
+    <p>
+      <code>node dist/server/operator.js status</code> returns the environment and instance ID,
+      recovery epoch/mode, latest successful backup ID and timestamps. Status does not create a
+      backup. <code>node dist/server/operator.js backup</code> makes a new verified pair on the
+      mounted off-volume destination. A database path typo must fail; the operator does not
+      initialize replacement databases.
+    </p>
+    <h2>Restore a selected workspace</h2>
+    <ol>
+      <li>
+        Obtain task-specific authorization for the data restore. Record the current image digest,
+        source/tree, GitOps revision, status output and selected backup manifest. This hosting
+        implementation authorizes only disposable restore rehearsals.
+      </li>
+      <li>
+        Inspect a completed backup no older than 35 days. Confirm its origin and instance match the
+        live control database. Deletion receipts are retained for 90 days, beyond this restore
+        window. A pinned older backup is evidence, not permission to bypass the window.
+      </li>
+      <li>
+        Generate a recovery UUID and record the current active epoch from status. Run
+        <code>node dist/server/operator.js quarantine CURRENT_EPOCH RECOVERY_ID</code>. Quarantine
+        increments the epoch and prevents new workspace requests and scheduled jobs. Readiness
+        becomes unavailable; liveness stays healthy. Do not delete or replace the live control file.
+      </li>
+      <li>
+        Let existing invocation leases drain. The restore command checks SQLite's clock against the
+        recorded deadline; an early attempt returns <code>WORKSPACE_RECOVERY_DRAINING</code>. Use
+        status to inspect the deadline. No guessed sleep or process timing substitutes for this
+        check.
+      </li>
+      <li>
+        Run
+        <code>node dist/server/operator.js restore BACKUP_ID QUARANTINED_EPOCH RECOVERY_ID</code>.
+        The exact selection is recorded immutably and pinned. The operator verifies hashes and
+        origin, replays later committed deletions into a temporary workspace, and compares protected
+        roles, publication state and schema with current authority. A mismatch leaves the
+        application quarantined and the live workspace unchanged.
+      </li>
+      <li>
+        After validation, SQLite replaces the workspace through its transaction and WAL machinery.
+        Checkout/preflight state is cleared, integrity is checked, and the live control epoch
+        advances before requests resume. Existing sessions and unfinished OAuth requests become
+        invalid. Sign in again and verify deliberately deleted drafts remain absent, surviving draft
+        content matches the selected backup, and completed publications have not replayed.
+      </li>
+      <li>
+        Take a fresh backup and record its manifest, health/readiness and authenticated behavior.
+        Retain the selected pinned recovery evidence until separately approved cleanup.
+      </li>
+    </ol>
+    <p class="gate">
+      Never restore a control snapshot over live authority, copy a live SQLite main file without its
+      WAL, or silently reset an unreadable database. A failed protected-state comparison requires
+      operator investigation; there is no force flag. Losing both live control authority and its
+      independent storage is outside this automated workspace restore procedure.
+    </p>
+    <h2>Image rollback</h2>
+    <p>
+      Retain the preceding Production image and GitOps configuration. Roll back by digest without
+      rebuilding only when that image understands the current schema. Unknown/changed migrations
+      fail closed; image rollback does not restore data automatically. Rehearse compatibility
+      against disposable copies before publishing a schema-changing candidate. First homelab
+      deployment retains the old Worker/D1 environment as fallback; its state is not a synchronized
+      copy of new homelab drafts.
+    </p>
+    <h2>Verification evidence</h2>
+    <p>
+      Runnable checks: <code>tests/integration/native-backups.test.ts</code>,
+      <code>native-restore.test.ts</code>, <code>native-session.test.ts</code>,
+      <code>native-workspace.test.ts</code> and <code>native-migrations.test.ts</code>. Current
+      local browser evidence covers create, autosave/reload, decoded private images, form preview
+      and actual SQLite Admin reporting. Full QA and live backup evidence are tracked separately in
+      the task list.
+    </p>
+    <section id="native-release">
+      <h2>Local image and GitOps release</h2>
+      <p>
+        Run full local QA sequentially and verify current GitHub Quality before release commands.
+        Source must be clean and pushed. Build on the Mac's explicitly selected Podman machine with
+        <code>npm run release:build -- --connection builder-issue-61</code>. This builds
+        linux/amd64, publishes the full source-SHA tag and verifies the registry manifest,
+        architecture and source/tree labels. The resulting
+        <code>artifacts/native-candidate.json</code> is machine evidence, not PM approval.
+      </p>
+      <p>
+        Canonical environment preparation lives in the homelab repository at
+        <code>release-preparation/builder-canary</code> and
+        <code>release-preparation/builder-production</code>. These directories are outside Argo's
+        app discovery. Review the four YAML files, storage, 1Password references and cluster health;
+        commit that preparation to canonical Gitea master. Do not commit a zero-digest image into
+        <code>apps/</code>.
+      </p>
+      <p>
+        <code>npm run release:canary -- --candidate artifacts/native-candidate.json</code> validates
+        the image and clean current Gitea master, renders the reviewed configuration into
+        <code>apps/builder-canary</code>, validates Helm and commits/pushes only its two files. A
+        successful command reports GitOps dispatch; separately prove Argo health/revision, running
+        digest, source metadata, OAuth, editing, private assets, restart persistence and NAS backup.
+      </p>
+      <p>
+        <code
+          >node scripts/release-native.mjs inspect --candidate artifacts/native-candidate.json</code
+        >
+        returns the prepared Production configuration hash for the approval tuple. After Chris
+        explicitly approves the exact source/tree, image, Canary GitOps revision and Production
+        configuration, record his actual message and candidate fields in a private approval JSON
+        receipt. The receipt uses <code>phrase</code>, <code>evidence</code>,
+        <code>sourceRevision</code>, <code>gitTree</code>, <code>imageDigest</code>,
+        <code>canaryRevision</code> and <code>productionConfigHash</code>. Never manufacture this
+        receipt from tests or prior general authorization.
+      </p>
+      <p>
+        From clean pushed main with the unchanged reviewed tree, run
+        <code
+          >npm run release:production -- --candidate artifacts/native-candidate.json --approval
+          /absolute/path/to/approval.json</code
+        >. The gate checks the healthy running Canary, exact digest and approval; it never rebuilds
+        or copies workspace data. Keep the preceding source-SHA image tag and previous GitOps commit
+        as rollback evidence. On first installation the existing Worker and D1 remain the fallback.
+        Registry cleanup must protect both current and preceding Production images.
+      </p>
+    </section>
+    <section id="deployment-prerequisites">
+      <h2>Prepared prerequisites — September 14</h2>
+      <p>
+        Independent Canary and Production session secrets were created and read back in separate
+        1Password items. Both use the existing PointSite Builder GitHub App registration and
+        repository permissions; their application data, role tables, checkout state and sessions
+        remain independent. The old vault item was unchanged.
+      </p>
+      <p>
+        GitHub currently requires human passkey confirmation before editing this app's settings.
+        After access is confirmed, register
+        <code>https://builder-canary.eaglepass.io/auth/callback</code> and
+        <code>https://builder.eaglepass.io/auth/callback</code>, preserving the existing callback.
+        Read back provider settings and complete actual sign-in before qualifying Canary.
+      </p>
+      <p>
+        PointView's native code supports the new return origins and accurate environment claims.
+        Enable feedback only after registering the new allowed origins/return prefixes and
+        environment signing keys in PointView; absent configuration keeps the optional control
+        disabled. No live PointView registration has changed.
+      </p>
+      <p>
+        The NAS uses the existing <code>nfs-rwx</code> provisioner. A stale NFS mount can delay
+        backup I/O after a NAS export refresh. Admin backup timestamps must be checked; a stale or
+        failed copy never qualifies a release. Re-establish the mount through a controlled pod
+        restart after NAS recovery, then take and verify a new backup. Native startup requires a
+        verified off-volume copy before readiness.
+      </p>
+    </section>
+    <section id="verified-local-evidence">
+      <h2>Verified local evidence</h2>
+      <p>
+        Linux amd64 QA image ran as UID 1000 with read-only root, no network and three independent
+        owned volumes. HTTP creation succeeded, the draft remained readable after container restart,
+        and both SQLite backup files passed integrity checks with mode 0600. This proves local
+        container behavior, not the live NAS.
+      </p>
+      <p>
+        Current public Production comparison confirms 11 routes, eight published forms with all 53
+        field controls (names, types and required flags), 14 document link targets and 19
+        hash-verified images. The ninth imported form is an unused Library item. The initial
+        baseline uses the existing Builder conversion; imported page metadata and layout are not
+        claimed to be byte-identical to legacy HTML.
+      </p>
+      <p>
+        Retained-renderer rehearsal used exact runtime bed2916eb4ab7c3ebfd56a951a43b40cbd2b0081 with
+        real dependency installation and Next builds. Only the two fixed Git transport URLs were
+        redirected to disposable local source objects. Restored output matched all 101 files,
+        6,132,323 bytes and artifact digest
+        8064d9488f36bb29194b7972c1ac15217e13314e9fc182a1a03587dc929db817. Fixture content was never
+        published. Temporary source, dependencies, cache and output were removed.
+      </p>
+    </section>
+    <section>
+      <h2>Canonical Gitea transport</h2>
+      <p>
+        The September 14 external Git endpoint and SSH service were unavailable. Preparation commit
+        <code>7d4b7c12ef52c4b0173e27b30a2125efb0a1ae60</code> was pushed to the same canonical Gitea
+        service through an authenticated kubectl HTTP tunnel. Remote master was read back; the
+        temporary repository token was deleted. This did not change the canonical remote or use the
+        GitHub mirror.
+      </p>
+      <p>
+        If that transport is still needed, create the owned loopback tunnel to
+        <code>service/gitea-http</code> in namespace <code>gitea</code>, local port 23061 to port
+        3000, and supply <code>--gitops-transport http://127.0.0.1:23061/ops/homelab.git</code> to
+        the release command. Provide a short-lived repository token through scoped Git environment
+        configuration, never command arguments or Git files. Delete the token and close the tunnel
+        after use. Verify service identity and repository head before sending credentials.
+      </p>
+    </section>
+  </body>
+</html>

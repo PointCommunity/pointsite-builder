@@ -17,6 +17,8 @@ import { z } from 'zod';
 import type { QueuedRecoveryInput } from './recovery';
 
 export interface PublisherConfig {
+  /** Native runtime always supplies its validated origin; omitted only by legacy Worker callers. */
+  builderOrigin?: string;
   appId: string;
   installationId: string;
   privateKey: string;

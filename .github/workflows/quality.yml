@@ -91,4 +91,4 @@ jobs:
           --config p/owasp-top-ten
           --error
           --exclude worker-configuration.d.ts
-          src worker tests
+          src server worker tests

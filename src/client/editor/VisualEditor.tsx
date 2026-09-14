@@ -6,7 +6,7 @@ import {
   type PuckAction,
   type Viewports,
 } from '@puckeditor/core';
-import '@puckeditor/core/puck.css';
+import '@puckeditor/core/no-external.css';
 import {
   useEffect,
   useEffectEvent,

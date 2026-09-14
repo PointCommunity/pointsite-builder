@@ -63,5 +63,19 @@ describe('PointView launch boundary', () => {
       }),
     ).rejects.toThrow();
     await expect(service.launch('editor.admin', 'viewer')).rejects.toThrow();
+    for (const [origin, environment] of [
+      ['https://builder-canary.eaglepass.io', 'canary'],
+      ['https://builder.eaglepass.io', 'production'],
+    ]) {
+      const native = parseFeedbackConfig({ ...config, BUILDER_ORIGIN: origin });
+      expect(native).toBeDefined();
+      const launch = await new FeedbackService(native!, 'native', 'b'.repeat(40)).launch(
+        'dashboard',
+        'administrator',
+      );
+      const { payload } = await jwtVerify(launch.launchToken, keys.publicKey);
+      expect(payload.environment).toBe(environment);
+      expect(payload.context).toMatchObject({ return_url: `${origin}/` });
+    }
   });
 });

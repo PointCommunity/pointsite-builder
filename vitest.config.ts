@@ -18,7 +18,7 @@ export default defineConfig({
         functions: 80,
         lines: 80,
       },
-      include: ['src/site-kit/**/*.{ts,tsx}', 'src/server/**/*.{ts,tsx}'],
+      include: ['src/site-kit/**/*.{ts,tsx}', 'src/server/**/*.{ts,tsx}', 'server/**/*.ts'],
       exclude: ['src/server/index.ts'],
     },
   },

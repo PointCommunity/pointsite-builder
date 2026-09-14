@@ -179,6 +179,7 @@ export async function verifyDeploymentProof(
         candidateChecksum: z.literal(input.candidateChecksum),
         artifactDigest: z.literal(input.artifactDigest),
         workflowRevision: z.literal(input.workflowRevision),
+        sourceCommit: sha.optional(),
         ...(staging && input.workerVersionId
           ? { workerVersionId: z.literal(input.workerVersionId) }
           : {}),
@@ -197,7 +198,11 @@ export async function verifyDeploymentProof(
       commitSha: input.commitSha,
       jobUrl,
       deploymentUrl: origin,
-      ...release,
+      format: release.format,
+      candidateChecksum: release.candidateChecksum,
+      artifactDigest: release.artifactDigest,
+      workflowRevision: release.workflowRevision,
+      ...('workerVersionId' in release ? { workerVersionId: release.workerVersionId } : {}),
       ...(input.verification
         ? {
             verification: {

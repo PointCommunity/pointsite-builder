@@ -1,7 +1,7 @@
 CREATE TABLE publication_releases (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
-  kind TEXT NOT NULL CHECK(kind IN ('baseline','publication')),
+  kind TEXT NOT NULL CHECK(kind IN ('baseline','publication','rollback')),
   /* Historical identifiers survive input retention; the latest two retain actual pins below. */
   job_id TEXT UNIQUE,
   previous_release_id TEXT,
@@ -10,7 +10,7 @@ CREATE TABLE publication_releases (
   evidence_json TEXT NOT NULL CHECK(json_valid(evidence_json)),
   verified_at TEXT NOT NULL,
   recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  CHECK((kind='baseline' AND job_id IS NULL) OR (kind='publication' AND job_id=id))
+  CHECK((kind='baseline' AND job_id IS NULL) OR (kind IN ('publication','rollback') AND job_id=id))
 );
 CREATE INDEX publication_releases_age ON publication_releases(recorded_at,sequence);
 CREATE UNIQUE INDEX publication_releases_deployment ON publication_releases(json_extract(evidence_json,'$.deploymentId'));
@@ -25,7 +25,7 @@ VALUES ('public-baseline-2026-09-13','baseline',
   '2026-09-13T08:26:55.584Z');
 
 CREATE TRIGGER publication_release_binding BEFORE INSERT ON publication_releases
-WHEN NEW.kind!='publication' OR NOT EXISTS (
+WHEN NEW.kind!='rollback' AND (NEW.kind!='publication' OR NOT EXISTS (
   SELECT 1 FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id
   JOIN publication_runs pr ON pr.job_id=j.id
   WHERE j.id=NEW.id AND j.id=NEW.job_id AND j.environment='production-merge' AND j.status='succeeded'
@@ -51,7 +51,7 @@ WHEN NEW.kind!='publication' OR NOT EXISTS (
     AND json_extract(NEW.source_json,'$.candidateChecksum')=j.candidate_checksum
     AND json_extract(NEW.source_json,'$.fileCount')=json_extract(pr.build_json,'$.fileCount')
     AND json_extract(NEW.source_json,'$.totalBytes')=json_extract(pr.build_json,'$.totalBytes')
-)
+))
 BEGIN SELECT RAISE(ABORT,'PUBLICATION_RELEASE_MISMATCH'); END;
 CREATE TRIGGER publication_release_immutable BEFORE UPDATE ON publication_releases
 BEGIN SELECT RAISE(ABORT,'PUBLICATION_RELEASE_IMMUTABLE'); END;

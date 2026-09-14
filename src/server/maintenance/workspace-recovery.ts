@@ -40,7 +40,8 @@ export class D1WorkspaceRecovery {
       .bind(epoch, id);
   }
 
-  private async protectedHash() {
+  /** Shared by native recovery; role, publication and schema authority must never move backwards. */
+  async protectedHash() {
     const schema = (
       await this.workspace
         .prepare(
@@ -101,6 +102,7 @@ export class D1WorkspaceRecovery {
       .prepare(
         `SELECT 1 FROM publish_jobs WHERE status IN ('queued','running')
       UNION ALL SELECT 1 FROM publication_verifications WHERE status IN ('queued','running')
+      UNION ALL SELECT 1 FROM publication_rollbacks WHERE status IN ('queued','running')
       UNION ALL SELECT 1 FROM publication_slots s JOIN publish_jobs j ON j.id=s.job_id WHERE j.status!='succeeded' LIMIT 1`,
       )
       .first();

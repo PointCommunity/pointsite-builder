@@ -36,10 +36,13 @@ const retirableJob = `j.environment IN ('staging','production-merge')
     ORDER BY completed_at DESC,id DESC LIMIT 1)`;
 const retirableRelease = `recorded_at<${cutoff}
   AND sequence NOT IN (SELECT sequence FROM publication_releases ORDER BY sequence DESC LIMIT 2)`;
+const retirableRollback = `r.status IN ('succeeded','cancelled') AND r.completed_at<${cutoff}
+  AND NOT EXISTS(SELECT 1 FROM (${retainedReleases}) kept WHERE kept.job_id=r.id)
+  AND NOT EXISTS(SELECT 1 FROM publication_releases WHERE job_id=r.id AND recorded_at>=${cutoff})`;
 
 /** One metadata retirement per kind; retained documents and image bytes are never deleted here. */
 export async function retirePublicationMetadata(database: D1Database) {
-  const [job, release] = await Promise.all([
+  const [job, release, rollback] = await Promise.all([
     database
       .prepare(
         `SELECT j.id,j.idempotency_key FROM publish_jobs j INDEXED BY publication_jobs_retention
@@ -53,8 +56,14 @@ export async function retirePublicationMetadata(database: D1Database) {
       ORDER BY recorded_at,sequence LIMIT 1`,
       )
       .first<{ id: string }>(),
+    database
+      .prepare(
+        `SELECT r.id,r.idempotency_key FROM publication_rollbacks r INDEXED BY publication_rollback_age
+      WHERE ${retirableRollback} ORDER BY r.completed_at,r.id LIMIT 1`,
+      )
+      .first<{ id: string; idempotency_key: string }>(),
   ]);
-  if (!job && !release) return { jobs: 0, releases: 0 };
+  if (!job && !release && !rollback) return { jobs: 0, releases: 0 };
   const statements: D1PreparedStatement[] = [];
   const audit = (id: string, action: string, target: string) =>
     database
@@ -92,6 +101,20 @@ export async function retirePublicationMetadata(database: D1Database) {
       database.prepare('DELETE FROM publication_releases WHERE id=?').bind(release.id),
       audit(release.id, 'publication.release-retired', 'publication-release'),
     );
+  if (rollback)
+    statements.push(
+      database
+        .prepare(
+          `SELECT json(CASE WHEN EXISTS(SELECT 1 FROM publication_rollbacks r
+      WHERE r.id=? AND r.idempotency_key=? AND ${retirableRollback}) THEN 'true' ELSE 'publication-retention-changed' END)`,
+        )
+        .bind(rollback.id, rollback.idempotency_key),
+      database
+        .prepare('INSERT INTO publication_tombstones(idempotency_key,job_id) VALUES (?,?)')
+        .bind(rollback.idempotency_key, rollback.id),
+      database.prepare('DELETE FROM publication_rollbacks WHERE id=?').bind(rollback.id),
+      audit(rollback.id, 'publication.rollback-retired', 'publication-rollback'),
+    );
   try {
     await database.batch(statements);
   } catch (error) {
@@ -99,5 +122,5 @@ export async function retirePublicationMetadata(database: D1Database) {
       throw new Error('PUBLICATION_RETENTION_CHANGED');
     throw error;
   }
-  return { jobs: job ? 1 : 0, releases: release ? 1 : 0 };
+  return { jobs: (job ? 1 : 0) + (rollback ? 1 : 0), releases: release ? 1 : 0 };
 }

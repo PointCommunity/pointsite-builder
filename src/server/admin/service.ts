@@ -49,6 +49,7 @@ export class GitHubUserResolver implements GitHubAccountResolver {
 }
 
 export interface CapacityReport {
+  nativeStorage?: NativeStorageReport;
   storage: {
     allocatedBytes: number | null;
     privateMediaBytes: number;
@@ -60,10 +61,21 @@ export interface CapacityReport {
   measuredAt: string;
 }
 
+export interface NativeStorageReport {
+  engine: 'sqlite';
+  offVolume: boolean;
+  backup: {
+    state: 'never' | 'running' | 'succeeded' | 'failed';
+    checkedAt: string | null;
+    lastSucceededAt: string | null;
+  };
+}
+
 export class D1AdminService {
   constructor(
     private readonly database: D1Database,
     private readonly identities: GitHubAccountResolver = new GitHubUserResolver(),
+    private readonly nativeStorage?: () => Promise<NativeStorageReport>,
   ) {}
 
   async listRoles(): Promise<AdminRoleRecord[]> {
@@ -220,7 +232,10 @@ export class D1AdminService {
         receiptPayloadBytes: counts.receiptPayloadBytes,
       },
       activity: { auditEvents: counts.auditEvents, periodStart, periodEnd: measuredAt },
-      providerUsage: await readProviderUsage(this.database),
+      providerUsage: this.nativeStorage
+        ? { state: 'unknown', reason: 'Local SQLite has no provider billing counters.' }
+        : await readProviderUsage(this.database),
+      ...(this.nativeStorage ? { nativeStorage: await this.nativeStorage() } : {}),
       measuredAt,
     };
   }

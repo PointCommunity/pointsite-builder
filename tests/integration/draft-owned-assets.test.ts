@@ -1030,7 +1030,7 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
     url: 'https://api.github.com/repos/PointCommunity/pointsite-staging/dispatches',
     body: {
       event_type: 'publish-candidate',
-      client_payload: { jobId: job.id, nonce },
+      client_payload: { jobId: job.id, nonce, builderOrigin: 'https://builder.pointatx.org' },
     },
   });
   expect((await new D1PublishJobStore(database).getById(job.id))?.status).toBe('queued');
@@ -3689,7 +3689,11 @@ it.each([
     expect(dispatches).toEqual([
       {
         event_type: 'verify-publication',
-        client_payload: { verificationId: captured.verificationId, nonce: record?.nonce },
+        client_payload: {
+          verificationId: captured.verificationId,
+          nonce: record?.nonce,
+          builderOrigin: 'https://builder.pointatx.org',
+        },
       },
     ]);
     await expect(verifier.dispatch(captured.verificationId)).rejects.toThrow(

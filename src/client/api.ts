@@ -13,6 +13,8 @@ import type {
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
 import type {
+  RollbackSelection,
+  RollbackSnapshot,
   StagingWorkflowSnapshot,
   ProductionWorkflowSnapshot,
   PublicationVerificationState,
@@ -386,6 +388,25 @@ export const api = {
         body: JSON.stringify({ action, expectedDispatches }),
       },
     ),
+  getRollback: () => request<RollbackSnapshot>('/publish/production/rollback'),
+  prepareRollback: () =>
+    request<Omit<RollbackSelection, 'sourceReleaseId'>>('/publish/production/rollback/prepare', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({}),
+    }),
+  rollbackProduction: (selection: RollbackSelection, key: string) =>
+    request<{ id: string; status: string }>('/publish/production/rollback', {
+      method: 'POST',
+      headers: mutationHeaders(key),
+      body: JSON.stringify(selection),
+    }),
+  recoverRollback: (id: string, action: 'cancel' | 'verify') =>
+    request<{ recovered: true }>(`/publish/production/rollback/${id}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ action }),
+    }),
   getProductionWorkflow: (draftId: string) =>
     request<ProductionWorkflowSnapshot>(
       `/publish/production/workflow?draftId=${encodeURIComponent(draftId)}`,

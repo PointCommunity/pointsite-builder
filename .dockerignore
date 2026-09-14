@@ -1,0 +1,13 @@
+**
+!Containerfile
+!package.json
+!dist/
+!dist/client/
+!dist/client/**
+!dist/server/
+!dist/server/**
+!dist/release.json
+!migrations/
+!migrations/*.sql
+!recovery-migrations/
+!recovery-migrations/*.sql

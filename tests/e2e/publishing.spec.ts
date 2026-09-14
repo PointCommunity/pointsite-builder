@@ -96,6 +96,8 @@ async function mockPublishing(
               }),
       });
     if (path.endsWith('/verification')) verificationRequests += 1;
+    if (path === '/api/publish/production/rollback' && request.method() === 'GET')
+      return route.fulfill({ json: { enabled: false } });
     if (path.endsWith('/publish/production/workflow'))
       return route.fulfill({ contentType: 'application/json', body: '{"enabled":false}' });
     const passed =
@@ -207,6 +209,82 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
 
+test('Production restore requires a separate confirmation and keeps the captured choice', async ({
+  page,
+}) => {
+  await mockPublishing(page, 'accepted', 'administrator');
+  await page.route('**/api/publish/production/workflow?**', (route) =>
+    route.fulfill({ json: { enabled: true, busy: false, job: null } }),
+  );
+  let restored = false;
+  const captured = {
+    baseSha: 'a'.repeat(40),
+    previousDeploymentId: '123',
+    previousReleaseId: 'baseline',
+  };
+  const mutations: string[] = [];
+  await page.route('**/api/publish/production/rollback**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET')
+      return route.fulfill({
+        json: {
+          enabled: true,
+          publicationJobId: null,
+          releases: [
+            {
+              id: 'baseline',
+              kind: 'baseline',
+              verifiedAt: '2026-09-13T00:00:00Z',
+              artifactDigest: 'b'.repeat(64),
+            },
+          ],
+          job: restored
+            ? {
+                id: 'rollback',
+                sourceReleaseId: 'baseline',
+                status: 'queued',
+                attempts: 1,
+                canVerify: false,
+                requestedAt: new Date().toISOString(),
+              }
+            : null,
+        },
+      });
+    expect(request.method()).toBe('POST');
+    expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+    if (new URL(request.url()).pathname.endsWith('/prepare')) {
+      mutations.push('prepare');
+      return route.fulfill({ json: captured });
+    }
+    expect(request.postDataJSON()).toEqual({ ...captured, sourceReleaseId: 'baseline' });
+    mutations.push('restore');
+    restored = true;
+    return route.fulfill({ status: 202, json: { id: 'rollback', status: 'queued' } });
+  });
+  await openPublishing(page);
+  const prepare = page.getByRole('button', { name: 'Prepare selected restore' });
+  await expect(prepare).toBeDisabled();
+  await page.getByLabel('Verified release').selectOption('baseline');
+  await prepare.click();
+  const confirm = page.getByRole('button', { name: 'Restore selected release to Production' });
+  await expect(confirm).toBeEnabled();
+  expect(mutations).toEqual(['prepare']);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .include('section[aria-labelledby="production-rollback-heading"]')
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await confirm.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('The captured rollback continues in the cloud after you close Builder.'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore a Production release' })).toBeFocused();
+  expect(mutations).toEqual(['prepare', 'restore']);
+});
+
 for (const target of ['staging', 'production'] as const)
   test(`${target} verification survives reopening and recovers without publishing again`, async ({
     page,
@@ -228,6 +306,8 @@ for (const target of ['staging', 'production'] as const)
     await page.route('**/api/publish/**', async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
+      if (path === '/api/publish/production/rollback' && request.method() === 'GET')
+        return route.fulfill({ json: { enabled: false } });
       if (path === `/api/publish/${target}/workflow`) {
         const job = {
           id: jobId,

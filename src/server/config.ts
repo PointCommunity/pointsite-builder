@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 const RuntimeConfigSchema = z
   .object({
-    ENVIRONMENT: z.enum(['local', 'preview', 'production']),
+    ENVIRONMENT: z.enum(['local', 'preview', 'canary', 'production']),
+    RUNTIME: z.enum(['worker', 'node']).default('worker'),
     APP_VERSION: z.string().min(1).max(100),
     BUILDER_ORIGIN: z.url().refine((value) => new URL(value).pathname === '/', {
       message: 'Builder origin must not include a path',
@@ -15,12 +16,35 @@ const RuntimeConfigSchema = z
     GITHUB_CLIENT_ID: z.string().min(8).optional(),
     GITHUB_CLIENT_SECRET: z.string().min(20).optional(),
     SESSION_SECRET: z.string().min(32).optional(),
-    PRODUCTION_ENABLED: z.literal('false'),
+    PRODUCTION_ENABLED: z.enum(['false', 'true']),
     DRAFT_STORAGE_FORMAT: z.enum(['legacy', 'compact-v1']).default('legacy'),
     CLOUDFLARE_ANALYTICS_TOKEN: z.string().min(20).optional(),
     CLOUDFLARE_WORKER_READ_TOKEN: z.string().min(20).optional(),
   })
   .superRefine((value, context) => {
+    if (value.ENVIRONMENT === 'canary' && value.PRODUCTION_ENABLED === 'true') {
+      context.addIssue({
+        code: 'custom',
+        path: ['PRODUCTION_ENABLED'],
+        message: 'Canary cannot publish public Production',
+      });
+    }
+    if (value.RUNTIME === 'node' && value.ENVIRONMENT !== 'local') {
+      const expected =
+        value.ENVIRONMENT === 'canary'
+          ? 'https://builder-canary.eaglepass.io'
+          : 'https://builder.eaglepass.io';
+      if (
+        !['canary', 'production'].includes(value.ENVIRONMENT) ||
+        value.BUILDER_ORIGIN.replace(/\/$/, '') !== expected
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['BUILDER_ORIGIN'],
+          message: 'Native Builder origin must match its environment',
+        });
+      }
+    }
     if (value.ENVIRONMENT !== 'local' && value.DEV_AUTH_EMAIL) {
       context.addIssue({
         code: 'custom',
@@ -37,6 +61,13 @@ const RuntimeConfigSchema = z
       value.SESSION_SECRET,
     ];
     const configured = githubFields.filter(Boolean).length;
+    if (value.PRODUCTION_ENABLED === 'true' && configured !== githubFields.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['PRODUCTION_ENABLED'],
+        message: 'Production publishing requires complete GitHub authentication',
+      });
+    }
     if (configured !== 0 && configured !== githubFields.length) {
       context.addIssue({
         code: 'custom',
@@ -54,11 +85,12 @@ const RuntimeConfigSchema = z
   });
 
 export interface RuntimeConfig {
-  environment: 'local' | 'preview' | 'production';
+  environment: 'local' | 'preview' | 'canary' | 'production';
+  runtime: 'worker' | 'node';
   appVersion: string;
   builderOrigin: string;
   devAuthEmail?: string;
-  productionEnabled: false;
+  productionEnabled: boolean;
   draftStorageFormat: 'legacy' | 'compact-v1';
   analyticsToken?: string;
   workerReadToken?: string;
@@ -75,7 +107,10 @@ export interface RuntimeConfig {
 }
 
 export function parseConfig(input: Record<string, unknown>): RuntimeConfig {
-  const value = RuntimeConfigSchema.parse(input);
+  const value = RuntimeConfigSchema.parse({
+    ...(input.RUNTIME === 'node' ? { DRAFT_STORAGE_FORMAT: 'compact-v1' } : {}),
+    ...input,
+  });
   const github =
     value.GITHUB_APP_ID &&
     value.GITHUB_STAGING_INSTALLATION_ID &&
@@ -96,10 +131,11 @@ export function parseConfig(input: Record<string, unknown>): RuntimeConfig {
       : undefined;
   return {
     environment: value.ENVIRONMENT,
+    runtime: value.RUNTIME,
     appVersion: value.APP_VERSION,
     builderOrigin: value.BUILDER_ORIGIN.replace(/\/$/, ''),
     ...(value.DEV_AUTH_EMAIL ? { devAuthEmail: value.DEV_AUTH_EMAIL.toLowerCase() } : {}),
-    productionEnabled: false,
+    productionEnabled: value.PRODUCTION_ENABLED === 'true',
     draftStorageFormat: value.DRAFT_STORAGE_FORMAT,
     ...(value.CLOUDFLARE_ANALYTICS_TOKEN
       ? { analyticsToken: value.CLOUDFLARE_ANALYTICS_TOKEN }

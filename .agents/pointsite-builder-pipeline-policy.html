@@ -84,8 +84,8 @@
         The product lifecycle below remains authoritative for application Issues. Full application,
         browser and performance QA runs locally on the configured Mac; GitHub Quality runs
         lightweight pipeline and security checks only. Its success never substitutes for complete
-        local evidence. Single-environment local QA introduces no additional pre-production PM
-        approval; product acceptance remains the Production Showcase.
+        local evidence. Product releases require exact Canary approval before Production promotion;
+        final product acceptance remains the Production Showcase.
       </p>
     </aside>
     <h1>PointSite Builder Development Pipeline</h1>
@@ -99,7 +99,7 @@
     <p>
       The agent carries one PM-selected GitHub Issue from an approved draft through specification,
       implementation, review, exact-revision deployment, live verification, and closure. The PM is
-      GitHub user <code>brimdor</code>. Repository instructions and live GitHub/Cloudflare state
+      GitHub user <code>brimdor</code>. Repository instructions and live GitHub/Gitea/Argo state
       take precedence over stale assumptions.
     </p>
 
@@ -165,11 +165,14 @@
       </tr>
       <tr>
         <td>Builder runtime</td>
-        <td>Production only at <code>https://builder.pointatx.org</code></td>
+        <td>Homelab Production at <code>https://builder.eaglepass.io</code></td>
       </tr>
       <tr>
-        <td>Builder Staging or Canary</td>
-        <td>None. Do not create or imply one.</td>
+        <td>Builder Canary</td>
+        <td>
+          <code>https://builder-canary.eaglepass.io</code>; independent persistent storage and
+          sessions
+        </td>
       </tr>
       <tr>
         <td>Public PointSite</td>
@@ -215,14 +218,17 @@
         the exact head, and moves the verified card to In Review.
       </li>
       <li>
-        Unless the PM requested an earlier stop, the agent squash-merges the verified PR, proves the
-        merge tree equals the reviewed tree, and waits for GitHub Quality on the exact
-        <code>origin/main</code> commit.
+        The agent builds clean pushed source locally for linux/amd64, publishes an immutable image
+        to Zot and deploys Canary through Gitea homelab GitOps. Record source/tree, image digest and
+        Canary configuration commit; verify health and authenticated behavior, then present PM
+        tests.
       </li>
       <li>
-        The agent records the current Cloudflare version, applies rehearsed backward-compatible D1
-        migrations when required, runs <code>npm run deploy</code> from the clean exact main
-        revision, and verifies the new Worker version receives 100% traffic.
+        Explicit PM approval of the exact healthy Canary candidate is required before merge and
+        Production promotion. Prove the merge tree equals the reviewed image source tree, wait for
+        exact-main Quality, record the previous Production image/configuration and promote the same
+        approved digest without rebuilding. Verify Argo reconciliation and independent Production
+        data.
       </li>
       <li>
         The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
@@ -318,16 +324,25 @@
         <td><code>npm run pipeline:health</code></td>
       </tr>
       <tr>
-        <td>Cloudflare identity</td>
-        <td><code>npm run cloudflare:verify-account</code></td>
+        <td>Canary image and deployment</td>
+        <td>
+          Clean pushed source archive, local linux/amd64 build, Zot digest, Gitea configuration and
+          Argo readback
+        </td>
       </tr>
       <tr>
-        <td>D1 migration, when applicable</td>
-        <td><code>npm run db:migrate:local</code>, then <code>npm run db:migrate:remote</code></td>
+        <td>SQLite migration, when applicable</td>
+        <td>
+          Native fresh/upgrade migration tests, consistent backup, deletion-safe restore and
+          previous-image compatibility
+        </td>
       </tr>
       <tr>
         <td>Production deployment</td>
-        <td><code>npm run deploy</code> from clean exact <code>origin/main</code></td>
+        <td>
+          Explicit exact-candidate approval; same image digest through Gitea GitOps, without
+          rebuilding
+        </td>
       </tr>
       <tr>
         <td>Live verification</td>
@@ -338,10 +353,8 @@
       <tr>
         <td>Application rollback</td>
         <td>
-          <code
-            >npx wrangler rollback &lt;recorded-version-id&gt; --message "Rollback failed PointSite
-            Builder release" --yes</code
-          >
+          Restore the recorded previous image/configuration through Gitea, reconcile with Argo, and
+          verify recovery. Retain the previous digest; do not infer permission to restore data.
         </td>
       </tr>
     </table>
@@ -350,23 +363,28 @@
     <p>
       A reviewed candidate is the tuple of Issue, PR URL, exact PR head commit and tree, test
       evidence, and GitHub Quality run. A released candidate adds the main merge commit and tree,
-      exact-main Quality run, previous and new Cloudflare version IDs, migration evidence,
+      exact-main Quality run, previous and new image digests, GitOps revision, migration evidence,
       deployment result, and live-verification result. The merge tree must equal the reviewed tree.
       PM completion approval applies only to this full released tuple and is invalid after any
-      source, tree, dependency, migration, Worker version, or behavior change.
+      source, tree, dependency, migration, image, deployment configuration, or behavior change.
     </p>
 
     <h2>Production Showcase and PM acceptance</h2>
     <p>
-      Production at <a href="https://builder.pointatx.org">https://builder.pointatx.org</a> is the
-      Builder Showcase because the application has no staging or Canary environment. After agent QA,
-      exact-head and exact-main Quality, deployment, and live verification, the agent presents that
-      hyperlink with prerequisites, numbered actions, expected results, and focused regression
-      checks derived from the actual change. Agent QA and production health do not substitute for PM
-      review and testing. The Issue remains In Review until the PM states
-      <code>Approved to complete Issue #&lt;number&gt;</code> for the current candidate.
+      Canary at
+      <a href="https://builder-canary.eaglepass.io">https://builder-canary.eaglepass.io</a>
+      is the pre-promotion PM testing target. Production at
+      <a href="https://builder.eaglepass.io">https://builder.eaglepass.io</a> is the final Builder
+      Showcase. After agent QA, exact-head and exact-main Quality, deployment, and live
+      verification, the agent presents that hyperlink with prerequisites, numbered actions, expected
+      results, and focused regression checks derived from the actual change. Agent QA and production
+      health do not substitute for PM review and testing. The Issue remains In Review until the PM
+      states <code>Approved to complete Issue #&lt;number&gt;</code> for the current candidate.
     </p>
-    <p>PM approval is instead the mandatory post-deployment completion gate.</p>
+    <p>
+      Exact Canary approval permits Production promotion; separate Production Showcase approval
+      permits Issue completion.
+    </p>
 
     <h2>Lean completion evidence</h2>
     <p>
@@ -377,15 +395,16 @@
       verification are the authoritative evidence; do not duplicate them into another document.
     </p>
 
-    <h2>Direct production and recovery</h2>
+    <h2>Immutable promotion and recovery</h2>
     <p>
-      Builder application work goes directly to its sole production environment after agent QA and
-      exact-main CI. There is no pre-production approval and no staging or Canary promotion; PM
-      approval is instead the mandatory post-deployment completion gate. Before deployment, record
-      the current 100% Cloudflare version. On runtime failure, roll back to that version and verify
-      recovery. Keep the Issue open and assigned, then make the durable source fix through a
-      reviewable revert or same-Issue remediation. Destructive schema or data recovery always
-      requires PM authorization.
+      Builder application work goes to Canary after agent QA and exact-head CI. Production requires
+      explicit approval of the exact source/tree, image digest and Canary GitOps configuration.
+      Promote the same digest without rebuilding. Preserve independent Production host, secrets,
+      sessions and persistent storage; never promote Canary drafts or approvals. Before deployment,
+      record and retain the previous Production image/configuration. On runtime failure, roll back
+      through GitOps and verify recovery. Keep the Issue open and assigned, then make the durable
+      source fix through a reviewable revert or same-Issue remediation. Destructive schema or data
+      recovery always requires PM authorization.
     </p>
 
     <h2>GitHub enforcement limitation</h2>
@@ -401,7 +420,18 @@
     <ul>
       <li>Always preserve unrelated user-owned work and use only task-owned commits.</li>
       <li>Always keep migrations backward compatible with the recorded rollback version.</li>
-      <li>Always verify the exact remote main commit and GitHub Quality before deployment.</li>
+      <li>
+        Always verify exact pushed source and GitHub Quality before Canary; verify reviewed-tree
+        equality and exact-main Quality before Production.
+      </li>
+      <li>
+        Preserve old builder.pointatx.org and D1 data until retirement or deletion is explicitly
+        authorized.
+      </li>
+      <li>
+        Canary public Production publication and rollback are disabled. Public-site Staging remains
+        separate and public under the approved Pages fallback.
+      </li>
       <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
       <li>Never deploy or publish the public PointSite from this pipeline.</li>
       <li>

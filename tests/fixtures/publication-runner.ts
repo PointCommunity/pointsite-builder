@@ -15,7 +15,12 @@ export function publicationClaims(expected: PublicationRunnerScope): JWTPayload 
   return {
     iss: issuer,
     sub: `repo:PointCommunity@323764526/${name}@${id}:environment:${environment}`,
-    aud: publicationRunnerAudience(expected.jobId, expected.nonce),
+    aud: publicationRunnerAudience(
+      expected.jobId,
+      expected.nonce,
+      expected.purpose,
+      expected.builderOrigin,
+    ),
     iat: now,
     nbf: now,
     exp: now + 300,

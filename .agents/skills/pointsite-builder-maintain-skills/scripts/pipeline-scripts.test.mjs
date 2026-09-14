@@ -5,6 +5,7 @@ import {
   extractAssetPaths,
   validateHealthPayload,
   validateHtml,
+  verifyLive,
 } from '../../pointsite-builder-release-production/scripts/verify-live.mjs';
 import { auditPipelineSnapshot } from '../../pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs';
 
@@ -61,6 +62,33 @@ test('validates the Builder production health contract', () => {
   assert.throws(
     () => validateHealthPayload({ ok: true, environment: 'staging', version: '0.1.0' }),
     /production/,
+  );
+});
+
+test('Canary verification rejects Production identity and unapproved origins', async () => {
+  assert.deepEqual(
+    validateHealthPayload({ ok: true, environment: 'canary', version: 'candidate' }, 'canary'),
+    { environment: 'canary', version: 'candidate' },
+  );
+  assert.throws(
+    () =>
+      validateHealthPayload(
+        { ok: true, environment: 'production', version: 'candidate' },
+        'canary',
+      ),
+    /canary/,
+  );
+  await assert.rejects(verifyLive('https://builder.pointatx.org'), /two Builder origins/);
+  await assert.rejects(
+    verifyLive('https://builder.eaglepass.io.attacker.example'),
+    /two Builder origins/,
+  );
+  assert.deepEqual(
+    extractAssetPaths(
+      '<script src="https://builder-canary.eaglepass.io/assets/app.js"></script>',
+      'https://builder-canary.eaglepass.io',
+    ),
+    ['/assets/app.js'],
   );
 });
 

@@ -5,6 +5,7 @@ import type { ApiVariables } from './drafts';
 import type { D1PublicationRunner } from '../publish/runner';
 import type { D1PublicationVerifier } from '../publish/verification';
 import { publicationJson } from '../publish/build-proof';
+import type { D1CloudRollback } from '../publish/rollback';
 
 function machineRoutes(configured: boolean) {
   const routes = new Hono<{ Variables: ApiVariables }>();
@@ -36,6 +37,38 @@ function machineRoutes(configured: boolean) {
     return errorResponse(safe, context.get('requestId'));
   });
   return { routes, credential };
+}
+
+export function createRollbackRunnerRoutes(rollback?: D1CloudRollback) {
+  const { routes, credential } = machineRoutes(Boolean(rollback));
+  for (const [path, method] of [
+    ['reserve', 'reserve'],
+    ['claim', 'claim'],
+    ['authorize-deployment', 'authorizeDeployment'],
+    ['finalize', 'finalize'],
+  ] as const) {
+    routes.post(`/:jobId/${path}`, async (context) => {
+      const token = credential(context);
+      if (context.req.raw.body) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+      return context.json(await rollback![method](context.req.param('jobId'), token));
+    });
+  }
+  routes.get('/:jobId/inputs', async (context) =>
+    context.json(await rollback!.inputs(context.req.param('jobId'), credential(context))),
+  );
+  routes.post('/:jobId/deployment', async (context) => {
+    const token = credential(context);
+    if (context.req.header('content-type') !== 'application/json')
+      throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    return context.json(
+      await rollback!.reportDeployment(
+        context.req.param('jobId'),
+        token,
+        await publicationJson(new Response(context.req.raw.body), 8192),
+      ),
+    );
+  });
+  return routes;
 }
 
 export function createPublicationRunnerRoutes(runner?: D1PublicationRunner) {

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { execFileSync } from 'node:child_process';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // The worker is lazy-loaded; discover its codec before an upload can trigger a reload.
   optimizeDeps: { include: ['@jsquash/webp/encode'] },
   worker: { format: 'es' },
@@ -17,8 +17,9 @@ export default defineConfig({
       execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     ),
   },
-  plugins: [react(), cloudflare()],
+  plugins: [react(), ...(mode === 'native' ? [] : [cloudflare()])],
   build: {
-    sourcemap: true,
+    sourcemap: mode !== 'native',
+    ...(mode === 'native' ? { outDir: 'dist/client' } : {}),
   },
-});
+}));

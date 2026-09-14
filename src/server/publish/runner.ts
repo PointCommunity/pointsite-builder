@@ -73,6 +73,7 @@ export class D1PublicationRunner {
       .first<RunnerRow>();
     if (!row) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const scope: PublicationRunnerScope = {
+      builderOrigin: this.config?.builderOrigin,
       jobId,
       nonce: row.nonce,
       dispatchRevision: row.dispatch_revision,
@@ -384,6 +385,7 @@ export class D1PublicationRunner {
     const identity = await verifyPublicationRunner(
       token,
       {
+        builderOrigin: this.config?.builderOrigin,
         jobId,
         nonce: row.nonce,
         dispatchRevision: row.dispatch_revision,

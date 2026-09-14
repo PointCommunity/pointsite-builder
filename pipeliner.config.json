@@ -74,19 +74,29 @@
     ]
   },
   "release": {
-    "strategy": "direct-production",
+    "strategy": "immutable-promotion",
     "preReleaseIdentity": ["sourceCommit", "gitTree"],
-    "candidateIdentity": ["sourceCommit", "gitTree", "deploymentId"],
+    "candidateIdentity": ["sourceCommit", "gitTree", "imageDigest", "gitopsRevision"],
     "environments": [
+      {
+        "name": "Canary",
+        "role": "review",
+        "url": "https://builder-canary.eaglepass.io",
+        "buildCommand": "npm run release:build",
+        "deployCommand": "npm run release:canary",
+        "verifyCommand": "npm run verify:live -- --environment canary",
+        "approvalPhrase": "Approved to merge and deploy production",
+        "promoteWithoutRebuild": false
+      },
       {
         "name": "Production",
         "role": "production",
-        "url": "https://builder.pointatx.org",
-        "buildCommand": "npm run build",
-        "deployCommand": "npm run deploy",
-        "verifyCommand": "npm run verify:live",
-        "approvalPhrase": "Approved to complete Issue #{number}",
-        "promoteWithoutRebuild": false
+        "url": "https://builder.eaglepass.io",
+        "buildCommand": "",
+        "deployCommand": "npm run release:production",
+        "verifyCommand": "npm run verify:live -- --environment production",
+        "approvalPhrase": "Approved to merge and deploy production",
+        "promoteWithoutRebuild": true
       }
     ]
   },
@@ -100,8 +110,8 @@
         "architecture": "any"
       },
       {
-        "os": "cloudflare-workers",
-        "architecture": "managed"
+        "os": "linux",
+        "architecture": "amd64"
       }
     ],
     "candidateIdentity": ["sourceCommit", "gitTree"],
@@ -119,7 +129,7 @@
         "os": "darwin",
         "architecture": "arm64",
         "prerequisites": [
-          "Apple Silicon macOS; Node.js >=22.13.0; Git; authenticated gh for read-only Project audits",
+          "Apple Silicon macOS; Node.js >=22.18.0; Git; authenticated gh for read-only Project audits",
           "Fresh task worktree; port 4173 free; local Playwright fixtures only; no production credentials required"
         ],
         "setup": [

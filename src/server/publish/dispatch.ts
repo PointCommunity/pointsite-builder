@@ -89,7 +89,11 @@ export async function dispatchPublication(
       headers,
       body: JSON.stringify({
         event_type: 'publish-candidate',
-        client_payload: { jobId, nonce: input.nonce },
+        client_payload: {
+          jobId,
+          nonce: input.nonce,
+          builderOrigin: config.builderOrigin ?? 'https://builder.pointatx.org',
+        },
       }),
     });
     if (response.status !== 204) {
@@ -122,6 +126,7 @@ export async function dispatchPendingPublication(
   database: D1Database,
   config: PublisherConfig,
   fetcher: typeof fetch = fetch,
+  productionEnabled = false,
 ): Promise<void> {
   const row = await database
     .prepare(
@@ -129,11 +134,13 @@ export async function dispatchPendingPublication(
     JOIN publication_runs pr ON pr.job_id=ps.job_id JOIN publish_jobs j ON j.id=ps.job_id
     JOIN publication_inputs pi ON pi.job_id=j.id JOIN drafts d ON d.id=pi.draft_id
     JOIN user_roles u ON u.email=j.requested_by
-    WHERE ps.target='staging' AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL
+    WHERE (ps.target='staging' OR (?=1 AND ps.target='production')) AND j.status='queued' AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL
       AND pr.dispatch_count<${MAX_DISPATCH_ATTEMPTS} AND pr.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-      AND d.status='active' AND u.active=1 AND u.role IN ('publisher','administrator')
+      AND d.status='active' AND u.active=1 AND ((ps.target='staging' AND u.role IN ('publisher','administrator'))
+        OR (ps.target='production' AND u.role='administrator' AND ${currentPromotion}))
     ORDER BY pr.dispatch_after,pr.job_id LIMIT 1`,
     )
+    .bind(productionEnabled ? 1 : 0)
     .first<{ job_id: string }>();
   if (!row) return;
   try {

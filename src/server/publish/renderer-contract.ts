@@ -25,13 +25,16 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = '74559f2755369d1685be0192a5b5251e42b6dadb';
-export const PUBLICATION_CALLER_BLOB = 'c70dbf33ae892536c3ceab9ffffd22a544caa36d';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'e58a47af8ce2cdf6af3f16f164a734bcb6138acd';
+export const PUBLICATION_WORKFLOW_REVISION = 'bed2916eb4ab7c3ebfd56a951a43b40cbd2b0081';
+export const PUBLICATION_CALLER_BLOB = 'd1957e6261429d002da23d3359885151f69d22d8';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'ca91be0a8c0ae67c8c0e4633bf2c90c9ffe35286';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = '74559f2755369d1685be0192a5b5251e42b6dadb';
+export const VERIFICATION_WORKFLOW_REVISION = 'bed2916eb4ab7c3ebfd56a951a43b40cbd2b0081';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: '8573cf8b2ae9d8da2c86385549a3d60066eb2448',
-  production: '3f940812820283c80ffed2b4c7a6191478ff3397',
+  staging: 'de718db60ba327992896ac07811568628d8db9df',
+  production: 'f66058cf83b401623d0a8caa0af9984708cba21f',
 });
+
+/** Reviewed native Production rollback caller, scoped to the same reusable runtime. */
+export const ROLLBACK_PRODUCTION_CALLER_BLOB = '83d166b34f9a1be139b0778a3b606b85cd44f99f';

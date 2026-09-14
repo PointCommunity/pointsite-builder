@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ClientApiError } from '../api';
 import type { ProductionWorkflowSnapshot, StagingAcceptanceSummary } from './workflow';
 import { PublicationVerification } from './PublicationVerification';
+import { ProductionRollback } from './ProductionRollback';
 
 type RecoveryAction = Parameters<typeof api.recoverProduction>[1];
 
@@ -281,6 +282,7 @@ export function ProductionPublish({
         A GitHub organization owner must also have an active Builder Administrator role and the
         required live repository permission to authorize a Production publication.
       </p>
+      {snapshot?.enabled ? <ProductionRollback onRefresh={load} /> : null}
     </aside>
   );
 }
