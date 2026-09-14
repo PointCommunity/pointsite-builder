@@ -1249,5 +1249,32 @@
       alternative text and placements. Keep originals whenever encoding grows them; retain archived
       items and historical versions. Verify unchanged other drafts and all referenced asset bytes.
     </p>
+    <h2>Automatic upload compression</h2>
+    <p>
+      Every new image and replacement submitted by Builder is optimized before transfer. Detect
+      JPEG, PNG, WebP and AVIF from their bytes, regardless of filename or declared MIME type.
+      Encode still photographs as quality-90 WebP and PNG or existing WebP as lossless WebP.
+      Preserve displayed dimensions, orientation, transparency, Library identity and placements.
+      Keep the original bytes when encoding would grow the file; normalize its filename and MIME
+      type. Preserve animated originals rather than flattening them. Unsupported or corrupt images
+      receive an actionable error. Linked remote images are not downloaded or modified.
+    </p>
+    <p>
+      Bound source files to 20 MiB, dimensions to 8,000 pixels per side and decoded images to 32
+      megapixels. The stored upload remains at most 5 MiB. Encode in a terminable worker with a
+      60-second limit, load the codec only when needed, release image and worker memory, and show
+      the optimized preview and saved byte count before confirmation. Do not retain a second
+      uploaded original. Existing historical versions remain unchanged. Native canvas decoding
+      normalizes images to sRGB; private EXIF/GPS metadata is not copied into new encodings.
+    </p>
+    <p>
+      Verify actual encoding in Chromium, Firefox and WebKit; renamed input files, smaller-original
+      fallback, transparency, lossless pixels, orientation, oversized and malformed inputs,
+      animation preservation, replacement linkage and referenced-only publication. Follow the
+      <a href="https://developers.google.com/speed/webp/docs/riff_container"
+        >WebP container specification</a
+      >
+      for all three valid VP8, VP8L and VP8X headers.
+    </p>
   </body>
 </html>

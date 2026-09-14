@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import { execFileSync } from 'node:child_process';
 
 export default defineConfig({
+  worker: { format: 'es' },
   define: {
     __BUILDER_SOURCE_CLEAN__: JSON.stringify(
       execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {

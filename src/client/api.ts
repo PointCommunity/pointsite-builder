@@ -1,4 +1,5 @@
 import type { SiteDocument } from '../site-kit/types';
+import { compressImage } from './media/compress-image';
 import type {
   DeletedDraftReceipt,
   DraftCheckout,
@@ -150,14 +151,14 @@ function libraryHeaders(context: LibraryMutationContext): Record<string, string>
   };
 }
 
-function libraryImage(
+async function libraryImage(
   context: LibraryMutationContext,
   file: File,
   altText: string,
   replacement?: { itemId: string; metadata: LibraryMetadata },
 ): Promise<LibraryMutationResult> {
   const body = new FormData();
-  body.set('file', file);
+  body.set('file', await compressImage(file));
   body.set('altText', altText);
   if (replacement) {
     body.set('displayName', replacement.metadata.displayName);

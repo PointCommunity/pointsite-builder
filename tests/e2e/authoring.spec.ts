@@ -2727,7 +2727,7 @@ test('uploads one independent image immediately into the unified Library', async
   await page.getByLabel('Alternative text').fill('People gathering');
   await page.getByRole('dialog').getByRole('button', { name: 'Upload image' }).click();
   await expect(page.getByText('20 of 20 items · Image uploaded.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'gathering.png', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'gathering.webp', exact: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Use in Layout' })).toHaveCount(0);
   expect(controls.libraryRequests).toHaveLength(1);
   expect(controls.libraryRequests[0]?.action).toBe('upload');
@@ -2759,7 +2759,9 @@ test('reviews image replacement and navigates archived Library items by keyboard
     mimeType: 'image/png',
     buffer: Buffer.from('invalid bytes'),
   });
-  await expect(dialog.getByRole('alert')).toHaveText('PNG signature is invalid');
+  await expect(dialog.getByRole('alert')).toHaveText(
+    'Image format is unsupported or invalid. Choose JPEG, PNG, WebP or AVIF.',
+  );
   await expect(dialog.getByRole('button', { name: 'Review replacement' })).toBeDisabled();
   await dialog
     .getByLabel('Image file')
