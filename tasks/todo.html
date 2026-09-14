@@ -693,6 +693,14 @@
         route guard, rerun sequential QA, and deploy a new verified Canary image. Keep DNS on the
         existing Staging Worker until the Pages deployment is ready.
       </p>
+      <p>
+        The corrected Canary passed live GitHub reservation and claim. Build preparation then
+        exposed a second native adapter mismatch: SQL BLOB results must preserve the existing
+        number-array contract used by image chunk validation. Add native byte-array and captured
+        image checksum regression checks, correct the adapter, repeat QA and release, then recover
+        the failed captured job through the supported workflow. No content commit or deployment
+        occurred during either failure.
+      </p>
       <dl>
         <dt>Depends on</dt>
         <dd>H18, H24.</dd>

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
 import { exportPKCS8, generateKeyPair, SignJWT } from 'jose';
 import { SqliteDatabase } from '../../server/sqlite';
 import { migrateDatabase } from '../../server/migrations';
@@ -102,6 +103,16 @@ test('independent native Builders cannot overwrite a shared Staging winner or ex
       await runner.reserve(job.id, await sign('23456'));
       const token = await sign('34567');
       await runner.claim(job.id, token);
+      const pinned = await runner.inputs(job.id, token);
+      expect(pinned.assets.length).toBeGreaterThan(0);
+      for (const asset of pinned.assets) {
+        const chunks = [];
+        for (let index = 0; index < Math.ceil(asset.byteSize / 1_000_000); index++)
+          chunks.push(Buffer.from(await runner.chunk(job.id, token, asset.assetId, index)));
+        const bytes = Buffer.concat(chunks);
+        expect(bytes.byteLength).toBe(asset.byteSize);
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(asset.checksum);
+      }
       await runner.authorizeBuild(job.id, token, provider.build);
       candidates.push({ runner, job, token, provider, store, database });
     }

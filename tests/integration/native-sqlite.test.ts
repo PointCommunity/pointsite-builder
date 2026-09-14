@@ -28,7 +28,8 @@ test('preserves bindings, BLOB bytes, column reads and statement-local changes',
   expect(write.results).toEqual([{ id: 1 }]);
   expect(write.meta.changes).toBe(1);
   expect(write.meta.last_row_id).toBe(1);
-  const read = await db.prepare('SELECT * FROM items').all<{ bytes: ArrayBuffer }>();
+  const read = await db.prepare('SELECT * FROM items').all<{ bytes: number[] }>();
+  expect(read.results[0].bytes).toEqual([0, 128, 255]);
   expect(new Uint8Array(read.results[0].bytes)).toEqual(bytes);
   expect(read.meta.changes).toBe(0);
   expect(Number.isNaN(read.meta.rows_read)).toBe(true);

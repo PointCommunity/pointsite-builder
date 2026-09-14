@@ -64,7 +64,8 @@ export class SqliteDatabase implements D1Database {
         Object.fromEntries(
           Object.entries(row).map(([key, value]) => [
             key,
-            value instanceof Uint8Array ? Uint8Array.from(value).buffer : value,
+            // D1 returns BLOBs as byte arrays; existing repositories rely on that contract.
+            value instanceof Uint8Array ? Array.from(value) : value,
           ]),
         ),
       );
