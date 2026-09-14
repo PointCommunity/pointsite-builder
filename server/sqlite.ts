@@ -58,17 +58,15 @@ export class SqliteDatabase implements D1Database {
   private execute(statement: StatementSync, values: SQLInputValue[]): D1Result {
     const started = performance.now();
     const before = this.native.prepare('SELECT total_changes() AS count').get()!.count;
-    const results = statement
-      .all(...values)
-      .map((row) =>
-        Object.fromEntries(
-          Object.entries(row).map(([key, value]) => [
-            key,
-            // D1 returns BLOBs as byte arrays; existing repositories rely on that contract.
-            value instanceof Uint8Array ? Array.from(value) : value,
-          ]),
-        ),
-      );
+    const results = statement.all(...values).map((row) =>
+      Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [
+          key,
+          // D1 returns BLOBs as byte arrays; existing repositories rely on that contract.
+          value instanceof Uint8Array ? Array.from(value) : value,
+        ]),
+      ),
+    );
     const state = this.native
       .prepare(
         'SELECT total_changes() AS total, changes() AS changes, last_insert_rowid() AS last_id',
