@@ -37,6 +37,57 @@ const proofSchema = z.strictObject({
 });
 export type DeploymentExpectation = z.infer<typeof proofSchema>;
 
+/** A recovery-code repair may advance main, but cannot change any published input. */
+export async function verifyRecoveryRevision(
+  published: string,
+  current: string,
+  read: (path: string, maximum?: number) => Promise<unknown>,
+) {
+  sha.parse(published);
+  sha.parse(current);
+  if (published === current) return;
+  const allowed = new Set([
+    '.github/workflows/verify-publication.yml',
+    '.github/workflows/verify-runtime.yml',
+    'scripts/verification-run.mts',
+    'scripts/verification-output.mts',
+    'tests/verification-output.test.ts',
+  ]);
+  const tree = z.object({
+    sha,
+    truncated: z.literal(false),
+    tree: z
+      .array(
+        z.object({
+          path: z.string().min(1).max(1024),
+          mode: z.string(),
+          type: z.enum(['blob', 'tree', 'commit']),
+          sha,
+        }),
+      )
+      .max(10_000),
+  });
+  const leaves = async (revision: string) => {
+    const commit = z
+      .object({ sha: z.literal(revision), tree: z.object({ sha }) })
+      .parse(await read(`/git/commits/${revision}`));
+    const value = tree.parse(await read(`/git/trees/${commit.tree.sha}?recursive=1`, 1_000_000));
+    if (value.sha !== commit.tree.sha) throw new Error('Recovery tree changed');
+    return new Map(
+      value.tree.filter((entry) => entry.type !== 'tree').map((entry) => [entry.path, entry]),
+    );
+  };
+  const before = await leaves(published);
+  const after = await leaves(current);
+  for (const path of new Set([...before.keys(), ...after.keys()])) {
+    const old = before.get(path);
+    const next = after.get(path);
+    if (old?.sha === next?.sha && old?.mode === next?.mode && old?.type === next?.type) continue;
+    if (!allowed.has(path) || !next || next.type !== 'blob' || next.mode !== '100644')
+      throw new Error('Published inputs changed during recovery');
+  }
+}
+
 export const PublicationEvidenceSchema = z.strictObject({
   format: z.literal(2),
   verificationStatus: z.literal('passed'),
@@ -97,7 +148,7 @@ export async function verifyDeploymentProof(
     const origin = staging ? 'https://staging.pointatx.org' : 'https://pointatx.org';
     const api = `https://api.github.com/repos/${repository}`;
     const jobUrl = `https://github.com/${repository}/actions/runs/${input.runId}/job/${input.checkRunId}`;
-    const read = async (url: string): Promise<unknown> => {
+    const read = async (url: string, maximum = 32_768): Promise<unknown> => {
       const response = await fetcher(url, {
         headers: {
           accept: 'application/vnd.github+json',
@@ -111,7 +162,7 @@ export async function verifyDeploymentProof(
         signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) throw new Error('Unconfirmed provider response');
-      return publicationJson(response, 32_768);
+      return publicationJson(response, maximum);
     };
     const execution = async (
       runId: string,
@@ -138,8 +189,7 @@ export async function verifyDeploymentProof(
     if (input.verification) {
       if (
         input.verification.runId === input.runId ||
-        input.verification.checkRunId === input.checkRunId ||
-        input.verification.dispatchRevision !== input.commitSha
+        input.verification.checkRunId === input.checkRunId
       )
         throw new Error('Verification execution is not independent');
       await execution(
@@ -157,8 +207,12 @@ export async function verifyDeploymentProof(
     );
     // The dispatch commit identifies the workflow event. The new content commit
     // identifies the immutable published inputs; never report them as one SHA.
-    z.object({ object: z.object({ sha: z.literal(input.commitSha) }) }).parse(
+    const currentRevision = input.verification?.dispatchRevision ?? input.commitSha;
+    z.object({ object: z.object({ sha: z.literal(currentRevision) }) }).parse(
       await read(`${api}/git/ref/heads/main`),
+    );
+    await verifyRecoveryRevision(input.commitSha, currentRevision, (path, maximum) =>
+      read(`${api}${path}`, maximum),
     );
     const deploymentsUrl = `${api}/deployments?environment=${environment}&per_page=1`;
     const deploymentSchema = z.object({

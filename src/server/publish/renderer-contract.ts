@@ -30,10 +30,10 @@ export const PUBLICATION_CALLER_BLOB = 'd1957e6261429d002da23d3359885151f69d22d8
 export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'ca91be0a8c0ae67c8c0e4633bf2c90c9ffe35286';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = 'bed2916eb4ab7c3ebfd56a951a43b40cbd2b0081';
+export const VERIFICATION_WORKFLOW_REVISION = 'e1ef2ae8369ff699550b04794c1955339d5e96de';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: 'de718db60ba327992896ac07811568628d8db9df',
-  production: 'f66058cf83b401623d0a8caa0af9984708cba21f',
+  staging: '6aa66fbf8cc686a38ae57ac6f5e450ff466d24cd',
+  production: '4ae1253337307dd610353fbd886bc6135ddd39fa',
 });
 
 /** Reviewed native Production rollback caller, scoped to the same reusable runtime. */

@@ -6,6 +6,7 @@ import { PublicationBuildSchema, publicationJson } from './build-proof';
 import {
   PublicationEvidenceSchema,
   verifyDeploymentCheck,
+  verifyRecoveryRevision,
   verifyDeploymentProof,
   verifyStagingDeployment,
 } from './deployment-proof';
@@ -40,6 +41,7 @@ export const VerificationSourceSchema = z.strictObject({
   checkRunId: identifier,
   dispatchRevision: sha,
   workflowRevision: sha,
+  verificationDispatchRevision: sha.optional(),
   workerVersionId: z.uuid().optional(),
   build: PublicationBuildSchema,
 });
@@ -180,7 +182,11 @@ export class D1PublicationVerifier {
       });
       const headers = { ...githubHeaders(token), 'content-type': 'application/json' };
       const api = `https://api.github.com/repos/PointCommunity/${repository}`;
-      z.object({ object: z.object({ sha: z.literal(source.build.commitSha) }) }).parse(
+      z.object({
+        object: z.object({
+          sha: z.literal(source.verificationDispatchRevision ?? source.build.commitSha),
+        }),
+      }).parse(
         await publicationJson(await this.request(`${api}/git/ref/heads/main`, { headers }), 8192),
       );
       // Local revocation or another signed run reservation wins after provider reads.
@@ -263,7 +269,7 @@ export class D1PublicationVerifier {
       target: row.target,
       nonce: row.nonce,
       workflowRevision: row.workflow_revision,
-      dispatchRevision: source.build.commitSha,
+      dispatchRevision: source.verificationDispatchRevision ?? source.build.commitSha,
       ...(row.reserved_run_id && row.reserved_run_attempt
         ? { run: { id: row.reserved_run_id, attempt: row.reserved_run_attempt } }
         : {}),
@@ -422,7 +428,7 @@ export class D1PublicationVerifier {
           target: row.target,
           run_id: row.reserved_run_id,
           run_attempt: row.reserved_run_attempt,
-          dispatch_revision: source.build.commitSha,
+          dispatch_revision: source.verificationDispatchRevision ?? source.build.commitSha,
           workflow_revision: row.workflow_revision,
         },
         this.request,
@@ -456,7 +462,7 @@ export class D1PublicationVerifier {
           verification: {
             runId: row.reserved_run_id!,
             checkRunId: row.check_run_id!,
-            dispatchRevision: source.build.commitSha,
+            dispatchRevision: source.verificationDispatchRevision ?? source.build.commitSha,
             workflowRevision: row.workflow_revision,
           },
         },
@@ -658,7 +664,7 @@ export class D1PublicationVerifier {
           target: input.target,
           run_id: row.reserved_run_id,
           run_attempt: row.reserved_run_attempt,
-          dispatch_revision: source.build.commitSha,
+          dispatch_revision: source.verificationDispatchRevision ?? source.build.commitSha,
           workflow_revision: row.workflow_revision,
         },
         this.request,
@@ -742,7 +748,7 @@ export class D1PublicationVerifier {
         target: row.target,
         nonce: row.nonce,
         workflowRevision: row.workflow_revision,
-        dispatchRevision: source.build.commitSha,
+        dispatchRevision: source.verificationDispatchRevision ?? source.build.commitSha,
         run: { id: row.reserved_run_id!, attempt: row.reserved_run_attempt! },
       },
       this.keys,
@@ -763,7 +769,8 @@ export class D1PublicationVerifier {
       evidence.verification?.runId !== row.reserved_run_id ||
       evidence.verification.checkRunId !== row.check_run_id ||
       evidence.verification.workflowRevision !== row.workflow_revision ||
-      evidence.verification.dispatchRevision !== source.build.commitSha
+      evidence.verification.dispatchRevision !==
+        (source.verificationDispatchRevision ?? source.build.commitSha)
     )
       throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     return true;
@@ -844,18 +851,17 @@ export class D1PublicationVerifier {
       fetcher: this.request,
     });
     const api = `https://api.github.com/repos/PointCommunity/${repository}`;
-    const read = async (path: string) =>
+    const read = async (path: string, maximum = 65_536) =>
       publicationJson(
         await this.request(`${api}${path}`, { headers: githubHeaders(token) }),
-        65_536,
+        maximum,
       );
-    z.object({ object: z.object({ sha: z.literal(build.commitSha) }) }).parse(
-      await read('/git/ref/heads/main'),
-    );
+    const main = z.object({ object: z.object({ sha }) }).parse(await read('/git/ref/heads/main'));
+    await verifyRecoveryRevision(build.commitSha, main.object.sha, read);
     const caller = z
       .object({ type: z.literal('file'), sha })
       .parse(
-        await read(`/contents/.github/workflows/verify-publication.yml?ref=${build.commitSha}`),
+        await read(`/contents/.github/workflows/verify-publication.yml?ref=${main.object.sha}`),
       );
     if (caller.sha !== this.callerBlobs[input.target])
       throw new Error('PUBLICATION_VERIFICATION_CHANGED');
@@ -900,6 +906,9 @@ export class D1PublicationVerifier {
     }
     const selected = VerificationSourceSchema.parse({
       target: input.target,
+      ...(main.object.sha !== build.commitSha
+        ? { verificationDispatchRevision: main.object.sha }
+        : {}),
       deploymentId: String(deployment.id),
       runId: source.run_id,
       checkRunId: source.check_run_id,

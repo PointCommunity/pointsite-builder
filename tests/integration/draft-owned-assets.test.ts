@@ -3449,7 +3449,8 @@ it.each([
       job = { ...job, id: productionId };
     }
     const provider = await publicationGitHubFixture(job.id, job.candidateChecksum, [], target);
-    provider.state.main = provider.build.commitSha;
+    const recoveryRevision = staging ? 'f'.repeat(40) : provider.build.commitSha;
+    provider.state.main = recoveryRevision;
     await database.batch([
       database
         .prepare("UPDATE publish_jobs SET status='running',result_sha=? WHERE id=?")
@@ -3476,6 +3477,31 @@ it.each([
     const dispatches: unknown[] = [];
     const fetcher = vi.fn<typeof fetch>(async (value, init) => {
       const url = typeof value === 'string' ? value : value instanceof URL ? value.href : value.url;
+      if (staging && url.includes('/git/commits/')) {
+        const revision = url.split('/').at(-1)!;
+        return Response.json({ sha: revision, tree: { sha: revision } });
+      }
+      if (staging && url.includes('/git/trees/')) {
+        const revision = url.split('/').at(-1)!.split('?')[0];
+        return Response.json({
+          sha: revision,
+          truncated: false,
+          tree: [
+            {
+              path: 'content/builder-site.json',
+              type: 'blob',
+              mode: '100644',
+              sha: '1'.repeat(40),
+            },
+            {
+              path: 'scripts/verification-output.mts',
+              type: 'blob',
+              mode: '100644',
+              sha: revision,
+            },
+          ],
+        });
+      }
       if (url.endsWith(`/repos/PointCommunity/${repositoryName}/dispatches`)) {
         dispatches.push(JSON.parse(typeof init?.body === 'string' ? init.body : 'null'));
         return new Response(null, { status: dispatchStatus, headers: { 'retry-after': '3600' } });
@@ -3490,7 +3516,7 @@ it.each([
           run_attempt: 1,
           status: verificationTerminal ? 'completed' : 'in_progress',
           conclusion: 'failure',
-          head_sha: provider.build.commitSha,
+          head_sha: recoveryRevision,
           head_branch: 'main',
           event: 'repository_dispatch',
           path: '.github/workflows/verify-publication.yml',
@@ -3534,7 +3560,7 @@ it.each([
           id: verification ? 78901 : 34567,
           status: verification && !verificationSucceeded ? 'in_progress' : 'completed',
           conclusion: verification ? 'success' : 'failure',
-          head_sha: verification ? provider.build.commitSha : originalBase,
+          head_sha: verification ? recoveryRevision : originalBase,
           details_url: `https://github.com/PointCommunity/${repositoryName}/actions/runs/${verification ? '56789/job/78901' : '12345/job/34567'}`,
           app: { id: 15368, slug: 'github-actions' },
           deployment: verification ? null : { id: 45678 },
@@ -3675,6 +3701,7 @@ it.each([
       checkRunId: '34567',
       dispatchRevision: originalBase,
       workflowRevision: originalRuntime,
+      ...(staging ? { verificationDispatchRevision: recoveryRevision } : {}),
       build: provider.build,
     });
     expect(String(record?.source_json)).not.toContain(draft.document.media[0].sourcePath);
@@ -3791,7 +3818,7 @@ it.each([
         jobId: captured.verificationId,
         nonce: String(record?.nonce),
         workflowRevision,
-        dispatchRevision: provider.build.commitSha,
+        dispatchRevision: recoveryRevision,
       }),
       aud: `https://builder.pointatx.org/verify/${captured.verificationId}/${String(record?.nonce)}`,
       workflow_ref: `PointCommunity/${repositoryName}/.github/workflows/verify-publication.yml@refs/heads/main`,

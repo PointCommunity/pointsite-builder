@@ -1,8 +1,47 @@
 // @vitest-environment node
 import {
   verifyDeploymentProof,
+  verifyRecoveryRevision,
   type DeploymentExpectation,
 } from '../../src/server/publish/deployment-proof';
+
+it('allows only verification maintenance between retained publication and recovery dispatch', async () => {
+  const original = '1'.repeat(40);
+  const current = '2'.repeat(40);
+  const file = {
+    path: 'content/builder-site.json',
+    mode: '100644',
+    type: 'blob',
+    sha: '3'.repeat(40),
+  };
+  const verifier = { ...file, path: 'scripts/verification-output.mts' };
+  for (const failure of ['', 'content', 'delete', 'extra', 'mode', 'truncated', 'identity']) {
+    const read = vi.fn((path: string) => {
+      const next = path.includes(current);
+      if (path.includes('/git/commits/'))
+        return Promise.resolve({
+          sha: next ? current : original,
+          tree: { sha: next ? current : original },
+        });
+      return Promise.resolve({
+        sha: failure === 'identity' ? '9'.repeat(40) : next ? current : original,
+        truncated: failure === 'truncated',
+        tree: !next
+          ? [file, verifier]
+          : [
+              ...(failure === 'delete'
+                ? []
+                : [{ ...file, sha: failure === 'content' ? '4'.repeat(40) : file.sha }]),
+              { ...verifier, sha: '5'.repeat(40), mode: failure === 'mode' ? '120000' : '100644' },
+              ...(failure === 'extra' ? [{ ...file, path: 'scripts/publication-build.mts' }] : []),
+            ],
+      });
+    });
+    if (failure)
+      await expect(verifyRecoveryRevision(original, current, read), failure).rejects.toThrow();
+    else await expect(verifyRecoveryRevision(original, current, read)).resolves.toBeUndefined();
+  }
+});
 
 const expectation: DeploymentExpectation = {
   target: 'staging',

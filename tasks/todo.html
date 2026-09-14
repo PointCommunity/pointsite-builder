@@ -687,6 +687,17 @@
     <article id="h25">
       <h3>H25 — Execute the Pages cutover</h3>
       <p>
+        The cloud recovery runner reproduced the deployment attribution defect and rejected the
+        Pages sourceCommit field. Correct both using the native check/deployment link and exact
+        retained source commit. A verifier upgrade must remain possible after publication: capture
+        its separate dispatch revision, permit only changes to the verification caller, runtime,
+        implementation and regression test, and reject every content or other file change. Validate
+        complete Git trees before capture and finalization; bind OIDC to the captured verification
+        revision. Keep the original publication source, artifact, deployment and live file checks
+        unchanged. Test failures first, qualify both repositories, pin the reviewed runtime, deploy
+        Canary, then retry the existing publication without rebuilding or deploying website content.
+      </p>
+      <p>
         September 14 verification found that native HTTP represents an empty POST as a stream, while
         publication, verification and rollback machine routes rejected every stream. Before retrying
         the first Pages publication: reproduce with real HTTP, reject actual bytes in the shared
