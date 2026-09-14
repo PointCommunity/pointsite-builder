@@ -295,7 +295,6 @@ function ImageForm({
               <input
                 data-initial-focus
                 type="file"
-                accept=".jpg,.jpeg,.png,.webp,.avif,image/jpeg,image/png,image/webp,image/avif"
                 required
                 onChange={(event) => {
                   void chooseFile(event.target.files?.[0]);
