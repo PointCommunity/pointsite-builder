@@ -21,6 +21,25 @@ describe('PointSite Cloudflare account guard', () => {
     });
   });
 
+  it('accepts scoped API tokens only for the pinned church account without requiring profile access', () => {
+    for (const authType of ['User API Token', 'Account API Token']) {
+      const tokenIdentity = { ...expectedIdentity, email: null, authType };
+      expect(validatePointSiteCloudflareIdentity(tokenIdentity)).toEqual({
+        accountId: POINTSITE_CLOUDFLARE_ACCOUNT_ID,
+        email: null,
+      });
+      expect(() =>
+        validatePointSiteCloudflareIdentity({
+          ...tokenIdentity,
+          accounts: [{ id: 'wrong-account' }],
+        }),
+      ).toThrow(/mismatch/);
+    }
+    expect(() =>
+      validatePointSiteCloudflareIdentity({ ...expectedIdentity, email: null, authType: 'OAuth' }),
+    ).toThrow(/mismatch/);
+  });
+
   it('rejects a personal or otherwise different account', () => {
     expect(() =>
       validatePointSiteCloudflareIdentity({
