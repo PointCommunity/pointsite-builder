@@ -1406,7 +1406,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
     const workerVersionId = crypto.randomUUID();
     const jobUrl = `https://github.com/PointCommunity/pointsite-staging/actions/runs/${String(claims.run_id)}/job/${String(claims.check_run_id)}`;
     let completed = false;
-    let publishedWorkerVersion = workerVersionId;
+    let publishedArtifactDigest = github.build.artifactDigest;
     let productionBase = 'f'.repeat(40);
     const provider: typeof fetch = async (url, init) => {
       const path = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
@@ -1442,8 +1442,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
           format: 2,
           candidateChecksum: job.candidateChecksum,
           workflowRevision: 'a'.repeat(40),
-          artifactDigest: github.build.artifactDigest,
-          workerVersionId: publishedWorkerVersion,
+          artifactDigest: publishedArtifactDigest,
         });
       if (path === 'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main')
         return Response.json({ object: { sha: productionBase } });
@@ -1495,11 +1494,11 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
     await runner.commitBuild(job.id, token);
     expect(github.state.mutations).toBe(1);
     expect((await jobs.getById(job.id))?.status).toBe('running');
-    await expect(runner.reportDeployment(job.id, token, { workerVersionId })).rejects.toThrow(
-      'PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED',
-    );
+    await expect(
+      runner.reportDeployment(job.id, token, { artifactDigest: github.build.artifactDigest }),
+    ).rejects.toThrow('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
     await runner.authorizeDeployment(job.id, token);
-    await runner.reportDeployment(job.id, token, { workerVersionId });
+    await runner.reportDeployment(job.id, token, { artifactDigest: github.build.artifactDigest });
     await expect(
       runner.reportDeployment(job.id, token, { workerVersionId: crypto.randomUUID() }),
     ).rejects.toThrow();
@@ -1570,7 +1569,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       { runId: '99999' },
       { checkRunId: '99999' },
       { artifactDigest: '0'.repeat(64) },
-      { workerVersionId: undefined },
+      { candidateChecksum: undefined },
     ]) {
       await database
         .prepare('UPDATE publish_jobs SET evidence_json=? WHERE id=?')
@@ -1582,11 +1581,11 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       .prepare('UPDATE publish_jobs SET evidence_json=? WHERE id=?')
       .bind(originalEvidence, job.id)
       .run();
-    publishedWorkerVersion = crypto.randomUUID();
+    publishedArtifactDigest = '9'.repeat(64);
     await expect(approvals.record(decision)).rejects.toThrow(
       'PUBLICATION_VERIFICATION_UNCONFIRMED',
     );
-    publishedWorkerVersion = workerVersionId;
+    publishedArtifactDigest = github.build.artifactDigest;
     github.state.main = job.baseSha;
     await expect(approvals.record(decision)).rejects.toThrow(
       'PUBLICATION_VERIFICATION_UNCONFIRMED',
@@ -1738,11 +1737,11 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
     productionBase = '0'.repeat(40);
     await expect(production.capture(promotion)).rejects.toThrow();
     productionBase = expectedTuple.productionBaseSha;
-    publishedWorkerVersion = crypto.randomUUID();
+    publishedArtifactDigest = '9'.repeat(64);
     await expect(production.capture(promotion)).rejects.toThrow(
       'PUBLICATION_VERIFICATION_UNCONFIRMED',
     );
-    publishedWorkerVersion = workerVersionId;
+    publishedArtifactDigest = github.build.artifactDigest;
     github.state.beforePermission = async () => {
       await database
         .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
@@ -1912,11 +1911,11 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       productionBase = '0'.repeat(40);
       await expect(production.retryCaptured(recovery)).rejects.toThrow();
       productionBase = retryBase;
-      publishedWorkerVersion = crypto.randomUUID();
+      publishedArtifactDigest = '9'.repeat(64);
       await expect(production.retryCaptured(recovery)).rejects.toThrow(
         'PUBLICATION_VERIFICATION_UNCONFIRMED',
       );
-      publishedWorkerVersion = workerVersionId;
+      publishedArtifactDigest = github.build.artifactDigest;
       github.state.beforePermission = async () => {
         await database
           .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
@@ -3552,7 +3551,6 @@ it.each([
           candidateChecksum: job.candidateChecksum,
           artifactDigest: provider.build.artifactDigest,
           workflowRevision: originalRuntime,
-          ...(staging ? { workerVersionId } : {}),
         });
       if (url.includes('/contents/.github/workflows/verify-publication.yml')) {
         if (revoke)
@@ -3662,7 +3660,7 @@ it.each([
       status: 'queued',
       dispatch_count: 0,
       requested_by: subject,
-      native_worker_deployment_id: staging ? nativeDeploymentId : null,
+      native_worker_deployment_id: null,
       workflow_revision: workflowRevision,
     });
     expect((await jobs.dispatchStatus(job.id))?.canVerifyOutput).toBe(true);
@@ -3673,7 +3671,6 @@ it.each([
       checkRunId: '34567',
       dispatchRevision: originalBase,
       workflowRevision: originalRuntime,
-      ...(staging ? { workerVersionId } : {}),
       build: provider.build,
     });
     expect(String(record?.source_json)).not.toContain(draft.document.media[0].sourcePath);
@@ -3887,7 +3884,6 @@ it.each([
     const report = {
       artifactDigest: provider.build.artifactDigest,
       deploymentId: '45678',
-      ...(staging ? { workerVersionId } : {}),
     };
     await expect(
       verifier.report(captured.verificationId, verifyToken, { ...report, deploymentId: '45679' }),

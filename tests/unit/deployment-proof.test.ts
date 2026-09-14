@@ -118,7 +118,19 @@ it('refuses incomplete, substituted, changed or unavailable native and live evid
   await expect(
     verifyDeploymentProof({ ...expectation, workerVersionId: undefined }, unused),
   ).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
-  expect(unused).not.toHaveBeenCalled();
+  expect(unused).toHaveBeenCalled();
+});
+
+it('verifies Pages staging without a Worker identity and rejects substituted output or a historical Worker release', async () => {
+  const input = { ...expectation, workerVersionId: undefined };
+  expect(await verifyDeploymentProof(input, fixture(input))).toMatchObject({
+    deploymentUrl: 'https://staging.pointatx.org',
+    artifactDigest: input.artifactDigest,
+  });
+  for (const failure of ['artifact', 'drift', 'failed', 'version'])
+    await expect(verifyDeploymentProof(input, fixture(input, failure))).rejects.toThrow(
+      'PUBLICATION_VERIFICATION_UNCONFIRMED',
+    );
 });
 
 it('sends the repository token only to fixed GitHub proof endpoints, never to the live site', async () => {

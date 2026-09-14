@@ -637,17 +637,18 @@
       disabled while previous-good release capture and the recovery flow are unfinished.
     </p>
     <p>
-      The separate Pages runtime at <code>9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818</code>
-      keeps Pages write permission out of the Staging caller. It rebuilds the accepted inputs,
-      uploads their verified static output with one-day retention, checks fresh Builder authority
-      immediately before native Pages deployment and verifies every public file before reporting.
-      The signed finalizer checks completed native execution, current content commit and live
-      release identity, then atomically releases only its Production slot. A lost or duplicate
-      finalizer response returns the exact signed run's historical verified receipt without another
-      provider request, publication or slot acquisition; a current authorized role is still
-      required. Production and Staging execution claims bind separate reviewed reusable workflow
-      paths. The proposed public caller removes push/manual deployment, preventing a content commit
-      from starting an independent deployment. Maintainer changes are not deployed yet.
+      The initial production Pages runtime at <code>9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818</code>
+      originally excluded Pages write permission from Staging. The approved Pages staging amendment
+      below replaces that hosting boundary. Production rebuilds the accepted inputs, uploads their
+      verified static output with one-day retention, checks fresh Builder authority immediately
+      before native Pages deployment and verifies every public file before reporting. The signed
+      finalizer checks completed native execution, current content commit and live release identity,
+      then atomically releases only its Production slot. A lost or duplicate finalizer response
+      returns the exact signed run's historical verified receipt without another provider request,
+      publication or slot acquisition; a current authorized role is still required. Production and
+      Staging execution claims bind separate reviewed reusable workflow paths. The proposed public
+      caller removes push/manual deployment, preventing a content commit from starting an
+      independent deployment. Maintainer changes are not deployed yet.
     </p>
     <p>
       Initial public recovery evidence: native Pages deployment 6276181817 identifies source
@@ -801,38 +802,39 @@
       Verification-only recovery contract: after native evidence proves the original deployment run
       terminal, a fresh Publisher/Administrator (Administrator for Production) may request a bounded
       read-only cloud verification. Retain the original job, build, commit, execution and deployment
-      identities. For Staging, Builder independently reads Cloudflare's current single version at
-      100% traffic, checks the exact commit tag and candidate message, and rechecks deployment
-      identity. A dedicated read-only Worker credential remains in 1Password and is provisioned to
-      Builder only; the cloud verification process receives the captured native version ID, never
-      this credential. The live site's version must match that independent capture. Recheck native
-      traffic before finalization. A distinct nonce, OIDC audience, immutable verification workflow,
-      run and check bind the recovery; deployment tokens cannot call verification endpoints or vice
-      versa. The verification runtime has its own reviewed immutable pin and caller blobs; advancing
-      it does not change the original build runtime, captured artifact or deployment callers. Report
-      acknowledgements may retry the same bounded metadata at most three times; this never retries
-      deployment or changes the captured source. The verification job uses read-only repository
-      permissions and no deployment credential, rebuild, Git write or native deployment record.
-      Fetch the retained output manifest by its immutable Git blob identity, check every live output
-      hash and native release identity before and after, then record a signed acknowledgement. A
-      separate finalizer requires the verification execution check to have succeeded and rereads
-      current destination/native evidence. Preserve the original execution conclusion and deployment
-      status; do not relabel a failed deployment check as successful. Only this independently
-      verified recovery proof may reconcile a terminal failed original check. Unrecovered
-      publication continues to require successful native execution. Pending, replaced, changed,
-      unauthorized or incomplete evidence fails closed. Permit at most three verification attempts
-      per original job and six throttled dispatches per attempt, preserving request receipts after
-      lost responses. A terminal verification attempt can be retired only after native completion;
-      no timeout alone releases it. An unreserved attempt can be retired after its six dispatches;
-      its revoked nonce prevents a delayed run from claiming it. A saved report requires completion
-      reconciliation instead of another verification. A retry receipt survives interruption between
-      retirement and fresh capture, and cannot exceed three attempts. A fresh authorized publisher
-      may reconcile a saved report after the original requester loses access, provided the exact
-      verification run is terminal, its execution check succeeded, and native output still matches.
-      Reopening the draft shows the durable recovery state. Extend acceptance, promotion and
-      rollback proof readers to retain recovery provenance. Test nonce/scope substitution, failed
-      original execution, missing acknowledgement, changed output/deployment, duplicate dispatch,
-      lost replies, role revocation and transaction rollback before enabling this path. GitHub's
+      identities. For historical Worker Staging, Builder independently reads Cloudflare's current
+      single version at 100% traffic, checks the exact commit tag and candidate message, and
+      rechecks deployment identity. A dedicated read-only Worker credential remains in 1Password and
+      is provisioned to Builder only; the cloud verification process receives the captured native
+      version ID, never this credential. The live site's version must match that independent
+      capture. Recheck native traffic before finalization. A distinct nonce, OIDC audience,
+      immutable verification workflow, run and check bind the recovery; deployment tokens cannot
+      call verification endpoints or vice versa. The verification runtime has its own reviewed
+      immutable pin and caller blobs; advancing it does not change the original build runtime,
+      captured artifact or deployment callers. Report acknowledgements may retry the same bounded
+      metadata at most three times; this never retries deployment or changes the captured source.
+      The verification job uses read-only repository permissions and no deployment credential,
+      rebuild, Git write or native deployment record. Fetch the retained output manifest by its
+      immutable Git blob identity, check every live output hash and native release identity before
+      and after, then record a signed acknowledgement. A separate finalizer requires the
+      verification execution check to have succeeded and rereads current destination/native
+      evidence. Preserve the original execution conclusion and deployment status; do not relabel a
+      failed deployment check as successful. Only this independently verified recovery proof may
+      reconcile a terminal failed original check. Unrecovered publication continues to require
+      successful native execution. Pending, replaced, changed, unauthorized or incomplete evidence
+      fails closed. Permit at most three verification attempts per original job and six throttled
+      dispatches per attempt, preserving request receipts after lost responses. A terminal
+      verification attempt can be retired only after native completion; no timeout alone releases
+      it. An unreserved attempt can be retired after its six dispatches; its revoked nonce prevents
+      a delayed run from claiming it. A saved report requires completion reconciliation instead of
+      another verification. A retry receipt survives interruption between retirement and fresh
+      capture, and cannot exceed three attempts. A fresh authorized publisher may reconcile a saved
+      report after the original requester loses access, provided the exact verification run is
+      terminal, its execution check succeeded, and native output still matches. Reopening the draft
+      shows the durable recovery state. Extend acceptance, promotion and rollback proof readers to
+      retain recovery provenance. Test nonce/scope substitution, failed original execution, missing
+      acknowledgement, changed output/deployment, duplicate dispatch, lost replies, role revocation
+      and transaction rollback before enabling this path. GitHub's
       <a
         href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
         >deployment: false environment contract</a
@@ -1275,6 +1277,54 @@
         >WebP container specification</a
       >
       for all three valid VP8, VP8L and VP8X headers.
+    </p>
+    <h2>Approved scope amendment: GitHub Pages staging</h2>
+    <p>
+      The PM approved moving PointSite Staging to GitHub Pages and folding that migration into Issue
+      #61. Prefer native sign-in when available; public staging is explicitly accepted as the
+      fallback. PointCommunity currently uses GitHub Free, so the Pages website will be public. This
+      supersedes this specification's earlier staging-host and protected-website assumptions.
+      Builder and its private storage remain on Cloudflare; no homelab migration is included.
+    </p>
+    <p>
+      Reuse the existing production Pages artifact, authorization, deployment and byte-verification
+      flow for staging. Retain the staging GitHub environment and signed identity boundary. New
+      Pages evidence binds the native GitHub deployment, exact candidate and complete output digest.
+      Historical Worker evidence remains readable, but must never prove a new Pages release.
+      Anonymous readers may view published staging content; Builder drafts, sessions and mutation
+      authorization remain private. The staging domain remains https://staging.pointatx.org.
+    </p>
+    <ol>
+      <li>
+        Update the staging workflow and shared runtime, then check signed bootstrap and Pages
+        permissions.
+      </li>
+      <li>
+        Update Builder reporting, approval, promotion and recovery to accept verified Pages staging.
+      </li>
+      <li>
+        Test byte substitution, identity drift, recovery, and publication authority. Run staging npm
+        test, npm run check, and Builder's sequential npm run check, npm run test:performance and
+        npm run test:e2e gates.
+      </li>
+      <li>
+        Pin the tested runtime in existing callers. Release only a complete verified Issue #61
+        candidate. Configure Pages and staging DNS at cutover, preserve rollback evidence, verify
+        HTTPS and all exported bytes, and remove only task-owned test output. Production content
+        publication requires its separate authorization.
+      </li>
+    </ol>
+    <p>
+      Sources:
+      <a
+        href="https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages"
+        >Pages custom workflows</a
+      >
+      and
+      <a
+        href="https://docs.github.com/en/enterprise-cloud@latest/pages/getting-started-with-github-pages/changing-the-visibility-of-your-github-pages-site"
+        >Pages visibility</a
+      >. Implementation and live cutover evidence are pending.
     </p>
   </body>
 </html>

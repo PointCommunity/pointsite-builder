@@ -65,7 +65,10 @@ export async function reconcileCompletedPublication(
   const build = PublicationBuildSchema.parse(JSON.parse(source.build_json));
   const deployment = (
     target === 'staging'
-      ? z.strictObject({ workerVersionId: z.uuid() })
+      ? z.union([
+          z.strictObject({ workerVersionId: z.uuid() }),
+          z.strictObject({ artifactDigest: z.literal(build.artifactDigest) }),
+        ])
       : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) })
   ).parse(JSON.parse(source.deployment_json));
   if (

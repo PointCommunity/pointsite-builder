@@ -278,7 +278,6 @@ export class D1ProductionPublisher {
     if (
       JSON.stringify(PublicationEvidenceSchema.parse(JSON.parse(source.evidence_json))) !==
         JSON.stringify(evidence) ||
-      !evidence.workerVersionId ||
       evidence.runId !== source.run_id ||
       evidence.checkRunId !== source.check_run_id ||
       evidence.dispatchRevision !== source.dispatch_revision ||

@@ -16,9 +16,9 @@ const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
 const steps = [
   ['Private preflight', 'Check one exact saved version without changing Staging.'],
-  ['Publish', 'Create one protected Staging candidate.'],
+  ['Publish', 'Publish one candidate to publicly readable Staging.'],
   ['Verify', 'Follow required quality and deployment checks.'],
-  ['Review', 'Open the protected Staging website.'],
+  ['Review', 'Open the public Staging website.'],
   ['Accept', 'Record the official Staging candidate.'],
 ] as const;
 
@@ -405,7 +405,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <ol className="publish-review-actions" aria-label="Required Staging review actions">
             <li>
               <strong>Open and review Staging</strong>
-              <span>Check the affected pages and interactions in the protected website.</span>
+              <span>Check the affected pages and interactions in the public Staging website.</span>
               <a
                 className="button button--primary"
                 href={snapshot?.reviewUrl}
@@ -417,7 +417,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
             </li>
             <li>
               <strong>Return here and accept it</strong>
-              <span>Accept only after the protected site looks and works as expected.</span>
+              <span>Accept only after the Staging site looks and works as expected.</span>
               <button
                 className="button button--primary"
                 type="button"

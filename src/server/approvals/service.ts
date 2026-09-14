@@ -362,7 +362,6 @@ export class D1ApprovalService {
     const proof = PublicationEvidenceSchema.safeParse(parseJson(row.evidence_json));
     if (
       !proof.success ||
-      !proof.data.workerVersionId ||
       proof.data.runId !== row.run_id ||
       proof.data.checkRunId !== row.check_run_id ||
       proof.data.dispatchRevision !== row.dispatch_revision ||

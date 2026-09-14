@@ -331,7 +331,7 @@ describe('guided Staging publishing', () => {
     const continuation = vi.spyOn(api, 'continueStagingPublication').mockResolvedValue(published);
     const publish = vi.spyOn(api, 'publishStaging');
     renderPublish();
-    expect(await screen.findByText('Publishing to protected Staging')).toBeVisible();
+    expect(await screen.findByText('Publishing to public Staging')).toBeVisible();
     expect(continuation).not.toHaveBeenCalled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);

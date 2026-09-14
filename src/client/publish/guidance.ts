@@ -46,7 +46,7 @@ export function getPublishingNextStep(
             : 'This exact saved revision passed its private check and is ready for Staging.',
         effect:
           lifecycle.step === 1
-            ? 'The private check changes nothing. If it passes and Staging is free, Builder continues with one protected candidate; Production remains unchanged.'
+            ? 'The private check changes nothing. If it passes and Staging is free, Builder publishes one publicly readable candidate; Production remains unchanged.'
             : 'Publishing creates one Staging candidate. It does not change Production.',
         primaryAction:
           lifecycle.step === 1
@@ -65,7 +65,7 @@ export function getPublishingNextStep(
     case 'publishing':
       return {
         title: 'No action needed — publishing is underway',
-        guidance: 'Builder is creating the protected Staging version and will keep checking it.',
+        guidance: 'Builder is creating the public Staging version and will keep checking it.',
         effect: 'You may close this window and return later. Your progress is saved.',
         primaryAction: null,
       };
@@ -143,7 +143,7 @@ export function describeFailedCheck(check: string): { label: string; explanation
     return {
       label: 'Staging update',
       explanation:
-        'Automatic recovery could not confirm that the protected Staging website finished updating.',
+        'Automatic recovery could not confirm that the Staging website finished updating.',
     };
   const safeName = check.trim().slice(0, 80) || 'unknown';
   return {
@@ -186,7 +186,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       return {
         title: 'Staging renderer needs to be synchronized',
         guidance:
-          'Your draft is safe and no candidate was published. Ask a site maintainer to synchronize the protected Staging renderer with Builder, then try again.',
+          'Your draft is safe and no candidate was published. Ask a site maintainer to synchronize the Staging renderer with Builder, then try again.',
       };
     case 'IDEMPOTENCY_CONFLICT':
       return {
@@ -236,7 +236,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       return {
         title: 'Cloud execution has not been confirmed stopped',
         guidance:
-          'The publication stays protected. Wait for the cloud run to finish, then check recovery again.',
+          'The publication is still running. Wait for the cloud run to finish, then check recovery again.',
       };
     case 'PUBLICATION_RECOVERY_CHANGED':
       return {

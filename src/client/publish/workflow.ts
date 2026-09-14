@@ -227,7 +227,7 @@ export function deriveStagingWorkflow(input: {
     return state(
       'publishing',
       2,
-      'Publishing to protected Staging',
+      'Publishing to public Staging',
       captured
         ? revisionChanged
           ? 'The captured version continues in the cloud. Your newer saved edits are separate from this publication.'
@@ -346,7 +346,7 @@ export function deriveStagingWorkflow(input: {
     'review-ready',
     4,
     'Staging is ready for review',
-    'All mandatory evidence passed. Review the protected site, then deliberately accept this exact revision.',
+    'All mandatory evidence passed. Review the public Staging site, then deliberately accept this exact revision.',
     { canRefresh: true, canAccept: true },
   );
 }

@@ -64,8 +64,6 @@ export async function verifyDeploymentProof(
 ) {
   try {
     const input = proofSchema.parse(expected);
-    if (input.target === 'staging' && !input.workerVersionId)
-      throw new Error('Missing Worker identity');
     const staging = input.target === 'staging';
     const repository = `PointCommunity/${staging ? 'pointsite-staging' : 'pointsite'}`;
     const environment = staging ? 'staging' : 'github-pages';
@@ -181,7 +179,9 @@ export async function verifyDeploymentProof(
         candidateChecksum: z.literal(input.candidateChecksum),
         artifactDigest: z.literal(input.artifactDigest),
         workflowRevision: z.literal(input.workflowRevision),
-        ...(staging ? { workerVersionId: z.literal(input.workerVersionId!) } : {}),
+        ...(staging && input.workerVersionId
+          ? { workerVersionId: z.literal(input.workerVersionId) }
+          : {}),
       })
       .parse(await read(`${origin}/__pointsite_release.json`));
     const [after] = z

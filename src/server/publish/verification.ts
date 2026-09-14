@@ -344,9 +344,7 @@ export class D1PublicationVerifier {
       .strictObject({
         artifactDigest: z.literal(source.build.artifactDigest),
         deploymentId: z.literal(source.deploymentId),
-        ...(source.target === 'staging'
-          ? { workerVersionId: z.literal(source.workerVersionId!) }
-          : {}),
+        ...(source.workerVersionId ? { workerVersionId: z.literal(source.workerVersionId) } : {}),
       })
       .parse(value);
     await this.database.batch([
@@ -389,9 +387,7 @@ export class D1PublicationVerifier {
       .strictObject({
         artifactDigest: z.literal(source.build.artifactDigest),
         deploymentId: z.literal(source.deploymentId),
-        ...(source.target === 'staging'
-          ? { workerVersionId: z.literal(source.workerVersionId!) }
-          : {}),
+        ...(source.workerVersionId ? { workerVersionId: z.literal(source.workerVersionId) } : {}),
       })
       .parse(JSON.parse(row.report_json ?? 'null'));
     await guard.first();
@@ -426,7 +422,7 @@ export class D1PublicationVerifier {
         this.request,
         githubToken,
       );
-    if (source.target === 'staging') {
+    if (source.workerVersionId) {
       const native = await verifyStagingDeployment(
         source.build.commitSha,
         source.build.candidateChecksum,
@@ -465,10 +461,9 @@ export class D1PublicationVerifier {
     });
     if (evidence.deploymentId !== source.deploymentId)
       throw new Error('PUBLICATION_VERIFICATION_UNCONFIRMED');
-    const deployment =
-      source.target === 'staging'
-        ? { workerVersionId: source.workerVersionId }
-        : { artifactDigest: source.build.artifactDigest };
+    const deployment = source.workerVersionId
+      ? { workerVersionId: source.workerVersionId }
+      : { artifactDigest: source.build.artifactDigest };
     await this.database.batch([
       guard,
       ...(receipt
@@ -872,18 +867,22 @@ export class D1PublicationVerifier {
       )
       .length(1)
       .parse(await read(`/deployments?environment=${environment}&per_page=1`));
-    const native =
-      input.target === 'staging'
-        ? await verifyStagingDeployment(
-            build.commitSha,
-            build.candidateChecksum,
-            this.nativeReadToken ?? '',
-            this.request,
-          )
-        : undefined;
+    const recordedWorker =
+      input.target === 'staging' &&
+      source.deployment_json !== null &&
+      z.strictObject({ workerVersionId: z.uuid() }).safeParse(JSON.parse(source.deployment_json))
+        .success;
+    const native = recordedWorker
+      ? await verifyStagingDeployment(
+          build.commitSha,
+          build.candidateChecksum,
+          this.nativeReadToken ?? '',
+          this.request,
+        )
+      : undefined;
     if (source.deployment_json !== null) {
-      (input.target === 'staging'
-        ? z.strictObject({ workerVersionId: z.literal(native!.workerVersionId) })
+      (native
+        ? z.strictObject({ workerVersionId: z.literal(native.workerVersionId) })
         : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) })
       ).parse(JSON.parse(source.deployment_json));
     }

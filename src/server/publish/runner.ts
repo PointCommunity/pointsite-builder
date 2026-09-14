@@ -282,10 +282,9 @@ export class D1PublicationRunner {
   async reportDeployment(jobId: string, token: string, value: unknown) {
     const { scope, identity, row } = await this.authenticate(jobId, token);
     const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
-    const deployment =
-      row.target === 'staging'
-        ? z.strictObject({ workerVersionId: z.uuid() }).parse(value)
-        : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) }).parse(value);
+    const deployment = z
+      .strictObject({ artifactDigest: z.literal(build.artifactDigest) })
+      .parse(value);
     if (!row.deploy_authorized_at || row.result_sha !== build.commitSha)
       throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
     await this.database.batch([
@@ -303,11 +302,9 @@ export class D1PublicationRunner {
     try {
       const { scope, identity, row } = await this.authenticate(jobId, token, true);
       const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
-      const deployment = (
-        row.target === 'staging'
-          ? z.strictObject({ workerVersionId: z.uuid() })
-          : z.strictObject({ artifactDigest: z.literal(build.artifactDigest) })
-      ).parse(JSON.parse(row.deployment_json ?? 'null'));
+      const deployment = z
+        .strictObject({ artifactDigest: z.literal(build.artifactDigest) })
+        .parse(JSON.parse(row.deployment_json ?? 'null'));
       if (!row.deploy_authorized_at || row.result_sha !== build.commitSha || !row.check_run_id)
         throw new Error('PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED');
       await this.guard(scope, identity, 'finalize').first();
