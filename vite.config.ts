@@ -4,6 +4,8 @@ import { defineConfig } from 'vite';
 import { execFileSync } from 'node:child_process';
 
 export default defineConfig({
+  // The worker is lazy-loaded; discover its codec before an upload can trigger a reload.
+  optimizeDeps: { include: ['@jsquash/webp/encode'] },
   worker: { format: 'es' },
   define: {
     __BUILDER_SOURCE_REVISION__: JSON.stringify(

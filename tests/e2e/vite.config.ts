@@ -5,6 +5,8 @@ import { defineConfig } from 'vite';
 // Worker: requests arriving during fixture teardown must fail without broadcasting
 // a Worker configuration error to unrelated browser pages through Vite's overlay.
 export default defineConfig({
+  // The worker is lazy-loaded; discover its codec before an upload can trigger a reload.
+  optimizeDeps: { include: ['@jsquash/webp/encode'] },
   worker: { format: 'es' },
   cacheDir: 'node_modules/.vite-e2e',
   plugins: [
