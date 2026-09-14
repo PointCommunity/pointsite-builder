@@ -358,6 +358,14 @@ test('publishes and accepts only exact verified staging while production stays l
   page,
 }) => {
   await page.clock.install();
+  let releaseProductionStatus!: () => void;
+  const productionStatus = new Promise<void>((resolve) => {
+    releaseProductionStatus = resolve;
+  });
+  await page.route('**/api/publish/production/workflow?**', async (route) => {
+    await productionStatus;
+    await route.fulfill({ json: { enabled: false } });
+  });
   const productionWrites: string[] = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
@@ -368,7 +376,11 @@ test('publishes and accepts only exact verified staging while production stays l
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Close publishing window' })).toBeFocused();
+  await expect(page.getByText('Loading Production status…')).toBeVisible();
   await page.keyboard.press('Shift+Tab');
+  await expect(page.getByText('Technical evidence', { exact: true })).toBeFocused();
+  releaseProductionStatus();
+  await expect(page.getByText(/Production publishing is not enabled in Builder yet/)).toBeVisible();
   await expect(
     page
       .getByRole('dialog', { name: 'Publish and accept on Staging' })

@@ -274,7 +274,12 @@ export function ProductionPublish({
       )}
       {error ? <p role="alert">{error}</p> : null}
       {snapshot?.enabled !== false ? (
-        <button className="button" type="button" disabled={busy} onClick={() => void load()}>
+        <button
+          className="button"
+          type="button"
+          disabled={busy || snapshot === undefined}
+          onClick={() => void load()}
+        >
           Check Production status
         </button>
       ) : null}

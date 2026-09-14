@@ -701,6 +701,12 @@
         the failed captured job through the supported workflow. No content commit or deployment
         occurred during either failure.
       </p>
+      <p>
+        Browser qualification also reproduced focus loss when the initial Production status response
+        removes its focused refresh button. Keep that button disabled during initial loading,
+        reproduce the response race with a controlled browser test, and repeat full QA before
+        releasing the combined candidate.
+      </p>
       <dl>
         <dt>Depends on</dt>
         <dd>H18, H24.</dd>
