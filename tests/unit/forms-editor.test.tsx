@@ -23,6 +23,7 @@ it('does not delete a form that is currently used in Layout', () => {
   const forms = structuredClone(SiteDocumentSchema.parse(validSiteDocument).forms);
   const onChange = vi.fn();
   render(<FormsEditor forms={forms} usedFormIds={new Set([forms[0].id])} onChange={onChange} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Form details' }));
 
   const deleteButton = screen.getByRole('button', { name: 'Used in Layout' });
   expect(deleteButton).toBeDisabled();

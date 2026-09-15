@@ -47,10 +47,19 @@ async function installApi(
   role: Role = 'administrator',
   repositoryPermission: 'admin' | 'maintain' | 'write' | 'triage' | 'read' = 'admin',
   configureDocument?: (document: DraftRecord['document']) => void,
+  densityFixture = false,
 ) {
   const draft = original();
   configureDocument?.(draft.document);
   const drafts = [draft];
+  if (densityFixture) {
+    for (let index = 1; index < 8; index++)
+      drafts.push({
+        ...structuredClone(draft),
+        id: crypto.randomUUID(),
+        name: `Sunday update ${index + 1}`,
+      });
+  }
   // Browser interaction fixture only. D1 integration tests prove actual ownership and purge.
   const libraries = new Map<string, LibraryItem[]>();
   const libraryRequests: Array<{
@@ -94,6 +103,15 @@ async function installApi(
           tags: item.tags ?? [],
         })),
       ];
+      if (densityFixture)
+        items.push(
+          ...items.slice(0, 2).map((item) => ({
+            ...item,
+            id: crypto.randomUUID(),
+            displayName: `Archived ${item.displayName}`,
+            archivedAt: owner.createdAt,
+          })),
+        );
       libraries.set(owner.id, items);
     }
     return {
@@ -204,7 +222,16 @@ async function installApi(
       body = created;
       status = 201;
     } else if (path.endsWith('/revisions') && method === 'GET')
-      body = { items: [draft.revision, oldRevision], nextCursor: null };
+      body = {
+        items: densityFixture
+          ? Array.from({ length: 30 }, (_, index) => ({
+              ...oldRevision,
+              id: `revision-${index}`,
+              sequence: 30 - index,
+            }))
+          : [draft.revision, oldRevision],
+        nextCursor: null,
+      };
     else if (path.includes('/revisions/') && method === 'PATCH') {
       const input = request.postDataJSON() as { label: string };
       body = { ...oldRevision, label: input.label };
@@ -505,6 +532,327 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
+test('compact categories and questions preserve edits without navigation revisions', async ({
+  page,
+}) => {
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.locator('.visual-editor iframe')).toBeVisible();
+  for (const panel of ['Blocks', 'Outline', 'Pages', 'Properties']) {
+    await page.getByRole('button', { name: panel, exact: true }).click();
+  }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  for (const category of ['Footer', 'Social', 'Navigation', 'Collections', 'Design', 'Identity']) {
+    await page
+      .getByRole('navigation', { name: 'Settings categories' })
+      .getByRole('button', { name: category, exact: true })
+      .click();
+  }
+  expect(controls.saveRequests).toHaveLength(0);
+  await page.getByLabel('Church name').fill('Compact editing');
+  await page.getByRole('button', { name: 'Footer', exact: true }).click();
+  await page.getByRole('button', { name: 'Identity', exact: true }).click();
+  await expect(page.getByLabel('Church name')).toHaveValue('Compact editing');
+  await expect.poll(() => controls.saveRequests.length).toBe(1);
+  await page.getByLabel('Contact email').filter({ visible: true }).fill('invalid');
+  await page.getByRole('button', { name: 'Design', exact: true }).click();
+  await expect(page.getByLabel('Contact email').filter({ visible: true })).toBeFocused();
+  await page.getByLabel('Contact email').filter({ visible: true }).fill('valid@example.com');
+  await page.getByRole('button', { name: 'Forms', exact: true }).click();
+  await expect(page.locator('.form-field-editor:visible')).toHaveCount(1);
+  const summaries = page.locator('.question-summary');
+  await summaries.last().click();
+  await page.getByLabel('Question or label').filter({ visible: true }).fill('Last question edited');
+  await summaries.first().click();
+  await summaries.last().click();
+  await expect(page.getByLabel('Question or label').filter({ visible: true })).toHaveValue(
+    'Last question edited',
+  );
+  await page.getByRole('button', { name: 'Form details', exact: true }).click();
+  await expect(page.getByLabel('Form name', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Questions', exact: true }).click();
+  await expect(page.getByLabel('Question or label').filter({ visible: true })).toHaveValue(
+    'Last question edited',
+  );
+});
+
+test.describe('compact tablet workspace', () => {
+  test.use({ hasTouch: true });
+  test('fits portrait and landscape fixtures with reachable panels and touch controls', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName === 'firefox', 'Chromium and WebKit provide tablet touch emulation.');
+    test.setTimeout(120_000);
+    const controls = await installApi(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await expect(page.locator('.visual-editor iframe')).toBeVisible();
+    const sizes = [
+      [744, 1133],
+      [810, 1080],
+      [820, 1180],
+      [834, 1194],
+      [834, 1210],
+      [1024, 1366],
+      [1032, 1376],
+    ];
+    for (const portrait of sizes)
+      for (const [width, height] of [portrait, [...portrait].reverse()]) {
+        await page.setViewportSize({ width, height });
+        await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+        await page.getByRole('button', { name: 'Outline', exact: true }).click();
+        await page.getByRole('button', { name: 'Pages', exact: true }).click();
+        await expect(page.getByLabel('Choose page')).toBeVisible();
+        const geometry = await page.evaluate(() => ({
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          top: document.querySelector('.visual-editor iframe')!.getBoundingClientRect().top,
+          targets: [...document.querySelectorAll('.layout-actions button')].map((button) => ({
+            w: button.getBoundingClientRect().width,
+            h: button.getBoundingClientRect().height,
+          })),
+        }));
+        expect(geometry.overflow, `${width}×${height}`).toBe(false);
+        expect(geometry.top, `${width}×${height} chrome`).toBeLessThanOrEqual(128);
+        for (const target of geometry.targets) {
+          expect(target.w).toBeGreaterThanOrEqual(44);
+          expect(target.h).toBeGreaterThanOrEqual(44);
+        }
+      }
+    expect(controls.saveRequests).toHaveLength(0);
+  });
+
+  test('keeps touch canvas handles and selected properties reachable after rotation', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName === 'firefox', 'Chromium and WebKit provide tablet touch emulation.');
+    const controls = await installApi(page);
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    const canvas = page.locator('.visual-editor iframe').contentFrame();
+    await canvas.locator('.home-hero h1').click();
+    await expect(page.getByLabel('Heading').filter({ visible: true })).toBeVisible();
+    const handle = canvas.getByRole('button', { name: 'Resize Hero heading width', exact: true });
+    const target = await handle.boundingBox();
+    expect(target!.width).toBeGreaterThanOrEqual(43.9);
+    expect(target!.height).toBeGreaterThanOrEqual(43.9);
+    expect(
+      await handle.evaluate((element) => {
+        const frame = element.ownerDocument.defaultView!.frameElement!;
+        return (
+          (parseFloat(getComputedStyle(element).fontSize) * frame.getBoundingClientRect().width) /
+          frame.clientWidth
+        );
+      }),
+    ).toBeGreaterThanOrEqual(13.99);
+    await page.getByLabel('Heading').filter({ visible: true }).fill('Rotate while editing');
+    await page.setViewportSize({ width: 1180, height: 820 });
+    await expect(page.getByLabel('Heading').filter({ visible: true })).toHaveValue(
+      'Rotate while editing',
+    );
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await expect(page.getByLabel('Heading').filter({ visible: true })).toHaveValue(
+      'Rotate while editing',
+    );
+    await expect.poll(() => controls.saveRequests.length).toBe(1);
+    await page.getByLabel('Editor section', { exact: true }).selectOption({ label: 'Forms' });
+    await page.getByRole('button', { name: 'Add field', exact: true }).click();
+    await expect(page.getByLabel('Question or label').filter({ visible: true })).toBeFocused();
+    await page.getByRole('button', { name: 'Duplicate field', exact: true }).click();
+    await expect(page.getByLabel('Question or label').filter({ visible: true })).toBeFocused();
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page.getByLabel('Question or label').filter({ visible: true })).toBeFocused();
+  });
+});
+
+test('compact desktop chrome meets its budget across supported sizes', async ({ page }) => {
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  for (const [width, height] of [
+    [1280, 720],
+    [1440, 900],
+    [1920, 1080],
+    [2560, 1440],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect
+      .poll(async () => (await page.locator('.visual-editor iframe').boundingBox())?.y ?? Infinity)
+      .toBeLessThanOrEqual(112);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  expect(controls.saveRequests).toHaveLength(0);
+});
+
+test('compact workspace density measurements', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  test.skip(!process.env.BUILDER_DENSITY_MEASURE, 'Opt-in matched baseline/candidate measurements');
+  await page.route('https://example.com/fixture-*.png', (route) =>
+    route.fulfill({ contentType: 'image/png', body: previewPng }),
+  );
+  await installApi(
+    page,
+    'administrator',
+    'admin',
+    (document) => {
+      const originalMedia = document.media;
+      document.media = Array.from({ length: 20 }, (_, index) => ({
+        ...structuredClone(originalMedia[index % originalMedia.length]),
+        id: index < originalMedia.length ? originalMedia[index].id : crypto.randomUUID(),
+      }));
+      document.linkedMedia = Array.from({ length: 4 }, (_, index) => ({
+        id: crypto.randomUUID(),
+        type: index % 2 ? ('image' as const) : ('video' as const),
+        url: `https://example.com/fixture-${index}.${index % 2 ? 'png' : 'mp4'}`,
+        displayName: `Linked fixture ${index + 1}`,
+        alternativeText: 'Synthetic Library example',
+        tags: [],
+      }));
+      const originalBlocks = structuredClone(document.pages[0].blocks);
+      while (document.pages[0].blocks.length < 12) {
+        const copy = structuredClone(
+          originalBlocks[document.pages[0].blocks.length % originalBlocks.length],
+        );
+        copy.id = crypto.randomUUID();
+        copy.items = copy.items.map((item) => ({
+          ...item,
+          id: crypto.randomUUID(),
+          element: { ...item.element, id: crypto.randomUUID() },
+        }));
+        document.pages[0].blocks.push(copy);
+      }
+      const form = document.forms[0];
+      const types = [
+        'text',
+        'textarea',
+        'email',
+        'tel',
+        'url',
+        'number',
+        'date',
+        'time',
+        'select',
+        'radio',
+        'checkbox',
+        'text',
+      ] as const;
+      form.fields = types.map((type, index) => ({
+        ...structuredClone(form.fields[0]),
+        id: crypto.randomUUID(),
+        name: `question${index}`,
+        label: `Question ${index + 1}`,
+        type,
+        required: index % 2 === 0,
+        options: ['select', 'radio', 'checkbox'].includes(type) ? ['First', 'Second'] : undefined,
+      }));
+    },
+    true,
+  );
+  const measurements: Array<Record<string, unknown>> = [];
+  for (const [width, height] of [
+    [1440, 900],
+    [820, 1180],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Open editor' })).toHaveCount(8);
+    const measure = async (surface: string) => {
+      const dimensions = await page.evaluate(() => {
+        const rect = (selector: string) => {
+          const el = document.querySelector(selector);
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          return {
+            top: b.top,
+            width: b.width,
+            height: b.height,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          };
+        };
+        return {
+          header: rect('.editor-header'),
+          tabs: rect('.editor-tabs'),
+          canvas: rect('.visual-editor iframe'),
+          content: rect('#main-content'),
+          drafts: rect('.drafts-panel'),
+          fields: rect('.form-fields-list'),
+          settings: rect('.settings-panel'),
+        };
+      });
+      measurements.push({ width, height, surface, ...dimensions });
+      await page.screenshot({ path: testInfo.outputPath(`${width}-${surface}.png`) });
+    };
+    await measure('Drafts');
+    await page.getByRole('button', { name: 'Open editor' }).first().click();
+    await expect(page.locator('.visual-editor iframe')).toBeVisible();
+    await measure('Layout');
+    for (const surface of ['Forms', 'Settings', 'Library', 'History', 'Admin']) {
+      if (width <= 1100 && process.env.BUILDER_DENSITY_MEASURE !== 'baseline')
+        await page.getByLabel('Editor section', { exact: true }).selectOption({ label: surface });
+      else await page.getByRole('button', { name: surface, exact: true }).click();
+      await expect(page.locator('#main-content')).toBeVisible();
+      if (surface === 'Library') await expect(page.locator('.library-item')).toHaveCount(24);
+      if (surface === 'History')
+        await expect(page.locator('.revision-panel ol > li')).toHaveCount(30);
+      if (surface === 'Admin') {
+        await expect(page.getByRole('heading', { name: 'Capacity', exact: true })).toBeVisible();
+        await expect(page.locator('.admin-card tbody tr')).toHaveCount(2);
+      }
+      await measure(surface);
+      if (surface === 'Forms' && process.env.BUILDER_DENSITY_MEASURE !== 'baseline') {
+        for (const question of await page.locator('.question-summary').all()) {
+          await question.click();
+          await expect(page.locator('.form-field-editor:visible')).toHaveCount(1);
+          const type = await page
+            .getByRole('combobox', { name: 'Answer type', exact: true })
+            .filter({ visible: true })
+            .inputValue();
+          if (['select', 'radio', 'checkbox'].includes(type))
+            await expect(
+              page.getByLabel('Choices (one per line)').filter({ visible: true }),
+            ).toHaveValue('First\nSecond');
+        }
+      }
+      if (surface === 'Library') {
+        await page.getByRole('button', { name: 'Archived items (2)', exact: true }).click();
+        await expect(page.locator('.library-item')).toHaveCount(2);
+        await measure('Archived-Library');
+        await page.getByRole('button', { name: 'Back to Library', exact: true }).click();
+      }
+    }
+    await page.getByRole('button', { name: '← All drafts' }).click();
+    await expect(page.getByRole('button', { name: 'Open editor' })).toHaveCount(8);
+  }
+  await testInfo.attach('density-measurements', {
+    body: JSON.stringify(measurements, null, 2),
+    contentType: 'application/json',
+  });
+  console.log('DENSITY_MEASUREMENTS', JSON.stringify(measurements));
+});
+
+test('keeps authoring controls reachable with text enlarged to 200 percent', async ({ page }) => {
+  const controls = await installApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+  for (const section of ['Settings', 'Forms', 'Library', 'History', 'Admin', 'Layout']) {
+    await page.getByRole('button', { name: section, exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await page.getByRole('button', { name: 'Properties', exact: true }).focus();
+  await expect(page.getByRole('button', { name: 'Properties', exact: true })).toBeInViewport();
+  expect(controls.saveRequests).toHaveLength(0);
+});
+
 test('preserves People image layouts through undo, redo, reload and preview', async ({ page }) => {
   const controls = await installApi(page);
   await page.goto('/');
@@ -525,9 +873,9 @@ test('preserves People image layouts through undo, redo, reload and preview', as
       .map((item) => item.element)
       .find((item) => item.type === 'people')!;
   const selections = savedPeople().personIds;
-  await page.getByRole('button', { name: 'undo', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(canvas.locator('.people-grid--horizontal')).toHaveCount(0);
-  await page.getByRole('button', { name: 'redo', exact: true }).click();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect(canvas.locator('.people-grid--horizontal')).toBeVisible();
   await expect.poll(() => savedPeople().variant).toBe('horizontal');
   await page.reload();
@@ -1119,6 +1467,7 @@ test('operates page modules by keyboard and announces the result', async ({ page
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   await expect(canvas.locator('.home-hero')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Outline', exact: true }).click();
   const duplicate = page.getByRole('button', { name: /Duplicate hero section/i }).first();
   await duplicate.focus();
   await page.keyboard.press('Enter');
@@ -1126,6 +1475,7 @@ test('operates page modules by keyboard and announces the result', async ({ page
     /hero section duplicated/i,
   );
   await expect(page.getByRole('button', { name: /Duplicate hero section/i })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /Duplicate hero section/i }).first()).toBeFocused();
   await expect(canvas.locator('.home-hero')).toHaveCount(2);
 });
 
@@ -1198,8 +1548,12 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
   await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
   let canvas = page.locator('.visual-editor iframe').contentFrame();
 
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hero', exact: true })).toBeVisible();
-  await expect(page.getByText('Page hero', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Outline', exact: true }).click();
+  await expect(
+    page.locator('.structure-panel').getByText('Page hero', { exact: true }),
+  ).toBeVisible();
   await expect(canvas.locator('.page-hero')).toHaveCount(1);
   expect(
     await canvas.locator('.page-hero').evaluate((element) => ({
@@ -1252,6 +1606,7 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
     await page.waitForTimeout(250);
     await page.mouse.up();
   };
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await drag(
     page.getByRole('button', { name: 'Blank', exact: true }),
     canvas.locator('section[aria-label="Site header"]'),
@@ -1616,7 +1971,7 @@ test('preserves the latest resize when Undo precedes the history timer', async (
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await handle.press('ArrowLeft');
   await expect.poll(() => controls.saveRequests.length).toBe(2);
-  await page.getByRole('button', { name: 'undo', exact: true }).dispatchEvent('click');
+  await page.getByRole('button', { name: 'Undo', exact: true }).dispatchEvent('click');
   await page.clock.runFor(500);
   await expect.poll(() => controls.saveRequests.length).toBe(3);
   const width = () =>
@@ -1627,8 +1982,8 @@ test('preserves the latest resize when Undo precedes the history timer', async (
       .map((item) => item.element)
       .find((element) => element.type === 'hero')?.headingWidth.desktop;
   expect(width()).toBe(95);
-  await expect(page.getByRole('button', { name: 'redo', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'redo', exact: true }).dispatchEvent('click');
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Redo', exact: true }).dispatchEvent('click');
   await page.clock.runFor(500);
   await expect.poll(() => controls.saveRequests.length).toBe(4);
   expect(width()).toBe(90);
@@ -2013,12 +2368,14 @@ test('keeps every authoring pane independently scrollable without page scrolling
       return null;
     });
 
+  const pageMetrics = await scrollContainer(page.locator('.page-workspace'));
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const catalogMetrics = await scrollContainer(
+    page.getByRole('button', { name: 'Spacer', exact: true }),
+  );
   for (const [name, metrics] of [
-    ['page manager', await scrollContainer(page.locator('.content-workspace > aside'))],
-    [
-      'module catalog',
-      await scrollContainer(page.getByRole('button', { name: 'Spacer', exact: true })),
-    ],
+    ['page manager', pageMetrics],
+    ['module catalog', catalogMetrics],
     ['inspector', await scrollContainer(page.locator('.block-inspector').last())],
   ] as const) {
     expect(metrics, `${name} scroll container`).not.toBeNull();
@@ -2125,6 +2482,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const autosave = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
 
   const drag = async (
@@ -2135,8 +2493,19 @@ test('builds a standardized section by dragging an element from the toybox', asy
   ) => {
     await source.scrollIntoViewIfNeeded();
     await target.scrollIntoViewIfNeeded();
+    const visibleTarget = async () => {
+      const targetBox = await target.boundingBox();
+      const frameBox = await page.locator('.visual-editor iframe').boundingBox();
+      if (!targetBox || !frameBox) return null;
+      const y = Math.max(targetBox.y, frameBox.y);
+      return {
+        ...targetBox,
+        y,
+        height: Math.min(targetBox.y + targetBox.height, frameBox.y + frameBox.height) - y,
+      };
+    };
     const from = await source.boundingBox();
-    const to = await target.boundingBox();
+    const to = await visibleTarget();
     expect(from).not.toBeNull();
     expect(to).not.toBeNull();
     await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
@@ -2151,7 +2520,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
         steps: 16,
       },
     );
-    const settledTarget = await target.boundingBox();
+    const settledTarget = await visibleTarget();
     expect(settledTarget).not.toBeNull();
     await page.mouse.move(
       settledTarget!.x + settledTarget!.width * targetXRatio,
@@ -2178,6 +2547,14 @@ test('builds a standardized section by dragging an element from the toybox', asy
       expect(foundValid, 'an unoccupied grid target must be available').toBe(true);
     }
     await page.waitForTimeout(250);
+    if (await phantom.count()) {
+      const finalTarget = await visibleTarget();
+      expect(finalTarget).not.toBeNull();
+      await page.mouse.move(
+        finalTarget!.x + finalTarget!.width * targetXRatio,
+        finalTarget!.y + finalTarget!.height / 2,
+      );
+    }
     await page.mouse.up();
   };
 
@@ -2325,8 +2702,8 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await canvas.locator('body').dispatchEvent('pointerup', { pointerId: 1 });
   await expect(sectionSlot).toHaveCSS('background-image', 'none');
 
-  await page.getByText('Blocks', { exact: true }).last().click();
-  await page.getByRole('button', { name: 'Toggle left sidebar' }).click();
+  const blocksToggle = page.getByRole('button', { name: 'Blocks', exact: true });
+  if ((await blocksToggle.getAttribute('aria-pressed')) !== 'true') await blocksToggle.click();
   await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
   await drag(
     page.getByRole('button', { name: 'Two Columns', exact: true }),
@@ -2357,6 +2734,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   await page.getByLabel('desktop row').last().fill('1');
   imageColumn = 7;
   imageRow = 1;
+  const imageRowSpan = Number(await page.getByLabel('desktop height in rows').last().inputValue());
   const inspector = page.locator('.block-inspector').last();
   await expect(page.getByLabel('desktop width in columns').last()).toHaveValue('6');
   const inspectorOverflow = await inspector.evaluate((element) => ({
@@ -2365,7 +2743,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   }));
   expect(inspectorOverflow.scrollWidth).toBeLessThanOrEqual(inspectorOverflow.clientWidth);
 
-  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot, true, 0.05);
+  await drag(page.getByRole('button', { name: 'Button', exact: true }), twoColumnSlot, false, 0.05);
   const atomicButton = twoColumn.getByRole('link', { name: 'Learn more', exact: true });
   await expect(atomicButton).toBeVisible();
   await canvas.getByRole('button', { name: 'Move button on desktop grid' }).focus();
@@ -2383,6 +2761,7 @@ test('builds a standardized section by dragging an element from the toybox', asy
   const buttonColumn = placementInspector.getByLabel('desktop column');
   const buttonRow = placementInspector.getByLabel('desktop row');
   await expect(placementInspector).toHaveAttribute('data-occupied-elements', '1');
+  await buttonRow.fill(String(imageRow + imageRowSpan + 1));
   await buttonColumn.fill(String(imageColumn));
   const previousButtonRow = await buttonRow.inputValue();
   await buttonRow.fill(String(imageRow));
@@ -2431,6 +2810,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sections' })).toBeVisible();
 
   for (const name of ['Blank', 'Two Columns', 'Three Columns', 'Full-Width']) {
@@ -2461,6 +2841,7 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   const dragInto = async (
     source: ReturnType<typeof page.locator>,
@@ -2593,6 +2974,7 @@ test('ships the logo and menu as independently editable grid elements', async ({
   await expect(canvas.locator('section[aria-label="Site header"]')).toBeVisible();
   await expect(canvas.getByRole('img', { name: 'Point Community Church' })).toBeVisible();
   await expect(canvas.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
 
   await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
@@ -2790,6 +3172,7 @@ test('attributes completed actions across Forms, Library, and whole-site setting
     { category: 'text-edit', context: 'site-settings' },
   );
 
+  await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   const navigationLabel = page
     .getByRole('group', { name: 'About' })
     .getByLabel('Label', { exact: true })
@@ -2802,11 +3185,13 @@ test('attributes completed actions across Forms, Library, and whole-site setting
     { category: 'text-edit', context: 'navigation' },
   );
 
+  await page.getByRole('button', { name: 'Collections', exact: true }).click();
   await expectAction(() => page.getByRole('button', { name: 'Add person' }).click(), {
     category: 'add',
     context: 'collections',
   });
 
+  await page.getByRole('button', { name: 'Design', exact: true }).click();
   await expectAction(() => page.getByLabel('Heading typeface').selectOption('serif'), {
     category: 'control-change',
     context: 'theme',
@@ -2942,9 +3327,11 @@ test('builds a form and places linked YouTube media without code', async ({
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Forms' }).click();
   await page.getByRole('button', { name: 'New form' }).click();
+  await page.getByRole('button', { name: 'Form details', exact: true }).click();
   await page.getByLabel('Heading').fill('Plan a visit');
+  await page.getByRole('button', { name: 'Questions', exact: true }).click();
   await page.getByRole('button', { name: 'Add field' }).click();
-  await expect(page.getByText('2. New field')).toBeVisible();
+  await expect(page.locator('.question-summary').filter({ hasText: '2. New field' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Library' }).click();
   await page.getByRole('button', { name: 'Add linked media' }).click();
@@ -2982,6 +3369,7 @@ test('builds a form and places linked YouTube media without code', async ({
     await page.waitForTimeout(250);
     await page.mouse.up();
   };
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   const sectionBaseline = controls.saveRequests.length;
   await drag(
     page.getByRole('button', { name: 'Blank', exact: true }),

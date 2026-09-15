@@ -1,5 +1,6 @@
 import {
   Puck,
+  legacySideBarPlugin,
   type ComponentData,
   type Config,
   type Data,
@@ -45,6 +46,7 @@ import { SectionInspector, type SectionSettings } from './SectionInspector';
 import { draftDisplayDocument } from '../media/draft-display-document';
 import { useEditorDocument, type useEditor } from './EditorProvider';
 import { usePointPuck } from './puck-store';
+import { CompactEditorHeader, EditorPagePanel, EditorPanelsProvider } from './EditorPanels';
 import { useGridInteraction } from './grid-interaction-store';
 import { mutationForContext } from './action-attribution';
 import { consumePuckActionIntent, setPuckActionIntent } from './puck-action-intent';
@@ -276,8 +278,9 @@ const editorDnd = { behavior: 'auto' as const };
 const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
 const editorOverrides = {
   componentOverlay: GridOverlay,
-  headerActions: () => <></>,
+  header: CompactEditorHeader,
 };
+const editorPlugins = [{ ...legacySideBarPlugin(), render: EditorPagePanel }];
 
 let lastGridPointer:
   | {
@@ -670,13 +673,29 @@ function SectionComponent({
 }
 
 function CanvasBreakpointReporter() {
+  const marker = useRef<HTMLSpanElement>(null);
   const width = usePointPuck((state) => state.appState.ui.viewports.current.width);
   const data = usePointPuck((state) => state.appState.data);
   useEffect(() => rememberPuckData(data), [data]);
   useEffect(() => {
     if (typeof width === 'number') setGridBreakpoint(breakpointForWidth(width));
   }, [width]);
-  return null;
+  useLayoutEffect(() => {
+    const canvasDocument = marker.current?.ownerDocument;
+    const frame = canvasDocument?.defaultView?.frameElement;
+    const canvasRoot = frame?.closest<HTMLElement>('#puck-canvas-root');
+    if (!canvasDocument || !canvasRoot) return;
+    const updateTargetSize = () => {
+      const scale = new DOMMatrixReadOnly(canvasRoot.style.transform).a || 1;
+      canvasDocument.documentElement.style.setProperty('--point-touch-target', `${44 / scale}px`);
+      canvasDocument.documentElement.style.setProperty('--point-touch-font', `${14 / scale}px`);
+    };
+    updateTargetSize();
+    const observer = new MutationObserver(updateTargetSize);
+    observer.observe(canvasRoot, { attributes: true, attributeFilter: ['style'] });
+    return () => observer.disconnect();
+  }, []);
+  return <span ref={marker} hidden />;
 }
 
 function DrawerDragReporter() {
@@ -843,11 +862,17 @@ function VisualEditorImpl({
   pageId,
   structureRevision,
   onEditFooter,
+  onPageIdChange,
+  onStructureChange,
+  toolbar,
 }: {
   draftId: string;
   pageId: string;
   structureRevision: number;
   onEditFooter: () => void;
+  onPageIdChange: (id: string) => void;
+  onStructureChange: () => void;
+  toolbar: HTMLElement | null;
 }) {
   const { document, updateDocument, stageDocument, completeDocument } = useEditorDocument();
   const displayDocument = useMemo(
@@ -855,6 +880,15 @@ function VisualEditorImpl({
     [document, draftId],
   );
   const [interactionRevision, setInteractionRevision] = useState(0);
+  const [touchWorkspace, setTouchWorkspace] = useState(
+    () => window.matchMedia('(pointer: coarse)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(pointer: coarse)');
+    const update = () => setTouchWorkspace(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const page = document.pages.find((candidate) => candidate.id === pageId);
   const data = useMemo<Data>(
     () => ({ content: (page?.blocks ?? []).map(sectionToData), root: { props: {} } }),
@@ -1137,69 +1171,81 @@ function VisualEditorImpl({
       }}
     >
       <DrawerDragReporter />
-      <Puck
-        key={`${page.id}:${structureRevision}:${interactionRevision}`}
-        config={config}
-        data={data}
-        dnd={editorDnd}
-        overrides={editorOverrides}
-        onAction={(action: PuckAction, nextState) => {
-          if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
-          const rejectedInsert =
-            (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
-            (action.type === 'replace' && action.data.props.gridDropRejected === true);
-          if (rejectedInsert) {
-            setGridDropIntent(null);
-            queueMicrotask(() => setInteractionRevision((value) => value + 1));
-            return;
-          }
-          const explicit = consumePuckActionIntent();
-          if (action.type === 'setData' || (action.type === 'set' && !explicit)) return;
-          let mutation: ReturnType<typeof mutationForContext> & { transient?: boolean };
-          if (explicit) {
-            mutation = explicit;
-          } else if (action.recordHistory === false) {
-            mutation = {
-              category: 'control-change',
-              context: 'page-content',
-              transient: true,
-            };
-          } else if (action.type === 'insert')
-            mutation = { category: 'add', context: 'page-content' };
-          else if (action.type === 'duplicate')
-            mutation = { category: 'duplicate', context: 'page-content' };
-          else if (action.type === 'remove')
-            mutation = { category: 'remove', context: 'page-content' };
-          else if (action.type === 'reorder')
-            mutation = { category: 'reorder', context: 'page-content' };
-          else if (action.type === 'move') mutation = { category: 'move', context: 'page-content' };
-          else if (action.type === 'replace') {
-            const context = sectionTypes.includes(action.data.type as (typeof sectionTypes)[number])
-              ? 'section-settings'
-              : 'element-settings';
-            mutation = mutationForContext(context, undefined);
-          } else {
-            mutation = mutationForContext('page-content');
-          }
+      <EditorPanelsProvider
+        pageId={pageId}
+        onPageIdChange={onPageIdChange}
+        onStructureChange={onStructureChange}
+        toolbar={toolbar}
+      >
+        <Puck
+          key={`${page.id}:${structureRevision}:${interactionRevision}`}
+          config={config}
+          data={data}
+          dnd={editorDnd}
+          overrides={editorOverrides}
+          plugins={editorPlugins}
+          _experimentalFullScreenCanvas={touchWorkspace}
+          onAction={(action: PuckAction, nextState) => {
+            if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
+            const rejectedInsert =
+              (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
+              (action.type === 'replace' && action.data.props.gridDropRejected === true);
+            if (rejectedInsert) {
+              setGridDropIntent(null);
+              queueMicrotask(() => setInteractionRevision((value) => value + 1));
+              return;
+            }
+            const explicit = consumePuckActionIntent();
+            if (action.type === 'setData' || (action.type === 'set' && !explicit)) return;
+            let mutation: ReturnType<typeof mutationForContext> & { transient?: boolean };
+            if (explicit) {
+              mutation = explicit;
+            } else if (action.recordHistory === false) {
+              mutation = {
+                category: 'control-change',
+                context: 'page-content',
+                transient: true,
+              };
+            } else if (action.type === 'insert')
+              mutation = { category: 'add', context: 'page-content' };
+            else if (action.type === 'duplicate')
+              mutation = { category: 'duplicate', context: 'page-content' };
+            else if (action.type === 'remove')
+              mutation = { category: 'remove', context: 'page-content' };
+            else if (action.type === 'reorder')
+              mutation = { category: 'reorder', context: 'page-content' };
+            else if (action.type === 'move')
+              mutation = { category: 'move', context: 'page-content' };
+            else if (action.type === 'replace') {
+              const context = sectionTypes.includes(
+                action.data.type as (typeof sectionTypes)[number],
+              )
+                ? 'section-settings'
+                : 'element-settings';
+              mutation = mutationForContext(context, undefined);
+            } else {
+              mutation = mutationForContext('page-content');
+            }
 
-          const sections = nextState.data.content.map((item) =>
-            sectionTypes.includes(item.type as (typeof sectionTypes)[number])
-              ? dataToSection(item)
-              : rootElementToSection(item),
-          );
-          const changed = structuredClone(document);
-          const target = changed.pages.find((candidate) => candidate.id === pageId);
-          if (target) target.blocks = sections;
-          queueMicrotask(() => {
-            if (mutation.transient) stageDocument(changed, mutation);
-            else completeDocument(changed, mutation);
-          });
-        }}
-        onPublish={undefined}
-        headerTitle={page.title}
-        viewports={editorViewports}
-        iframe={editorIframe}
-      />
+            const sections = nextState.data.content.map((item) =>
+              sectionTypes.includes(item.type as (typeof sectionTypes)[number])
+                ? dataToSection(item)
+                : rootElementToSection(item),
+            );
+            const changed = structuredClone(document);
+            const target = changed.pages.find((candidate) => candidate.id === pageId);
+            if (target) target.blocks = sections;
+            queueMicrotask(() => {
+              if (mutation.transient) stageDocument(changed, mutation);
+              else completeDocument(changed, mutation);
+            });
+          }}
+          onPublish={undefined}
+          headerTitle={page.title}
+          viewports={editorViewports}
+          iframe={editorIframe}
+        />
+      </EditorPanelsProvider>
     </div>
   );
 }

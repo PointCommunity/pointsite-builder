@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
 
 type Form = SiteDocument['forms'][number];
@@ -56,8 +56,33 @@ export function FormsEditor({
   onChange: (forms: Form[]) => void;
 }) {
   const [selectedId, setSelectedId] = useState(forms[0]?.id ?? '');
+  const [group, setGroup] = useState<'questions' | 'details'>('questions');
+  const [fieldId, setFieldId] = useState('');
+  const root = useRef<HTMLElement>(null);
+  const focusField = useRef(false);
   const selectedIndex = forms.findIndex((form) => form.id === selectedId);
   const selected = forms[selectedIndex];
+  const selectedFieldId = selected?.fields.some((field) => field.id === fieldId)
+    ? fieldId
+    : selected?.fields[0]?.id;
+  useLayoutEffect(() => {
+    if (!focusField.current) return;
+    root.current
+      ?.querySelector<HTMLInputElement>('.form-field-editor:not([hidden]) input')
+      ?.focus();
+    focusField.current = false;
+  }, [selectedFieldId]);
+  const navigate = (action: () => void) => {
+    const invalid = Array.from(
+      root.current?.querySelectorAll<HTMLInputElement>(':invalid') ?? [],
+    ).find((field) => !field.closest('[hidden]'));
+    if (invalid) {
+      invalid.reportValidity();
+      invalid.focus();
+      return;
+    }
+    action();
+  };
   const updateForm = (change: (form: Form) => void) => {
     if (selectedIndex < 0) return;
     const next = structuredClone(forms);
@@ -75,7 +100,17 @@ export function FormsEditor({
     });
 
   return (
-    <section className="forms-workspace" aria-labelledby="forms-title">
+    <section
+      className="forms-workspace"
+      aria-labelledby="forms-title"
+      ref={root}
+      onInvalidCapture={(event) => {
+        const target = event.target as HTMLElement;
+        setGroup(target.closest('[data-form-group="details"]') ? 'details' : 'questions');
+        const field = target.closest<HTMLElement>('[data-form-field]');
+        if (field) setFieldId(field.dataset.formField!);
+      }}
+    >
       <header className="section-heading">
         <div>
           <p className="eyebrow">No-code form builder</p>
@@ -109,7 +144,7 @@ export function FormsEditor({
                 key={form.id}
                 type="button"
                 aria-current={selectedId === form.id ? 'true' : undefined}
-                onClick={() => setSelectedId(form.id)}
+                onClick={() => navigate(() => setSelectedId(form.id))}
               >
                 <strong>{form.name}</strong>
                 <span>
@@ -121,7 +156,30 @@ export function FormsEditor({
         </aside>
         {selected ? (
           <div className="form-designer">
-            <section className="settings-section" aria-labelledby="form-basics-title">
+            <nav className="category-navigation" aria-label="Form sections">
+              <button
+                type="button"
+                className="button"
+                aria-pressed={group === 'questions'}
+                onClick={() => navigate(() => setGroup('questions'))}
+              >
+                Questions
+              </button>
+              <button
+                type="button"
+                className="button"
+                aria-pressed={group === 'details'}
+                onClick={() => navigate(() => setGroup('details'))}
+              >
+                Form details
+              </button>
+            </nav>
+            <section
+              data-form-group="details"
+              hidden={group !== 'details'}
+              className="settings-section"
+              aria-labelledby="form-basics-title"
+            >
               <div className="settings-heading">
                 <div>
                   <h3 id="form-basics-title">Form details</h3>
@@ -285,7 +343,12 @@ export function FormsEditor({
                 </label>
               </div>
             </section>
-            <section className="settings-section" aria-labelledby="fields-title">
+            <section
+              data-form-group="questions"
+              hidden={group !== 'questions'}
+              className="settings-section"
+              aria-labelledby="fields-title"
+            >
               <div className="settings-heading">
                 <div>
                   <h3 id="fields-title">Questions and fields</h3>
@@ -295,170 +358,208 @@ export function FormsEditor({
                   type="button"
                   className="button button--primary"
                   disabled={selected.fields.length >= 30}
-                  onClick={() =>
+                  onClick={() => {
+                    const field = newField(selected.fields.length + 1);
                     updateForm((form) => {
-                      form.fields.push(newField(form.fields.length + 1));
-                    })
-                  }
+                      form.fields.push(field);
+                    });
+                    setFieldId(field.id);
+                    focusField.current = true;
+                  }}
                 >
                   Add field
                 </button>
               </div>
-              <div className="form-fields-list">
-                {selected.fields.map((field, index) => (
-                  <fieldset className="form-field-editor" key={field.id}>
-                    <legend>
-                      {index + 1}. {field.label}
-                    </legend>
-                    <div className="field-grid">
-                      <label>
-                        <span>Question or label</span>
-                        <input
-                          required
-                          value={field.label}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              target.label = event.target.value;
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>Answer type</span>
-                        <select
-                          value={field.type}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              const type = event.target.value as FormField['type'];
-                              target.type = type;
-                              target.options = optionTypes.has(type)
-                                ? (target.options ?? ['Option 1'])
-                                : undefined;
-                            })
-                          }
-                        >
-                          {fieldTypes.map((type) => (
-                            <option key={type.value} value={type.value}>
-                              {type.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Placeholder example</span>
-                        <input
-                          value={field.placeholder ?? ''}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              target.placeholder = event.target.value || undefined;
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>Width</span>
-                        <select
-                          value={field.width}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              target.width = event.target.value as FormField['width'];
-                            })
-                          }
-                        >
-                          <option value="full">Full row</option>
-                          <option value="half">Half row</option>
-                        </select>
-                      </label>
-                      <label className="field-wide">
-                        <span>Helpful instructions</span>
-                        <input
-                          value={field.helpText ?? ''}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              target.helpText = event.target.value || undefined;
-                            })
-                          }
-                        />
-                      </label>
-                      {optionTypes.has(field.type) ? (
-                        <label className="field-wide">
-                          <span>Choices (one per line)</span>
-                          <textarea
-                            value={field.options?.join('\n') ?? ''}
+              <div className="question-workspace">
+                <div className="form-fields-list" aria-label="Question list">
+                  {selected.fields.map((field, index) => (
+                    <button
+                      type="button"
+                      className="question-summary"
+                      key={field.id}
+                      aria-pressed={selectedFieldId === field.id}
+                      onClick={() => navigate(() => setFieldId(field.id))}
+                    >
+                      <strong>
+                        {index + 1}. {field.label || 'Untitled question'}
+                      </strong>
+                      <span>
+                        {fieldTypes.find((type) => type.value === field.type)?.label}
+                        {field.required ? ' · Required' : ' · Optional'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="form-field-properties">
+                  {selected.fields.map((field, index) => (
+                    <fieldset
+                      data-form-field={field.id}
+                      hidden={selectedFieldId !== field.id}
+                      className="form-field-editor"
+                      key={field.id}
+                    >
+                      <legend>
+                        {index + 1}. {field.label}
+                      </legend>
+                      <div className="field-grid">
+                        <label>
+                          <span>Question or label</span>
+                          <input
+                            required
+                            value={field.label}
                             onChange={(event) =>
                               updateField(index, (target) => {
-                                target.options = event.target.value
-                                  .split('\n')
-                                  .map((item) => item.trim())
-                                  .filter(Boolean);
+                                target.label = event.target.value;
                               })
                             }
                           />
                         </label>
-                      ) : null}
-                      <label className="checkbox-field">
-                        <input
-                          type="checkbox"
-                          checked={field.required}
-                          onChange={(event) =>
-                            updateField(index, (target) => {
-                              target.required = event.target.checked;
-                            })
-                          }
-                        />
-                        <span>Answer required</span>
-                      </label>
-                    </div>
-                    <div className="button-row">
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={index === 0}
-                        aria-label={`Move ${field.label} up`}
-                        onClick={() => moveField(index, -1)}
-                      >
-                        ↑ Move up
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={index === selected.fields.length - 1}
-                        aria-label={`Move ${field.label} down`}
-                        onClick={() => moveField(index, 1)}
-                      >
-                        ↓ Move down
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={selected.fields.length >= 30}
-                        onClick={() =>
-                          updateForm((form) => {
-                            form.fields.splice(index + 1, 0, {
-                              ...structuredClone(field),
-                              id: crypto.randomUUID(),
-                              name: `field${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
+                        <label>
+                          <span>Answer type</span>
+                          <select
+                            value={field.type}
+                            onChange={(event) =>
+                              updateField(index, (target) => {
+                                const type = event.target.value as FormField['type'];
+                                target.type = type;
+                                target.options = optionTypes.has(type)
+                                  ? (target.options ?? ['Option 1'])
+                                  : undefined;
+                              })
+                            }
+                          >
+                            {fieldTypes.map((type) => (
+                              <option key={type.value} value={type.value}>
+                                {type.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>Placeholder example</span>
+                          <input
+                            value={field.placeholder ?? ''}
+                            onChange={(event) =>
+                              updateField(index, (target) => {
+                                target.placeholder = event.target.value || undefined;
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>Width</span>
+                          <select
+                            value={field.width}
+                            onChange={(event) =>
+                              updateField(index, (target) => {
+                                target.width = event.target.value as FormField['width'];
+                              })
+                            }
+                          >
+                            <option value="full">Full row</option>
+                            <option value="half">Half row</option>
+                          </select>
+                        </label>
+                        <label className="field-wide">
+                          <span>Helpful instructions</span>
+                          <input
+                            value={field.helpText ?? ''}
+                            onChange={(event) =>
+                              updateField(index, (target) => {
+                                target.helpText = event.target.value || undefined;
+                              })
+                            }
+                          />
+                        </label>
+                        {optionTypes.has(field.type) ? (
+                          <label className="field-wide">
+                            <span>Choices (one per line)</span>
+                            <textarea
+                              value={field.options?.join('\n') ?? ''}
+                              onChange={(event) =>
+                                updateField(index, (target) => {
+                                  target.options = event.target.value
+                                    .split('\n')
+                                    .map((item) => item.trim())
+                                    .filter(Boolean);
+                                })
+                              }
+                            />
+                          </label>
+                        ) : null}
+                        <label className="checkbox-field">
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(event) =>
+                              updateField(index, (target) => {
+                                target.required = event.target.checked;
+                              })
+                            }
+                          />
+                          <span>Answer required</span>
+                        </label>
+                      </div>
+                      <div className="button-row">
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={index === 0}
+                          aria-label={`Move ${field.label} up`}
+                          onClick={() => moveField(index, -1)}
+                        >
+                          ↑ Move up
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={index === selected.fields.length - 1}
+                          aria-label={`Move ${field.label} down`}
+                          onClick={() => moveField(index, 1)}
+                        >
+                          ↓ Move down
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={selected.fields.length >= 30}
+                          onClick={() => {
+                            const id = crypto.randomUUID();
+                            updateForm((form) => {
+                              form.fields.splice(index + 1, 0, {
+                                ...structuredClone(field),
+                                id,
+                                name: `field${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
+                              });
                             });
-                          })
-                        }
-                      >
-                        Duplicate field
-                      </button>
-                      <button
-                        className="button button--danger"
-                        type="button"
-                        disabled={selected.fields.length === 1}
-                        onClick={() =>
-                          updateForm((form) => {
-                            form.fields.splice(index, 1);
-                          })
-                        }
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </fieldset>
-                ))}
+                            setFieldId(id);
+                            focusField.current = true;
+                          }}
+                        >
+                          Duplicate field
+                        </button>
+                        <button
+                          className="button button--danger"
+                          type="button"
+                          disabled={selected.fields.length === 1}
+                          onClick={() => {
+                            focusField.current = true;
+                            setFieldId(
+                              selected.fields[index + 1]?.id ??
+                                selected.fields[index - 1]?.id ??
+                                '',
+                            );
+                            updateForm((form) => {
+                              form.fields.splice(index, 1);
+                            });
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
               </div>
             </section>
           </div>

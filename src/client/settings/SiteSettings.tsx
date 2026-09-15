@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
 import { useEditor } from '../editor/EditorProvider';
 import { mutationForContext } from '../editor/action-attribution';
@@ -5,7 +6,29 @@ import { ThemeEditor } from './ThemeEditor';
 import { NavigationEditor } from './NavigationEditor';
 import { CollectionsEditor } from './CollectionsEditor';
 
-export function SiteSettings() {
+const categories = ['Identity', 'Footer', 'Social', 'Navigation', 'Collections', 'Design'] as const;
+
+export function SiteSettings({
+  initialCategory = 'Identity',
+}: {
+  initialCategory?: (typeof categories)[number];
+}) {
+  const [category, setCategory] = useState(initialCategory);
+  const root = useRef<HTMLDivElement>(null);
+  const editedFields = useRef(new WeakSet<EventTarget>());
+  const selectCategory = (next: typeof category) => {
+    const invalid = Array.from(
+      root.current?.querySelectorAll<HTMLInputElement>(
+        '[data-settings-category]:not([hidden]) :invalid',
+      ) ?? [],
+    ).find((field) => editedFields.current.has(field));
+    if (invalid) {
+      invalid.reportValidity();
+      invalid.focus();
+      return;
+    }
+    setCategory(next);
+  };
   const { document, updateDocument } = useEditor();
   const updateSite = (change: (site: SiteDocument['site']) => void) =>
     updateDocument((next) => {
@@ -13,7 +36,17 @@ export function SiteSettings() {
       return next;
     }, mutationForContext('site-settings'));
   return (
-    <div className="settings-panel">
+    <div
+      className="settings-panel"
+      ref={root}
+      onChangeCapture={(event) => editedFields.current.add(event.target)}
+      onInvalidCapture={(event) => {
+        const section = (event.target as HTMLElement).closest<HTMLElement>(
+          '[data-settings-category]',
+        );
+        if (section) setCategory(section.dataset.settingsCategory as typeof category);
+      }}
+    >
       <header className="section-heading">
         <div>
           <p className="eyebrow">Whole website</p>
@@ -21,7 +54,25 @@ export function SiteSettings() {
         </div>
         <p>Changes remain in this draft until staging publish.</p>
       </header>
-      <section className="settings-section" aria-labelledby="identity-title">
+      <nav className="category-navigation" aria-label="Settings categories">
+        {categories.map((item) => (
+          <button
+            className="button"
+            type="button"
+            key={item}
+            aria-pressed={category === item}
+            onClick={() => selectCategory(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+      <section
+        data-settings-category="Identity"
+        hidden={category !== 'Identity'}
+        className="settings-section"
+        aria-labelledby="identity-title"
+      >
         <h3 id="identity-title">Identity and contact</h3>
         <div className="field-grid">
           <label>
@@ -139,6 +190,8 @@ export function SiteSettings() {
         </div>
       </section>
       <section
+        data-settings-category="Footer"
+        hidden={category !== 'Footer'}
         className="settings-section"
         id="footer-settings"
         tabIndex={-1}
@@ -185,7 +238,12 @@ export function SiteSettings() {
           </label>
         </div>
       </section>
-      <section className="settings-section" aria-labelledby="social-title">
+      <section
+        data-settings-category="Social"
+        hidden={category !== 'Social'}
+        className="settings-section"
+        aria-labelledby="social-title"
+      >
         <h3 id="social-title">Social links</h3>
         <div className="settings-list">
           {document.site.socialLinks.map((link, index) => (
@@ -263,28 +321,34 @@ export function SiteSettings() {
           Add social link
         </button>
       </section>
-      <NavigationEditor
-        navigation={document.navigation}
-        pages={document.pages}
-        onChange={(navigation) =>
-          updateDocument((next) => ({ ...next, navigation }), mutationForContext('navigation'))
-        }
-      />
-      <CollectionsEditor
-        document={document}
-        onChange={(collections) =>
-          updateDocument((next) => ({ ...next, collections }), mutationForContext('collections'))
-        }
-      />
-      <ThemeEditor
-        theme={document.theme}
-        onChange={(theme) =>
-          updateDocument(
-            (next) => ({ ...next, theme }),
-            mutationForContext('theme', 'control-change'),
-          )
-        }
-      />
+      <div data-settings-category="Navigation" hidden={category !== 'Navigation'}>
+        <NavigationEditor
+          navigation={document.navigation}
+          pages={document.pages}
+          onChange={(navigation) =>
+            updateDocument((next) => ({ ...next, navigation }), mutationForContext('navigation'))
+          }
+        />
+      </div>
+      <div data-settings-category="Collections" hidden={category !== 'Collections'}>
+        <CollectionsEditor
+          document={document}
+          onChange={(collections) =>
+            updateDocument((next) => ({ ...next, collections }), mutationForContext('collections'))
+          }
+        />
+      </div>
+      <div data-settings-category="Design" hidden={category !== 'Design'}>
+        <ThemeEditor
+          theme={document.theme}
+          onChange={(theme) =>
+            updateDocument(
+              (next) => ({ ...next, theme }),
+              mutationForContext('theme', 'control-change'),
+            )
+          }
+        />
+      </div>
     </div>
   );
 }

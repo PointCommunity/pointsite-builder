@@ -1,0 +1,1014 @@
+{
+  "baseline": [
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Drafts",
+      "header": null,
+      "tabs": null,
+      "canvas": null,
+      "content": {
+        "top": 128,
+        "width": 1408,
+        "height": 1096.265625,
+        "scrollHeight": 1096,
+        "clientHeight": 1096
+      },
+      "drafts": {
+        "top": 128,
+        "width": 1216,
+        "height": 1096.265625,
+        "scrollHeight": 1096,
+        "clientHeight": 1096
+      },
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Layout",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": {
+        "top": 299,
+        "width": 424,
+        "height": 576.99609375,
+        "scrollHeight": 1742,
+        "clientHeight": 1742
+      },
+      "content": {
+        "top": 172,
+        "width": 1440,
+        "height": 728,
+        "scrollHeight": 728,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Forms",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 959.046875,
+        "height": 728,
+        "scrollHeight": 6652,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": {
+        "top": 1293.546875,
+        "width": 565.046875,
+        "height": 5477.234375,
+        "scrollHeight": 5477,
+        "clientHeight": 5477
+      },
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Settings",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 865.265625,
+        "height": 728,
+        "scrollHeight": 8059,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": {
+        "top": 204,
+        "width": 833.265625,
+        "height": 7995.1875,
+        "scrollHeight": 7993,
+        "clientHeight": 7993
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Library",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 835.671875,
+        "height": 728,
+        "scrollHeight": 7529,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Archived-Library",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 949.484375,
+        "height": 728,
+        "scrollHeight": 938,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "History",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 673.390625,
+        "height": 728,
+        "scrollHeight": 4754,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Admin",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 1440,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 826.90625,
+        "height": 728,
+        "scrollHeight": 1131,
+        "clientHeight": 728
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Drafts",
+      "header": null,
+      "tabs": null,
+      "canvas": null,
+      "content": {
+        "top": 128,
+        "width": 788,
+        "height": 1463.078125,
+        "scrollHeight": 1463,
+        "clientHeight": 1463
+      },
+      "drafts": {
+        "top": 128,
+        "width": 788,
+        "height": 1463.078125,
+        "scrollHeight": 1463,
+        "clientHeight": 1463
+      },
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Layout",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": {
+        "top": 307,
+        "width": 288,
+        "height": 856.998046875,
+        "scrollHeight": 2285,
+        "clientHeight": 2285
+      },
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 1008,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Forms",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 7460,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": {
+        "top": 1429.546875,
+        "width": 426,
+        "height": 6149.234375,
+        "scrollHeight": 6149,
+        "clientHeight": 6149
+      },
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Settings",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 8059,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": {
+        "top": 204,
+        "width": 788,
+        "height": 7995.1875,
+        "scrollHeight": 7993,
+        "clientHeight": 7993
+      }
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Library",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 7543,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Archived-Library",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 1008,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "History",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 673.390625,
+        "height": 1008,
+        "scrollHeight": 4754,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Admin",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 99,
+        "scrollHeight": 98,
+        "clientHeight": 98
+      },
+      "tabs": {
+        "top": 123,
+        "width": 820,
+        "height": 49,
+        "scrollHeight": 48,
+        "clientHeight": 48
+      },
+      "canvas": null,
+      "content": {
+        "top": 172,
+        "width": 820,
+        "height": 1008,
+        "scrollHeight": 1145,
+        "clientHeight": 1008
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    }
+  ],
+  "candidate": [
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Drafts",
+      "header": null,
+      "tabs": null,
+      "canvas": null,
+      "content": {
+        "top": 96,
+        "width": 1408,
+        "height": 928.171875,
+        "scrollHeight": 928,
+        "clientHeight": 928
+      },
+      "drafts": {
+        "top": 96,
+        "width": 1216,
+        "height": 928.171875,
+        "scrollHeight": 928,
+        "clientHeight": 928
+      },
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Layout",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": {
+        "top": 110,
+        "width": 880,
+        "height": 789.9912109375,
+        "scrollHeight": 1149,
+        "clientHeight": 1149
+      },
+      "content": {
+        "top": 78,
+        "width": 1440,
+        "height": 822,
+        "scrollHeight": 822,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Forms",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 915,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": {
+        "top": 263,
+        "width": 320.6875,
+        "height": 585,
+        "scrollHeight": 736,
+        "clientHeight": 585
+      },
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Settings",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 822,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": {
+        "top": 90,
+        "width": 1184,
+        "height": 658.953125,
+        "scrollHeight": 657,
+        "clientHeight": 657
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Library",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 4390,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Archived-Library",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 824,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "History",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 4598,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "surface": "Admin",
+      "header": {
+        "top": 0,
+        "width": 1440,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 1440,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 1216,
+        "height": 822,
+        "scrollHeight": 860,
+        "clientHeight": 822
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Drafts",
+      "header": null,
+      "tabs": null,
+      "canvas": null,
+      "content": {
+        "top": 96,
+        "width": 788,
+        "height": 1283.953125,
+        "scrollHeight": 1284,
+        "clientHeight": 1284
+      },
+      "drafts": {
+        "top": 96,
+        "width": 788,
+        "height": 1283.953125,
+        "scrollHeight": 1284,
+        "clientHeight": 1284
+      },
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Layout",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": {
+        "top": 110,
+        "width": 560,
+        "height": 1069.9951171875,
+        "scrollHeight": 1467,
+        "clientHeight": 1467
+      },
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 1102,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Forms",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 1102,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": {
+        "top": 263,
+        "width": 538,
+        "height": 224,
+        "scrollHeight": 364,
+        "clientHeight": 224
+      },
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Settings",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 1102,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": {
+        "top": 90,
+        "width": 788,
+        "height": 658.953125,
+        "scrollHeight": 657,
+        "clientHeight": 657
+      }
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Library",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 6439,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Archived-Library",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 1102,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "History",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 4598,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "surface": "Admin",
+      "header": {
+        "top": 0,
+        "width": 820,
+        "height": 45,
+        "scrollHeight": 44,
+        "clientHeight": 44
+      },
+      "tabs": {
+        "top": 45,
+        "width": 820,
+        "height": 33,
+        "scrollHeight": 32,
+        "clientHeight": 32
+      },
+      "canvas": null,
+      "content": {
+        "top": 78,
+        "width": 820,
+        "height": 1102,
+        "scrollHeight": 1102,
+        "clientHeight": 1102
+      },
+      "drafts": null,
+      "fields": null,
+      "settings": null
+    }
+  ]
+}

@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="color-scheme" content="dark" />
+  <title>Issue #59: compact Builder specification and execution plan</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px/1.6 system-ui;
+      background: #111410;
+      color: #f4f5f1;
+    }
+    body {
+      max-width: 1000px;
+      margin: auto;
+      padding: 24px;
+    }
+    section {
+      margin-block: 24px;
+      padding: 16px;
+      border: 1px solid #465044;
+    }
+    a {
+      color: #b8d6a0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    td,
+    th {
+      border: 1px solid #465044;
+      padding: 8px;
+      text-align: left;
+    }
+    code {
+      overflow-wrap: anywhere;
+    }
+  </style>
+  <h1>Issue #59: compact desktop and iPad authoring</h1>
+  <p>
+    The
+    <a href="https://github.com/PointCommunity/pointsite-builder/issues/59">approved Issue</a>
+    supplies R1–R12, M1–M10 and T1–T12. This execution specification preserves those requirements.
+    Baseline source: <code>dc81caf2c381aeee9eed5b531d535d45856edd5e</code>. Library #32 and related
+    #51, #55, #57, #60 and #61 are now Done. #36 remains separate.
+  </p>
+  <section>
+    <h2>Design and constraints</h2>
+    <p>
+      Compact authoring for church editors, preserving Builder’s green accent, Arial typography,
+      existing light/dark themes and native controls. Design variance 2/10; motion 1/10; density
+      8/10. Remove repeated navigation and expanded editors before reducing control size.
+    </p>
+    <p>
+      Routine gutters at most 16px, panels at most 12px, related gaps 8–12px, major gaps 16px.
+      Body/control text at least 14px. Touch editing text at least 16px; frequent touch targets
+      44px. Authored site CSS, data, breakpoints, images, rendering and publication rules are
+      unchanged.
+    </p>
+    <p>
+      No new dependency, schema, preference mode or editor engine. React/Puck/CSS remain the stack.
+      Current AGENTS.md supersedes the Issue’s historical Cloudflare release instructions: Canary
+      first, exact candidate approval before Production, then Production acceptance.
+    </p>
+  </section>
+  <section>
+    <h2>Actions, ownership and presentation</h2>
+    <table>
+      <tr>
+        <th>Surface/actions</th>
+        <th>Destination and state owner</th>
+        <th>Verification</th>
+      </tr>
+      <tr>
+        <td>Drafts, identity, theme, feedback, saving, publication status, Publish</td>
+        <td>
+          Compact shared header; existing EditorProvider, permissions, checkout and publication
+          state. Recovery expands when needed.
+        </td>
+        <td>M1/M3/M6/M7; long names, saving/offline/conflict; no hidden errors.</td>
+      </tr>
+      <tr>
+        <td>Layout, Forms, Library, Preview, History, Settings, Admin</td>
+        <td>Existing Editor sections; compact navigation. Admin remains administrator-only.</td>
+        <td>Every route and reachable dialog; keyboard, 200% zoom, no horizontal page overflow.</td>
+      </tr>
+      <tr>
+        <td>Pages: choose, add, duplicate, move, delete, details</td>
+        <td>
+          One Puck left workspace. Reuse PageManager; EditorProvider owns mutations; page selection
+          remains Workspace state.
+        </td>
+        <td>Existing page action and autosave checks.</td>
+      </tr>
+      <tr>
+        <td>Blocks and Outline: insert, select, drag, reorder, duplicate, remove</td>
+        <td>
+          Supported Puck plugin and Components/Outline composition, alongside existing
+          StructurePanel button alternatives. No full-height two-button rail.
+        </td>
+        <td>M2/M8/M9; selection and undo history survive tab changes.</td>
+      </tr>
+      <tr>
+        <td>Properties, undo/redo, viewport, zoom</td>
+        <td>
+          Puck owns fields/history/canvas scaling. Reuse its native canvas/viewport controls.
+          Compact panel triggers; narrow widths open at most one side.
+        </td>
+        <td>Resize/rotate with active selection and input; preview width fidelity.</td>
+      </tr>
+      <tr>
+        <td>Identity, Footer, Social, Navigation, Collections, Design</td>
+        <td>
+          Settings category controls; existing sections stay mounted but hidden. EditorProvider
+          retains edits; category state is presentation only. Footer deep link selects Footer before
+          focus.
+        </td>
+        <td>M5; fields in at most two selections, invalid fields revealed and focusable.</td>
+      </tr>
+      <tr>
+        <td>Form picker, details, questions, field options and ordering</td>
+        <td>
+          Existing form mutations. Summary list and selected question properties; stable field IDs
+          retain selection through reorder. Details remain reachable. Hidden editors stay mounted.
+        </td>
+        <td>
+          12 mixed questions, 25% list reduction, all types, removal/duplicate boundaries, invalid
+          fields, saved values.
+        </td>
+      </tr>
+      <tr>
+        <td>Library, History, Admin, Preview, publishing/recovery/feedback dialogs</td>
+        <td>
+          Existing components and semantics; shared spacing changes. Preserve image preview sizes,
+          action alignment, safety messages and dialog focus handling.
+        </td>
+        <td>M6; archive, search, sort, references, role controls, cancellation.</td>
+      </tr>
+    </table>
+    <p>
+      Presentation navigation must never call updateDocument or produce a draft revision. Hidden
+      categories retain controls and component-local input. Navigation reveals invalid controls;
+      existing autosave/schema validation stays authoritative. No private runtime data is used.
+    </p>
+  </section>
+  <section>
+    <h2>Measurements and devices</h2>
+    <p>
+      Desktop fixtures: 1280×720, 1440×900, 1920×1080, 2560×1440. Tablet portrait fixtures:
+      744×1133, 810×1080, 820×1180, 834×1194, 834×1210, 1024×1366, 1032×1376; repeat each in
+      landscape. These are CSS fixtures, not measured physical Safari viewports.
+    </p>
+    <p>
+      Normal fixed editor chrome: ≤112px desktop, ≤128px tablet. Errors may expand. No panel
+      navigation revisions; no authored-render change. Compare matched fixtures at unchanged zoom
+      and theme, recording dimensions, scroll distances, screenshots and useful visible content.
+      Drafts and Library must show a strict gain. Zero-scroll surfaces cannot regress.
+    </p>
+    <p>
+      Physical evidence requires an iPad mini and a larger iPad in Safari, both orientations, touch,
+      software keyboard, rotation mid-edit and available keyboard/trackpad. Physical devices are
+      unavailable to agent automation; this evidence remains pending and cannot be inferred from
+      Chromium/WebKit emulation. The agreed release cohort stays September 12, 2021–2026.
+    </p>
+    <h3>Matched measurements</h3>
+    <p>
+      Chromium, dark theme, normal text size, identical synthetic data: 8 drafts, 20 managed images
+      and 4 linked items plus 2 archived items, 12 mixed questions, 12 mixed blocks, populated
+      Settings, 30 revisions, and populated Admin. Values below are CSS pixels of remaining vertical
+      scroll. Drafts uses the window; other surfaces use their content pane. Measurements and
+      original screenshots are retained alongside this specification.
+    </p>
+    <table>
+      <tr>
+        <th>Surface</th>
+        <th>1440 × 900 before → after</th>
+        <th>820 × 1180 before → after</th>
+      </tr>
+      <tr>
+        <td>Drafts</td>
+        <td>324 → 124</td>
+        <td>411 → 200</td>
+      </tr>
+      <tr>
+        <td>Forms content</td>
+        <td>5924 → 93</td>
+        <td>6452 → 0</td>
+      </tr>
+      <tr>
+        <td>Settings landing category</td>
+        <td>7331 → 0</td>
+        <td>7051 → 0</td>
+      </tr>
+      <tr>
+        <td>Library</td>
+        <td>6801 → 3568</td>
+        <td>6535 → 5337</td>
+      </tr>
+      <tr>
+        <td>Archived Library</td>
+        <td>210 → 2</td>
+        <td>0 → 0</td>
+      </tr>
+      <tr>
+        <td>History</td>
+        <td>4026 → 3776</td>
+        <td>3746 → 3496</td>
+      </tr>
+      <tr>
+        <td>Admin</td>
+        <td>403 → 38</td>
+        <td>137 → 0</td>
+      </tr>
+    </table>
+    <p>
+      Normal desktop canvas top: 299 → 110px; width: 424 → 880px at 1440 × 900. At 820 × 1180 with a
+      fine pointer: top 307 → 110px; width 288 → 560px. Canvas uses its original Desktop content
+      width and automatic fit; the improvement does not increase zoom-out. Separate coarse-pointer
+      checks cover all 14 tablet orientations with a 128px ceiling and one sidebar. Touch viewport
+      controls float inside the canvas.
+    </p>
+    <p>
+      Question-list total vertical extent: 5477 → 736px (86.6% reduction) at 1440 × 900; 6149 →
+      364px (94.1%) at 820 × 1180. Each question takes one selection from Questions, or two from
+      Form details. All 12 questions and applicable choices were inspected. Settings takes one
+      category selection after opening Settings; all categories remain mounted. Only edited invalid
+      fields block category navigation and retain focus.
+    </p>
+    <p>
+      Touch canvas grips retain 44px screen targets and 14px text as canvas zoom changes. A single
+      corner grip avoids crowded touch handles; Properties retains individual grid-axis controls,
+      and Outline retains keyboard reorder/duplicate/remove actions. Rotation retains the selected
+      Properties panel. Structure actions restore keyboard focus after Puck remounts.
+    </p>
+    <details>
+      <summary>Matched screenshots, 1440 × 900</summary>
+      <table>
+        <tr>
+          <th>Surface</th>
+          <th>Before</th>
+          <th>After</th>
+        </tr>
+        <tr>
+          <td>Drafts</td>
+          <td><a href="evidence/baseline/1440-Drafts.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Drafts.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Layout</td>
+          <td><a href="evidence/baseline/1440-Layout.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Layout.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Forms</td>
+          <td><a href="evidence/baseline/1440-Forms.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Forms.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Settings</td>
+          <td><a href="evidence/baseline/1440-Settings.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Settings.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Library</td>
+          <td><a href="evidence/baseline/1440-Library.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Library.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Archived Library</td>
+          <td><a href="evidence/baseline/1440-Archived-Library.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Archived-Library.png">After</a></td>
+        </tr>
+        <tr>
+          <td>History</td>
+          <td><a href="evidence/baseline/1440-History.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-History.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Admin</td>
+          <td><a href="evidence/baseline/1440-Admin.png">Before</a></td>
+          <td><a href="evidence/candidate/1440-Admin.png">After</a></td>
+        </tr>
+      </table>
+    </details>
+    <details>
+      <summary>Matched screenshots, 820 × 1180</summary>
+      <table>
+        <tr>
+          <th>Surface</th>
+          <th>Before</th>
+          <th>After</th>
+        </tr>
+        <tr>
+          <td>Drafts</td>
+          <td><a href="evidence/baseline/820-Drafts.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Drafts.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Layout</td>
+          <td><a href="evidence/baseline/820-Layout.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Layout.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Forms</td>
+          <td><a href="evidence/baseline/820-Forms.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Forms.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Settings</td>
+          <td><a href="evidence/baseline/820-Settings.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Settings.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Library</td>
+          <td><a href="evidence/baseline/820-Library.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Library.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Archived Library</td>
+          <td><a href="evidence/baseline/820-Archived-Library.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Archived-Library.png">After</a></td>
+        </tr>
+        <tr>
+          <td>History</td>
+          <td><a href="evidence/baseline/820-History.png">Before</a></td>
+          <td><a href="evidence/candidate/820-History.png">After</a></td>
+        </tr>
+        <tr>
+          <td>Admin</td>
+          <td><a href="evidence/baseline/820-Admin.png">Before</a></td>
+          <td><a href="evidence/candidate/820-Admin.png">After</a></td>
+        </tr>
+      </table>
+    </details>
+  </section>
+  <section>
+    <h2>Execution and tests</h2>
+    <ol>
+      <li>
+        T1: refresh live Issue/Project and source; prepare fresh worktree; collect baseline fixtures
+        and route measurements.
+      </li>
+      <li>
+        T2: inspect installed Puck 0.23.0 contracts, existing action callers, design and
+        accessibility checklists; record this specification.
+      </li>
+      <li>
+        T3/T4: consolidate toolbar/panel ownership and shared spacing; verify canvas interactions
+        and autosave.
+      </li>
+      <li>
+        T5/T6: focused Settings and Forms editors; regression tests for value, focus, selection,
+        validation and revision integrity.
+      </li>
+      <li>
+        T7/T8/T9: remaining surfaces, viewport matrix, keyboard/touch emulation, rendering and
+        scoped accessibility review. Physical portion remains pending.
+      </li>
+      <li>
+        T10: run full gates sequentially and review exact source/tree; publish PR with Refs #59.
+      </li>
+      <li>
+        T11/T12: follow current specialized review/release/close skills; never claim completion
+        without physical evidence and exact PM acceptance.
+      </li>
+    </ol>
+    <p>
+      Code follows existing typed function components, stable IDs, native semantic controls and
+      mutationForContext attribution. Implementation: src/client; regression checks: tests/e2e and
+      tests/unit; this specification tracks acceptance. Use apply_patch; preserve unrelated work.
+    </p>
+    <p>
+      Run <code>npm run check</code>, <code>npm run test:performance</code>,
+      <code>npm run test:e2e</code>, <code>npm audit --audit-level=high</code>,
+      <code>git diff --check</code>, sequentially. Focused browser tests use the existing Playwright
+      harness with 2 workers; coverage uses 4 workers. All results bind to exact source/tree.
+    </p>
+    <p>
+      Before setup: <code>node scripts/local-qa.mjs prepare</code>. Stop task-owned servers and
+      browser sessions, then <code>node scripts/local-qa.mjs cleanup</code>. Preserve only required
+      source and redacted evidence; no shared-cache removal or broad process/container cleanup.
+    </p>
+  </section>
+  <section>
+    <h2>Evidence and current status</h2>
+    <p>
+      Live Project readback: #59 open, In Progress, P1/High/L, solely assigned brimdor; sole active
+      Issue. Isolated branch: issue/59-compact-builder. T1–T7 implemented; T8/T9 automated and local
+      native interaction evidence collected. Physical iPad Safari and actual browser-zoom testing
+      remain pending; 200% enlarged-text and equivalent narrow-layout tests are automated. T10
+      sequential full gates passed on September 15, 2026: 100 test files / 736 tests, 276 browser
+      tests passed / 20 intentional project or measurement skips, performance p95 0.87ms against
+      100ms, and JavaScript gzip 468344 bytes against 500000. Exact committed source, GitHub Quality
+      and Canary evidence belong in the supporting PR. No Production approval, merge, or completion
+      is implied.
+    </p>
+    <p>
+      <a href="https://puckeditor.com/docs/extending-puck/composition">Puck composition</a>,
+      <a href="https://puckeditor.com/docs/api-reference/overrides">Puck overrides</a>,
+      <a href="https://support.apple.com/en-us/108043">Apple model inventory</a> were refreshed.
+      Installed package declarations and implementation govern available integration points.
+      Existing pinned design and accessibility checklists apply; no new visual system is introduced.
+    </p>
+  </section>
+</html>
