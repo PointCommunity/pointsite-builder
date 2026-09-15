@@ -233,7 +233,10 @@ export function DraftList({
                   </p>
                   {unavailable ? (
                     <p id={descriptionId}>
-                      Currently being edited. It becomes available automatically after inactivity.
+                      {checkout.ownerLogin
+                        ? `Currently being edited by ${checkout.ownerLogin}.`
+                        : 'Currently being edited.'}
+                      <br /> It becomes available automatically after inactivity.
                     </p>
                   ) : null}
                 </div>

@@ -776,21 +776,27 @@ export class D1DraftRepository implements DraftRepository {
   ): Promise<DraftCheckoutAvailability[]> {
     const result = await this.database
       .prepare(
-        `SELECT d.id AS draft_id, c.actor, c.expires_at
+        `SELECT d.id AS draft_id, c.actor, c.expires_at, u.github_login
          FROM drafts d LEFT JOIN draft_checkouts c ON c.draft_id = d.id AND c.expires_at > ?
+         LEFT JOIN user_roles u ON u.email = c.actor COLLATE NOCASE
          WHERE d.status != 'deleted' ORDER BY d.updated_at DESC LIMIT 100`,
       )
       .bind(now)
-      .all<{ draft_id: string; actor: string | null; expires_at: string | null }>();
-    return result.results.map((row) => ({
-      draftId: row.draft_id,
-      state: !row.actor
-        ? 'available'
-        : row.actor.toLowerCase() === actor.toLowerCase()
-          ? 'owned'
-          : 'unavailable',
-      expiresAt: row.expires_at,
-    }));
+      .all<{
+        draft_id: string;
+        actor: string | null;
+        expires_at: string | null;
+        github_login: string | null;
+      }>();
+    return result.results.map((row) => {
+      const unavailable = row.actor && row.actor.toLowerCase() !== actor.toLowerCase();
+      return {
+        draftId: row.draft_id,
+        state: !row.actor ? 'available' : unavailable ? 'unavailable' : 'owned',
+        expiresAt: row.expires_at,
+        ...(unavailable && row.github_login ? { ownerLogin: row.github_login } : {}),
+      };
+    });
   }
 
   async acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout> {

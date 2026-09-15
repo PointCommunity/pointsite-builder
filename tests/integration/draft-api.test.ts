@@ -47,6 +47,45 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('identifies the checkout owner to another authenticated collaborator without exposing owned identity', async () => {
+    const owner: Actor = { email: 'github:99', githubLogin: 'actual-editor', role: 'editor' };
+    const viewer: Actor = { email: 'github:22', githubLogin: 'other-viewer', role: 'editor' };
+    const { repository, app: ownerApp } = appFor(owner);
+    const viewerApp = createApp({
+      repository,
+      authenticate: () => Promise.resolve(viewer),
+      environment: 'test',
+      version: 'test',
+    });
+    const draft = await repository.createDraft({
+      name: 'Collaborator checkout',
+      document: defaultSiteDocument,
+      actor: owner.email,
+      idempotencyKey: 'collaborator-create',
+      requestId: 'create',
+    });
+    const lease = await checkout(ownerApp, draft.id);
+    const availability = async (app: ReturnType<typeof createApp>) =>
+      responseJson<{ items: { draftId: string; state: string; ownerLogin?: string }[] }>(
+        await app.request(`${origin}/api/drafts/checkouts`),
+      );
+    expect((await availability(viewerApp)).items).toMatchObject([
+      { draftId: draft.id, state: 'unavailable', ownerLogin: 'actual-editor' },
+    ]);
+    expect((await availability(ownerApp)).items).toMatchObject([
+      { draftId: draft.id, state: 'owned' },
+    ]);
+    expect((await availability(ownerApp)).items[0]).not.toHaveProperty('ownerLogin');
+    const released = await ownerApp.request(`${origin}/api/drafts/${draft.id}/checkout`, {
+      method: 'DELETE',
+      headers: { ...requestHeaders, 'x-draft-checkout': lease.token },
+      body: JSON.stringify({ clientId: 'browser-client-0001' }),
+    });
+    expect(released.status).toBe(204);
+    expect((await availability(viewerApp)).items).toEqual([
+      { draftId: draft.id, state: 'available', expiresAt: null },
+    ]);
+  });
   it('rejects automatic acquisition or transfer while allowing explicit Open editor', async () => {
     const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
     const { app, repository } = appFor(actor);

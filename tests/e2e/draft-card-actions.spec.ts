@@ -139,6 +139,53 @@ test('phone-sized authoring: draft actions keep their hierarchy at responsive an
   }
 });
 
+test('unavailable draft names current checkout owner on a separate line and clears on refresh', async ({
+  page,
+}) => {
+  await installDrafts(page);
+  let ownerLogin: string | null = 'actual-editor';
+  await page.route('**/api/drafts/checkouts', (route) =>
+    route.fulfill({
+      json: {
+        items: [1, 2, 3].map((index) => ({
+          draftId: `10000000-0000-4000-8000-00000000000${index}`,
+          state: index === 3 && ownerLogin ? 'unavailable' : 'available',
+          expiresAt: index === 3 && ownerLogin ? '2099-01-01T00:00:00Z' : null,
+          ...(index === 3 && ownerLogin ? { ownerLogin } : {}),
+        })),
+      },
+    }),
+  );
+  await page.reload();
+  const card = page.locator('.draft-card').nth(2);
+  const button = card.getByRole('button', { name: 'Open editor' });
+  const explanation = card.locator('#checkout-10000000-0000-4000-8000-000000000003');
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(button).toBeDisabled();
+    await expect(explanation).toHaveText(
+      'Currently being edited by actual-editor. It becomes available automatically after inactivity.',
+    );
+    expect(
+      await explanation.evaluate((element) => (element as HTMLElement).innerText.split('\n')),
+    ).toEqual([
+      'Currently being edited by actual-editor.',
+      'It becomes available automatically after inactivity.',
+    ]);
+    await expect(button).toHaveAttribute(
+      'aria-describedby',
+      'checkout-10000000-0000-4000-8000-000000000003',
+    );
+  }
+  ownerLogin = 'new-editor';
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(explanation).toContainText('Currently being edited by new-editor.');
+  ownerLogin = null;
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(button).toBeEnabled();
+  await expect(explanation).toHaveCount(0);
+});
+
 test('draft actions remain readable with 200% text sizing in both themes', async ({ page }) => {
   await installDrafts(page);
   // Double each computed text size while retaining the normal viewport and layout dimensions.

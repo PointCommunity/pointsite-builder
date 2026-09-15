@@ -54,7 +54,10 @@ export class InMemoryRepository implements DraftRepository {
   readonly #audit: AuditEventRecord[] = [];
   readonly #checkouts = new Map<
     string,
-    Omit<DraftCheckout, 'token' | 'event' | 'viewState'> & { tokenHash: string }
+    Omit<DraftCheckout, 'token' | 'event' | 'viewState'> & {
+      tokenHash: string;
+      ownerLogin?: string;
+    }
   >();
   readonly #viewStates = new Map<string, EditorViewState>();
 
@@ -426,6 +429,9 @@ export class InMemoryRepository implements DraftRepository {
               ? ('owned' as const)
               : ('unavailable' as const),
           expiresAt: lease.expiresAt,
+          ...(lease.actor.toLowerCase() !== actor.toLowerCase() && lease.ownerLogin
+            ? { ownerLogin: lease.ownerLogin }
+            : {}),
         };
       });
   }
@@ -474,6 +480,7 @@ export class InMemoryRepository implements DraftRepository {
     const record = {
       draftId: input.draftId,
       actor: input.actor,
+      ownerLogin: input.ownerLogin,
       clientId: input.clientId,
       tokenHash,
       acquiredAt,
@@ -482,7 +489,14 @@ export class InMemoryRepository implements DraftRepository {
     };
     this.#checkouts.set(input.draftId, record);
     this.#recordAudit(input.actor, `draft.checkout.${event}`, input.draftId, input.requestId, {});
-    return { ...record, token, event, viewState: clone(this.#viewStates.get(input.actor) ?? null) };
+    const { ownerLogin: _ownerLogin, ...checkout } = record;
+    void _ownerLogin;
+    return {
+      ...checkout,
+      token,
+      event,
+      viewState: clone(this.#viewStates.get(input.actor) ?? null),
+    };
   }
 
   async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
@@ -511,8 +525,10 @@ export class InMemoryRepository implements DraftRepository {
         input.actor,
         clone({ ...viewState, draftId: input.draftId, updatedAt: now }),
       );
+    const { ownerLogin: _ownerLogin, ...checkout } = updated;
+    void _ownerLogin;
     return {
-      ...updated,
+      ...checkout,
       token: input.token,
       event: 'resumed',
       viewState: clone(this.#viewStates.get(input.actor) ?? null),

@@ -128,6 +128,7 @@ export function createDraftRoutes(
       await repository.acquireCheckout({
         draftId: context.req.param('draftId'),
         actor: actor.email,
+        ownerLogin: actor.githubLogin,
         clientId: parsed.data.clientId,
         resumeOnly: parsed.data.resumeOnly,
         expectedStatus: parsed.data.expectedStatus,

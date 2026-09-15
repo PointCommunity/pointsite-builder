@@ -2,6 +2,7 @@ import type { Role } from '../repositories/contracts';
 
 export interface Actor {
   email: string;
+  githubLogin?: string;
   displayName?: string;
   role: Role;
   repositoryPermission?: 'admin' | 'maintain' | 'write' | 'triage' | 'read';
