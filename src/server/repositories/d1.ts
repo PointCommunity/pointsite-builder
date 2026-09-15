@@ -33,6 +33,7 @@ import { createRequestHash, saveRequestHash } from './request-hash';
 import { AuthorizationError } from '../auth/roles';
 import type { D1DeletionReceipts } from '../maintenance/deletion-receipts';
 import { draftDeletionStatements } from '../maintenance/draft-deletion';
+import { ApiError } from '../http/errors';
 
 interface DraftRow {
   id: string;
@@ -152,7 +153,9 @@ export class D1DraftRepository implements DraftRepository {
     private readonly assets?: D1DraftAssets,
     private readonly storageFormat: 'legacy' | 'compact-v1' = 'legacy',
     private readonly deletionReceipts?: D1DeletionReceipts,
-    private readonly productionSource?: () => Promise<ProductionDraftSource>,
+    private readonly productionSource?: (
+      target: 'staging' | 'production',
+    ) => Promise<ProductionDraftSource>,
   ) {}
 
   private async assertEditor(actor: string): Promise<void> {
@@ -230,15 +233,22 @@ export class D1DraftRepository implements DraftRepository {
   }
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
+    if (input.sourceTarget && !this.productionSource)
+      throw new ApiError(
+        503,
+        'PUBLICATION_SOURCE_UNAVAILABLE',
+        'Selected publication is unavailable. No draft was created.',
+      );
     const importProduction = this.productionSource && !input.sourceDraftId;
+    const target = input.sourceTarget ?? 'production';
     const requestHash = importProduction
-      ? await checksumDocument({ name: input.name, source: 'current-production' })
+      ? await checksumDocument({ name: input.name, source: target })
       : await createRequestHash(input);
     const prior = await this.readIdempotent('draft.create', input, requestHash);
     if (prior) return prior;
 
     await this.assertEditor(input.actor);
-    const source = importProduction ? await this.productionSource() : undefined;
+    const source = importProduction ? await this.productionSource!(target) : undefined;
 
     const now = new Date().toISOString();
     const draftId = crypto.randomUUID();

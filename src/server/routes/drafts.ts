@@ -17,10 +17,15 @@ export interface ApiVariables {
   requestId: string;
 }
 
-const CreateDraftSchema = z.strictObject({
-  name: z.string().trim().min(1).max(100),
-  fromRevisionId: z.uuid().optional(),
-});
+const CreateDraftSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(100),
+    fromRevisionId: z.uuid().optional(),
+    sourceTarget: z.enum(['staging', 'production']).optional(),
+  })
+  .refine((value) => !value.fromRevisionId || !value.sourceTarget, {
+    message: 'Choose a publication or a draft revision, not both',
+  });
 
 const SaveDraftSchema = z.strictObject({
   document: z.unknown(),
@@ -204,6 +209,7 @@ export function createDraftRoutes(
       name: parsed.data.name,
       document,
       sourceDraftId: source?.draftId,
+      sourceTarget: parsed.data.sourceTarget,
       actor: actor.email,
       idempotencyKey: context.req.header('idempotency-key') ?? '',
       requestId: context.get('requestId'),

@@ -112,6 +112,7 @@ export interface AuditEventRecord {
 
 export interface CreateDraftInput {
   sourceDraftId?: string;
+  sourceTarget?: 'staging' | 'production';
   name: string;
   document: SiteDocument;
   actor: string;
@@ -123,9 +124,11 @@ export interface ProductionDraftSource {
   document: SiteDocument;
   assets: Map<string, DraftAssetObject>;
   provenance: {
+    target?: 'staging' | 'production';
     sourceCommit: string;
     deploymentId: string;
     artifactDigest: string;
+    candidateChecksum?: string;
     documentChecksum: string;
     capturedAt: string;
   };

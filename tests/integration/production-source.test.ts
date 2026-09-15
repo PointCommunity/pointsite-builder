@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { expect, test, vi } from 'vitest';
-import { captureProductionSource } from '../../server/production-source';
+import { captureProductionSource, capturePublicationSource } from '../../server/production-source';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { publicationMediaPaths } from '../../src/site-kit/publication-media';
@@ -11,7 +11,20 @@ import { migrateDatabase } from '../../server/migrations';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1DraftAssets } from '../../src/server/media/draft-assets';
 
-async function fixture() {
+async function fixture(target: 'production' | 'staging' | 'canary' = 'production') {
+  const repository =
+    target === 'canary'
+      ? 'pointsite-staging-canary'
+      : target === 'staging'
+        ? 'pointsite-staging'
+        : 'pointsite';
+  const environment = target === 'production' ? 'github-pages' : 'staging';
+  const origin =
+    target === 'canary'
+      ? 'https://staging-canary.pointatx.org'
+      : target === 'staging'
+        ? 'https://staging.pointatx.org'
+        : 'https://pointatx.org';
   const document = structuredClone(defaultSiteDocument);
   document.site.name = 'Currently deployed fixture';
   const objects = new Map<string, Buffer>();
@@ -74,7 +87,7 @@ async function fixture() {
         {
           id: deployment,
           sha: 'e'.repeat(40),
-          environment: 'github-pages',
+          environment,
           performed_via_github_app: { id: 15368, slug: 'github-actions' },
         },
       ]);
@@ -82,15 +95,19 @@ async function fixture() {
       return Response.json([
         {
           state: 'success',
-          environment: 'github-pages',
-          environment_url: 'http://pointatx.org/',
-          log_url: 'https://github.com/PointCommunity/pointsite/actions/runs/123/job/456',
+          environment,
+          environment_url: origin + '/',
+          log_url: 'https://github.com/PointCommunity/' + repository + '/actions/runs/123/job/456',
         },
       ]);
     if (value.endsWith('/__pointsite_release.json')) return Response.json(release);
     if (
       value.startsWith(
-        `https://raw.githubusercontent.com/PointCommunity/pointsite/${release.sourceCommit}/`,
+        'https://raw.githubusercontent.com/PointCommunity/' +
+          repository +
+          '/' +
+          release.sourceCommit +
+          '/',
       )
     ) {
       if (value.endsWith('/builder-site.json')) return Response.json(document);
@@ -110,6 +127,22 @@ async function fixture() {
   );
   return { document, objects, output, release, fetcher, changeDeployment: () => deployment++ };
 }
+
+test.each([
+  ['staging', 'https://builder.eaglepass.io'],
+  ['canary', 'https://builder-canary.eaglepass.io'],
+] as const)(
+  'captures verified %s publication from fixed runtime destination',
+  async (target, builderOrigin) => {
+    const input = await fixture(target);
+    const source = await capturePublicationSource('staging', builderOrigin, input.fetcher);
+    expect(source.document.site.name).toBe(input.document.site.name);
+    expect(source.provenance.sourceCommit).toBe(input.release.sourceCommit);
+    expect(source.provenance.artifactDigest).toBe(input.output.artifactDigest);
+    expect(source.provenance.candidateChecksum).toBe(input.release.candidateChecksum);
+    expect(source.assets.size).toBe(input.objects.size);
+  },
+);
 
 test('capture uses deployed rollback content, verifies media, and rejects altered or changing source', async () => {
   const input = await fixture();
@@ -192,6 +225,61 @@ test('native imports own independent images and immutable provenance; retries ne
     expect((await repository.listDrafts()).length).toBe(2);
     await db.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
     await expect(repository.createDraft(input)).rejects.toThrow();
+  } finally {
+    db.close();
+  }
+});
+
+test('native creation selects verified Staging source and does not use Production callback', async () => {
+  const staging = await fixture('staging');
+  const source = await capturePublicationSource(
+    'staging',
+    'https://builder.eaglepass.io',
+    staging.fetcher,
+  );
+  const capture = vi.fn((target: 'staging' | 'production') =>
+    target === 'staging' ? Promise.resolve(source) : Promise.reject(new Error('Wrong source')),
+  );
+  const db = new SqliteDatabase(':memory:');
+  try {
+    await migrateDatabase(db, 'migrations');
+    const actor = 'github:12345';
+    await db
+      .prepare(
+        "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES (?,'editor',1,'fixture','fixture','fixture')",
+      )
+      .bind(actor)
+      .run();
+    const assets = new D1DraftAssets(db, {
+      read: () => Promise.reject(new Error('Private fallback forbidden')),
+    });
+    const repository = new D1DraftRepository(db, assets, 'compact-v1', undefined, capture);
+    const draft = await repository.createDraft({
+      name: 'Staging season',
+      document: defaultSiteDocument,
+      sourceTarget: 'staging',
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: crypto.randomUUID(),
+    });
+    expect(capture).toHaveBeenCalledWith('staging');
+    expect(draft.document.site.name).toBe(source.document.site.name);
+    const stored = await db
+      .prepare('SELECT provenance_json FROM draft_production_sources WHERE draft_id=?')
+      .bind(draft.id)
+      .first<string>('provenance_json');
+    expect(JSON.parse(stored!).target).toBe('staging');
+    await expect(
+      new D1DraftRepository(db, assets).createDraft({
+        name: 'Unavailable source',
+        document: defaultSiteDocument,
+        sourceTarget: 'staging',
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow();
+    expect((await repository.listDrafts()).length).toBe(1);
   } finally {
     db.close();
   }

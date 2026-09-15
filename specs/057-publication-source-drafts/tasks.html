@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Tasks 057: Publication-source drafts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h2 {
+        color: #cde8c4;
+        margin-top: 2.5rem;
+      }
+      code {
+        background: #202a21;
+        color: #d8f4ca;
+        padding: 0.1rem 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <p>PointSite Builder · Issue #57 · dependency-ordered tasks</p>
+    <h1>Delivery slices</h1>
+    <h2>1. Verified source capture</h2>
+    <p>
+      Depends: none. Extend fixed Staging/Canary capture and reuse Production asset validation.
+      Reject absent/changed markers or media. Files: <code>server/production-source.ts</code>,
+      <code>tests/integration/production-source.test.ts</code>. Verify focused Vitest RED/GREEN.
+    </p>
+    <h2>2. Source choice through creation</h2>
+    <p>
+      Depends: 1. Explicit UI selection and server enum; duplicate keeps its separate path. Native
+      repository copies source assets into independent drafts; no fallback. Files:
+      <code>src/server/routes/drafts.ts</code>, <code>src/server/repositories/contracts.ts</code>,
+      <code>src/server/repositories/d1.ts</code>, <code>src/client/drafts/DraftList.tsx</code>,
+      <code>src/client/App.tsx</code> plus API and focused tests. Verify
+      denied/unavailable/cancel/retry cases.
+    </p>
+    <h2>3. Persist and display baseline count</h2>
+    <p>
+      Depends: 2. Add additive migration, proven/unknown lineage, query-derived status, and
+      immutable sequence arithmetic. Files: migration, D1 repository, status helper, native
+      migration and repository tests. Verify four drafts, concurrent saves, reload, and old-image
+      compatibility.
+    </p>
+    <h2>4. Verified Production reset</h2>
+    <p>
+      Depends: 3. Bind exact captured revision to new release only when durable verification inserts
+      it. Staging/failure leave counts intact. Files: migration,
+      <code>src/server/publish/releases.ts</code> if needed, runner/verification tests. Verify
+      post-capture edit survives reset and other baselines become Behind.
+    </p>
+    <h2>5. Accessible status and complete QA</h2>
+    <p>
+      Depends: 2-4. Render compact status at existing editor typography; explain Staging source and
+      unpublished edits, keyboard/focus/narrow widths. Files: editor route, client CSS and tests.
+      Verify unit/integration/e2e, then <code>npm run check</code>, performance, browser suites
+      without overlap; clean task-owned test outputs.
+    </p>
+  </body>
+</html>

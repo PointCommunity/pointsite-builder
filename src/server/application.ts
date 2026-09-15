@@ -41,7 +41,7 @@ interface RuntimeOptions {
   feedback?: AppDependencies['feedback'];
   /** Trusted source pin, never a user request or environment override. */
   rollbackCallerBlob?: string;
-  productionSource?: () => Promise<ProductionDraftSource>;
+  productionSource?: (target: 'staging' | 'production') => Promise<ProductionDraftSource>;
   nativeStorage?: () => Promise<NativeStorageReport>;
   sessionEpoch?: () => Promise<number>;
 }

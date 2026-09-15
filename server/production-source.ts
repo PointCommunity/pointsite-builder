@@ -8,10 +8,8 @@ import { PublicationAssetSchema } from '../src/server/publish/inputs';
 import { publicationJson } from '../src/server/publish/build-proof';
 import type { ProductionDraftSource } from '../src/server/repositories/contracts';
 import { ApiError } from '../src/server/http/errors';
+import { publicationDestination } from '../src/server/publish/destinations';
 
-const origin = 'https://pointatx.org';
-const api = 'https://api.github.com/repos/PointCommunity/pointsite';
-const raw = 'https://raw.githubusercontent.com/PointCommunity/pointsite';
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const baseline = {
@@ -75,6 +73,18 @@ const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('h
 export async function captureProductionSource(
   fetcher: typeof fetch = fetch,
 ): Promise<ProductionDraftSource> {
+  return capturePublicationSource('production', undefined, fetcher);
+}
+
+export async function capturePublicationSource(
+  target: 'staging' | 'production',
+  builderOrigin?: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ProductionDraftSource> {
+  const destination = publicationDestination(target, builderOrigin);
+  const { origin, environment, repository } = destination;
+  const api = `https://api.github.com/repos/PointCommunity/${repository}`;
+  const raw = `https://raw.githubusercontent.com/PointCommunity/${repository}`;
   try {
     const read = (url: string) =>
       fetcher(url, {
@@ -94,7 +104,7 @@ export async function captureProductionSource(
           z.object({
             id: z.number().int().positive(),
             sha,
-            environment: z.literal('github-pages'),
+            environment: z.literal(environment),
             performed_via_github_app: z.object({
               id: z.literal(15368),
               slug: z.literal('github-actions'),
@@ -107,14 +117,30 @@ export async function captureProductionSource(
         .array(
           z.object({
             state: z.literal('success'),
-            environment: z.literal('github-pages'),
-            environment_url: z
-              .string()
-              .refine((value) => /^(?:https|http):\/\/pointatx\.org\/?$/.test(value)),
+            environment: z.literal(environment),
+            environment_url: z.string().refine((value) => {
+              try {
+                const url = new URL(value);
+                return (
+                  ['https:', 'http:'].includes(url.protocol) &&
+                  url.hostname === new URL(origin).hostname &&
+                  !url.port &&
+                  !url.username &&
+                  !url.password &&
+                  (url.pathname === '/' || url.pathname === '') &&
+                  !url.search &&
+                  !url.hash
+                );
+              } catch {
+                return false;
+              }
+            }),
             log_url: z
               .string()
-              .regex(
-                /^https:\/\/github\.com\/PointCommunity\/pointsite\/actions\/runs\/[0-9]+\/job\/[0-9]+$/,
+              .refine((value) =>
+                new RegExp(
+                  `^https://github\\.com/PointCommunity/${repository}/actions/runs/[0-9]+/job/[0-9]+$`,
+                ).test(value),
               ),
           }),
         )
@@ -132,7 +158,7 @@ export async function captureProductionSource(
     const sourceCommit = release?.sourceCommit ?? before.sha;
     let document: ProductionDraftSource['document'];
     let output: z.infer<typeof outputSchema>;
-    if (sourceCommit === baseline.sourceCommit) {
+    if (target === 'production' && sourceCommit === baseline.sourceCommit) {
       if (release && release.artifactDigest !== baseline.artifactDigest)
         throw new Error('BASELINE_CHANGED');
       const content = await bytes(
@@ -239,9 +265,11 @@ export async function captureProductionSource(
       document,
       assets,
       provenance: {
+        target,
         sourceCommit,
         deploymentId: String(before.id),
         artifactDigest: output.artifactDigest,
+        ...(release ? { candidateChecksum: release.candidateChecksum } : {}),
         documentChecksum: await checksumDocument(document),
         capturedAt: new Date().toISOString(),
       },
@@ -249,8 +277,8 @@ export async function captureProductionSource(
   } catch {
     throw new ApiError(
       503,
-      'PRODUCTION_IMPORT_UNCONFIRMED',
-      'Current Production content could not be confirmed. No draft was created; try again shortly.',
+      target === 'staging' ? 'STAGING_IMPORT_UNCONFIRMED' : 'PRODUCTION_IMPORT_UNCONFIRMED',
+      `Current ${target === 'staging' ? 'Staging' : 'Production'} content could not be confirmed. No draft was created; try again shortly.`,
     );
   }
 }

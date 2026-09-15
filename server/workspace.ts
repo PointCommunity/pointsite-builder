@@ -8,7 +8,7 @@ import { openRecoveryDatabase } from '../src/server/maintenance/recovery-control
 import type { RuntimeConfig } from '../src/server/config';
 import type { AppDependencies } from '../src/server';
 import { bindInstance, bootstrapAdministrator } from './identity';
-import { captureProductionSource } from './production-source';
+import { capturePublicationSource } from './production-source';
 import { createBackups } from './backups';
 import { ROLLBACK_PRODUCTION_CALLER_BLOB } from '../src/server/publish/renderer-contract';
 import { FeedbackService, type FeedbackConfig } from '../src/server/feedback/service';
@@ -76,7 +76,10 @@ export async function openNativeWorkspace(options: {
       rollbackCallerBlob: ROLLBACK_PRODUCTION_CALLER_BLOB,
       assets: createPublicAssets(options.publicRoot),
       ...(options.config.environment !== 'local'
-        ? { productionSource: captureProductionSource }
+        ? {
+            productionSource: (target: 'staging' | 'production') =>
+              capturePublicationSource(target, options.config.builderOrigin),
+          }
         : {}),
       nativeStorage: backups
         ? () => backups.status()

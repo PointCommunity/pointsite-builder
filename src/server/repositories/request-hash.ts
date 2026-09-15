@@ -6,6 +6,7 @@ export function createRequestHash(input: CreateDraftInput): Promise<string> {
     name: input.name,
     document: input.document,
     sourceDraftId: input.sourceDraftId ?? null,
+    sourceTarget: input.sourceTarget ?? null,
   });
 }
 
