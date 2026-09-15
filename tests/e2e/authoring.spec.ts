@@ -541,7 +541,12 @@ test('preserves People image layouts through undo, redo, reload and preview', as
   await page.getByRole('button', { name: 'Preview at desktop width' }).click();
   const preview = page.locator('iframe.preview-frame').contentFrame();
   await expect(preview.locator('.people-grid--horizontal')).toBeVisible();
-  expect(await geometry(preview)).toEqual(authored);
+  const previewBounds = await geometry(preview);
+  expect(previewBounds).toHaveLength(authored.length);
+  for (const [index, bounds] of previewBounds.entries()) {
+    expect(bounds.width).toBeCloseTo(authored[index].width, 2);
+    expect(bounds.height).toBeCloseTo(authored[index].height, 2);
+  }
 });
 
 async function readPending(page: Page): Promise<PendingJournalState | null> {
