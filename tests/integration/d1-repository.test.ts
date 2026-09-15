@@ -77,6 +77,65 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('returns only the active checkout owner login and follows role updates and lease expiry', async () => {
+    const { database, repository } = await repositoryFixture();
+    const owner = 'owner@pointatx.org';
+    const viewer = 'other@pointatx.org';
+    await database
+      .prepare('UPDATE user_roles SET github_login = ? WHERE email = ?')
+      .bind('actual-editor', owner)
+      .run();
+    const draft = await repository.createDraft({
+      name: 'Owner identity',
+      document: defaultSiteDocument,
+      actor: owner,
+      idempotencyKey: 'owner-identity-create',
+      requestId: 'create',
+    });
+    const now = '2026-09-08T12:00:00.000Z';
+    expect(await repository.listCheckoutAvailability(viewer, now)).toEqual([
+      { draftId: draft.id, state: 'available', expiresAt: null },
+    ]);
+    const lease = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor: owner,
+      clientId: 'owner-identity-client',
+      requestId: 'checkout',
+      now,
+    });
+    expect(await repository.listCheckoutAvailability(viewer, now)).toEqual([
+      {
+        draftId: draft.id,
+        state: 'unavailable',
+        expiresAt: lease.expiresAt,
+        ownerLogin: 'actual-editor',
+      },
+    ]);
+    expect(await repository.listCheckoutAvailability(owner, now)).toEqual([
+      { draftId: draft.id, state: 'owned', expiresAt: lease.expiresAt },
+    ]);
+    await database
+      .prepare('UPDATE user_roles SET github_login = ? WHERE email = ?')
+      .bind('renamed-editor', owner)
+      .run();
+    expect((await repository.listCheckoutAvailability(viewer, now))[0]?.ownerLogin).toBe(
+      'renamed-editor',
+    );
+    expect(await repository.listCheckoutAvailability(viewer, lease.expiresAt)).toEqual([
+      { draftId: draft.id, state: 'available', expiresAt: null },
+    ]);
+    await repository.releaseCheckout({
+      draftId: draft.id,
+      actor: owner,
+      clientId: 'owner-identity-client',
+      token: lease.token,
+      requestId: 'release',
+      now,
+    });
+    expect(await repository.listCheckoutAvailability(viewer, now)).toEqual([
+      { draftId: draft.id, state: 'available', expiresAt: null },
+    ]);
+  });
   it('requires deletion settlement and replay, and never repeats an uncertain native restore', async () => {
     const { database, control, repository } = await repositoryFixture();
     const actor = 'editor@pointatx.org';

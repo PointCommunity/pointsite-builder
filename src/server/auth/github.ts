@@ -417,6 +417,7 @@ export async function authenticateRequest(
     throw new AuthorizationError('Your identity does not have an active builder role');
   return {
     email: subject,
+    githubLogin: identity.login,
     displayName: `@${identity.login}`,
     role: role.role,
     repositoryPermission: identity.repositoryPermission,

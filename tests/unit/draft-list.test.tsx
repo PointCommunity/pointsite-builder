@@ -95,7 +95,12 @@ describe('archived draft lifecycle controls', () => {
         drafts={[active]}
         role="editor"
         checkouts={[
-          { draftId: active.id, state: 'unavailable', expiresAt: '2026-09-08T12:30:00Z' },
+          {
+            draftId: active.id,
+            state: 'unavailable',
+            expiresAt: '2026-09-08T12:30:00Z',
+            ownerLogin: 'actual-editor',
+          },
         ]}
         onOpen={vi.fn()}
         onCreate={vi.fn()}
@@ -107,7 +112,11 @@ describe('archived draft lifecycle controls', () => {
     );
     const unavailable = screen.getByRole('button', { name: 'Open editor' });
     expect(unavailable).toBeDisabled();
-    expect(unavailable).toHaveAccessibleDescription(/Currently being edited/);
+    expect(unavailable).toHaveAccessibleDescription(
+      'Currently being edited by actual-editor. It becomes available automatically after inactivity.',
+    );
+    const description = screen.getByText(/Currently being edited by actual-editor/);
+    expect(description.querySelector('br')).toBeInTheDocument();
   });
   it('keeps open and duplicate while replacing Archive with Unarchive and adding Delete', () => {
     const { draft, props } = renderList();

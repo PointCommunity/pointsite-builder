@@ -303,7 +303,7 @@ paths:
       operationId: listDraftCheckouts
       responses:
         '200':
-          description: Content-free checkout availability for visible drafts
+          description: Document-free checkout availability with the active owner's GitHub login only when unavailable
           content:
             application/json:
               schema:
@@ -1306,6 +1306,10 @@ components:
         draftId: { type: string, format: uuid }
         state: { type: string, enum: [available, owned, unavailable] }
         expiresAt: { type: [string, 'null'], format: date-time }
+        ownerLogin:
+          type: string
+          pattern: '^[A-Za-z0-9-]{1,39}$'
+          description: Current owner's GitHub login; present only for an unavailable active checkout when known.
     Health:
       type: object
       required: [ok, environment, version]

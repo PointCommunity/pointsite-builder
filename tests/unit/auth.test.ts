@@ -87,6 +87,7 @@ describe('GitHub collaborator authentication', () => {
     );
     expect(actor).toEqual({
       email: 'github:1202831',
+      githubLogin: 'brimdor',
       displayName: '@brimdor',
       role: 'editor',
       repositoryPermission: 'read',

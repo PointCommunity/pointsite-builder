@@ -26,6 +26,7 @@ export interface DraftCheckoutAvailability {
   draftId: string;
   state: 'available' | 'owned' | 'unavailable';
   expiresAt: string | null;
+  ownerLogin?: string;
 }
 
 export interface DraftCheckout {
@@ -51,6 +52,7 @@ export interface CheckoutCommand {
 }
 
 export interface AcquireCheckoutCommand extends Omit<CheckoutCommand, 'token' | 'activity'> {
+  ownerLogin?: string;
   resumeOnly?: boolean;
   expectedStatus?: Exclude<DraftStatus, 'deleted'>;
 }
