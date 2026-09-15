@@ -157,7 +157,7 @@ export function createBuilderRuntime(options: RuntimeOptions) {
                 repository,
                 publishing,
                 media,
-                new D1PublishJobStore(database),
+                new D1PublishJobStore(database, publishing.builderOrigin),
                 new D1PublishPreflightStore(database),
               ),
               ...(config.productionEnabled

@@ -1,5 +1,7 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
+import { publicationDestination } from './destinations';
+export { publicationDestinations } from './destinations';
 
 const issuer = 'https://token.actions.githubusercontent.com';
 const githubKeys = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks`));
@@ -25,11 +27,6 @@ const scopeSchema = z.strictObject({
 });
 
 export type PublicationRunnerScope = z.infer<typeof scopeSchema>;
-
-export const publicationDestinations = {
-  staging: { repository: 'pointsite-staging', id: '1357847426', environment: 'staging' },
-  production: { repository: 'pointsite', id: '1348084954', environment: 'github-pages' },
-} as const;
 
 // Verified repository OIDC settings use immutable subjects. Do not silently accept
 // legacy subjects, alternate repositories, user sessions, or caller-provided URLs.
@@ -59,7 +56,7 @@ export async function verifyPublicationRunner(
       scope.data.target === 'production'
     )
       throw new Error('Canary cannot authorize Production');
-    const destination = publicationDestinations[scope.data.target];
+    const destination = publicationDestination(scope.data.target, scope.data.builderOrigin);
     const repository = `PointCommunity/${destination.repository}`;
     const audience = publicationRunnerAudience(
       scope.data.jobId,

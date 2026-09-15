@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StagingRepository } from '../publish/destinations';
 import { githubHeaders, unboundFetch } from './app-auth';
 import type { CandidateFile } from '../publish/candidate';
 import { candidateImagePath } from '../publish/candidate';
@@ -94,7 +95,7 @@ export class GitHubStagingClient {
   private readonly fetcher: typeof fetch;
 
   constructor(
-    private readonly repository: 'PointCommunity/pointsite-staging',
+    private readonly repository: StagingRepository,
     private readonly token: string,
     fetcher: typeof fetch = fetch,
   ) {

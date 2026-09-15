@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StagingRepository } from '../publish/destinations';
 import type { RuntimeConfig } from '../config';
 import { createInstallationToken, githubHeaders, unboundFetch } from '../github/app-auth';
 import { AuthorizationError, type Actor, type RoleDirectory } from './roles';
@@ -47,7 +48,7 @@ export interface GitHubAuthConfig {
   clientId: string;
   clientSecret: string;
   sessionSecret: string;
-  repository: 'PointCommunity/pointsite-staging';
+  repository: StagingRepository;
   builderOrigin: string;
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicationDestination } from './destinations';
 import { publicationJson } from './build-proof';
 
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
@@ -139,13 +140,14 @@ export async function verifyDeploymentProof(
   expected: DeploymentExpectation,
   fetcher: typeof fetch = fetch,
   githubToken?: string,
+  builderOrigin?: string,
 ) {
   try {
     const input = proofSchema.parse(expected);
     const staging = input.target === 'staging';
-    const repository = `PointCommunity/${staging ? 'pointsite-staging' : 'pointsite'}`;
-    const environment = staging ? 'staging' : 'github-pages';
-    const origin = staging ? 'https://staging.pointatx.org' : 'https://pointatx.org';
+    const destination = publicationDestination(input.target, builderOrigin);
+    const repository = `PointCommunity/${destination.repository}`;
+    const { environment, origin } = destination;
     const api = `https://api.github.com/repos/${repository}`;
     const jobUrl = `https://github.com/${repository}/actions/runs/${input.runId}/job/${input.checkRunId}`;
     const read = async (url: string, maximum = 32_768): Promise<unknown> => {

@@ -40,6 +40,25 @@ function machineRoutes(configured: boolean) {
     return header.slice(7);
   };
   routes.onError((error, context) => {
+    const knownCodes = [
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+      'PUBLISH_RUNNER_NOT_CONFIGURED',
+      'PUBLISH_GITHUB_AUTHORITY_CHANGED',
+      'PUBLICATION_COMMIT_UNCONFIRMED',
+      'PUBLICATION_INPUT_MISMATCH',
+      'PUBLICATION_OUTPUT_MISMATCH',
+      'PUBLICATION_DEPLOYMENT_NOT_AUTHORIZED',
+      'PUBLISH_DESTINATION_REJECTED',
+    ];
+    const jobId = context.req.param('jobId');
+    console.warn(
+      JSON.stringify({
+        event: 'publication_runner_rejected',
+        jobId: z.uuid().safeParse(jobId).success ? jobId : undefined,
+        route: context.req.routePath,
+        code: knownCodes.includes(error.message) ? error.message : 'UNEXPECTED_FAILURE',
+      }),
+    );
     // D1/JWT errors can include SQL or claims. Only stable codes leave this route.
     const unauthorized = error.message === 'PUBLISH_RUNNER_UNAUTHORIZED';
     const safe =

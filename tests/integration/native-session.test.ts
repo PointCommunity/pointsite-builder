@@ -21,7 +21,7 @@ test('a recovery epoch invalidates existing sessions and in-flight OAuth before 
       ENVIRONMENT: 'canary',
       APP_VERSION: 'fixture',
       BUILDER_ORIGIN: 'https://builder-canary.eaglepass.io',
-      STAGING_REPOSITORY: 'PointCommunity/pointsite-staging',
+      STAGING_REPOSITORY: 'PointCommunity/pointsite-staging-canary',
       PRODUCTION_ENABLED: 'false',
       GITHUB_APP_ID: '1',
       GITHUB_STAGING_INSTALLATION_ID: '2',

@@ -959,6 +959,133 @@ it.each(['reserved', 'claimed', 'committed', 'authorization-race'] as const)(
   },
 );
 
+it.each([
+  [
+    'https://builder-canary.eaglepass.io',
+    'pointsite-staging-canary',
+    'https://builder.eaglepass.io',
+  ],
+  ['https://builder.eaglepass.io', 'pointsite-staging', 'https://builder-canary.eaglepass.io'],
+])(
+  'binds capture, dispatch, recovery and signed runner access to %s',
+  async (origin, name, otherOrigin) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database, origin);
+    const otherStore = new D1PublishJobStore(database, otherOrigin);
+    const job = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'isolated-capture-fixture',
+      requestId: 'capture',
+    });
+    expect(
+      await database
+        .prepare('SELECT repository FROM publish_jobs WHERE id=?')
+        .bind(job.id)
+        .first('repository'),
+    ).toBe(`PointCommunity/${name}`);
+    expect(await otherStore.getById(job.id)).toBeNull();
+    const keys = await generateKeyPair('RS256', { extractable: true });
+    const config = {
+      builderOrigin: origin,
+      appId: '123',
+      installationId: '456',
+      privateKey: await exportPKCS8(keys.privateKey),
+    };
+    const calls: string[] = [];
+    const fetcher: typeof fetch = (url, init) => {
+      const value = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      calls.push(value);
+      if (value.endsWith('/access_tokens')) {
+        expect(body).toEqual({
+          repositories: [name],
+          permissions: { contents: 'write', checks: 'read', metadata: 'read' },
+        });
+        return Promise.resolve(
+          Response.json({ token: 'fixture-installation-token', expires_at: 'fixture' }),
+        );
+      }
+      expect(value).toContain(`/repos/PointCommunity/${name}/`);
+      if (value.endsWith('/permission'))
+        return Promise.resolve(Response.json({ permission: 'write', user: { id: 12345 } }));
+      if (value.endsWith('/git/ref/heads/main'))
+        return Promise.resolve(Response.json({ object: { sha: 'b'.repeat(40) } }));
+      if (value.endsWith('/dispatches')) {
+        expect(body).toMatchObject({
+          client_payload: { builderOrigin: origin, jobId: job.id },
+        });
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      throw new Error('Unexpected URL');
+    };
+    await expect(
+      dispatchPublication(database, { ...config, builderOrigin: otherOrigin }, job.id, fetcher),
+    ).rejects.toThrow('PUBLISH_DESTINATION_REJECTED');
+    expect(calls).toHaveLength(0);
+    await expect(
+      otherStore.recoverQueued({
+        jobId: job.id,
+        action: 'cancel',
+        expectedAttempts: 0,
+        actor: subject,
+        idempotencyKey: 'isolated-cancel-fixture',
+        requestId: 'cancel',
+      }),
+    ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    expect((await store.getById(job.id))?.status).toBe('queued');
+    await dispatchPublication(database, config, job.id, fetcher);
+    expect(calls).toHaveLength(4);
+    const nonce = await database
+      .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+      .bind(job.id)
+      .first<string>('nonce');
+    const signed = (builderOrigin: string) =>
+      new SignJWT(
+        publicationClaims({
+          builderOrigin,
+          target: 'staging',
+          jobId: job.id,
+          nonce: nonce!,
+          workflowRevision: 'a'.repeat(40),
+          dispatchRevision: 'b'.repeat(40),
+        }),
+      )
+        .setProtectedHeader({ alg: 'RS256' })
+        .sign(keys.privateKey);
+    const runner = new D1PublicationRunner(
+      database,
+      () => Promise.resolve(keys.publicKey),
+      config,
+      fetcher,
+    );
+    await expect(runner.reserve(job.id, await signed(otherOrigin))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    const otherRunner = new D1PublicationRunner(
+      database,
+      () => Promise.resolve(keys.publicKey),
+      { ...config, builderOrigin: otherOrigin },
+      fetcher,
+    );
+    await expect(otherRunner.reserve(job.id, await signed(otherOrigin))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    await expect(runner.reserve(job.id, await signed(origin))).resolves.toEqual({ reserved: true });
+  },
+);
+
 it('dispatches one captured job with scoped credentials, fresh permission, bounded retries and no browser session', async () => {
   const { database, repository, createInput } = await fixture();
   const subject = 'github:12345';
@@ -1206,109 +1333,128 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
   }
 }, 30_000);
 
-it('captures cloud inputs without reading image bytes and polls only metadata after later edits', async () => {
-  const { database, repository, createInput } = await fixture();
-  await database.prepare("UPDATE user_roles SET role='publisher' WHERE email=?").bind(actor).run();
-  const draft = await repository.createDraft(createInput);
-  const jobs = new D1PublishJobStore(database),
-    preflights = new D1PublishPreflightStore(database);
-  const client = {
-    currentMainSha: vi.fn(() => Promise.resolve('b'.repeat(40))),
-    assertRendererCompatible: vi.fn(async () => {}),
-    assertPublicationCaller: vi.fn(async () => {}),
-    advanceCommit: vi.fn(),
-    verificationForCommit: vi.fn(),
-  };
-  const publisher = new StagingPublisher(
-    repository,
-    {
-      appId: '123',
-      installationId: '456',
-      privateKey: 'unused',
-      workflowRevision: PUBLICATION_WORKFLOW_REVISION,
-    },
-    undefined,
-    jobs,
-    preflights,
-    () => Promise.resolve(client),
-  );
-  const input = {
-    draftId: draft.id,
-    expectedRevisionId: draft.revision.id,
-    expectedRevisionChecksum: draft.revision.checksum,
-    actor,
-    idempotencyKey: 'cloud-preflight-fixture',
-    requestId: 'cloud-fixture',
-  };
-  const reads = vi.spyOn(database, 'prepare');
-  const passed = await publisher.preflight(input);
-  expect(passed.state).toBe('passed');
-  expect(client.assertPublicationCaller).toHaveBeenCalledWith(
-    'b'.repeat(40),
-    PUBLICATION_CALLER_BLOB,
-  );
-  expect(client.assertRendererCompatible).toHaveBeenCalledWith(
-    PUBLICATION_WORKFLOW_REVISION,
-    expect.any(Object),
-  );
-  const capture = {
-    ...input,
-    expectedBaseSha: 'b'.repeat(40),
-    idempotencyKey: 'cloud-capture-fixture',
-  };
-  const job = await publisher.publish(capture);
-  expect(job).toMatchObject({
-    status: 'queued',
-    publicationProtocol: 2,
-    candidateChecksum: passed.candidateChecksum,
-  });
-  const externalCalls = client.currentMainSha.mock.calls.length;
-  expect(await publisher.publish(capture)).toEqual(job);
-  expect(client.currentMainSha.mock.calls).toHaveLength(externalCalls);
-  expect(client.advanceCommit).not.toHaveBeenCalled();
-  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(/draft_asset_chunks/);
-  const document = structuredClone(draft.document);
-  document.media[0].alt = 'Later edit';
-  await repository.saveDraft({
-    draftId: draft.id,
-    ...(await acquireDraftProof(repository, draft.id, actor)),
-    document,
-    actor,
-    idempotencyKey: 'cloud-captured-later-edit',
-    requestId: 'later-edit',
-    action: { category: 'control-change', context: 'library-attachment' },
-  });
-  const fullRead = vi.spyOn(repository, 'getDraft');
-  fullRead.mockClear();
-  reads.mockClear();
-  const status = await publisher.workflowForDraft(draft.id);
-  expect(status).toMatchObject({
-    preflight: { state: 'required', reason: 'revision-changed' },
-    availability: { state: 'busy', phase: 'queued' },
-    job: {
-      id: job.jobId,
-      revisionId: draft.revision.id,
+it.each(['https://builder.eaglepass.io', 'https://builder-canary.eaglepass.io'])(
+  'checks canonical runtime independently of %s destination while capturing and polling metadata',
+  async (builderOrigin) => {
+    const { database, repository, createInput } = await fixture();
+    await database
+      .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+      .bind(actor)
+      .run();
+    const draft = await repository.createDraft(createInput);
+    const jobs = new D1PublishJobStore(database, builderOrigin),
+      preflights = new D1PublishPreflightStore(database);
+    const client = {
+      currentMainSha: vi.fn(() => Promise.resolve('b'.repeat(40))),
+      assertRendererCompatible: vi.fn(async () => {}),
+      assertPublicationCaller: vi.fn(async () => {}),
+      advanceCommit: vi.fn(),
+      verificationForCommit: vi.fn(),
+    };
+    const clientFactory = vi.fn((name?: string) =>
+      Promise.resolve(
+        name === 'PointCommunity/pointsite-staging'
+          ? client
+          : {
+              ...client,
+              assertRendererCompatible: () =>
+                Promise.reject(new Error('GitHub staging operation failed (404)')),
+            },
+      ),
+    );
+    const publisher = new StagingPublisher(
+      repository,
+      {
+        appId: '123',
+        installationId: '456',
+        privateKey: 'unused',
+        workflowRevision: PUBLICATION_WORKFLOW_REVISION,
+        builderOrigin,
+      },
+      undefined,
+      jobs,
+      preflights,
+      clientFactory,
+    );
+    const input = {
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
+      actor,
+      idempotencyKey: 'cloud-preflight-fixture',
+      requestId: 'cloud-fixture',
+    };
+    const reads = vi.spyOn(database, 'prepare');
+    const passed = await publisher.preflight(input);
+    expect(passed.state).toBe('passed');
+    expect(client.assertPublicationCaller).toHaveBeenCalledWith(
+      'b'.repeat(40),
+      PUBLICATION_CALLER_BLOB,
+    );
+    expect(client.assertRendererCompatible).toHaveBeenCalledWith(
+      PUBLICATION_WORKFLOW_REVISION,
+      expect.any(Object),
+    );
+    const capture = {
+      ...input,
+      expectedBaseSha: 'b'.repeat(40),
+      idempotencyKey: 'cloud-capture-fixture',
+    };
+    const job = await publisher.publish(capture);
+    expect(job).toMatchObject({
+      status: 'queued',
       publicationProtocol: 2,
-      dispatch: { attempts: 0, needsAttention: false },
-    },
-  });
-  expect(await publisher.publish(capture)).toEqual(job);
-  await expect(
-    publisher.publish({ ...capture, expectedRevisionChecksum: 'f'.repeat(64) }),
-  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
-  await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
-  await expect(publisher.publish(capture)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
-  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
-  expect(fullRead).not.toHaveBeenCalled();
-  reads.mockClear();
-  await publisher.workflowForDraft(draft.id);
-  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(
-    /INSERT|UPDATE|DELETE|document_json|draft_asset_chunks/,
-  );
-  await expect(publisher.continuePublication(job.jobId!, actor, 'old-tab')).rejects.toThrow(
-    'PUBLISH_JOB_NOT_CLAIMABLE',
-  );
-}, 30_000);
+      candidateChecksum: passed.candidateChecksum,
+    });
+    const externalCalls = client.currentMainSha.mock.calls.length;
+    expect(await publisher.publish(capture)).toEqual(job);
+    expect(client.currentMainSha.mock.calls).toHaveLength(externalCalls);
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+    expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(/draft_asset_chunks/);
+    const document = structuredClone(draft.document);
+    document.media[0].alt = 'Later edit';
+    await repository.saveDraft({
+      draftId: draft.id,
+      ...(await acquireDraftProof(repository, draft.id, actor)),
+      document,
+      actor,
+      idempotencyKey: 'cloud-captured-later-edit',
+      requestId: 'later-edit',
+      action: { category: 'control-change', context: 'library-attachment' },
+    });
+    const fullRead = vi.spyOn(repository, 'getDraft');
+    fullRead.mockClear();
+    reads.mockClear();
+    const status = await publisher.workflowForDraft(draft.id);
+    expect(status).toMatchObject({
+      preflight: { state: 'required', reason: 'revision-changed' },
+      availability: { state: 'busy', phase: 'queued' },
+      job: {
+        id: job.jobId,
+        revisionId: draft.revision.id,
+        publicationProtocol: 2,
+        dispatch: { attempts: 0, needsAttention: false },
+      },
+    });
+    expect(await publisher.publish(capture)).toEqual(job);
+    await expect(
+      publisher.publish({ ...capture, expectedRevisionChecksum: 'f'.repeat(64) }),
+    ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
+    await expect(publisher.publish(capture)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+    await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
+    expect(fullRead).not.toHaveBeenCalled();
+    reads.mockClear();
+    await publisher.workflowForDraft(draft.id);
+    expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(
+      /INSERT|UPDATE|DELETE|document_json|draft_asset_chunks/,
+    );
+    await expect(publisher.continuePublication(job.jobId!, actor, 'old-tab')).rejects.toThrow(
+      'PUBLISH_JOB_NOT_CLAIMABLE',
+    );
+  },
+  30_000,
+);
 
 it('rechecks cloud preflight authority atomically and rejects changed preflight at capture', async () => {
   const { database, repository, createInput } = await fixture();

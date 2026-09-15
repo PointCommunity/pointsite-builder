@@ -3,7 +3,7 @@ import { checksumDocument } from '../../site-kit/canonicalize';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { currentPromotion } from './promotion';
 import { publicationJson } from './build-proof';
-import { publicationDestinations } from './runner-auth';
+import { publicationDestination } from './destinations';
 
 const TerminalRunSchema = z.object({
   purpose: z.enum(['verification', 'rollback']).optional(),
@@ -19,10 +19,11 @@ export async function verifyTerminalRun(
   value: unknown,
   fetcher: typeof fetch,
   githubToken?: string,
+  builderOrigin?: string,
 ) {
   try {
     const input = TerminalRunSchema.parse(value);
-    const destination = publicationDestinations[input.target];
+    const destination = publicationDestination(input.target, builderOrigin);
     const repository = `PointCommunity/${destination.repository}`;
     const caller =
       input.purpose === 'verification'
@@ -104,6 +105,7 @@ export async function recoverQueuedPublication(
   database: D1Database,
   value: z.infer<typeof QueuedRecoverySchema>,
   fetcher: typeof fetch = fetch,
+  builderOrigin?: string,
 ) {
   const input = QueuedRecoverySchema.parse(value);
   if (input.action === 'retry-captured' || input.action === 'verify-completed')
@@ -149,7 +151,9 @@ export async function recoverQueuedPublication(
           .bind(input.jobId)
           .first()
       : null;
-  const terminal = reserved ? await verifyTerminalRun(reserved, fetcher) : null;
+  const terminal = reserved
+    ? await verifyTerminalRun(reserved, fetcher, undefined, builderOrigin)
+    : null;
   try {
     await database.batch([
       database

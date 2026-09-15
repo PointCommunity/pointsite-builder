@@ -1,5 +1,6 @@
 import type { JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
+import { publicationDestination } from './destinations';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import { PublicationBuildSchema, publicationJson } from './build-proof';
@@ -146,7 +147,7 @@ export class D1PublicationVerifier {
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.reserved_run_id && identifier.safeParse(row.reserved_run_id).success
         ? {
-            workflowUrl: `https://github.com/PointCommunity/${target === 'staging' ? 'pointsite-staging' : 'pointsite'}/actions/runs/${row.reserved_run_id}`,
+            workflowUrl: `https://github.com/PointCommunity/${publicationDestination(target, this.config.builderOrigin).repository}/actions/runs/${row.reserved_run_id}`,
           }
         : {}),
     };
@@ -172,7 +173,7 @@ export class D1PublicationVerifier {
     if (!reserved.meta.changes) throw new Error('PUBLICATION_VERIFICATION_BACKOFF');
     try {
       const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
-      const repository = row.target === 'staging' ? 'pointsite-staging' : 'pointsite';
+      const repository = publicationDestination(row.target, this.config.builderOrigin).repository;
       const token = await createPublisherToken({
         ...this.config,
         repository,
@@ -405,7 +406,7 @@ export class D1PublicationVerifier {
     await guard.first();
     const githubToken = await createPublisherToken({
       ...this.config,
-      repository: source.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+      repository: publicationDestination(source.target, this.config.builderOrigin).repository,
       subject: actor,
       login: row.github_login,
       fetcher: this.request,
@@ -420,6 +421,7 @@ export class D1PublicationVerifier {
       },
       this.request,
       githubToken,
+      this.config.builderOrigin,
     );
     if (receipt)
       await verifyTerminalRun(
@@ -433,6 +435,7 @@ export class D1PublicationVerifier {
         },
         this.request,
         githubToken,
+        this.config.builderOrigin,
       );
     if (source.workerVersionId) {
       const native = await verifyStagingDeployment(
@@ -468,6 +471,7 @@ export class D1PublicationVerifier {
         },
         this.request,
         githubToken,
+        this.config.builderOrigin,
       )),
       verificationStatus: 'passed',
     });
@@ -653,7 +657,7 @@ export class D1PublicationVerifier {
       const source = VerificationSourceSchema.parse(JSON.parse(row.source_json));
       const token = await createPublisherToken({
         ...this.config,
-        repository: input.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+        repository: publicationDestination(input.target, this.config.builderOrigin).repository,
         subject: input.actor,
         login: row.github_login,
         fetcher: this.request,
@@ -669,6 +673,7 @@ export class D1PublicationVerifier {
         },
         this.request,
         token,
+        this.config.builderOrigin,
       );
     } else if (row.dispatch_count !== MAX_DISPATCH_ATTEMPTS) {
       throw new Error('PUBLICATION_VERIFICATION_BACKOFF');
@@ -782,7 +787,8 @@ export class D1PublicationVerifier {
     sha.parse(this.callerBlobs[input.target]);
     const actor = this.database
       .prepare(
-        `SELECT u.github_login FROM user_roles u JOIN publish_jobs j ON j.id=? WHERE u.email=? AND ${authority}`,
+        `SELECT u.github_login FROM user_roles u JOIN publish_jobs j ON j.id=? WHERE u.email=? AND ${authority}
+        AND j.repository='PointCommunity/${publicationDestination(input.target, this.config.builderOrigin).repository}'`,
       )
       .bind(input.jobId, input.actor, input.target, input.target);
     const account = await actor.first<{ github_login: string }>();
@@ -841,8 +847,13 @@ export class D1PublicationVerifier {
       source.candidate_checksum !== build.candidateChecksum
     )
       throw new Error('PUBLICATION_VERIFICATION_CHANGED');
-    await verifyTerminalRun({ target: input.target, ...source }, this.request);
-    const repository = input.target === 'staging' ? 'pointsite-staging' : 'pointsite';
+    await verifyTerminalRun(
+      { target: input.target, ...source },
+      this.request,
+      undefined,
+      this.config.builderOrigin,
+    );
+    const repository = publicationDestination(input.target, this.config.builderOrigin).repository;
     const token = await createPublisherToken({
       ...this.config,
       repository,
