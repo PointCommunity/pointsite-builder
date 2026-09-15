@@ -373,10 +373,10 @@ describe('guided Staging publishing', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it('accepts the exact cloud artifact and prior decision, then revokes that recorded tuple', async () => {
+  it('accepts the original captured tuple after recovery advances main, then revokes it', async () => {
     const tuple = {
       siteId: 'pointsite' as const,
-      revisionId: job.revisionId,
+      revisionId: '20000000-0000-4000-8000-000000000099',
       revisionChecksum: job.revisionChecksum,
       schemaVersion: job.schemaVersion,
       rendererVersion: job.rendererVersion,
@@ -390,11 +390,18 @@ describe('guided Staging publishing', () => {
     };
     const cloud = {
       ...reviewReady,
+      currentStagingSha: '9'.repeat(40),
+      availability: { state: 'busy' as const, phase: 'review' as const },
       job: {
         ...reviewReady.job!,
+        revisionId: tuple.revisionId,
         publicationProtocol: 2 as const,
         workflowRevision: tuple.workflowRevision,
-        evidence: { verificationStatus: 'passed' as const, artifactDigest: tuple.artifactDigest },
+        evidence: {
+          verificationStatus: 'passed' as const,
+          artifactDigest: tuple.artifactDigest,
+          verification: { dispatchRevision: '9'.repeat(40) },
+        },
       },
     };
     const acceptedCloud = { ...cloud, approval: { ...accepted.approval!, tuple } };
@@ -410,6 +417,7 @@ describe('guided Staging publishing', () => {
       .spyOn(api, 'revokeStaging')
       .mockResolvedValue({ id: crypto.randomUUID(), decision: 'revoked', tuple });
     renderPublish();
+    expect(await screen.findByText('Newer edits are not included.')).toBeVisible();
     fireEvent.click(await screen.findByRole('button', { name: 'Accept this Staging version' }));
     await waitFor(() =>
       expect(approve).toHaveBeenCalledWith(

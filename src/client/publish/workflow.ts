@@ -70,6 +70,7 @@ export interface StagingWorkflowJob {
   completedAt: string | null;
   evidence: {
     verificationStatus?: VerificationStatus;
+    verification?: { dispatchRevision: string };
     artifactDigest?: string;
     failureCode?: string;
     failedChecks?: string[];
@@ -220,9 +221,12 @@ export function deriveStagingWorkflow(input: {
   const revisionChanged =
     Boolean(job) &&
     (job!.revisionId !== input.revisionId || job!.revisionChecksum !== input.revisionChecksum);
-  const stagingChanged = Boolean(
-    job && job.stagingCommitSha && currentStagingSha !== job.stagingCommitSha,
-  );
+  // Recovery can verify unchanged published content at a newer verifier-only main revision.
+  const verifiedStagingSha =
+    job?.publicationProtocol === 2 && job.evidence.verificationStatus === 'passed'
+      ? (job.evidence.verification?.dispatchRevision ?? job.stagingCommitSha)
+      : job?.stagingCommitSha;
+  const stagingChanged = Boolean(verifiedStagingSha && currentStagingSha !== verifiedStagingSha);
 
   const captured = job?.publicationProtocol === 2;
   if (captured && job.status === 'queued' && job.dispatch?.needsAttention)

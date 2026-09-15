@@ -576,8 +576,14 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
       } else if (body.action === 'verify-completed') {
         workflow.job!.status = 'succeeded';
         workflow.job!.dispatch!.canVerifyCompleted = false;
-        workflow.job!.evidence = { verificationStatus: 'passed', artifactDigest: 'f'.repeat(64) };
-        workflow.currentStagingSha = 'd'.repeat(40);
+        workflow.job!.revisionId = '20000000-0000-4000-8000-000000000099';
+        workflow.job!.evidence = {
+          verificationStatus: 'passed',
+          artifactDigest: 'f'.repeat(64),
+          verification: { dispatchRevision: '9'.repeat(40) },
+        };
+        workflow.currentStagingSha = '9'.repeat(40);
+        workflow.availability = { state: 'busy', phase: 'review' };
       } else {
         workflow.job!.status = 'cancelled';
         workflow.job!.dispatch!.canRetryCaptured = true;
@@ -646,6 +652,8 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
   await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(page.getByText('Newer edits are not included.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Accept this Staging version' })).toBeEnabled();
   expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel', 'verify-completed']);
   expect(published).toHaveLength(1);
 });

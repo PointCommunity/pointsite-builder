@@ -264,6 +264,35 @@ it('holds captured cloud jobs across edits, bounded monitoring, and dispatch exh
   expect(derive(current)).toMatchObject({ phase: 'ready', canPublish: true, canAccept: false });
 });
 
+it('resumes captured review at the passed recovery revision without accepting later branch drift', () => {
+  const recovered = snapshot({
+    currentStagingSha: 'e'.repeat(40),
+    availability: { state: 'busy', phase: 'review' },
+    job: {
+      ...snapshot().job!,
+      publicationProtocol: 2,
+      workflowRevision: 'a'.repeat(40),
+      revisionId: 'older-captured-revision',
+      evidence: {
+        verificationStatus: 'passed',
+        artifactDigest: 'b'.repeat(64),
+        verification: { dispatchRevision: 'e'.repeat(40) },
+      },
+    },
+  });
+  expect(derive(recovered)).toMatchObject({
+    phase: 'review-ready',
+    canAccept: true,
+    canPublish: false,
+    shouldPoll: false,
+  });
+  expect(derive({ ...recovered, currentStagingSha: 'f'.repeat(40) }).canAccept).toBe(false);
+  recovered.job!.evidence.verificationStatus = 'failed';
+  expect(derive(recovered).canAccept).toBe(false);
+  recovered.job!.evidence = { verificationStatus: 'passed', artifactDigest: 'b'.repeat(64) };
+  expect(derive(recovered).canAccept).toBe(false);
+});
+
 it('requires a fresh cloud capture before accepting a legacy publication after cutover', () => {
   const old = snapshot({ publicationProtocol: 2 });
   old.job!.evidence.verificationStatus = 'passed';
