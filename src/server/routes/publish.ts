@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { QueuedRecoverySchema } from '../publish/recovery';
 import { requirePublishAccess } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest } from '../http/security';
@@ -42,6 +43,7 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
             publishJobId: approval.publishJobId,
             decision: approval.decision,
             createdAt: approval.createdAt,
+            tuple: approval.tuple,
           }
         : null,
     });
@@ -61,8 +63,23 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
       });
-      return context.json(result, result.status === 'running' ? 202 : 201);
+      return context.json(
+        result,
+        result.status === 'running' || result.status === 'queued' ? 202 : 201,
+      );
     } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
+        );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
           409,
@@ -129,6 +146,18 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
         201,
       );
     } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
+        );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
           409,
@@ -182,6 +211,18 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
           error.message,
           'Publication cannot continue; refresh the saved draft and publication status',
         );
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing access changed; refresh your session',
+        );
+      if (error instanceof Error && error.message === 'PUBLICATION_RUNTIME_UNAVAILABLE')
+        throw new ApiError(
+          409,
+          error.message,
+          'The reviewed cloud publication workflow is not available; ask a site maintainer to complete its setup',
+        );
       if (error instanceof Error && error.message.startsWith('STAGING_RENDERER_MISMATCH:'))
         throw new ApiError(
           409,
@@ -210,8 +251,48 @@ export function createPublishRoutes(publisher?: StagingPublisher, approvals?: D1
       throw error;
     }
   });
-  routes.post('/production', () => {
-    throw new ApiError(403, 'PRODUCTION_DISABLED', 'Production publishing is disabled');
+  routes.post('/jobs/:jobId/recovery', async (context) => {
+    const actor = requirePublishAccess(context.get('actor'));
+    if (!publisher)
+      throw new ApiError(503, 'PUBLISHING_NOT_CONFIGURED', 'Publishing is not configured');
+    const body = QueuedRecoverySchema.pick({ action: true, expectedAttempts: true }).safeParse(
+      await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
+    );
+    if (!body.success || !z.uuid().safeParse(context.req.param('jobId')).success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose the publication to recover');
+    try {
+      return context.json(
+        await publisher.recoverQueued({
+          ...body.data,
+          jobId: context.req.param('jobId'),
+          actor: actor.email,
+          requestId: context.get('requestId'),
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PUBLISH_AUTHORITY_CHANGED')
+        throw new ApiError(
+          403,
+          error.message,
+          'Your publishing authority changed; refresh your session',
+        );
+      if (
+        error instanceof Error &&
+        [
+          'PUBLICATION_RECOVERY_CHANGED',
+          'PUBLICATION_RUN_NOT_TERMINAL',
+          'PUBLICATION_VERIFICATION_UNCONFIRMED',
+          'IDEMPOTENCY_CONFLICT',
+        ].includes(error.message)
+      )
+        throw new ApiError(
+          409,
+          error.message,
+          'Publication state changed; refresh its status before recovering it',
+        );
+      throw error;
+    }
   });
   return routes;
 }

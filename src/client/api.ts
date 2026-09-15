@@ -5,13 +5,20 @@ import type {
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRecord,
+  DraftSummary,
   EditorViewState,
   RevisionRecord,
   Role,
 } from '../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../shared/draft-lifecycle';
 import type { DraftAction } from '../shared/draft-actions';
-import type { StagingWorkflowSnapshot } from './publish/workflow';
+import type {
+  RollbackSelection,
+  RollbackSnapshot,
+  StagingWorkflowSnapshot,
+  ProductionWorkflowSnapshot,
+  PublicationVerificationState,
+} from './publish/workflow';
 import type { FeedbackAvailability, FeedbackScreen } from '../shared/feedback';
 import type {
   LibrarySnapshot,
@@ -49,26 +56,20 @@ export interface AuditItem {
   metadata: Record<string, string | number | boolean | null>;
 }
 
-export interface CapacityReport {
-  privateMedia: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  revisionData: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  writesToday: { used: number; limit: number; percent: number; warning: boolean; unit: string };
-  measuredAt: string;
-}
+export type { CapacityReport } from '../server/admin/service';
+import type { CapacityReport } from '../server/admin/service';
 
-export interface CandidateTuple {
-  siteId: 'pointsite';
-  revisionId: string;
-  revisionChecksum: string;
-  schemaVersion: number;
-  rendererVersion: string;
-  candidateChecksum: string;
-  stagingBaseSha: string;
-  stagingCommitSha: string;
-  productionBaseSha: string;
-}
+export type { CandidateTuple } from '../server/approvals/service';
+import type { CandidateTuple } from '../server/approvals/service';
 
 export type StagingPublishResponse =
+  | {
+      environment: 'staging';
+      jobId: string;
+      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+      publicationProtocol: 2;
+      candidateChecksum: string;
+    }
   | StagingPublishResult
   | {
       status: 'running';
@@ -187,7 +188,7 @@ export const api = {
       signal: AbortSignal.timeout(10_000),
     }),
   me: () => request<ActorResponse>('/me'),
-  listDrafts: async () => (await request<{ items: DraftRecord[] }>('/drafts')).items,
+  listDrafts: async () => (await request<{ items: DraftSummary[] }>('/drafts?view=summary')).items,
   getDraft: (id: string) => request<DraftRecord>(`/drafts/${id}`),
   createDraft: (name: string, fromRevisionId?: string) =>
     request<DraftRecord>('/drafts', {
@@ -202,12 +203,14 @@ export const api = {
     action: DraftAction,
     idempotencyKey: string,
     checkoutToken: string,
+    expectedRevisionId: string,
   ) =>
     request<DraftRecord>(`/drafts/${id}`, {
       method: 'PUT',
       headers: mutationHeaders(idempotencyKey, {
         'if-match': `"${checksum}"`,
         'x-draft-checkout': checkoutToken,
+        'x-draft-revision': expectedRevisionId,
       }),
       body: JSON.stringify({ document, action }),
     }),
@@ -215,21 +218,31 @@ export const api = {
     (await request<{ items: DraftCheckoutAvailability[] }>('/drafts/checkouts')).items,
   ownedCheckout: () =>
     request<{ draftId: string; expiresAt: string } | null>('/drafts/checkout/owned'),
-  acquireCheckout: (id: string, clientId: string) =>
+  acquireCheckout: (
+    id: string,
+    clientId: string,
+    options: { resumeOnly?: boolean; expectedStatus?: 'active' | 'archived' } = {},
+  ) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, ...options }),
     }),
   validateCheckout: (id: string, token: string) =>
     request<{ active: true }>(`/drafts/${id}/checkout`, {
       headers: { 'x-draft-checkout': token },
     }),
-  touchCheckout: (id: string, clientId: string, token: string, viewState?: EditorViewState) =>
+  touchCheckout: (
+    id: string,
+    clientId: string,
+    token: string,
+    viewState?: EditorViewState,
+    activity = true,
+  ) =>
     request<DraftCheckout>(`/drafts/${id}/checkout`, {
       method: 'PATCH',
       headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
-      body: JSON.stringify({ clientId, ...(viewState ? { viewState } : {}) }),
+      body: JSON.stringify({ clientId, activity, ...(viewState ? { viewState } : {}) }),
     }),
   releaseCheckout: (id: string, clientId: string, token: string) =>
     request<void>(`/drafts/${id}/checkout`, {
@@ -237,37 +250,53 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID(), { 'x-draft-checkout': token }),
       body: JSON.stringify({ clientId }),
     }),
-  renameDraft: (id: string, name: string) =>
-    request<DraftRecord>(`/drafts/${id}`, {
+  renameDraft: (context: LibraryMutationContext, name: string) =>
+    request<DraftRecord>(`/drafts/${context.draftId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ name }),
     }),
-  setDraftStatus: (id: string, action: 'archive' | 'recover') =>
-    request<DraftRecord>(`/drafts/${id}`, {
+  setDraftStatus: (context: LibraryMutationContext, action: 'archive' | 'recover') =>
+    request<DraftRecord>(`/drafts/${context.draftId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ status: action === 'archive' ? 'archived' : 'active' }),
     }),
-  deleteDraft: (id: string) =>
-    request<DeletedDraftReceipt>(`/drafts/${id}`, {
+  deleteDraft: (context: LibraryMutationContext) =>
+    request<DeletedDraftReceipt>(`/drafts/${context.draftId}`, {
       method: 'DELETE',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ confirmation: DELETE_DRAFT_CONFIRMATION }),
     }),
-  listRevisions: async (id: string) =>
-    (await request<{ items: RevisionRecord[] }>(`/drafts/${id}/revisions`)).items,
-  labelRevision: (draftId: string, revisionId: string, label: string) =>
-    request<RevisionRecord>(`/drafts/${draftId}/revisions/${revisionId}`, {
+  listRevisions: (
+    id: string,
+    options: {
+      cursor?: string;
+      query?: string;
+      filter?: 'all' | 'named' | 'current';
+      signal?: AbortSignal;
+    } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (options.cursor) query.set('cursor', options.cursor);
+    if (options.query) query.set('query', options.query);
+    if (options.filter) query.set('filter', options.filter);
+    return request<{ items: Omit<RevisionRecord, 'document'>[]; nextCursor: string | null }>(
+      `/drafts/${id}/revisions?${query}`,
+      { signal: options.signal },
+    );
+  },
+  labelRevision: (context: LibraryMutationContext, revisionId: string, label: string) =>
+    request<RevisionRecord>(`/drafts/${context.draftId}/revisions/${revisionId}`, {
       method: 'PATCH',
-      headers: mutationHeaders(crypto.randomUUID()),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
       body: JSON.stringify({ label }),
     }),
-  restoreRevision: (draftId: string, revisionId: string, expectedChecksum: string) =>
-    request<DraftRecord>(`/drafts/${draftId}/restore`, {
+  restoreRevision: (context: LibraryMutationContext, revisionId: string) =>
+    request<DraftRecord>(`/drafts/${context.draftId}/restore`, {
       method: 'POST',
-      headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ revisionId, expectedChecksum }),
+      headers: mutationHeaders(context.idempotencyKey, libraryHeaders(context)),
+      body: JSON.stringify({ revisionId, expectedChecksum: context.expectedChecksum }),
     }),
   stagingBase: () => request<{ sha: string }>('/publish/staging/base'),
   getStagingWorkflow: (draftId: string) =>
@@ -289,10 +318,11 @@ export const api = {
     expectedRevisionId: string,
     expectedRevisionChecksum: string,
     expectedBaseSha: string,
+    requestKey?: string,
   ) =>
     request<StagingPublishResponse>('/publish/staging', {
       method: 'POST',
-      headers: mutationHeaders(`staging-${expectedRevisionId}-${expectedBaseSha}`),
+      headers: mutationHeaders(requestKey ?? `staging-${expectedRevisionId}-${expectedBaseSha}`),
       body: JSON.stringify({
         draftId,
         expectedRevisionId,
@@ -306,6 +336,17 @@ export const api = {
       headers: mutationHeaders(crypto.randomUUID()),
       body: '{}',
     }),
+  recoverQueuedPublication: (
+    jobId: string,
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
+    expectedAttempts: number,
+    requestKey: string,
+  ) =>
+    request<{ recovered: true; jobId?: string }>(`/publish/jobs/${jobId}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ action, expectedAttempts }),
+    }),
   refreshStagingVerification: (jobId: string) =>
     request<PublishJobResponse>(`/publish/jobs/${jobId}/verification`, {
       method: 'POST',
@@ -313,11 +354,112 @@ export const api = {
       body: '{}',
     }),
   productionBase: () => request<{ sha: string }>('/approvals/production-base'),
-  acceptStaging: (publishJobId: string, expectedTuple: CandidateTuple, note?: string) =>
+  getPublicationVerification: (target: 'staging' | 'production', jobId: string) =>
+    request<{ verification: PublicationVerificationState | null }>(
+      `/publish/${target}/jobs/${jobId}/verification`,
+    ),
+  capturePublicationVerification: (
+    target: 'staging' | 'production',
+    jobId: string,
+    expectedAttempts: number,
+    key: string,
+  ) =>
+    request<{ recovered: true; verificationId: string }>(
+      `/publish/${target}/jobs/${jobId}/verification`,
+      {
+        method: 'POST',
+        headers: mutationHeaders(key),
+        body: JSON.stringify({ expectedAttempts }),
+      },
+    ),
+  recoverPublicationVerification: (
+    target: 'staging' | 'production',
+    jobId: string,
+    verificationId: string,
+    action: 'retry' | 'reconcile',
+    expectedDispatches: number,
+    key: string,
+  ) =>
+    request<{ recovered: true; verificationId?: string }>(
+      `/publish/${target}/jobs/${jobId}/verification/${verificationId}/recovery`,
+      {
+        method: 'POST',
+        headers: mutationHeaders(key),
+        body: JSON.stringify({ action, expectedDispatches }),
+      },
+    ),
+  getRollback: () => request<RollbackSnapshot>('/publish/production/rollback'),
+  prepareRollback: () =>
+    request<Omit<RollbackSelection, 'sourceReleaseId'>>('/publish/production/rollback/prepare', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({}),
+    }),
+  rollbackProduction: (selection: RollbackSelection, key: string) =>
+    request<{ id: string; status: string }>('/publish/production/rollback', {
+      method: 'POST',
+      headers: mutationHeaders(key),
+      body: JSON.stringify(selection),
+    }),
+  recoverRollback: (id: string, action: 'cancel' | 'verify') =>
+    request<{ recovered: true }>(`/publish/production/rollback/${id}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({ action }),
+    }),
+  getProductionWorkflow: (draftId: string) =>
+    request<ProductionWorkflowSnapshot>(
+      `/publish/production/workflow?draftId=${encodeURIComponent(draftId)}`,
+    ),
+  publishProduction: (
+    stagingJobId: string,
+    approvalId: string,
+    tuple: CandidateTuple,
+    requestKey: string,
+  ) =>
+    request<{ id: string; status: string }>('/publish/production', {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ stagingJobId, approvalId, tuple }),
+    }),
+  recoverProduction: (
+    jobId: string,
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
+    expectedAttempts: number,
+    requestKey: string,
+  ) =>
+    request<{ recovered: true; jobId?: string }>(`/publish/production/jobs/${jobId}/recovery`, {
+      method: 'POST',
+      headers: mutationHeaders(requestKey),
+      body: JSON.stringify({ action, expectedAttempts }),
+    }),
+  revokeStaging: (
+    publishJobId: string,
+    expectedTuple: CandidateTuple,
+    expectedApprovalId: string,
+  ) =>
     request<{ id: string; decision: string; tuple: CandidateTuple }>('/approvals', {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
       body: JSON.stringify({
+        publishJobId,
+        expectedTuple,
+        expectedApprovalId,
+        decision: 'revoked',
+        note: 'Staging acceptance revoked in Builder',
+      }),
+    }),
+  acceptStaging: (
+    publishJobId: string,
+    expectedTuple: CandidateTuple,
+    note?: string,
+    expectedApprovalId?: string | null,
+  ) =>
+    request<{ id: string; decision: string; tuple: CandidateTuple }>('/approvals', {
+      method: 'POST',
+      headers: mutationHeaders(crypto.randomUUID()),
+      body: JSON.stringify({
+        ...(expectedApprovalId !== undefined ? { expectedApprovalId } : {}),
         publishJobId,
         expectedTuple,
         decision: 'approved',

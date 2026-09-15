@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 61 — Reliable editorial workflow: contracts and research</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #101218;
+        color: #edf0f8;
+      }
+      body {
+        max-width: 1080px;
+        margin: auto;
+        padding: 32px 24px 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 40px;
+        color: #a8c9ff;
+      }
+      a {
+        color: #9fd7ff;
+      }
+      code {
+        overflow-wrap: anywhere;
+        color: #d5c0ff;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #424957;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #242b39;
+      }
+      .status {
+        border-left: 4px solid #ffc770;
+        padding: 16px;
+        background: #25221c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #61: Reliable autosave and cloud publishing</h1>
+    <section class="status" id="homelab-supersession">
+      <h2>September 14 scope revision: homelab Builder</h2>
+      <p>
+        Chris explicitly authorized implementation of a fresh homelab Builder, new drafts from
+        current public Production, and a Canary-first application release pipeline. This revision
+        supersedes earlier requirements below that prohibit hosting migration, require D1, require
+        protected public-site Staging, or require direct Builder Production deployment. Earlier D1
+        measurements and provider recovery work remain historical evidence, not prerequisites for
+        the homelab release. All other editorial integrity and authorization requirements remain.
+      </p>
+      <p>
+        The controlling implementation documents are the
+        <a href="../../tasks/plan.html">homelab implementation plan</a> and
+        <a href="../../tasks/todo.html">dependency-ordered tasks and verification gates</a>.
+        Implementation is authorized. Production promotion requires Chris's explicit approval of the
+        exact healthy Canary source, image digest, and deployment configuration.
+      </p>
+      <ul>
+        <li>
+          Builder Canary: https://builder-canary.eaglepass.io; Builder Production:
+          https://builder.eaglepass.io.
+        </li>
+        <li>
+          Independent persistent SQLite databases and session secrets; GitHub sign-in remains
+          required.
+        </li>
+        <li>
+          Preserve old Cloudflare Builder and D1 data. No migration or deletion of existing drafts.
+        </li>
+        <li>
+          Public-site Staging and Production use GitHub Pages. Public Staging is the approved
+          fallback.
+        </li>
+        <li>
+          Seed from verified current public Production source and assets; never silently substitute
+          stale defaults.
+        </li>
+        <li>
+          Promote the same reviewed image digest without rebuilding; retain the previous Production
+          digest.
+        </li>
+      </ul>
+    </section>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/61"
+        >Owning Issue and approved product requirements</a
+      >. Research captured September 12, 2026; this is the implementation specification, not a
+      completion report. The September 14 revision above takes precedence over the historical
+      provider-specific design below.
+    </p>
+    <p class="status">
+      <strong
+        >T1 contracts below are fixed for implementation; delivery evidence remains pending.</strong
+      >
+      GitHub installation access is verified after account-holder reauthentication. The forward
+      encoding fixture passes. Narrowly scoped runtime credentials, migration rehearsal and measured
+      workload headroom against documented free allowances remain explicit release gates. No
+      permission setting or deployed content has changed. T2–T14 are not complete.
+    </p>
+
+    <h2>Objective and preserved boundaries</h2>
+    <p>
+      Deliver browser-only editorial operation: independent remote drafts, logical-action autosave,
+      pending-only refresh recovery, cloud Staging jobs, exact Staging acceptance,
+      Administrator-only Production promotion, and cloud retry/rollback. Builder itself keeps its
+      single Production environment and local software QA. Actual public content publication still
+      requires an explicitly selected and approved candidate.
+    </p>
+    <ul>
+      <li>
+        Keep Cloudflare Workers/D1 and GitHub. No paid capacity, new paid service, homelab, or
+        public private-data backup.
+      </li>
+      <li>
+        Preserve the existing 90-day automatic revision minimum, named history, immutable checksums,
+        attribution, and immediate whole-draft purge. Do not shorten retention to make a forecast
+        pass.
+      </li>
+      <li>
+        Preserve foreground checkout availability within five seconds, warning at 25 minutes, expiry
+        at 30 minutes, and safe device transfer. Passive traffic must not renew authority.
+      </li>
+      <li>
+        Only pending editing payloads and minimum non-secret recovery metadata persist in the
+        browser. Browser storage cannot grant a role, lease, or revision authority.
+      </li>
+      <li>
+        Keep Issue #57 and unrelated repository changes outside this work. Do not publish fixture
+        content to Staging or Production merely to test the implementation.
+      </li>
+    </ul>
+
+    <h2>Live baseline and source findings</h2>
+    <p>
+      Builder source: <code>2b829836da1934266dcafb83f44c5ac381e71596</code>. Remote content heads:
+      Staging <code>e8fb73de2c6218ed258707b8e866411dbdecd29d</code>; Production
+      <code>0187c95c8a9d3441049616a801f66f6f6d11050e</code>. The inspected latest Builder deployment
+      sends 100% to Worker version <code>d991ce3a-e06b-4a04-95ee-4b7db1532537</code>. Recheck all
+      identities before release.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Evidence</th>
+          <th>Observed result and implication</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>D1 list and read-only aggregate SQL</td>
+          <td>
+            11 drafts; 782 retained revisions; 55,785,910 bytes of revision JSON; 226 asset versions
+            totaling 42,377,030 bytes; database allocation 214,228,992 bytes. Three active role
+            records. D1 queries succeeded during this inspection.
+          </td>
+        </tr>
+        <tr>
+          <td>Idempotency sizing</td>
+          <td>
+            782 records contain 112,152,964 bytes of response JSON. The response duplicates the
+            document in the draft and revision. Expired-record cleanup and compact receipts require
+            compatibility and retry tests; expiry alone does not physically reclaim records.
+          </td>
+        </tr>
+        <tr>
+          <td>Audit aggregates, September 6–12 UTC</td>
+          <td>
+            Daily save counts: 30, 61, 151, 143, 28, 0, 354. September 12 is incomplete and includes
+            two actors. These are observed audit actions, not measured session durations or provider
+            write counts. Earlier specs assumed 50 saves/day.
+          </td>
+        </tr>
+        <tr>
+          <td>Provider calendar-day analytics</td>
+          <td>
+            September 12 Builder dataset reports 7,439,666 rows read and 11,208 written at
+            inspection. This does not reconcile a hard 5-million free allowance by itself; do not
+            call it an audited billing total or infer the current plan. Another account database
+            exists and must remain in aggregate budgets. The subscription endpoint returned HTTP
+            403.
+          </td>
+        </tr>
+        <tr>
+          <td>Compression sizing in memory</td>
+          <td>
+            The latest 20 documents averaged 81,730 raw bytes and 12,848 gzip bytes. A separate
+            200-row sample yielded 198 same-draft adjacent pairs averaging 168 bytes for a gzip
+            splice with 128 bytes of modeled metadata; maximum 543 bytes. The splice probe
+            reconstructed every sampled document exactly, but ran in reverse sequence. It is not a
+            migration, forward-chain test, storage forecast, or performance proof.
+          </td>
+        </tr>
+        <tr>
+          <td>Library and migration status</td>
+          <td>
+            <code>src/server/media/library.ts</code> reconstructs history on each listing and can
+            materialize items during GET.
+            <code>src/server/maintenance/asset-migration.ts</code> scans historical media even after
+            reading a completed state.
+          </td>
+        </tr>
+        <tr>
+          <td>Save and recovery</td>
+          <td>
+            <code>action-autosave.ts</code> keeps its queue in memory. <code>d1.ts</code> returns
+            idempotency responses without checking the stored request hash; expected-revision
+            validation can precede replay lookup. Checkout and role enforcement must be rechecked
+            across all committing paths.
+          </td>
+        </tr>
+        <tr>
+          <td>Publication</td>
+          <td>
+            <code>publish/service.ts</code> advances upload from browser continuation and rereads
+            the latest draft. Job guards require the pinned revision to remain latest. Commit
+            success is stored as job success before live verification. Production route is disabled.
+            These behaviors do not satisfy R8–R11.
+          </td>
+        </tr>
+        <tr>
+          <td>Repository and access inventory</td>
+          <td>
+            Both content repositories are public and their main branches report no protection.
+            Existing hosted workflows deploy Staging and Pages. CLI access has repository
+            administrator permissions, which does not establish Builder App permissions. The
+            PointSite Builder installation exists; its configuration page is behind GitHub
+            reauthentication. Preserve dirty files in the existing Staging checkout.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Workload and numeric gates</h2>
+    <p>
+      These are fixed declared test scenarios, not claims about real usage. Any revision must retain
+      the observed high-activity case and explain the change. Free allowances are the PM's operating
+      constraint; missing live plan access cannot authorize paid resources or a claim of verified
+      suitability.
+    </p>
+    <ul>
+      <li>
+        Reference day: two editors, two 45-minute sessions each, 100 completed actions per session:
+        400 saves/day. Per session: 20 Library listings, ten dashboard refreshes, four history
+        visits, continuous foreground checkout observation. Ten Staging jobs/day, two Production
+        promotions/day, and one rollback rehearsal in an isolated fixture.
+      </li>
+      <li>
+        Reference corpus: 12 drafts, 100 media entries/draft, 800 starting revisions, then 36,000
+        additional revisions for a 90-day projection. Published candidates include more than the old
+        upload batch size. Model 10% request retries, uncertain acknowledgements, two duplicate
+        dispatches, one runner interruption, and maintenance separately.
+      </li>
+      <li>
+        Growth case: four editors, four such sessions each: 1,600 saves/day. Measure and report
+        whether this fits; do not silently redefine it as the supported reference workload or
+        promise unlimited use.
+      </li>
+      <li>
+        Account targets: at most 3,500,000 D1 reads/day, 70,000 writes/day, 70,000 Worker
+        requests/day, and 350 MB allocated in the Builder database. Reserve at least 30% of
+        documented allowances; include other account consumers, monitoring, Staging authentication,
+        retries, indexes, and maintenance. Use 500,000,000 bytes conservatively for the documented
+        500 MB database limit.
+      </li>
+      <li>
+        GitHub target: below 70% of the verified installation's actual primary rate limit, honoring
+        secondary limits and Retry-After. Standard public-repository runners only. Proposed artifact
+        retention: one day for transient output; published Git content and verified reproducible
+        manifests provide durable candidate inputs. No Actions cache is required by this design.
+      </li>
+      <li>
+        Storage feasibility is a gate: 400 × 90 × 81,730 is 2.94 GB before overhead. Even
+        independent gzip snapshots project 462.5 MB before media and indexes. Merely deleting
+        duplicate retry responses does not establish 90-day suitability.
+      </li>
+    </ul>
+
+    <h2>State and data contracts</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Requirements</th>
+          <th>Proposed invariant and transition</th>
+          <th>Verification gate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>R2–R5, R12–R13</td>
+          <td>
+            Editing writes an ordered pending journal, then marks local persistence complete. A
+            completed action enters the single remote queue; the receipt removes only that
+            acknowledged action. Recovery authenticates, obtains current backend authority,
+            reconciles exact action receipts, then sends unchanged identities. Remote drift or lost
+            checkout blocks replay. Acknowledgements never replace newer pending content. Automatic
+            page restoration may resume only the current actor's same, unexpired client; it must not
+            acquire an expired checkout, transfer another client's checkout, or renew inactivity.
+            Explicit Open editor remains the user action for acquisition or transfer. Resume rotates
+            the transport token with an atomic comparison against the prior lease. Mutation guards
+            use the database clock at commit rather than a timestamp captured before asset
+            preparation. Storage failures remain latched until explicit recovery retry, so typing
+            does not repeatedly announce the same failure.
+          </td>
+          <td>
+            Refresh before/after storage commit, before/after remote commit and acknowledgement;
+            storage denied, corrupt data, wrong user/draft, old client, newer revision, and lost
+            acknowledgement. Prove one revision and audit event per changed logical action.
+          </td>
+        </tr>
+        <tr>
+          <td>R2–R5, R13</td>
+          <td>
+            Use native IndexedDB. Bounds: 250 actions, 32 MiB total pending payload, seven-day
+            recovery eligibility. Never silently discard expired or incompatible data: show blocked
+            recovery and explicit discard. Successful acknowledgements remove payloads. Sign-out
+            requires settlement or explicit discard. No session secret or checkout token enters the
+            journal. Scope records by authenticated actor, draft and tab client identity. An atomic
+            writer generation prevents an older page from replacing a resumed page's pending work;
+            it grants no backend authority. Commit the payload and shared byte budget in one
+            transaction, acknowledging local persistence only after transaction completion. Preserve
+            staged gestures and original action identities. Storage write failures show an explicit
+            recovery warning while remote saving remains available; an unreadable existing journal
+            blocks replay and editing until recovery succeeds or explicit discard. Discard pauses
+            edits and sending before fetching the latest draft and clearing storage. Failed discard
+            preserves pending work. Navigation waits for acknowledged payload cleanup; sign-out
+            checks all pending journals for the current actor and offers explicit atomic deletion of
+            that actor's records. Other actors' records remain untouched.
+          </td>
+          <td>
+            Browser tests for text, controls, unfinished drag, eviction/denial, account switching,
+            acknowledged cleanup, and sign-out. Bound retries to the existing schedule; expiry
+            cannot turn replay into a new action.
+          </td>
+        </tr>
+        <tr>
+          <td>R1–R2, R5–R7</td>
+          <td>
+            Maintain indexed Library item dates and retained item/path protection transactionally.
+            Backfill once in resumable batches; deletion fails closed until coverage is complete.
+            Completed ownership migration status does no historical expansion. Load document
+            payloads only for operations that need them; skip unchanged editor-state writes and
+            inactive polling.
+          </td>
+          <td>
+            Equivalent metadata/blockers for legacy and current fixtures, restores, replacement,
+            archival, deletion and retention; tenfold unrelated history growth does not produce
+            proportional listing reads. Target at least 90% fewer reads on the diagnosed
+            large-history fixture.
+          </td>
+        </tr>
+        <tr>
+          <td>R1–R2, R5–R6, R12</td>
+          <td>
+            First eliminate duplicated save responses with exact request-hash receipts. Prototype
+            lossless, bounded revision encoding using native gzip and a byte splice against a pinned
+            base, with full checkpoints at most 32 revisions apart and fallback to a full snapshot.
+            Preserve canonical checksums, readable old rows, named history, reference metadata, and
+            deletion semantics. Do not adopt this format unless whole-flow measurements justify it.
+          </td>
+          <td>
+            Forward reconstruction, Unicode, corruption, missing base, retention at checkpoints,
+            restore, purge and migration interruption tests. Target at most 6 KiB average retained
+            bytes/action for the reference fixture, with actual index and page allocation measured.
+            Inventory every raw document reader. Deploy a reader-compatible bridge before enabling
+            new encoding; never roll back to an incompatible reader.
+          </td>
+        </tr>
+        <tr>
+          <td>R7</td>
+          <td>
+            Keep runtime liveness distinct from authenticated workspace readiness. Provider metrics
+            include period, captured-at time, source and freshness. Missing counters remain unknown.
+            Server sampling at most every five minutes; foreground UI observes that snapshot, not a
+            provider query per render.
+          </td>
+          <td>
+            D1 unavailable/exhausted, stale snapshot, missing provider permissions, and account
+            aggregation tests. Verify actual counters rather than using audit events as writes.
+          </td>
+        </tr>
+        <tr>
+          <td>R8–R9, R12</td>
+          <td>
+            Freeze saved revision, media bindings, renderer/source/base identities and manifest
+            before dispatch. Durable states distinguish dispatch pending/uncertain, queued, running,
+            verifying, review-ready, failed and cancelled. Trusted GitHub workflow owns execution.
+            Proposed claim: five minutes, renewable; attempt: at most 30 minutes and three explicit
+            retries. A job-scoped GitHub OIDC identity cannot access other drafts or editing routes.
+          </td>
+          <td>
+            Trusted repository/workflow/ref/run/attempt/audience verification; replay, expired
+            claim, duplicate run, lost dispatch response, browser closure, later draft edits, runner
+            death and callback loss. No URL carries credentials or private data.
+          </td>
+        </tr>
+        <tr>
+          <td>R9–R10</td>
+          <td>
+            One Staging slot remains reserved through human review. Explicit replacement or
+            rejection releases it. Acceptance binds the exact successfully deployed and
+            independently checked candidate plus current Staging identity; missing checks or stale
+            identity blocks acceptance.
+          </td>
+          <td>
+            Two-user races; wrong/revoked candidate; deployment replaced during review; substituted
+            workflow run; Publisher/Admin role matrix; durable cross-device readback.
+          </td>
+        </tr>
+        <tr>
+          <td>R10–R12</td>
+          <td>
+            Production requires a fresh Administrator check at request and execution boundaries,
+            exact unrevoked acceptance, expected Production base, trusted workflow source, and
+            serialized deployment. Prefer reviewed artifact reuse; otherwise verify canonical output
+            and explicit environment differences. Published means live routes/assets match, not
+            merely dispatched or committed. Rollback is a separately authorized Admin job targeting
+            the recorded previous release.
+          </td>
+          <td>
+            Direct API and altered workflow inputs, role revocation, stale base, concurrent
+            promotion, exact output manifest, callback loss, safe retries and previous-release
+            restoration. Public fixture promotion stays unauthorized until the PM selects a
+            candidate.
+          </td>
+        </tr>
+        <tr>
+          <td>R1, R12–R14</td>
+          <td>
+            Use supported seven-day D1 Time Travel for provider recovery; it is not an independent
+            backup. Recovery must preserve deletion receipts outside the database rewind, quarantine
+            access, reapply purges, and verify before reopening. Resolve the secure no-cost receipt
+            location and recovery authorization in T1; never restore deleted private content
+            silently.
+          </td>
+          <td>
+            Interrupted maintenance, missing rollback inputs, deletion after backup, restore before
+            deletion and cleanup protection. If existing no-cost services cannot satisfy this
+            contract, return the measured conflict to the PM.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>T1 decisions and rollout gates</h2>
+    <ul>
+      <li>
+        Verified installation: checks and metadata read; code read/write; all organization
+        repositories. Use repository_dispatch, which requires existing Contents write, rather than
+        requesting Actions write. Mint installation tokens for only the selected repository and
+        necessary permissions. Preserve installation settings.
+      </li>
+      <li>
+        The runnable forward fixture is
+        <code>npx tsx tests/performance/editorial-workload.ts</code>. All 400 reconstructions
+        passed, including Unicode. Modeled storage averaged 1,565 bytes/action, projecting 56.34 MB
+        of 90-day revisions and 190.34 MB including declared media/metadata budgets. This supports
+        prototyping; it does not replace real D1 allocation or CPU evidence. The 1,600-action growth
+        case projects 359.36 MB including those budgets, exceeding the reference headroom target.
+      </li>
+      <li>
+        Encoding references one full checkpoint directly, never an unbounded delta chain. Create a
+        checkpoint at most every 32 revisions; each read needs its own record and at most one
+        checkpoint. Validate lengths, offsets, codec version, ownership and canonical checksum
+        before returning data. Use a full snapshot when it is smaller. Retention pins required
+        checkpoints; retain conservative references until reconstruction and bounded projection
+        rebuilding succeed. A reader-compatible bridge precedes enabling encoding.
+      </li>
+      <li>
+        Library projections contain retained item signatures/dates and source paths per draft, not
+        one row per item per revision. Changed signatures update dates; unchanged signatures add no
+        item writes. Each save advances one sequence cursor. Backfill processes at most eight
+        revisions per call (25 statements including its concurrency guard). Retention invalidates
+        coverage and rebuilds it before Library deletion can resume; missing coverage fails closed
+        without a GET-time backfill.
+      </li>
+      <li>
+        Save requests carry expected revision ID, checksum, ordered action ID and current checkout.
+        The transactional receipt binds actor, draft, complete request hash and result revision.
+        Reuse with different input fails. Replay is resolved before stale-base rejection but after
+        current authority validation. Compact receipts are retained for 90 days; older requests
+        still fail their immutable expected revision. No-op receipts prevent uncertain
+        acknowledgement from creating revisions.
+      </li>
+      <li>
+        Cloud endpoints accept only short-lived GitHub OIDC credentials plus a dispatch nonce. Pin
+        repository, workflow path, workflow commit, event, audience, run ID and attempt. A
+        compare-and-swap claim allows one runner. Candidate read endpoints expose only the job's
+        immutable revision and pinned media. Runner callbacks are claims to verify against exact
+        run, commit, manifest and live output, never arbitrary success authority.
+      </li>
+      <li>
+        Store content-free deletion receipts and recovery coordination in a separate small D1
+        database, outside the workspace Time Travel rewind. This uses the existing D1 service and
+        free account allowance; no paid resource is permitted. Write a receipt before purge and fail
+        closed on receipt-store failure. Recovery closes workspace access, restores a selected
+        bookmark, reapplies receipts in bounded batches, verifies, then reopens. Runtime D1 recovery
+        credentials and the extra binding require explicit configuration review before deployment.
+      </li>
+      <li>
+        Provider telemetry uses a read-only runtime credential. If absent, show unknown; do not
+        substitute local audit counts. Existing local CLI access can read D1 usage. Direct API
+        checks on 12 September 2026 returned HTTP 200 for Worker settings, database metadata and a
+        read-only SELECT 1 query (zero rows written). Subscription readback returned HTTP 403.
+        Dashboard access is not required to continue implementation or those operational checks.
+        Measure the defined workload against documented free allowances; billing details are not a
+        release prerequisite. Runtime credential configuration remains necessary for provider
+        sampling. Cloudflare credentials do not replace the Builder's authenticated user session,
+        and missing measurements must remain unknown.
+      </li>
+    </ul>
+
+    <h2>Cloud runner contract</h2>
+    <p>
+      Each content build must pass rendered candidate checks before Git write authorization. Reuse
+      the locked Playwright Chromium and Axe dependencies at 360, 768 and 1280 pixels for every
+      visible captured route: main/heading, loaded images, missing first-party files, JavaScript
+      failures, horizontal overflow, keyboard menu/skip-link operation and serious or critical
+      accessibility violations. Render exact exported files through Playwright request interception;
+      block external requests, downloads, service workers and WebSockets. This checks candidate
+      rendering, not third-party availability or real hosting behavior. Full local Builder browser
+      suites remain separate. A credential-free subprocess has a ten-minute ceiling; runner cleanup
+      removes its browser installation. Compare output hashes before and after checks. Live
+      verification independently reads every deployed file between matching identities, retrying the
+      complete read-only proof at most three times with two- and five-second delays. A retry never
+      repeats a Git write or deployment. These APIs follow the
+      <a href="https://playwright.dev/docs/api/class-route#route-fulfill"
+        >Playwright route contract</a
+      >
+      and <a href="https://playwright.dev/docs/accessibility-testing">Axe integration</a>.
+    </p>
+    <p>
+      Implemented foundation: migration 0020 pins each captured revision, media binding and image
+      chunk set; one durable destination slot survives editor disconnects. Capture, first signed
+      runner claim and subsequent input reads check current database authority. Input preparation
+      reads metadata only and uses three bounded pin statements for up to 500 images. GitHub
+      dispatch uses repository-scoped installation credentials, rechecks the actor's repository
+      permission and expected main commit, and persists retry backoff. Local D1 and signed-token
+      tests cover duplicate requests, revocation races, later edits and provider failure. The
+      backend runner input routes are wired. Migration 0021 adds an immutable run reservation,
+      compact build identity, commit/deployment intents and native deployment acknowledgment. Build
+      authorization, Git commit verification, deployment authorization and final verification have
+      local D1 and signed-token coverage. Builder now captures cloud jobs after a metadata
+      preflight, validates the immutable runtime and reviewed caller, and polls metadata without
+      uploading media. Exact cloud acceptance and completed-slot release now have local role, drift,
+      duplicate and revocation-race coverage. Live workflow execution, complete recovery and
+      Production promotion remain pending.
+    </p>
+    <p>
+      Read-only GitHub checks on 13 September verified public repository IDs 1357847426 for
+      PointCommunity/pointsite-staging and 1348084954 for PointCommunity/pointsite, under owner
+      323764526. Both repositories already use immutable OIDC subjects. Keep these settings. Pin the
+      caller repository and ID, owner and ID, main branch, repository_dispatch event, public
+      visibility, GitHub-hosted runner, expected dispatch commit and environment. The caller
+      workflow is publish-candidate.yml; its reusable implementation is
+      PointCommunity/pointsite-staging/.github/workflows/publish-runtime.yml at a reviewed full
+      commit SHA. Validate job_workflow_sha and the exact SHA-qualified job_workflow_ref, not only a
+      workflow name. The staging environment is staging; Production uses github-pages. These claims
+      follow the
+      <a href="https://docs.github.com/en/actions/reference/security/oidc">GitHub OIDC contract</a>.
+    </p>
+    <p>
+      Every runner request carries a signed GitHub OIDC token whose audience binds one job ID and a
+      random dispatch nonce. Tokens are accepted for at most five minutes from issuance; signature,
+      issuer, audience, subject, expiry and not-before are required. After the atomic claim, all
+      calls must match its run ID and attempt. The signed check-run ID identifies the executing job.
+      OIDC authenticates execution; the original Builder actor and fresh database role authorize
+      publication. It does not acquire an editor checkout or accept a caller's claimed Administrator
+      identity. Missing trusted workflow configuration disables execution.
+    </p>
+    <p>
+      Reserve the first run in a job using an environment with
+      <a
+        href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
+        >deployment: false</a
+      >. Only its dependent execution job may create the native deployment record. Duplicate
+      dispatches must fail before entering that environment, so they cannot supersede legitimate
+      deployment evidence. Bind execution to a different signed check ID in the same reserved run
+      and attempt. A finalizer uses a third check ID with deployment disabled and verifies the
+      completed execution check, native deployment status, current content commit and live release
+      identity.
+    </p>
+    <p>
+      Upload Git objects to a job-owned candidate branch after fresh publication authorization.
+      Before updating main, Builder checks the exact commit, its single captured parent, complete
+      trees, allowed input paths and immutable output-manifest blob. GitHub's native
+      <a href="https://docs.github.com/en/graphql/reference/git#updaterefs">updateRefs mutation</a>
+      supplies beforeOid and afterOid with force disabled: the expected-base comparison and write
+      are atomic, including a concurrent branch reset. A lost response is reconciled against the
+      exact already-created commit. Store the full static-file manifest in immutable Git inputs; D1
+      keeps only bounded identity/count/size fields. Distinguish the workflow dispatch SHA from the
+      new content commit, renderer source revision, static artifact digest and native deployment
+      identity. They prove different facts and must never be relabeled as one SHA.
+    </p>
+    <p>
+      Capture the saved revision and a complete, sorted manifest of immutable owned media IDs,
+      paths, byte counts and SHA-256 digests. Pin those rows for the job and bind the renderer/build
+      source and expected destination base. Transfer each object once; compute file encodings and
+      build the static site in the trusted runner, avoiding repeated Worker-side media packaging.
+      Later edits cannot replace these inputs. Reuse the existing local fonts and configure a
+      deterministic Next.js build ID; compare complete static output manifests before using a
+      rebuild for Production. Environment-specific release attestation is the only separately
+      identified metadata file, never an allowance for different rendered content.
+    </p>
+    <p>
+      Keep one durable destination slot through deployment and Staging review. Expiry alone must not
+      release a slot while an old deployment could still finish. Retry uses a new dispatch nonce and
+      preserves the pinned candidate; duplicate dispatches cannot claim a second runner. Fresh role,
+      exact acceptance and expected-base checks guard commit and deployment steps. A callback
+      supplies evidence to verify against the recorded signed run/check identity and live output; it
+      cannot declare arbitrary success. Native Staging version identity and content-free release
+      metadata provide current-deployment checks without exposing private drafts or adding visitor
+      editing access. All cloud execution, pins, callback reconciliation and release evidence remain
+      implementation gates, not completed claims.
+    </p>
+
+    <p>
+      Migration 0022 records sanitized dispatch failures. The native
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/"
+        >scheduled handler</a
+      >
+      examines held destination slots once per minute, selecting at most one eligible unreserved
+      Staging job. It rechecks the captured actor, destination base and repository permission before
+      dispatch. Atomic exponential backoff allows at most six automatic attempts (1, 2, 4, 8, 16 and
+      32 minute delays); uncertain responses reuse the same job and nonce. The first native
+      reservation stops further dispatch. Exhaustion preserves the slot and exposes required
+      reconciliation. Browser status GETs do not dispatch, renew leases or read document/image
+      payloads. Later editor revisions remain separate from the captured version.
+    </p>
+    <p>
+      Budget the schedule as 1,440 invocations per day plus bounded slot lookups, independently of
+      historical job count. It creates no Queue or paid service. Cloudflare's
+      <a href="https://developers.cloudflare.com/workers/platform/limits/">published Free limits</a>
+      still apply: 10 ms CPU per invocation and five Cron Triggers per account. Account trigger
+      capacity, real dispatch CPU and the complete workload budget remain release checks. Deploy the
+      additive migrations before the Worker/trigger configuration; keep the reviewed Staging caller
+      installed and legacy deployment activity reconciled before accepting cloud captures.
+    </p>
+
+    <p>
+      Exact cloud acceptance extends the existing tuple with publication protocol, immutable runtime
+      revision and static artifact digest. The browser submits the previous decision identity it
+      reviewed. The server verifies the current signed execution/deployment evidence, original build
+      identity, live Staging release and expected Production base, then atomically rechecks the
+      accepting actor's role, held slot, unchanged evidence and previous decision. Accepted and
+      rejected decisions release only their own completed Staging slot; revocation never releases an
+      unrelated job. Migration 0023 makes cloud decisions append-only and binds their request
+      receipts; retries cannot reactivate a later revoked approval. After cutover, old candidates
+      must be recaptured through the verified cloud workflow before any new acceptance. Later draft
+      edits do not change the captured tuple or inherit its approval.
+    </p>
+
+    <p>
+      Production capture copies the accepted job's immutable revision and image pins through SQL; it
+      never reads the latest editor document or image bytes. Migration 0024 binds the new job to the
+      exact approval, expected Production base, runtime revision and artifact digest. Capture
+      verifies Administrator and GitHub repository permission, the reviewed caller blob, current
+      Production base and unchanged live Staging evidence. Its transaction rechecks authority,
+      latest acceptance, evidence and the exclusive Production slot. Dispatch and every signed
+      runner boundary require that acceptance to remain current and unrevoked. Production build
+      authorization requires the exact accepted static artifact digest. Duplicate capture receipts
+      remain historical and cannot reinstate revoked authority. The direct Production route remains
+      disabled while previous-good release capture and the recovery flow are unfinished.
+    </p>
+    <p>
+      The initial production Pages runtime at <code>9dc0b528e98abb8d57ae2e3a3a8d964c96c9c818</code>
+      originally excluded Pages write permission from Staging. The approved Pages staging amendment
+      below replaces that hosting boundary. Production rebuilds the accepted inputs, uploads their
+      verified static output with one-day retention, checks fresh Builder authority immediately
+      before native Pages deployment and verifies every public file before reporting. The signed
+      finalizer checks completed native execution, current content commit and live release identity,
+      then atomically releases only its Production slot. A lost or duplicate finalizer response
+      returns the exact signed run's historical verified receipt without another provider request,
+      publication or slot acquisition; a current authorized role is still required. Production and
+      Staging execution claims bind separate reviewed reusable workflow paths. The proposed public
+      caller removes push/manual deployment, preventing a content commit from starting an
+      independent deployment. Maintainer changes are not deployed yet.
+    </p>
+    <p>
+      Initial public recovery evidence: native Pages deployment 6276181817 identifies source
+      <code>0187c95c8a9d3441049616a801f66f6f6d11050e</code>. Its transient artifact expired. A
+      bounded HTTP capture obtained 97 public files totaling 2,792,441 bytes, including the eleven
+      active routes, linked assets and navigation payloads. Two complete reads matched byte hashes
+      while the same successful native deployment remained current. This is a captured public-file
+      baseline, not the original expired archive. Browser request-closure verification and durable
+      rollback packaging remain required before using it as the initial previous-good release.
+    </p>
+
+    <h2>Current implementation evidence and migration sequence</h2>
+    <p>
+      Cloud rollback completion plan: an Administrator selects a retained verified release and the
+      current Production state. Capture an immutable rollback job, current repository base, native
+      deployment and release-ledger boundary with an idempotency key. Share the Production exclusion
+      boundary with ordinary publication. A terminal interrupted Production run may be superseded
+      only by an explicit rollback request after native run/attempt verification. Recheck local
+      role, repository permission, base, deployment and held job before deployment. Separate
+      rollback OIDC audience and reviewed caller/runtime pins prevent publication or verification
+      tokens from authorizing restoration. Reserve before creating a native deployment, and retain
+      uncertain deployment authorization until a terminal run is reconciled.
+    </p>
+    <p>
+      Restore the initial captured public archive by its exact immutable Git/blob/hash manifest.
+      Restore later releases by rebuilding their public captured inputs using the recorded renderer
+      revision and dependency lock in a credential-free subprocess. Require the original complete
+      output digest before deploying. No synthetic draft or browser-owned backup is created.
+      Rollback deploys static bytes through GitHub Pages without reverting repository history; the
+      captured current main remains the expected base. Replace only the release metadata file
+      excluded from the output digest, then verify every public file and native deployment. Append
+      the rollback to the release ledger only after independent finalization, preserving the
+      original source identity and the new deployment identity. Interrupted or repeated requests
+      must never deploy twice.
+    </p>
+    <ol>
+      <li>
+        Implement and test rollback capture, mutual exclusion, OIDC boundaries and immutable
+        evidence.
+      </li>
+      <li>
+        Implement bounded archive restoration and pinned rebuild; test exact output and input
+        substitution.
+      </li>
+      <li>
+        Wire the cloud workflow, Administrator controls, terminal recovery and retained release
+        history.
+      </li>
+      <li>
+        Measure query/storage/CPU budgets, provision scoped credentials and rehearse native
+        recovery.
+      </li>
+      <li>
+        Run complete local QA, coordinate reviewed merges and migrations, deploy Builder and verify
+        live.
+      </li>
+      <li>
+        Cut Staging over to Pages, verify HTTPS and exact output, then present the Production
+        Showcase.
+      </li>
+    </ol>
+    <p>
+      Database recovery is a scoped infrastructure operation, separate from routine publication
+      recovery in Builder. Before a rewind, quarantine must drain, pending deletion receipts must
+      settle, and active or uncertain publication executions must be resolved. Keep only a hash of
+      the current schema, roles, approvals and publication records in the independent database.
+      Reopening requires the same protected state, successful replay of every committed deletion
+      receipt, database integrity checks, and removal of old checkout tokens. A bookmark with older
+      permissions or publication records remains quarantined; use a compatible later bookmark or the
+      recorded pre-restore bookmark. Never infer success from an interrupted restore call or
+      automatically repeat a destructive restore. This deliberately limits recovery to compatible
+      bookmarks rather than silently reinstating revoked authority or changing publication history.
+    </p>
+    <p>
+      Database recovery coordination uses the independent control database. Each runtime invocation
+      binds the current epoch, then obtains one nonrenewable 60-second lease at its first workspace
+      query using the workspace database clock. Invalid sessions do not consume a lease write. Every
+      workspace read or transaction includes an expiry guard in its native D1 batch. Quarantine
+      increments the independent epoch and stops issuing leases; restoration waits until the
+      workspace clock passes the latest issued deadline. This fences delayed requests even when
+      restoration rewinds workspace rows. Missing control state fails closed. The operator uses
+      explicit raw database access while quarantined; normal request code cannot bypass the guarded
+      prepare/batch API. Recovery remains closed until deletion receipts are reconciled and
+      reapplied and integrity verification succeeds. Test late lease issuance, delayed writes across
+      restoration, missing control state, batch rollback and fresh access only after a new recovery
+      epoch. Account for the extra control write and batch guards in the full workload before
+      activation.
+    </p>
+    <p>
+      Purge coordination uses a prepared content-free receipt in the independent database before
+      deleting any bytes. The actual workspace transaction records its matching receipt hash beside
+      the deletion. Confirmation advances the independent receipt only after that proof exists.
+      Failed transactions leave a pending receipt, never a false deletion. Before any rewind, the
+      operator quarantines and drains requests, then settles pending receipts against the current
+      workspace proofs. An unreadable workspace or unresolved receipt blocks restoration. Receipt
+      replay uses only confirmed draft/item/asset identifiers; no private content or credentials
+      enter the control store. Delayed confirmation and duplicate requests remain safe.
+    </p>
+    <p>
+      Deletion-receipt retention increment: retain unresolved receipts without an age cutoff. Retire
+      at most twenty resolved receipts per scheduled pass, strictly more than ninety days after
+      resolution, using the independent database clock and an indexed age query. This exceeds D1's
+      documented seven-day Free and thirty-day Paid Time Travel windows; external backups are not
+      supported recovery inputs. Quarantine or an epoch change stops retirement. Remove matching
+      workspace commit proofs and at most twenty replay markers before removing independent
+      receipts; remaining replay markers keep their receipt for the next pass. A failed workspace
+      transaction leaves all independent receipts intact. A lost control-store response is safe to
+      retry. Pending receipts and unrelated workspace content are never removed. Replayed metadata
+      restored from an older bookmark may remain conservatively retained; native recovery rehearsal
+      and aggregate metadata storage measurements remain separate release gates.
+    </p>
+    <p>
+      Implement this increment by first testing bounded selection, the ninety-day boundary,
+      unresolved receipt preservation, interrupted transactions, quarantine races and replay-marker
+      draining against local D1. Add only the age and receipt lookup indexes, extend the existing
+      deletion-receipt service, then call it from the existing guarded schedule. Run focused
+      recovery tests followed by the required sequential local quality, performance and browser
+      suites.
+    </p>
+    <p>
+      Provider telemetry contract: the existing schedule may refresh one content-free D1 snapshot
+      every five minutes using a separately configured read-only Analytics/D1 credential. An atomic
+      database-clock claim limits refreshes across Worker instances. Query account-wide and
+      workspace row reads/writes for the current UTC day through the requested observation time;
+      fetch actual workspace allocation from database metadata. These are provider analytics, not an
+      audited bill or a verified plan allowance. Administrative GET requests read only the stored
+      snapshot. Show the requested period and collection time. Missing configuration, empty or
+      partial data, denied access and provider errors remain unknown; retain a clearly stale last
+      successful sample after refresh failure. Never convert absent counters to zero or expose
+      provider error bodies. Use the documented
+      <a href="https://developers.cloudflare.com/d1/observability/metrics-analytics/"
+        >D1 analytics</a
+      >
+      and
+      <a
+        href="https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/get/"
+        >database metadata</a
+      >
+      endpoints. Budget at most 288 refresh attempts and 576 provider requests per day when enabled,
+      plus bounded schedule lookups and snapshot writes. Credential installation and live readback
+      remain configuration gates; no billing permission or paid service is required.
+    </p>
+    <p>
+      Queued-job recovery contract: an authorized Publisher or Administrator can retry exhausted
+      dispatch or cancel a job before any native run reserves it. Retry retains the exact job, nonce
+      and captured inputs; it resets only bounded dispatch state. Cancellation atomically changes
+      status and releases its slot, fencing any delayed dispatch before native reservation. A
+      concurrent reservation wins or loses in the same transaction; time alone never cancels a
+      reserved execution. Each recovery action has a request-bound receipt and one audit event;
+      replay cannot reset backoff twice or cancel a later job. Retry requires the original actor's
+      current publication authority and unrevoked Production acceptance. Cancellation requires the
+      acting user's destination role but does not reinstate revoked publishing authority. Reserved
+      or running jobs require native terminal-state reconciliation before slot release. Before any
+      deployment authorization, cancellation may reconcile the exact reserved GitHub run and attempt
+      through bounded public
+      <a href="https://docs.github.com/en/rest/actions/workflow-runs">workflow-run REST reads</a>.
+      Both the recorded attempt and latest overall run must be completed and match the captured
+      repository, dispatch revision, event and reviewed reusable workflow. The commit transaction
+      rechecks those immutable run identities, current acting authority, and the absence of
+      deployment authorization. A concurrent deployment authorization prevents release. A confirmed
+      content commit remains recorded after cancellation: repository inputs may have changed, while
+      deployment was never authorized. Any delayed Git update still uses its original expected-base
+      comparison; cancellation never rewrites or rolls back the repository. Provider failure,
+      unfinished execution or substituted evidence preserves the slot. Jobs that reached deployment
+      authorization and previous-release restoration remain separate implementation gates.
+    </p>
+    <p>
+      Captured Staging retries create a new job and nonce after explicit cancellation, copying the
+      original revision and media pins without reading later editor changes. Fresh publishing
+      authority, an active draft, the unchanged reviewed runtime/caller, and a free Staging slot
+      remain required. The destination must equal the original base or that job's recorded commit;
+      unrelated Git changes fail closed. A transaction rechecks source state and authority before
+      copying pins. Migration 0027 binds each child to one cancelled parent and allows at most three
+      captured retries. Request-bound receipts reconcile duplicate/lost responses without another
+      provider request or job. Any job with deployment authorization remains ineligible.
+    </p>
+    <p>
+      Production retry implementation contract: reuse the bounded captured-retry transaction with
+      Administrator authority and the original, still-current acceptance. Recheck live Staging
+      evidence, Production repository permission, reviewed caller and exact destination base before
+      copying inputs. Migration 0028 permits only an immutable retry lineage with the same
+      acceptance, Staging job and artifact. Its new base must equal the cancelled parent's recorded
+      commit, or its unchanged base when no commit was recorded. This does not approve unrelated
+      destination changes. Every signed runner boundary continues to require the latest unrevoked
+      acceptance. Tests must cover both base cases, later editorial changes, Publisher denial,
+      revocation during provider reads, stale evidence, duplicate/lost responses, bounded lineage,
+      occupied slots and a new signed execution. Production UI and schedule activation remain gated
+      on the release ledger and cloud rollback.
+    </p>
+    <p>
+      Missing final callbacks can be reconciled from Builder after the runner recorded its native
+      deployment acknowledgment. Require terminal native run/attempt evidence, a successful native
+      execution check, the current destination commit/deployment and matching live release identity.
+      The trusted execution must already have verified every output file. The recovery action
+      records that existing result; it never authorizes another deployment or restores a revoked
+      approval. The acting user needs fresh publishing authority, with Administrator required for
+      Production. Original actor revocation cannot prevent an authorized administrator recording
+      historical deployment facts. Recheck the exact stored build/run/acknowledgment and held slot
+      in the transaction. Retain Staging for review; release only the completed Production slot.
+      Record one audit event and an immutable request receipt. Failed execution, absent deployment
+      acknowledgment, changed live identity and provider failures remain unresolved.
+    </p>
+    <p>
+      Incremental work on the Issue branch; not deployed and not sufficient for Issue completion.
+    </p>
+    <p>
+      Release-ledger implementation contract: record a Production release in the same transaction as
+      verified job success, including reconciliation after callback loss. Store immutable source,
+      artifact and native deployment evidence plus the preceding recorded release. Seed the
+      previously verified public capture as historical baseline evidence, with its exact immutable
+      Git archive references; this does not assert that it is still the current deployment. Do not
+      create a synthetic draft for that baseline. Preserve inputs for the two most recent recorded
+      releases. Older release metadata may retain a historical job identifier after its inputs
+      expire; such missing inputs cannot authorize rollback. Keep metadata for 90 days and always
+      retain the two most recent releases. No Staging completion or unverified deployment creates a
+      Production release. Duplicate completion receipts create no duplicate ledger entry. Admin
+      rollback must subsequently bind a selected retained release, fresh authority and current
+      destination evidence, and verify restored output before recording another release.
+    </p>
+    <p>
+      Verification-only recovery contract: after native evidence proves the original deployment run
+      terminal, a fresh Publisher/Administrator (Administrator for Production) may request a bounded
+      read-only cloud verification. Retain the original job, build, commit, execution and deployment
+      identities. For historical Worker Staging, Builder independently reads Cloudflare's current
+      single version at 100% traffic, checks the exact commit tag and candidate message, and
+      rechecks deployment identity. A dedicated read-only Worker credential remains in 1Password and
+      is provisioned to Builder only; the cloud verification process receives the captured native
+      version ID, never this credential. The live site's version must match that independent
+      capture. Recheck native traffic before finalization. A distinct nonce, OIDC audience,
+      immutable verification workflow, run and check bind the recovery; deployment tokens cannot
+      call verification endpoints or vice versa. The verification runtime has its own reviewed
+      immutable pin and caller blobs; advancing it does not change the original build runtime,
+      captured artifact or deployment callers. Report acknowledgements may retry the same bounded
+      metadata at most three times; this never retries deployment or changes the captured source.
+      The verification job uses read-only repository permissions and no deployment credential,
+      rebuild, Git write or native deployment record. Fetch the retained output manifest by its
+      immutable Git blob identity, check every live output hash and native release identity before
+      and after, then record a signed acknowledgement. A separate finalizer requires the
+      verification execution check to have succeeded and rereads current destination/native
+      evidence. Preserve the original execution conclusion and deployment status; do not relabel a
+      failed deployment check as successful. Only this independently verified recovery proof may
+      reconcile a terminal failed original check. Unrecovered publication continues to require
+      successful native execution. Pending, replaced, changed, unauthorized or incomplete evidence
+      fails closed. Permit at most three verification attempts per original job and six throttled
+      dispatches per attempt, preserving request receipts after lost responses. A terminal
+      verification attempt can be retired only after native completion; no timeout alone releases
+      it. An unreserved attempt can be retired after its six dispatches; its revoked nonce prevents
+      a delayed run from claiming it. A saved report requires completion reconciliation instead of
+      another verification. A retry receipt survives interruption between retirement and fresh
+      capture, and cannot exceed three attempts. A fresh authorized publisher may reconcile a saved
+      report after the original requester loses access, provided the exact verification run is
+      terminal, its execution check succeeded, and native output still matches. Reopening the draft
+      shows the durable recovery state. Extend acceptance, promotion and rollback proof readers to
+      retain recovery provenance. Test nonce/scope substitution, failed original execution, missing
+      acknowledgement, changed output/deployment, duplicate dispatch, lost replies, role revocation
+      and transaction rollback before enabling this path. GitHub's
+      <a
+        href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/deploy-to-environment"
+        >deployment: false environment contract</a
+      >
+      supports verification without creating a deployment record.
+    </p>
+    <p>
+      Publication retention contract: the existing schedule retires at most one terminal cloud job
+      and one release record per pass after ninety days. Preserve occupied slots, unresolved
+      deployment authorization, the latest verified Staging job, the two latest recorded Production
+      releases, recent release evidence, and jobs referenced by retained promotions or retry
+      children. Recheck eligibility inside the deletion transaction. Remove only publication
+      metadata and pins; draft revisions and image bytes remain owned by their guarded retention
+      paths. Keep a content-free immutable capture-key tombstone so an old request cannot become a
+      new publication after metadata retirement; enforce this both in capture readers and an insert
+      trigger. Use indexed age scans and bounded transactions. Real D1 tests must prove retained
+      releases/current Staging, late eligibility changes, complete rollback, preserved content,
+      bounded work, and rejection of old keys in both destinations before schedule integration.
+      Whole-draft purge reports a clear conflict for retained publication pins and rechecks them
+      atomically. Deleted-draft maintenance skips pinned revisions and continues to later eligible
+      drafts instead of repeatedly failing on the first protected history.
+    </p>
+    <p>
+      Production HTTP integration contract: accept only an Administrator's exact Staging job,
+      acceptance ID and captured tuple. Bind request receipts to the authenticated actor and reject
+      cross-origin requests, substituted fields and malformed keys before invoking the service.
+      Expose destination-specific job recovery with the same current-role checks as capture. A
+      Production endpoint cannot recover a Staging job. Keep runtime configuration disabled until
+      rollback and the remaining release gates are complete; route tests inject the real service
+      boundary without activating live publication.
+    </p>
+    <p>
+      Production status and UI contract: an Administrator can reopen a draft and read its latest
+      Production job, captured revision, acceptance, artifact and dispatch recovery state. Query
+      immutable publication pins, never the current draft document; newer edits and captured retry
+      children cannot hide this progress. Status reads require fresh active Administrator authority,
+      never dispatch or call a provider, and report disabled explicitly when the service is absent.
+      Keep Staging job readers and recovery destination-scoped, including when Production is
+      disabled. The UI offers a deliberate exact-acceptance promotion and only recorded recovery
+      actions, preserving request keys after uncertain replies. Background polling is limited to
+      ten-second reads for fifteen minutes; refresh remains available afterward. Unknown status
+      cannot offer a publication action or claim success. Route, real D1 and UI tests cover role
+      revocation, empty/busy/completed states, reopening, bounded polling and lost replies before
+      enabling the Production service in the Worker.
+    </p>
+    <ul>
+      <li>
+        T2: Additive migration 0014 creates per-draft item/date/path summaries. Draft saves update
+        these in the same transaction. Library GET performs no writes or JSON history expansion.
+        Coverage and retention generation checks fail closed during a rebuild. The existing catalog
+        continues to own archive and attachment metadata.
+      </li>
+      <li>
+        Explicit backfill: after applying schema 0014, use the existing account-checked migration
+        operator with <code>npx tsx scripts/migrate-draft-assets.ts --library-index --apply</code>.
+        Each batch visits eight revisions, checks its starting cursor/generation atomically, and can
+        resume after interruption. The status form uses <code>--library-index --status</code> and
+        emits no document contents. Keep the old application available during the initial backfill;
+        switch only after coverage catches up, then run one final catch-up before admitting Library
+        traffic.
+      </li>
+      <li>
+        Migration 0015 restores retention's foreign-key parent detachment while rejecting content
+        changes and manual detachment from a surviving parent. Migration 0008 previously blocked
+        that foreign-key action. The projection invalidates after deletion and must be rebuilt
+        before Library reads resume.
+      </li>
+      <li>
+        T3 partial: completed asset-migration status skips retained revisions. Authenticated
+        <code>/api/ready</code> checks database reachability separately from public process
+        liveness. Operations reports allocated storage where D1 supplies it, draft-owned and legacy
+        media payloads, revision and request-receipt bytes, and a precisely bounded UTC
+        audit-activity period. Provider quotas remain unknown. Periodic provider sampling is not
+        implemented yet.
+      </li>
+      <li>
+        Focused tests cover existing Library flows, independent draft assets, bounded restartable
+        backfill, retention invalidation, no-write/no-history-expansion reads, completed migration
+        status, and readiness failure privacy. Full acceptance, larger D1 read-cost measurements,
+        cloud execution, encoding, recovery and deployment remain pending.
+      </li>
+    </ul>
+
+    <h2>Implementation order and verification</h2>
+    <p>
+      Save-integrity increment: version request hashes in the existing receipt table. Bind the
+      complete semantic request, including expected revision and label, while excluding transport
+      request IDs and renewable checkout tokens. Validate current checkout before replay, resolve a
+      matching receipt before stale-base rejection, persist no-op receipts without a revision or
+      audit event, and return the winning receipt after a simultaneous identical request. Retain new
+      receipts for 90 days and reject expired identities rather than reusing them. Legacy receipts
+      retain their original hash contract and must not bypass draft or label matching. The browser
+      sends the exact base revision and preserves it through retries. Tests cover altered input,
+      repeated content with a different revision, lost acknowledgement, concurrent retry, no-op,
+      expired receipt, and revoked checkout. Receipt payload compaction is implemented below;
+      production activation remains gated.
+    </p>
+    <p>
+      Passive view-state persistence sends activity=false. Checkout validation and context writes
+      share one transaction; identical context does not rewrite its timestamp or content. Passive
+      context, connectivity and focus events do not extend the 30-minute lease. Visible pointer,
+      touch and keyboard input remain genuine activity, with the existing four-second availability
+      checks preserved. Activity remains optional for previously loaded clients. Saves and restores
+      without exact revision and checkout proof fail closed with a reopen instruction.
+    </p>
+    <p>
+      Authority increment: automatic reopening uses a resume-only checkout command. The database
+      accepts it only for the current actor and client with an unexpired lease and active draft; it
+      rotates the transport token without extending expiry or activity. Explicit Open editor retains
+      acquisition and device transfer. Delayed saves and receipt replay never renew the lease. Save
+      and context transaction guards use the database clock, and all D1 draft mutation batches check
+      the current role before writing. Tests revoke roles at the commit boundary and verify
+      unchanged draft, revision, receipt and audit state. Memory-model token hashing also precedes
+      reading current checkout authority, so a transfer during hashing cannot authorize a stale
+      token.
+    </p>
+    <p>
+      The editor stops sends and retries after access or checkout failure, retains pending work for
+      copying, and allows explicitly discarding its local journal without a successful remote read.
+      Browser storage failures stay latched until explicit retry instead of retrying on each
+      keystroke. Save, restore, label and lifecycle requests carry current checkout and revision
+      proof; remaining acceptance and release evidence stays pending.
+    </p>
+    <p>
+      Expected revision and current checkout are required for every save and History restore,
+      including repository callers. Missing HTTP proof fails closed and asks the editor to reopen;
+      receipt matching still precedes stale-base rejection after current checkout validation.
+      Restore uses the same saved-state mutation guard as Library: an in-flight response must never
+      replace newer local edits. The source revision remains immutable; restore creates a new
+      revision through the ordinary guarded save transaction.
+    </p>
+    <p>
+      Metadata and lifecycle enforcement: labels, rename, archive, unarchive and purge carry the
+      same exact revision, checksum and current checkout proof. The transaction checks current role,
+      draft status and unexpired token before any write or audit. Explicit lifecycle actions acquire
+      a checkout against the displayed active or archived status, then release it after the action;
+      archive and unarchive invalidate the lease atomically. This permits safe unarchive/purge
+      without granting editing access to archived content. Automatic recovery remains active-only
+      and cannot acquire or transfer a checkout. Stale dashboard actions fail instead of adopting a
+      newer base. Combined name/status requests are rejected rather than partially applying two
+      mutations.
+    </p>
+    <p>
+      Undo regression: a controlled browser clock reproduced Puck 0.23.0 skipping the latest resize
+      when Undo precedes its 250 ms history timer. Apply a version- and full-source-hash checked
+      installation patch to flush pending history before backward, forward or indexed navigation;
+      replacing history cancels the pending record. Retain ordinary input coalescing. Exercise rapid
+      Undo/Redo across browsers and remove the patch when upstream passes that regression. The patch
+      uses Node built-ins; CI dependency scans continue to ignore install scripts, and application
+      tests remain local. Ctrl/Cmd+Y now carries the same explicit Redo action attribution as
+      Ctrl/Cmd+Shift+Z, so its canvas change reaches the save queue.
+    </p>
+    <p>
+      Compaction implementation order: (1) verify a native gzip codec over canonical UTF-8 bytes,
+      with a single prefix/suffix splice against a full checkpoint, never a delta chain; (2) add
+      immutable payload storage and readers, then replace all raw JSON readers; (3) store receipt
+      references to immutable revisions with exact response metadata and a 90-day retention pin; (4)
+      rehearse backfill, retention, purge and rollback and measure actual D1 allocation/read/write
+      costs before activating compact writes. Checkpoints occur at most 32 revisions apart; a splice
+      is used only when smaller than a full gzip snapshot after its base-reference overhead.
+      Decoding rejects missing or wrong bases, corrupt gzip, invalid offsets, checksum mismatch and
+      output above the existing 1,500,000-byte document limit. Named revisions and all referenced
+      checkpoints remain protected.
+    </p>
+    <p>
+      Deploy compatible readers while retaining legacy writes first. Compact writes are a separately
+      activated storage-format transition after bridge verification, not a user-facing option.
+      Rollback retains a reader that understands both formats. Native
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/web-standards/"
+        >Workers compression streams</a
+      >
+      avoid a new dependency;
+      <a href="https://developers.cloudflare.com/d1/worker-api/">D1 binary bindings</a> avoid base64
+      expansion. Actual Worker codec CPU remains a release gate; local D1 allocation evidence is
+      recorded below.
+    </p>
+    <p>
+      Compact storage implementation: migration 0017 adds immutable binary payloads with foreign-key
+      checkpoint protection, same-draft and maximum-gap checks, and an ownership-migration guard.
+      Legacy JSON and compact rows share the reader used by draft/history/restore, Library backfill
+      and retention exports. Retention preserves named revisions and checkpoint bases; pruning
+      invalidates the Library projection for bounded rebuilding. Migration 0018 adds an independent
+      response format version and indexed receipt references. Compact receipts omit both document
+      copies and reconstruct the original response metadata from the immutable revision; later
+      labels and draft names cannot alter replay. Unexpired receipts of either format pin their
+      source revision. Purge replaces responses with content-free tombstones before deleting
+      history. DRAFT_STORAGE_FORMAT defaults to legacy; compact-v1 is not set in production
+      configuration. Existing-row conversion runs one atomic revision or receipt step at a time,
+      verifies canonical checksums and response equality, and restarts after lost acknowledgements
+      without duplicating conversion records. Expired response payloads become content-free markers;
+      conversion and replay use the database clock. Operator activation, deployment rehearsal and
+      whole-workload CPU/read/write measurements remain pending.
+    </p>
+    <p>
+      Local D1 measurement (2026-09-12):
+      <code>npx tsx tests/performance/d1-editorial-workload.ts</code> uses the production repository
+      and codec with 12 drafts, 100 media entries per draft, 800 starting revisions and 400
+      additional actions, including 40 identical retries. Allocated SQLite storage grew from
+      4,288,512 to 6,082,560 bytes, or 4,486 rounded bytes per action including receipts, audit and
+      indexes. The linear 90-day projection is 265,784,512 bytes including a 100,000,000-byte media
+      reserve, below the 350,000,000-byte target. The 1,600-action growth case projects 750,272,512
+      bytes and fails that target and the conservative per-database free limit; it is not claimed as
+      supported. The 400 saves and 40 retries used 147,304 emulator row reads and 7,208 row writes.
+      Library history aggregation fell from 64,422 reads to 200 at 80 revisions, a 99.69% reduction.
+      Full legacy-format Library listing remained 204 reads and zero writes at both eight and 80
+      revisions; four compact-format listings used 836 reads and zero writes. These are local
+      emulator counters and a declared synthetic action distribution, not provider billing or Worker
+      CPU measurements. Dashboard, foreground observation, history, publishing, maintenance, other
+      account consumers, additional action distributions and live usage still need inclusion before
+      claiming complete free-tier suitability.
+    </p>
+    <p>
+      History read contract: list immutable revision metadata without document bodies or payload
+      decoding, in pages of 100 plus one lookahead row. Use an exclusive sequence cursor so newer
+      saves cannot duplicate older pages. Search and named/current filters apply on the server
+      across retained history; the browser cancels stale searches and offers an explicit next-page
+      action. Restore continues to load exactly one selected revision through the guarded save path.
+      Validate cursor/search input, missing drafts, older named revisions, page boundaries,
+      concurrent newer saves and zero payload reads during listing. Search may examine retained
+      metadata; routine unfiltered pages use the draft/sequence index.
+    </p>
+    <p>
+      Updated dashboard requests opt into <code>view=summary</code>, use the existing 100-draft
+      bound and return draft/revision summaries in one query, without loading document JSON or
+      compact payloads. Opening an editor or preview fetches that selected draft explicitly,
+      including feedback return and automatic recovery. Lifecycle actions retain the revision and
+      checksum from the displayed summary. Verify summary-only responses, both preview roles and
+      archived previews, and unchanged checkout/proof behavior. Requests without this opt-in retain
+      the document-bearing response for already-open clients. Their legacy read costs remain a
+      rollout consideration until those clients refresh.
+    </p>
+    <p>
+      Expanded local fixture (2026-09-12): one dashboard summary costs 36 row reads in one query;
+      one History page costs 102 reads in two queries; a checkout observation costs three reads;
+      passive context costs five reads and zero writes. Scaling the measured read-only samples to 80
+      Library listings, 40 dashboard refreshes, 16 History visits, 2,700 foreground checks and 360
+      passive context checks, plus one measured role lookup per modeled request, produces 180,632
+      row reads, 7,208 row writes and 3,636 requests for the editor day. Changed saves and 40
+      retries were executed in full. The latest allocation-based 90-day estimate is 270,552,032
+      bytes; the fourfold growth estimate is 769,404,032 bytes and fails the target. Startup, active
+      context writes, broader action mixes, publishing, maintenance, runtime CPU, provider billing
+      and other account consumers remain outside this subtotal.
+    </p>
+    <p>
+      Maintenance bound: purge must use a fixed number of statements, not one statement per
+      revision. Delete same-draft splice payloads before deleting their revision rows and full
+      checkpoints, inside the existing role/checkout/revision-guarded transaction. Migration 0015
+      permits parent detachment only after actual parent deletion. Preserve receipt tombstoning and
+      other-draft isolation; inject a late transaction failure to prove complete rollback.
+      <a href="https://developers.cloudflare.com/d1/worker-api/d1-database/"
+        >D1 batch transactions</a
+      >
+      provide the atomic boundary. Measure large-history purge and retention separately before
+      claiming daily headroom. Retention also needs bounded exports and fresh commit-time
+      eligibility checks. Each pass exports at most six combined automatic/deleted revisions and
+      four old audit rows. Database time controls minimum ages; the apply transaction rechecks
+      Administrator authority, named/latest/checkpoint/receipt protections and deleted-draft status.
+      Deleted histories drain leaf revisions before checkpoints and tombstone receipts before
+      deletion. Completed ownership migration is required; retired shared media cleanup remains
+      owned by that migration. No bucket deletion occurs outside the guarded transaction. Migration
+      0019 indexes revision age, parent foreign-key references and publication references so
+      maintenance does not sort every recent revision or rescan all publication jobs for each
+      retention candidate. The 122-revision purge baseline read 17,115 rows without the parent
+      index; the indexed run used 2,678 reads, 1,072 writes and 17 statements. Keep a regression
+      ceiling below 4,000 reads for that fixture. The six-revision retention dry run used 45 reads,
+      zero writes and 16 statements; applyCurrent, including its repeated dry run, used 1,687 reads,
+      278 writes and 30 statements. Authentication adds one measured statement per request. These
+      local samples exclude sustained maintenance volume and provider CPU. Recovery coordination
+      remains a separate gate.
+    </p>
+    <p>
+      Operator activation contract: expose the compiled source revision, native Worker version ID,
+      supported storage readers and current write format on uncached liveness. Use Cloudflare's
+      <a href="https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/"
+        >version metadata binding</a
+      >
+      to bind the health response to the version receiving traffic. A Wrangler-authenticated CLI
+      must verify the intended account/database, one 100-percent deployment, matching native version
+      ID and deployed DB binding, a clean build of the exact expected source revision and both
+      legacy/compact readers. Read deployment state before and after health to reject a changing
+      rollout. Verification alone performs no database writes. Apply additionally requires compact
+      writes already enabled, verifies the same deployment around each batch of at most eight atomic
+      conversion steps, and stops on mismatch or corruption. Use a controlled deployment window: do
+      not run concurrent deployments or rollbacks during conversion. Progress reports confirmed
+      steps; full remaining-row counts run only at start and completion, avoiding repeated history
+      scans. Completed steps remain independently restartable; no credential, document, receipt body
+      or provider error is logged. First deploy the compatible legacy-writing reader, verify it,
+      then enable compact writes in a verified release before conversion. A pre-bridge binary is
+      never a rollback target after compact data exists.
+    </p>
+    <ol>
+      <li>
+        <strong>T1:</strong> contracts and reference workload fixed above; forward feasibility
+        passes. Carry unresolved runtime configuration and actual D1/CPU measurements as explicit
+        rollout gates.
+      </li>
+      <li>
+        <strong>T2–T4:</strong> Library projection, bounded migration/readiness, compact responses
+        and request overhead. Rehearse additive migrations and rollback compatibility.
+      </li>
+      <li>
+        <strong>T5–T7:</strong> journal, checkout reconciliation, action receipts and no-op
+        correctness. Preserve old autosave, Library, undo/redo and five-second checkout tests.
+      </li>
+      <li>
+        <strong>T8–T12:</strong> pinned jobs, trusted remote runner, checked Staging, exact
+        acceptance, Administrator Production, retry and rollback. Coordinate focused PRs in all
+        three repositories under this Issue.
+      </li>
+      <li>
+        <strong>T13–T14:</strong> retention/recovery, real D1 cost fixture, full local sequential
+        QA, exact-tree release, live verification, representative usage window and PM testing. Mark
+        unexercised live content promotion explicitly incomplete.
+      </li>
+    </ol>
+    <p>
+      Reuse TypeScript, strict schemas, D1 prepared statements/transactions, native browser storage
+      and installed libraries. Source lives under <code>src/client/editor</code>,
+      <code>src/client/publish</code>, <code>src/server</code> and <code>worker</code>; database
+      changes under <code>migrations</code>; tests under existing unit/integration/e2e/performance
+      directories. Use existing patterns such as <code>database.prepare(sql).bind(...values)</code>;
+      never interpolate user content into SQL or shell commands.
+    </p>
+    <p>
+      Fresh task worktree: <code>node scripts/local-qa.mjs prepare</code>, then <code>npm ci</code>.
+      Iterate focused tests, then run sequentially <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, and <code>git diff --check</code>. Stop task
+      servers, verify ports, then <code>node scripts/local-qa.mjs cleanup</code>. No application QA
+      has run in this initial research pass.
+    </p>
+    <p>
+      Before release, record reviewed commit/tree, exact-head GitHub checks, previous Worker
+      identity, rehearsed migration and rollback sequence. Builder rollout does not publish
+      public-site content. Keep Issue open through the final Production Showcase and PM acceptance.
+    </p>
+
+    <h2>References and remaining evidence</h2>
+    <ul>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a>: read/write
+        accounting and UTC quota windows.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a>:
+        per-database/account storage, query constraints and recovery retention.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/observability/metrics-analytics/"
+          >D1 analytics</a
+        >: provider periods and precise per-query metadata.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a>
+        and
+        <a href="https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+          >Actions billing</a
+        >: verify actual plan, runner and storage before claiming suitability.
+      </li>
+      <li>
+        <a href="https://docs.github.com/en/actions/reference/security/oidc">GitHub OIDC</a>: bind
+        cloud calls to trusted workflow/run claims.
+      </li>
+      <li>
+        <a href="https://developers.cloudflare.com/d1/reference/time-travel/">D1 Time Travel</a>:
+        recovery limitations.
+      </li>
+      <li>
+        Verified September 13: scoped operations and analytics credentials are stored in 1Password;
+        both token verifications are active, Builder D1 metadata and read-only query access succeed,
+        and the exact telemetry query returns account and workspace counters. The requested UTC
+        period ending 17:20:35Z returned 3,853 rows read and 100 written; this is a lagging
+        analytics sample, not an audited bill or a plan allowance. Worker telemetry installation is
+        pending. Forward compact-storage and migration guards have local proof; activation and
+        provider CPU measurements remain pending. Complete workload budgets, cloud rollback,
+        deletion-receipt retention, native Time Travel rehearsal, live publication and the final
+        release gates remain unfinished. Billing details are not a prerequisite for these read-only
+        operations.
+      </li>
+      <li>
+        Recovery implementation checkpoint: independent deletion receipts cover draft purge, Library
+        deletion and deleted-draft retention. Native-clock access guards fence delayed requests; the
+        operator protocol settles uncertain deletes, restores once, replays receipts, checks
+        schema/roles/publication/media-migration identity and integrity, then invalidates old
+        checkouts before reopening. Synthetic rewind and lost-response tests exercise these
+        transitions. Guarded create/save/archive/purge use 18/26/18/35 native statements including
+        the session role lookup and independent control database, below the 50-query invocation
+        ceiling. This does not yet measure every publishing or maintenance request.
+      </li>
+      <li>
+        Native September 13 preparation: created the empty independent database
+        <code>pointsite-builder-recovery</code> with ID
+        <code>03e12b2e-54ce-4262-a7c3-cf735b341c21</code>. It is the third database in the account;
+        Cloudflare's current Free limit is ten. Direct HTTP multi-statement reads and parameter
+        encoding passed. An injected late SQL failure rolled back an earlier test insert; the
+        task-owned test table was removed. The operator helper uses this native HTTP API. No
+        workspace restore, application deployment or production migration was performed. Provision
+        both migration directories with the full reviewed release; the live Worker does not yet have
+        the recovery binding. Bounded independent receipt retirement is implemented on the Issue
+        branch; native migration, recovery rehearsal and total storage/query measurements remain
+        release gates.
+      </li>
+    </ul>
+    <h2>Approved publishing size reduction</h2>
+    <p>
+      Publish local image bytes referenced by exported pages, section backgrounds, page metadata,
+      selected people and direct asset links. Include hidden-page images while the static route
+      generator exports hidden routes. Unused Library entries do not add image bytes. Retain the
+      complete immutable draft snapshot and its original revision checksum; bind the
+      referenced-media selection and exact asset pins into the cloud candidate checksum. Older
+      candidates retain their original all-media interpretation.
+    </p>
+    <p>
+      Apply quality-90 WebP replacements only to the latest edited draft through authenticated,
+      checkout-guarded Library operations. Preserve dimensions, color profiles, item identities,
+      alternative text and placements. Keep originals whenever encoding grows them; retain archived
+      items and historical versions. Verify unchanged other drafts and all referenced asset bytes.
+    </p>
+    <h2>Automatic upload compression</h2>
+    <p>
+      Every new image and replacement submitted by Builder is optimized before transfer. Detect
+      JPEG, PNG, WebP and AVIF from their bytes, regardless of filename or declared MIME type.
+      Encode still photographs as quality-90 WebP and PNG or existing WebP as lossless WebP.
+      Preserve displayed dimensions, orientation, transparency, Library identity and placements.
+      Keep the original bytes when encoding would grow the file; normalize its filename and MIME
+      type. Preserve animated originals rather than flattening them. Unsupported or corrupt images
+      receive an actionable error. Linked remote images are not downloaded or modified.
+    </p>
+    <p>
+      Bound source files to 20 MiB, dimensions to 8,000 pixels per side and decoded images to 32
+      megapixels. The stored upload remains at most 5 MiB. Encode in a terminable worker with a
+      60-second limit, load the codec only when needed, release image and worker memory, and show
+      the optimized preview and saved byte count before confirmation. Do not retain a second
+      uploaded original. Existing historical versions remain unchanged. Native canvas decoding
+      normalizes images to sRGB; private EXIF/GPS metadata is not copied into new encodings.
+    </p>
+    <p>
+      Verify actual encoding in Chromium, Firefox and WebKit; renamed input files, smaller-original
+      fallback, transparency, lossless pixels, orientation, oversized and malformed inputs,
+      animation preservation, replacement linkage and referenced-only publication. Follow the
+      <a href="https://developers.google.com/speed/webp/docs/riff_container"
+        >WebP container specification</a
+      >
+      for all three valid VP8, VP8L and VP8X headers.
+    </p>
+    <h2>Approved scope amendment: GitHub Pages staging</h2>
+    <p>
+      The PM approved moving PointSite Staging to GitHub Pages and folding that migration into Issue
+      #61. Prefer native sign-in when available; public staging is explicitly accepted as the
+      fallback. PointCommunity currently uses GitHub Free, so the Pages website will be public. This
+      supersedes this specification's earlier staging-host and protected-website assumptions.
+      Builder and its private storage remain on Cloudflare; no homelab migration is included.
+    </p>
+    <p>
+      Reuse the existing production Pages artifact, authorization, deployment and byte-verification
+      flow for staging. Retain the staging GitHub environment and signed identity boundary. New
+      Pages evidence binds the native GitHub deployment, exact candidate and complete output digest.
+      Historical Worker evidence remains readable, but must never prove a new Pages release.
+      Anonymous readers may view published staging content; Builder drafts, sessions and mutation
+      authorization remain private. The staging domain remains https://staging.pointatx.org.
+    </p>
+    <p>
+      Before cutover, replace the shared parent-domain session with a Secure, HttpOnly, host-only
+      Builder cookie. Reject the previous session payload kind even if copied into the new cookie,
+      and expire the old parent-domain cookie on login and logout. Users sign in again; Pages never
+      needs a valid Builder credential. Test cookie scope and retired-token replay.
+    </p>
+    <ol>
+      <li>
+        Update the staging workflow and shared runtime, then check signed bootstrap and Pages
+        permissions.
+      </li>
+      <li>
+        Update Builder reporting, approval, promotion and recovery to accept verified Pages staging.
+      </li>
+      <li>
+        Test byte substitution, identity drift, recovery, and publication authority. Run staging npm
+        test, npm run check, and Builder's sequential npm run check, npm run test:performance and
+        npm run test:e2e gates.
+      </li>
+      <li>
+        Pin the tested runtime in existing callers. Release only a complete verified Issue #61
+        candidate. Configure Pages and staging DNS at cutover, preserve rollback evidence, verify
+        HTTPS and all exported bytes, and remove only task-owned test output. Production content
+        publication requires its separate authorization.
+      </li>
+    </ol>
+    <p>
+      Sources:
+      <a
+        href="https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages"
+        >Pages custom workflows</a
+      >
+      and
+      <a
+        href="https://docs.github.com/en/enterprise-cloud@latest/pages/getting-started-with-github-pages/changing-the-visibility-of-your-github-pages-site"
+        >Pages visibility</a
+      >. Implementation and live cutover evidence are pending.
+    </p>
+  </body>
+</html>

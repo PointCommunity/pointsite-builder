@@ -31,6 +31,7 @@ async function setup() {
   for (const migration of [
     'migrations/0001_initial.sql',
     'migrations/0010_publish_preflight_leases.sql',
+    'migrations/0030_publication_retention.sql',
   ]) {
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   }
@@ -435,9 +436,17 @@ describe('staging publish coordinator', () => {
 
     const changed = structuredClone(draft.document);
     changed.site.shortName = 'Changed';
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor: input.actor,
+      clientId: 'publish-fixture-001',
+      requestId: 'checkout',
+    });
     await repository.saveDraft({
       draftId: draft.id,
       expectedChecksum: draft.revision.checksum,
+      expectedRevisionId: draft.revision.id,
+      checkoutToken: saveCheckout.token,
       document: changed,
       actor: input.actor,
       idempotencyKey: 'save-before-retry',

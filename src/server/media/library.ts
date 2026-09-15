@@ -15,6 +15,8 @@ import { ConflictError, NotFoundError } from '../repositories/memory';
 import type { D1DraftAssets } from './draft-assets';
 import { validateImageUpload } from './policy';
 import { defaultSiteDocument } from '../../site-kit/default-site';
+import { D1LibraryProjection } from './library-projection';
+import type { D1DeletionReceipts } from '../maintenance/deletion-receipts';
 
 const managedIds = new Set(defaultSiteDocument.media.map((item) => item.id));
 
@@ -96,10 +98,13 @@ export class D1LibraryService {
     private readonly database: D1Database,
     private readonly repository: D1DraftRepository,
     private readonly assets: D1DraftAssets,
+    private readonly deletionReceipts?: D1DeletionReceipts,
   ) {}
 
   async list(draftId: string): Promise<LibrarySnapshot> {
     const draft = await this.repository.getDraft(draftId);
+    const projection = new D1LibraryProjection(this.database);
+    const generation = await projection.requireCoverage(draftId, draft.revision.sequence);
     const rows = await this.database
       .prepare(
         'SELECT item_id,item_json,created_at,updated_at,archived_at FROM draft_library_items WHERE draft_id=?',
@@ -118,25 +123,12 @@ export class D1LibraryService {
         },
       ]),
     );
-    // Revision timestamps provide a deterministic baseline for legacy catalog records.
+    // Retained-history aggregates are maintained with writes, never during Library reads.
     const historyRows = await this.database
       .prepare(
-        `WITH entries AS (
-        SELECT json_extract(item.value,'$.id') AS item_id,r.sequence,r.created_at,
-          item.value AS signature,json_extract(item.value,'$.sourcePath') AS source_path
-        FROM revisions r,json_each(r.document_json,'$.media') item WHERE r.draft_id=?
-        UNION ALL
-        SELECT json_extract(item.value,'$.id'),r.sequence,r.created_at,item.value,NULL
-        FROM revisions r,json_each(r.document_json,'$.linkedMedia') item WHERE r.draft_id=?
-      ), changes AS (
-        SELECT *,LAG(signature) OVER (PARTITION BY item_id ORDER BY sequence) AS previous
-        FROM entries
-      )
-      SELECT 'item' AS kind,item_id,MIN(created_at) AS created_at,
-        MAX(CASE WHEN previous IS NULL OR previous<>signature THEN created_at END) AS updated_at,
-        NULL AS source_path FROM changes GROUP BY item_id
-      UNION ALL
-      SELECT DISTINCT 'path',NULL,NULL,NULL,source_path FROM entries WHERE source_path IS NOT NULL`,
+        `SELECT 'item' AS kind,item_id,created_at,updated_at,NULL AS source_path
+        FROM draft_library_history WHERE draft_id=? UNION ALL
+        SELECT 'path',NULL,NULL,NULL,source_path FROM draft_library_retained_paths WHERE draft_id=?`,
       )
       .bind(draftId, draftId)
       .all<{
@@ -196,14 +188,8 @@ export class D1LibraryService {
         );
     }
     const result = [...items.values()];
-    if (current.some((item) => !rows.results.some((row) => row.item_id === item.id))) {
-      await this.database
-        .prepare(
-          `INSERT OR IGNORE INTO draft_library_items (draft_id,item_id,item_json,created_at,updated_at,archived_at) SELECT ?,json_extract(value,'$.id'),value,json_extract(value,'$.createdAt'),json_extract(value,'$.updatedAt'),NULL FROM json_each(?) WHERE EXISTS (SELECT 1 FROM drafts WHERE id=?)`,
-        )
-        .bind(draftId, JSON.stringify(result.filter((item) => !item.archivedAt)), draftId)
-        .run();
-    }
+    if (generation !== (await projection.requireCoverage(draftId, draft.revision.sequence)))
+      throw new ConflictError('Library history changed; reload before continuing');
     return {
       draftId,
       revisionId: draft.latestRevisionId,
@@ -262,6 +248,7 @@ export class D1LibraryService {
     const document = structuredClone(draft.document);
     const now = new Date().toISOString();
     const statements: D1PreparedStatement[] = [];
+    let deletion: Awaited<ReturnType<D1DeletionReceipts['prepare']>> | undefined;
     const preparedPaths = new Set<string>();
     if (command.action === 'upload' || command.action === 'replace') {
       if (command.action === 'replace' && (item?.mediaType !== 'image' || item.archivedAt))
@@ -379,6 +366,48 @@ export class D1LibraryService {
       if (command.action === 'delete') {
         if (!item.archivedAt) throw new ConflictError('Archive this item before deleting it');
         if (item.deleteBlockers.length) throw new ConflictError(item.deleteBlockers.join(' '));
+        if (this.deletionReceipts) {
+          const versions = item.sourcePath
+            ? (
+                await this.database
+                  .prepare(
+                    `SELECT id FROM draft_asset_versions WHERE draft_id=?
+                AND (id IN (SELECT asset_id FROM draft_asset_bindings WHERE draft_id=? AND source_path=?)
+                  OR id IN (SELECT asset_id FROM draft_library_asset_versions WHERE draft_id=? AND item_id=?))
+                ORDER BY id LIMIT 501`,
+                  )
+                  .bind(draft.id, draft.id, item.sourcePath, draft.id, item.id)
+                  .all<{ id: string }>()
+              ).results
+            : [];
+          deletion = await this.deletionReceipts.prepare({
+            kind: 'library',
+            draftId: draft.id,
+            itemId: item.id,
+            assetIds: versions.map((row) => row.id),
+          });
+          statements.push(this.deletionReceipts.proof(deletion));
+          // Bind deletion to exactly the versions described by the independent receipt.
+          statements.push(
+            this.database
+              .prepare(
+                `SELECT json(CASE WHEN
+            (SELECT COUNT(*) FROM draft_asset_versions WHERE draft_id=?
+              AND (id IN (SELECT asset_id FROM draft_asset_bindings WHERE draft_id=? AND source_path=?)
+                OR id IN (SELECT asset_id FROM draft_library_asset_versions WHERE draft_id=? AND item_id=?))
+              AND id NOT IN (SELECT value FROM json_each(?)))=0
+            THEN 'true' ELSE 'library-deletion-changed' END)`,
+              )
+              .bind(
+                draft.id,
+                draft.id,
+                item.sourcePath,
+                draft.id,
+                item.id,
+                JSON.stringify(versions.map((row) => row.id)),
+              ),
+          );
+        }
         statements.push(
           this.database
             .prepare('DELETE FROM draft_library_items WHERE draft_id=? AND item_id=?')
@@ -503,6 +532,10 @@ export class D1LibraryService {
       statements,
       preparedPaths,
     );
+    if (deletion)
+      await this.deletionReceipts!.confirm(deletion).catch(() => {
+        // Recovery settles the prepared receipt from the atomic workspace proof before rewinding.
+      });
     return { draft: saved, library: await this.list(draft.id) };
   }
 

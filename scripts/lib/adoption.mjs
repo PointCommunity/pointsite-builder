@@ -103,10 +103,17 @@ export async function planAdoption({ sourceRoot, targetRoot, profile, reconcilia
       ([key, value]) => profile.workflow.approvalPhrases[key] === value,
     ) &&
     profile.qa.turns.every((turn) => turn.approvalPhrase === builderPhrases.completion) &&
-    profile.release.strategy === 'direct-production' &&
+    profile.release.strategy === 'immutable-promotion' &&
     !profile.release.cycle &&
-    profile.release.environments.length === 1 &&
-    profile.release.environments[0].approvalPhrase === builderPhrases.completion;
+    profile.release.environments.length === 2 &&
+    profile.release.environments[0].role === 'review' &&
+    profile.release.environments[0].url === 'https://builder-canary.eaglepass.io' &&
+    profile.release.environments[1].role === 'production' &&
+    profile.release.environments[1].url === 'https://builder.eaglepass.io' &&
+    profile.release.environments[1].promoteWithoutRebuild === true &&
+    profile.release.environments.every(
+      (environment) => environment.approvalPhrase === builderPhrases.production,
+    );
   if (phrases.some((phrase) => phrase !== 'Approved') && !preservesBuilder)
     throw new Error(
       'Bootstrap/update requires every approval phrase to be exactly Approved unless the exact PM-preserved Builder contract applies.',

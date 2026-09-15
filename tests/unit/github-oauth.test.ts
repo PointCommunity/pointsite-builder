@@ -7,6 +7,7 @@ import {
   type GitHubIdentityGateway,
 } from '../../src/server/auth/github';
 import { exportPKCS8, generateKeyPair } from 'jose';
+import { createHmac } from 'node:crypto';
 
 const config = {
   appId: '12345',
@@ -47,7 +48,7 @@ it('uses state and PKCE, then issues a secure HttpOnly session after collaborato
   );
   expect(login.status).toBe(302);
   expect(login.headers.get('location')).toContain('github.com/login/oauth/authorize');
-  const stateCookie = login.headers.get('set-cookie') ?? '';
+  const stateCookie = login.headers.getSetCookie()[0] ?? '';
   expect(stateCookie).toContain('__Host-pointsite_builder_oauth=');
   expect(stateCookie).toContain('HttpOnly');
   expect(stateCookie).toContain('Secure');
@@ -63,8 +64,49 @@ it('uses state and PKCE, then issues a secure HttpOnly session after collaborato
   expect(observedVerifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect(callback.status).toBe(302);
   expect(callback.headers.get('location')).toBe('https://builder.pointatx.org/');
-  expect(callback.headers.get('set-cookie')).toContain('__Secure-pointsite_builder_session=');
-  expect(callback.headers.get('set-cookie')).toContain('Domain=pointatx.org');
+  const sessionCookie = callback.headers.getSetCookie()[0];
+  expect(sessionCookie).toContain('__Host-pointsite_builder_session=');
+  expect(sessionCookie).not.toContain('Domain=');
+  expect(sessionCookie).toContain('Path=/; Max-Age=28800; HttpOnly; Secure; SameSite=Lax');
+  for (const response of [login, callback, authenticator.logout()])
+    expect(response.headers.getSetCookie()).toContain(
+      '__Secure-pointsite_builder_session=; Domain=pointatx.org; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
+    );
+  expect(authenticator.logout().headers.getSetCookie()[0]).toContain(
+    '__Host-pointsite_builder_session=; Path=/; Max-Age=0;',
+  );
+});
+
+it('rejects a retired shared session even when replayed in the host-only cookie', async () => {
+  const codec = new GitHubSessionCodec(config.sessionSecret);
+  const payload = Buffer.from(
+    JSON.stringify({
+      kind: 'session',
+      id: 1202831,
+      login: 'brimdor',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    }),
+  ).toString('base64url');
+  const token = `${payload}.${createHmac('sha256', config.sessionSecret).update(payload).digest('base64url')}`;
+  const repositoryPermission = vi.fn().mockResolvedValue('write');
+  const authenticator = new GitHubAuthenticator(
+    config,
+    {
+      authorizationUrl: () => new URL('https://github.com/login/oauth/authorize'),
+      exchangeCode: () => Promise.resolve({ id: 1202831, login: 'brimdor' }),
+      repositoryPermission,
+    },
+    codec,
+  );
+  for (const name of ['__Secure-pointsite_builder_session', '__Host-pointsite_builder_session'])
+    await expect(
+      authenticator.verifySession(
+        new Request('https://builder.pointatx.org/api/me', {
+          headers: { cookie: `${name}=${token}` },
+        }),
+      ),
+    ).rejects.toThrow();
+  expect(repositoryPermission).not.toHaveBeenCalled();
 });
 
 it('fails closed when OAuth state is invalid', async () => {

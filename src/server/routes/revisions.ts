@@ -5,10 +5,21 @@ import { requireRole } from '../auth/roles';
 import { ApiError } from '../http/errors';
 import { requireMutationRequest, type SlidingWindowRateLimiter } from '../http/security';
 import type { DraftRepository } from '../repositories/contracts';
+import { REVISION_PAGE_SIZE } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
-import type { ApiVariables } from './drafts';
+import { draftMutationProof, type ApiVariables } from './drafts';
 
 const LabelSchema = z.strictObject({ label: z.string().trim().min(1).max(100) });
+const HistoryQuerySchema = z.strictObject({
+  cursor: z
+    .string()
+    .regex(/^[1-9]\d{0,15}$/)
+    .transform(Number)
+    .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER))
+    .optional(),
+  query: z.string().trim().max(100).optional(),
+  filter: z.enum(['all', 'named', 'current']).optional(),
+});
 const RestoreSchema = z.strictObject({
   revisionId: z.uuid(),
   expectedChecksum: z.string().regex(/^[a-f0-9]{64}$/),
@@ -18,7 +29,7 @@ const LifecycleSchema = z
     name: z.string().trim().min(1).max(100).optional(),
     status: z.enum(['active', 'archived']).optional(),
   })
-  .refine((value) => value.name || value.status, 'A name or status change is required');
+  .refine((value) => Boolean(value.name) !== Boolean(value.status), 'Change either name or status');
 const DeleteDraftSchema = z.strictObject({
   confirmation: z.literal(DELETE_DRAFT_CONFIRMATION),
 });
@@ -44,8 +55,16 @@ export function createRevisionRoutes(
 
   routes.get('/:draftId/revisions', async (context) => {
     requireRole(context.get('actor'), 'viewer');
-    const items = await repository.listRevisions(context.req.param('draftId'));
-    return context.json({ items, nextCursor: null });
+    const { cursor, ...options } = parse(HistoryQuerySchema, context.req.query());
+    const rows = await repository.listRevisions(context.req.param('draftId'), {
+      ...options,
+      beforeSequence: cursor,
+    });
+    const items = rows.slice(0, REVISION_PAGE_SIZE);
+    return context.json({
+      items,
+      nextCursor: rows.length > REVISION_PAGE_SIZE ? String(items.at(-1)!.sequence) : null,
+    });
   });
 
   routes.patch('/:draftId/revisions/:revisionId', async (context) => {
@@ -62,6 +81,7 @@ export function createRevisionRoutes(
         body.label,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       ),
     );
   });
@@ -73,16 +93,25 @@ export function createRevisionRoutes(
       RestoreSchema,
       await requireMutationRequest(context.req.raw, new URL(context.req.url).origin),
     );
-    return context.json(
-      await repository.restoreRevision({
-        draftId: context.req.param('draftId'),
-        revisionId: body.revisionId,
-        expectedChecksum: body.expectedChecksum,
-        actor: actor.email,
-        idempotencyKey: context.req.header('idempotency-key') ?? '',
-        requestId: context.get('requestId'),
-      }),
-    );
+    const proof = draftMutationProof(context.req.raw);
+    if (body.expectedChecksum !== proof.expectedChecksum)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Expected checksum must match If-Match');
+    try {
+      return context.json(
+        await repository.restoreRevision({
+          draftId: context.req.param('draftId'),
+          revisionId: body.revisionId,
+          ...proof,
+          actor: actor.email,
+          idempotencyKey: context.req.header('idempotency-key') ?? '',
+          requestId: context.get('requestId'),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ConflictError && error.message.includes('newer revision'))
+        throw new ApiError(412, 'REVISION_CONFLICT', 'The draft has a newer revision');
+      throw error;
+    }
   });
 
   routes.patch('/:draftId', async (context) => {
@@ -99,6 +128,7 @@ export function createRevisionRoutes(
         body.status,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       );
     }
     if (body.name) {
@@ -107,6 +137,7 @@ export function createRevisionRoutes(
         body.name,
         actor.email,
         context.get('requestId'),
+        draftMutationProof(context.req.raw),
       );
     }
     return context.json(draft);
@@ -124,7 +155,12 @@ export function createRevisionRoutes(
       throw new ConflictError('Only archived drafts can be deleted');
     }
     return context.json(
-      await repository.purgeDraft(draft.id, actor.email, context.get('requestId')),
+      await repository.purgeDraft(
+        draft.id,
+        actor.email,
+        context.get('requestId'),
+        draftMutationProof(context.req.raw),
+      ),
     );
   });
 

@@ -19,7 +19,11 @@ const schema = z
     POINTVIEW_PRIVATE_KEY: z
       .string()
       .regex(/^-----BEGIN PRIVATE KEY-----\n[A-Za-z0-9+/=\r\n]+\n-----END PRIVATE KEY-----\s*$/),
-    BUILDER_ORIGIN: z.literal('https://builder.pointatx.org'),
+    BUILDER_ORIGIN: z.enum([
+      'https://builder.pointatx.org',
+      'https://builder-canary.eaglepass.io',
+      'https://builder.eaglepass.io',
+    ]),
   })
   .refine(
     (value) =>
@@ -74,13 +78,16 @@ export class FeedbackService {
       const key = await importPKCS8(this.config.POINTVIEW_PRIVATE_KEY, 'EdDSA');
       const launchToken = await new SignJWT({
         source_app: 'pointsite-builder',
-        environment: 'production',
+        environment:
+          this.config.BUILDER_ORIGIN === 'https://builder-canary.eaglepass.io'
+            ? 'canary'
+            : 'production',
         context: {
           location: context.location,
           screen_name: context.name,
           app_version: this.version,
           source_revision: this.revision,
-          return_url: 'https://builder.pointatx.org/',
+          return_url: `${this.config.BUILDER_ORIGIN}/`,
         },
       })
         .setProtectedHeader({ alg: 'EdDSA', kid: this.config.POINTVIEW_KEY_ID, typ: 'JWT' })

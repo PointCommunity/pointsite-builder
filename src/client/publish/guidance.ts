@@ -46,7 +46,7 @@ export function getPublishingNextStep(
             : 'This exact saved revision passed its private check and is ready for Staging.',
         effect:
           lifecycle.step === 1
-            ? 'The private check changes nothing. If it passes and Staging is free, Builder continues with one protected candidate; Production remains unchanged.'
+            ? 'The private check changes nothing. If it passes and Staging is free, Builder publishes one publicly readable candidate; Production remains unchanged.'
             : 'Publishing creates one Staging candidate. It does not change Production.',
         primaryAction:
           lifecycle.step === 1
@@ -65,7 +65,7 @@ export function getPublishingNextStep(
     case 'publishing':
       return {
         title: 'No action needed — publishing is underway',
-        guidance: 'Builder is creating the protected Staging version and will keep checking it.',
+        guidance: 'Builder is creating the public Staging version and will keep checking it.',
         effect: 'You may close this window and return later. Your progress is saved.',
         primaryAction: null,
       };
@@ -78,8 +78,11 @@ export function getPublishingNextStep(
       };
     case 'paused':
       return {
-        title: 'Continue verification',
-        guidance: 'Select the button below to check this exact Staging version now.',
+        title: lifecycle.step === 2 ? 'Check cloud publication status' : 'Continue verification',
+        guidance:
+          lifecycle.step === 2
+            ? lifecycle.guidance
+            : 'Select the button below to check this exact Staging version now.',
         effect: 'This checks the existing Staging version only. It does not publish again.',
         primaryAction: 'Continue verification',
       };
@@ -95,11 +98,11 @@ export function getPublishingNextStep(
         title: 'Your Staging work is complete',
         guidance:
           role === 'administrator'
-            ? 'No Production action is available here yet. Production publishing remains protected and disabled until its separate setup and approval are complete.'
+            ? 'Check the Production section below for saved progress and available actions for this accepted version.'
             : 'No more publishing action is required from you. This exact version is now the official Staging candidate.',
         effect:
           role === 'administrator'
-            ? 'The accepted Staging version is recorded. Production is unchanged.'
+            ? 'Acceptance records the Staging decision. Production has its own publication status.'
             : 'The accepted Staging version is recorded. The public site was not changed.',
         primaryAction: null,
       };
@@ -140,7 +143,7 @@ export function describeFailedCheck(check: string): { label: string; explanation
     return {
       label: 'Staging update',
       explanation:
-        'Automatic recovery could not confirm that the protected Staging website finished updating.',
+        'Automatic recovery could not confirm that the Staging website finished updating.',
     };
   const safeName = check.trim().slice(0, 80) || 'unknown';
   return {
@@ -153,6 +156,9 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
   switch (code) {
     case 'FORBIDDEN':
     case 'UNAUTHENTICATED':
+    case 'PUBLISH_AUTHORITY_CHANGED':
+    case 'APPROVAL_AUTHORITY_CHANGED':
+    case 'PUBLISH_GITHUB_AUTHORITY_CHANGED':
       return {
         title: 'Your access changed',
         guidance:
@@ -180,7 +186,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       return {
         title: 'Staging renderer needs to be synchronized',
         guidance:
-          'Your draft is safe and no candidate was published. Ask a site maintainer to synchronize the protected Staging renderer with Builder, then try again.',
+          'Your draft is safe and no candidate was published. Ask a site maintainer to synchronize the Staging renderer with Builder, then try again.',
       };
     case 'IDEMPOTENCY_CONFLICT':
       return {
@@ -190,12 +196,15 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       };
     case 'APPROVAL_JOB_NOT_SUCCEEDED':
     case 'APPROVAL_EVIDENCE_INCOMPLETE':
+    case 'PUBLICATION_VERIFICATION_UNCONFIRMED':
       return {
         title: 'Staging is not ready to accept',
         guidance:
           'Return to the failed checks shown in this workflow. Resolve them before trying to accept this version again.',
       };
     case 'APPROVAL_TUPLE_MISMATCH':
+    case 'APPROVAL_STATE_CHANGED':
+    case 'PRODUCTION_BASE_DRIFT':
       return {
         title: 'The Staging version changed',
         guidance:
@@ -213,6 +222,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         guidance:
           'Close and reopen Publish to load the current workflow. Builder will show whether a new Staging candidate is needed.',
       };
+    case 'PUBLICATION_RUNTIME_UNAVAILABLE':
     case 'PUBLISHING_NOT_CONFIGURED':
     case 'APPROVALS_NOT_CONFIGURED':
     case 'PRODUCTION_BASE_UNAVAILABLE':
@@ -221,6 +231,18 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
         title: 'Publishing setup needs administrator attention',
         guidance:
           'Your draft is safe. Ask a Builder Administrator or site maintainer to restore the publishing connection, then try again.',
+      };
+    case 'PUBLICATION_RUN_NOT_TERMINAL':
+      return {
+        title: 'Cloud execution has not been confirmed stopped',
+        guidance:
+          'The publication is still running. Wait for the cloud run to finish, then check recovery again.',
+      };
+    case 'PUBLICATION_RECOVERY_CHANGED':
+      return {
+        title: 'Publication changed while you were recovering it',
+        guidance:
+          'Builder refreshed the saved status. Check the current publication before choosing another recovery action.',
       };
     case 'PUBLISH_IN_PROGRESS':
     case 'PUBLISH_SLOT_BUSY':
@@ -235,6 +257,7 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
             ? 'Your draft and private preflight remain safe. Wait for Builder to show that Staging is available, then continue without queuing a duplicate.'
             : 'Wait a moment, then check the same Staging version again. Do not publish a duplicate.',
       };
+    case 'APPROVAL_CLOUD_CANDIDATE_REQUIRED':
     case 'PREFLIGHT_REQUIRED':
     case 'PREFLIGHT_CANDIDATE_DRIFT':
       return {

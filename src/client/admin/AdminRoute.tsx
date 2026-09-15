@@ -9,41 +9,92 @@ import {
 } from './audit-language';
 
 const roles: Role[] = ['viewer', 'editor', 'publisher', 'administrator'];
-const bytes = (value: number) => `${(value / 1024 / 1024).toFixed(1)} MB`;
+const bytes = (value: number | null) =>
+  value === null ? 'Unknown' : `${(value / 1024 / 1024).toFixed(1)} MiB`;
 
 function Capacity({ report }: { report: CapacityReport }) {
   const items = [
-    ['Private media', report.privateMedia],
-    ['Revision data', report.revisionData],
-    ['Writes today', report.writesToday],
+    ['Allocated database storage', report.storage.allocatedBytes],
+    ['Private media payload', report.storage.privateMediaBytes],
+    ['Revision payload', report.storage.revisionPayloadBytes],
+    ['Request receipt payload', report.storage.receiptPayloadBytes],
   ] as const;
   return (
     <section className="admin-card" aria-labelledby="capacity-title">
       <h3 id="capacity-title">Capacity</h3>
       <div className="capacity-grid">
         {items.map(([label, item]) => (
-          <div
-            className={item.warning ? 'capacity-meter capacity-meter--warning' : 'capacity-meter'}
-            key={label}
-          >
+          <div className="capacity-meter" key={label}>
             <div>
               <strong>{label}</strong>
-              <span>
-                {item.unit === 'bytes'
-                  ? `${bytes(item.used)} of ${bytes(item.limit)}`
-                  : `${item.used.toLocaleString()} of ${item.limit.toLocaleString()}`}
-              </span>
+              <span>{bytes(item)}</span>
             </div>
-            <progress value={item.percent} max="100">
-              {item.percent}%
-            </progress>
-            <span>
-              {item.percent}%{item.warning ? ' — action recommended' : ''}
-            </span>
           </div>
         ))}
       </div>
-      <small>Measured {new Date(report.measuredAt).toLocaleString()}. Warnings begin at 70%.</small>
+      <p>
+        {report.activity.auditEvents.toLocaleString()} audit events since{' '}
+        {new Date(report.activity.periodStart).toUTCString()}.
+      </p>
+      {report.nativeStorage ? (
+        <div>
+          <h4>Homelab storage</h4>
+          <p>
+            SQLite workspace{report.nativeStorage.offVolume ? ' · private off-volume backups' : ''}
+          </p>
+          <p>
+            Backup:{' '}
+            {report.nativeStorage.backup.state === 'succeeded' &&
+            report.nativeStorage.backup.lastSucceededAt &&
+            Date.parse(report.measuredAt) -
+              Date.parse(report.nativeStorage.backup.lastSucceededAt) >
+              26 * 3_600_000
+              ? 'overdue'
+              : report.nativeStorage.backup.state}
+            .
+          </p>
+          <p>
+            Last successful backup:{' '}
+            {report.nativeStorage.backup.lastSucceededAt
+              ? new Date(report.nativeStorage.backup.lastSucceededAt).toLocaleString()
+              : 'None recorded'}
+            .
+          </p>
+        </div>
+      ) : report.providerUsage.state === 'unknown' ? (
+        <p>Provider usage: unknown. {report.providerUsage.reason}</p>
+      ) : (
+        <div>
+          <h4>Provider analytics{report.providerUsage.state === 'stale' ? ' — stale' : ''}</h4>
+          <p>
+            Requested period: {new Date(report.providerUsage.sample.periodStart).toUTCString()} to{' '}
+            {new Date(report.providerUsage.sample.periodEnd).toUTCString()}.
+          </p>
+          <dl>
+            <dt>Account-wide D1 rows read / written</dt>
+            <dd>
+              {report.providerUsage.sample.account.rowsRead.toLocaleString()} /{' '}
+              {report.providerUsage.sample.account.rowsWritten.toLocaleString()}
+            </dd>
+            <dt>Builder D1 rows read / written</dt>
+            <dd>
+              {report.providerUsage.sample.workspace.rowsRead.toLocaleString()} /{' '}
+              {report.providerUsage.sample.workspace.rowsWritten.toLocaleString()}
+            </dd>
+            <dt>Provider-reported Builder storage</dt>
+            <dd>{bytes(report.providerUsage.sample.workspaceStorageBytes)}</dd>
+          </dl>
+          <p>{report.providerUsage.reason}</p>
+          <small>
+            Collected {new Date(report.providerUsage.collectedAt).toLocaleString()}. Last refresh
+            attempt {new Date(report.providerUsage.checkedAt).toLocaleString()}.
+          </small>
+        </div>
+      )}
+      <small>
+        Measured {new Date(report.measuredAt).toLocaleString()}. Payload sizes exclude indexes and
+        other database records.
+      </small>
     </section>
   );
 }

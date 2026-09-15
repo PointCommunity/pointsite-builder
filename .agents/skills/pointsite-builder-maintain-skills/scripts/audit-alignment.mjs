@@ -70,18 +70,16 @@ requireText(policy, 'Backlog, On Hold, In Progress, In Review, Done', policyPath
 requireText(policy, 'Agent-owned Project movement', policyPath);
 requireText(policy, 'Pull request merged', policyPath);
 requireText(policy, 'is disabled', policyPath);
-requireText(policy, 'Production only at', policyPath);
-requireText(
-  policy,
-  'PM approval is instead the mandatory post-deployment completion gate.',
-  policyPath,
-);
+requireText(policy, 'Homelab Production at', policyPath);
+requireText(policy, 'Exact Canary approval permits Production promotion', policyPath);
 requireText(policy, 'Production Showcase and PM acceptance', policyPath);
 requireText(policy, 'Approved to complete Issue #&lt;number&gt;', policyPath);
 requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
 requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
-requireText(agents, 'It has no Builder staging or Canary environment', 'AGENTS.md');
-requireText(agents, 'deploy the exact clean `origin/main` revision', 'AGENTS.md');
+requireText(agents, 'https://builder-canary.eaglepass.io', 'AGENTS.md');
+requireText(agents, 'https://builder.eaglepass.io', 'AGENTS.md');
+requireText(agents, 'promote the exact approved Canary digest without rebuilding', 'AGENTS.md');
+requireText(agents, 'explicit approval of the exact Canary candidate', 'AGENTS.md');
 requireText(
   agents,
   'Agent QA and live verification never substitute for PM review and testing',

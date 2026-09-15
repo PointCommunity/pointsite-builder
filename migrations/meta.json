@@ -80,6 +80,143 @@
       "appliedBy": "wrangler d1 migrations apply",
       "rollback": null,
       "rollout": "../docs/draft-asset-migration.html"
+    },
+    {
+      "id": "0014_library_projection",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0015_revision_retention_integrity",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null
+    },
+    {
+      "id": "0016_request_receipt_version",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0017_revision_payloads",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0018_compact_receipts",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0019_maintenance_indexes",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0020_publication_inputs",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0021_publication_execution",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0022_publication_dispatch",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0023_cloud_acceptance",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0024_publication_promotions",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0025_publication_recovery_receipts",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0026_provider_usage",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0027_publication_retries",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0028_production_retries",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0029_publication_releases",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0030_publication_retention",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0031_publication_verifications",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0032_deletion_commits",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0033_deletion_retention",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0034_cloud_rollback",
+      "appliedBy": "wrangler d1 migrations apply",
+      "rollback": null,
+      "rollout": "../specs/061-reliable-editorial-workflow/spec.html"
+    },
+    {
+      "id": "0035_native_instance",
+      "appliedBy": "native SQLite startup migration runner",
+      "rollback": null,
+      "rollout": "../tasks/plan.html"
+    },
+    {
+      "id": "0036_production_draft_source",
+      "appliedBy": "native SQLite startup migration runner",
+      "rollback": null,
+      "rollout": "../tasks/plan.html"
     }
   ]
 }

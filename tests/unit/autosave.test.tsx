@@ -103,6 +103,7 @@ describe('EditorProvider autosave', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change' }));
     await act(async () => Promise.resolve());
     expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0]?.[6]).toBe(draft.latestRevisionId);
     expect(screen.getByRole('status')).toHaveTextContent('saved');
   });
 

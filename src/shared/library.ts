@@ -1,4 +1,4 @@
-import type { DraftRecord } from '../server/repositories/contracts';
+import type { DraftMutationProof, DraftRecord } from '../server/repositories/contracts';
 
 export interface LibraryItem {
   id: string;
@@ -45,10 +45,7 @@ export interface LibraryLinkInput extends LibraryMetadata {
   url: string;
 }
 
-export interface LibraryMutationContext {
+export interface LibraryMutationContext extends DraftMutationProof {
   draftId: string;
-  expectedRevisionId: string;
-  expectedChecksum: string;
-  checkoutToken: string;
   idempotencyKey: string;
 }

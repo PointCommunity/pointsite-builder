@@ -20,7 +20,9 @@
   "include": [
     "src",
     "worker",
+    "server",
     "tests",
+    "scripts/workspace-recovery.ts",
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts"

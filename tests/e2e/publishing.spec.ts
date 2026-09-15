@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { draftAssetFixture } from './draft-asset-fixture';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
+import type { StagingWorkflowSnapshot } from '../../src/client/publish/workflow';
 
 type Scenario =
   'immediate' | 'prolonged' | 'failed-then-passed' | 'stale' | 'timed-out' | 'accepted' | 'busy';
@@ -95,6 +96,10 @@ async function mockPublishing(
               }),
       });
     if (path.endsWith('/verification')) verificationRequests += 1;
+    if (path === '/api/publish/production/rollback' && request.method() === 'GET')
+      return route.fulfill({ json: { enabled: false } });
+    if (path.endsWith('/publish/production/workflow'))
+      return route.fulfill({ contentType: 'application/json', body: '{"enabled":false}' });
     const passed =
       scenario === 'accepted'
         ? true
@@ -203,6 +208,455 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
+
+test('Production restore requires a separate confirmation and keeps the captured choice', async ({
+  page,
+}) => {
+  await mockPublishing(page, 'accepted', 'administrator');
+  await page.route('**/api/publish/production/workflow?**', (route) =>
+    route.fulfill({ json: { enabled: true, busy: false, job: null } }),
+  );
+  let restored = false;
+  const captured = {
+    baseSha: 'a'.repeat(40),
+    previousDeploymentId: '123',
+    previousReleaseId: 'baseline',
+  };
+  const mutations: string[] = [];
+  await page.route('**/api/publish/production/rollback**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET')
+      return route.fulfill({
+        json: {
+          enabled: true,
+          publicationJobId: null,
+          releases: [
+            {
+              id: 'baseline',
+              kind: 'baseline',
+              verifiedAt: '2026-09-13T00:00:00Z',
+              artifactDigest: 'b'.repeat(64),
+            },
+          ],
+          job: restored
+            ? {
+                id: 'rollback',
+                sourceReleaseId: 'baseline',
+                status: 'queued',
+                attempts: 1,
+                canVerify: false,
+                requestedAt: new Date().toISOString(),
+              }
+            : null,
+        },
+      });
+    expect(request.method()).toBe('POST');
+    expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+    if (new URL(request.url()).pathname.endsWith('/prepare')) {
+      mutations.push('prepare');
+      return route.fulfill({ json: captured });
+    }
+    expect(request.postDataJSON()).toEqual({ ...captured, sourceReleaseId: 'baseline' });
+    mutations.push('restore');
+    restored = true;
+    return route.fulfill({ status: 202, json: { id: 'rollback', status: 'queued' } });
+  });
+  await openPublishing(page);
+  const prepare = page.getByRole('button', { name: 'Prepare selected restore' });
+  await expect(prepare).toBeDisabled();
+  await page.getByLabel('Verified release').selectOption('baseline');
+  await prepare.click();
+  const confirm = page.getByRole('button', { name: 'Restore selected release to Production' });
+  await expect(confirm).toBeEnabled();
+  expect(mutations).toEqual(['prepare']);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .include('section[aria-labelledby="production-rollback-heading"]')
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await confirm.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('The captured rollback continues in the cloud after you close Builder.'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore a Production release' })).toBeFocused();
+  expect(mutations).toEqual(['prepare', 'restore']);
+});
+
+for (const target of ['staging', 'production'] as const)
+  test(`${target} verification survives reopening and recovers without publishing again`, async ({
+    page,
+  }, testInfo) => {
+    await mockPublishing(page, 'accepted', 'administrator');
+    const jobId = '50000000-0000-4000-8000-000000000061';
+    let verified = false;
+    let verification: null | {
+      id: string;
+      status: string;
+      attempt: number;
+      dispatchAttempts: number;
+      reported: boolean;
+      requestedAt: string;
+      retryAt: string;
+      needsAttention: boolean;
+    } = null;
+    const actions: string[] = [];
+    await page.route('**/api/publish/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path === '/api/publish/production/rollback' && request.method() === 'GET')
+        return route.fulfill({ json: { enabled: false } });
+      if (path === `/api/publish/${target}/workflow`) {
+        const job = {
+          id: jobId,
+          publicationProtocol: 2,
+          workflowRevision: 'e'.repeat(40),
+          status: verified ? 'succeeded' : 'running',
+          candidateChecksum: 'b'.repeat(64),
+          draftId: draft.id,
+          revisionId: draft.revision.id,
+          revisionChecksum: draft.revision.checksum,
+          schemaVersion: draft.revision.schemaVersion,
+          rendererVersion: draft.revision.rendererVersion,
+          stagingBaseSha: 'c'.repeat(40),
+          stagingCommitSha: 'd'.repeat(40),
+          commitUrl: null,
+          stagingJobId: 'staging',
+          approvalId: 'approval',
+          artifactDigest: 'a'.repeat(64),
+          baseSha: 'c'.repeat(40),
+          commitSha: 'd'.repeat(40),
+          requestedAt: new Date().toISOString(),
+          completedAt: null,
+          evidence: verified
+            ? { verificationStatus: 'passed', artifactDigest: 'a'.repeat(64) }
+            : {},
+          dispatch: {
+            attempts: 1,
+            reserved: true,
+            needsAttention: false,
+            canVerifyOutput: !verified,
+            retryAt: new Date().toISOString(),
+          },
+        };
+        return route.fulfill({
+          json:
+            target === 'production'
+              ? { enabled: true, busy: !verified, job }
+              : {
+                  publicationProtocol: 2,
+                  currentStagingSha: 'd'.repeat(40),
+                  reviewUrl: 'https://staging.pointatx.org',
+                  preflight: {
+                    state: 'passed',
+                    revisionId: draft.revision.id,
+                    revisionChecksum: draft.revision.checksum,
+                    candidateChecksum: 'b'.repeat(64),
+                    validatedAt: new Date().toISOString(),
+                  },
+                  availability: { state: 'busy', phase: verified ? 'review' : 'running' },
+                  approval: null,
+                  job,
+                },
+        });
+      }
+      if (path === `/api/publish/${target}/jobs/${jobId}/verification`) {
+        if (request.method() === 'GET') return route.fulfill({ json: { verification } });
+        expect(request.postDataJSON()).toEqual({ expectedAttempts: 1 });
+        expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+        actions.push('capture');
+        verification = {
+          id: '60000000-0000-4000-8000-000000000061',
+          status: 'queued',
+          attempt: 1,
+          dispatchAttempts: 6,
+          reported: false,
+          requestedAt: new Date().toISOString(),
+          retryAt: new Date().toISOString(),
+          needsAttention: true,
+        };
+        return route.fulfill({
+          status: 202,
+          json: { recovered: true, verificationId: verification.id },
+        });
+      }
+      if (
+        path === `/api/publish/${target}/jobs/${jobId}/verification/${verification?.id}/recovery`
+      ) {
+        const body = request.postDataJSON() as { action: string; expectedDispatches: number };
+        actions.push(body.action);
+        expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+        if (body.action === 'retry') {
+          expect(body.expectedDispatches).toBe(6);
+          verification = {
+            ...verification!,
+            id: '60000000-0000-4000-8000-000000000062',
+            status: 'running',
+            attempt: 2,
+            dispatchAttempts: 0,
+            needsAttention: false,
+            reported: true,
+          };
+          return route.fulfill({ json: { recovered: true, verificationId: verification.id } });
+        }
+        expect(body).toEqual({ action: 'reconcile', expectedDispatches: 0 });
+        verified = true;
+        verification!.status = 'passed';
+        return route.fulfill({ json: { recovered: true } });
+      }
+      if (target === 'production' && path === '/api/publish/staging/workflow')
+        return route.fallback();
+      if (target === 'staging' && path === '/api/publish/production/workflow')
+        return route.fulfill({ json: { enabled: false } });
+      throw new Error(`Unexpected publication mutation during verification: ${path}`);
+    });
+    await openPublishing(page);
+    await page.getByRole('button', { name: 'Verify existing publication' }).click();
+    const region = page.getByRole('region', {
+      name: `${target === 'staging' ? 'Staging' : 'Production'} verification`,
+    });
+    await expect(region.getByRole('button', { name: 'Retry stopped verification' })).toBeVisible();
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .include(`section[aria-labelledby="${target}-verification-heading"]`)
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await region.screenshot({ path: testInfo.outputPath(`${target}-verification.png`) });
+    await page.reload();
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await page.getByRole('button', { name: 'Publish', exact: true }).click();
+    const retry = page.getByRole('button', { name: 'Retry stopped verification' });
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator(`#${target}-verification-heading`)).toBeFocused();
+    await page.getByRole('button', { name: 'Finish verification' }).click();
+    await expect(region).toHaveCount(0);
+    await expect(
+      page.locator(target === 'staging' ? '#publish-next-action-title' : '#production-heading'),
+    ).toBeFocused();
+    expect(actions).toEqual(['capture', 'retry', 'reconcile']);
+  });
+
+test('an Administrator recovers saved Production progress after reopening', async ({
+  page,
+}, testInfo) => {
+  await mockPublishing(page, 'accepted', 'administrator');
+  let recovered = false;
+  const jobId = '50000000-0000-4000-8000-000000000011';
+  await page.route('**/api/publish/production/workflow?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        enabled: true,
+        busy: !recovered,
+        job: {
+          id: jobId,
+          status: recovered ? 'succeeded' : 'running',
+          revisionId: draft.revision.id,
+          stagingJobId: '30000000-0000-4000-8000-000000000011',
+          approvalId: 'acceptance',
+          candidateChecksum: 'b'.repeat(64),
+          artifactDigest: 'a'.repeat(64),
+          baseSha: 'e'.repeat(40),
+          commitSha: 'f'.repeat(40),
+          requestedAt: new Date(Date.now() - 16 * 60_000).toISOString(),
+          completedAt: null,
+          evidence: recovered
+            ? { verificationStatus: 'passed', artifactDigest: 'a'.repeat(64) }
+            : {},
+          dispatch: {
+            attempts: 1,
+            needsAttention: false,
+            reserved: true,
+            canVerifyCompleted: !recovered,
+            retryAt: '2026-09-13T00:00:00Z',
+          },
+        },
+      }),
+    });
+  });
+  await page.route(`**/api/publish/production/jobs/${jobId}/recovery`, async (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({
+      action: 'verify-completed',
+      expectedAttempts: 1,
+    });
+    expect(route.request().headers()['idempotency-key']).toBeTruthy();
+    recovered = true;
+    await route.fulfill({ contentType: 'application/json', body: '{"recovered":true}' });
+  });
+  await openPublishing(page);
+  await expect(
+    page.getByRole('button', { name: 'Verify completed Production publication' }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  const verify = page.getByRole('button', { name: 'Verify completed Production publication' });
+  await expect(verify).toBeVisible();
+  await verify.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('This Production publication was verified.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Production', exact: true })).toBeFocused();
+  await expect(verify).toHaveCount(0);
+  await page.getByText('Production publication details', { exact: true }).click();
+  await page
+    .locator('.production-lock')
+    .screenshot({ path: testInfo.outputPath('production-status.png') });
+  const violations = await new AxeBuilder({ page }).include('.production-lock').analyze();
+  expect(violations.violations).toEqual([]);
+});
+
+test('cloud recovery retains the captured revision and keyboard focus', async ({ page }) => {
+  await mockPublishing(page, 'immediate');
+  const jobId = '30000000-0000-4000-8000-000000000011';
+  const requestedAt = new Date().toISOString();
+  const workflow: StagingWorkflowSnapshot = {
+    publicationProtocol: 2,
+    currentStagingSha: 'c'.repeat(40),
+    reviewUrl: 'https://staging.pointatx.org',
+    preflight: {
+      state: 'passed',
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      candidateChecksum: 'b'.repeat(64),
+      validatedAt: requestedAt,
+    },
+    availability: { state: 'busy', phase: 'running' },
+    approval: null,
+    job: {
+      id: jobId,
+      publicationProtocol: 2,
+      workflowRevision: 'e'.repeat(40),
+      status: 'queued',
+      candidateChecksum: 'b'.repeat(64),
+      draftId: draft.id,
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      schemaVersion: draft.revision.schemaVersion,
+      rendererVersion: draft.revision.rendererVersion,
+      stagingBaseSha: 'c'.repeat(40),
+      stagingCommitSha: null,
+      commitUrl: null,
+      requestedAt,
+      completedAt: null,
+      evidence: { verificationStatus: 'pending' },
+      dispatch: {
+        attempts: 6,
+        retryAt: '2026-01-01T00:00:00.000Z',
+        needsAttention: true,
+        reserved: false,
+        canReconcileStopped: false,
+      },
+    },
+  };
+  const actions: string[] = [];
+  const published: unknown[] = [];
+  await page.route('**/api/publish/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/publish/staging/workflow') return route.fulfill({ json: workflow });
+    if (path === `/api/publish/jobs/${workflow.job!.id}/recovery`) {
+      const body = request.postDataJSON() as { action: string; expectedAttempts: number };
+      expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
+      actions.push(body.action);
+      expect(body.expectedAttempts).toBe(body.action === 'retry' ? 6 : 0);
+      if (body.action === 'retry')
+        workflow.job!.dispatch = { ...workflow.job!.dispatch!, attempts: 0, needsAttention: false };
+      else if (body.action === 'retry-captured') {
+        expect(workflow.job!.id).toBe(jobId);
+        workflow.job!.id = '30000000-0000-4000-8000-000000000012';
+        workflow.job!.status = 'queued';
+        workflow.job!.dispatch!.canRetryCaptured = false;
+        workflow.availability = { state: 'busy', phase: 'running' };
+      } else if (body.action === 'verify-completed') {
+        workflow.job!.status = 'succeeded';
+        workflow.job!.dispatch!.canVerifyCompleted = false;
+        workflow.job!.revisionId = '20000000-0000-4000-8000-000000000099';
+        workflow.job!.evidence = {
+          verificationStatus: 'passed',
+          artifactDigest: 'f'.repeat(64),
+          verification: { dispatchRevision: '9'.repeat(40) },
+        };
+        workflow.currentStagingSha = '9'.repeat(40);
+        workflow.availability = { state: 'busy', phase: 'review' };
+      } else {
+        workflow.job!.status = 'cancelled';
+        workflow.job!.dispatch!.canRetryCaptured = true;
+        workflow.availability = { state: 'available' };
+      }
+      return route.fulfill({ json: { recovered: true, jobId: workflow.job!.id } });
+    }
+    if (path === '/api/publish/staging') {
+      published.push(request.postDataJSON() as unknown);
+      workflow.job!.id = '30000000-0000-4000-8000-000000000013';
+      workflow.job!.status = 'running';
+      workflow.job!.stagingCommitSha = 'd'.repeat(40);
+      workflow.job!.dispatch = {
+        ...workflow.job!.dispatch!,
+        reserved: true,
+        canRetryCaptured: false,
+        canVerifyCompleted: true,
+      };
+      workflow.availability = { state: 'busy', phase: 'running' };
+      return route.fulfill({
+        status: 202,
+        json: { jobId: workflow.job!.id, status: 'queued', publicationProtocol: 2 },
+      });
+    }
+    throw new Error(`Unexpected cloud browser operation: ${path}`);
+  });
+  await openPublishing(page);
+  const retry = page.getByRole('button', { name: 'Retry queued publication' });
+  await expect(retry).toBeEnabled();
+  const accessibility = await new AxeBuilder({ page }).include('.publish-panel').analyze();
+  expect(accessibility.violations).toEqual([]);
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await expect(retry).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  const cancel = page.getByRole('button', { name: 'Cancel queued publication' });
+  await cancel.focus();
+  await page.keyboard.press('Enter');
+  await expect(cancel).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  const captured = page.getByRole('button', { name: 'Retry captured candidate' });
+  await expect(captured).toBeEnabled();
+  expect((await new AxeBuilder({ page }).include('.publish-panel').analyze()).violations).toEqual(
+    [],
+  );
+  await captured.focus();
+  await page.keyboard.press('Enter');
+  await expect(captured).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await expect(cancel).toBeEnabled();
+  await cancel.focus();
+  await page.keyboard.press('Enter');
+  await expect(cancel).toHaveCount(0);
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await page.getByRole('button', { name: 'Try publishing again' }).click();
+  await expect.poll(() => published.length).toBe(1);
+  expect(published[0]).toMatchObject({
+    draftId: draft.id,
+    expectedRevisionId: draft.revision.id,
+    expectedRevisionChecksum: draft.revision.checksum,
+    expectedBaseSha: 'c'.repeat(40),
+  });
+  const verify = page.getByRole('button', { name: 'Verify completed deployment' });
+  await expect(verify).toBeEnabled();
+  await verify.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(page.getByText('Newer edits are not included.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Accept this Staging version' })).toBeEnabled();
+  expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel', 'verify-completed']);
+  expect(published).toHaveLength(1);
+});
 
 test('automatically advances an immediate exact verification', async ({ page }) => {
   await page.clock.install();
@@ -314,7 +768,7 @@ test('waits for an occupied shared Staging slot without publishing or exposing a
   await expect(page.getByText('Staging is currently in use')).toBeVisible();
   await expect(page.getByText(/without queuing or interrupting/i)).toBeVisible();
   await expect(page.getByText(/another publication is currently publishing/i)).toBeVisible();
-  await expect(page.getByText(/safely recover the slot after/i)).toBeVisible();
+  await expect(page.getByText(/check recovery after/i)).toBeVisible();
   await page.clock.runFor(10_000);
   expect(publicationRequests).toBe(0);
 });
@@ -346,7 +800,7 @@ test('gives an Administrator a clear Production handoff without an unavailable a
   await openPublishing(page);
   await expect(page.getByText('Your next step · Administrator')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-  await expect(page.getByText(/No Production action is available here yet/i)).toBeVisible();
+  await expect(page.getByText(/Check the Production section below/i)).toBeVisible();
   await expect(page.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
   await expect(page.getByRole('button', { name: /publish.*production/i })).toHaveCount(0);
 });

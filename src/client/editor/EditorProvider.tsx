@@ -10,8 +10,13 @@ import {
   type ReactNode,
 } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
-import type { DraftCheckout, DraftRecord } from '../../server/repositories/contracts';
+import type {
+  DraftCheckout,
+  DraftRecord,
+  RevisionRecord,
+} from '../../server/repositories/contracts';
 import { api } from '../api';
+import { PendingJournal } from './pending-journal';
 import type {
   LibraryMutationContext,
   LibraryMutationResult,
@@ -33,13 +38,21 @@ interface EditorValue {
     update: (document: SiteDocument) => SiteDocument,
     mutation: AutosaveMutation,
   ) => boolean;
-  stageDocument: (document: SiteDocument) => void;
+  stageDocument: (
+    document: SiteDocument,
+    mutation?: AutosaveMutation,
+    renderDocument?: boolean,
+  ) => void;
   completeDocument: (document: SiteDocument, mutation: AutosaveMutation) => boolean;
   flushTextAction: () => void;
   retryAutosave: () => void;
   copyRecoveryData: () => Promise<void>;
   reloadLatest: () => Promise<void>;
+  discardLocal: () => Promise<void>;
+  stopAutosave: () => void;
   renameDraft: (name: string) => Promise<void>;
+  labelRevision: (revisionId: string, label: string) => Promise<RevisionRecord>;
+  restoreRevision: (revisionId: string) => Promise<void>;
   runLibraryMutation: (
     operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
   ) => Promise<LibrarySnapshot>;
@@ -66,7 +79,16 @@ export function EditorProvider({
     () =>
       new ActionAutosaveController({
         initialDraft,
-        persist: ({ document, action, expectedChecksum, idempotencyKey }) =>
+        ...(checkout && typeof indexedDB !== 'undefined'
+          ? {
+              journal: new PendingJournal({
+                actor: checkout.actor,
+                draftId: initialDraft.id,
+                clientId: checkout.clientId,
+              }),
+            }
+          : { recoveryUnavailable: Boolean(checkout) }),
+        persist: ({ document, action, expectedChecksum, expectedRevisionId, idempotencyKey }) =>
           api.saveDraft(
             initialDraft.id,
             expectedChecksum,
@@ -74,6 +96,7 @@ export function EditorProvider({
             action,
             idempotencyKey,
             checkout?.token ?? '',
+            expectedRevisionId,
           ),
       }),
   );
@@ -82,18 +105,30 @@ export function EditorProvider({
     () => controller.snapshot,
     () => controller.snapshot,
   );
-  const libraryMutationPending = useRef(false);
-  const runLibraryMutation = useCallback(
-    async (
-      operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>,
-    ): Promise<LibrarySnapshot> => {
+  const savedMutationPending = useRef(false);
+  const mutationContext = useCallback((): LibraryMutationContext => {
+    const { draft } = controller.snapshot;
+    if (!checkout || draft.status !== 'active')
+      throw new Error('Reopen this draft before continuing.');
+    return {
+      draftId: draft.id,
+      expectedChecksum: draft.revision.checksum,
+      expectedRevisionId: draft.latestRevisionId,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }, [checkout, controller]);
+  const runSavedMutation = useCallback(
+    async <T,>(
+      operation: (context: LibraryMutationContext) => Promise<{ draft: DraftRecord; result: T }>,
+    ): Promise<T> => {
       const before = controller.snapshot;
       if (!checkout || before.draft.status !== 'active')
         throw new Error(
-          'An active draft checkout is required. Reopen this draft to edit its Library.',
+          'An active draft checkout is required. Reopen this draft before continuing.',
         );
-      if (libraryMutationPending.current)
-        throw new Error('Wait for the current Library change to finish.');
+      if (savedMutationPending.current)
+        throw new Error('Wait for the current draft change to finish.');
       if (
         before.state !== 'saved' ||
         !before.canLeave ||
@@ -104,41 +139,57 @@ export function EditorProvider({
           'Wait until all draft changes are saved, then try again. Your pending edits are preserved.',
         );
       }
-      libraryMutationPending.current = true;
+      savedMutationPending.current = true;
       try {
         await api.validateCheckout(before.draft.id, checkout.token);
         if (controller.snapshot !== before)
           throw new Error(
             'The draft changed while preparing this action. Wait for autosave, then try again.',
           );
-        const result = await operation({
-          draftId: before.draft.id,
-          expectedChecksum: before.draft.revision.checksum,
-          expectedRevisionId: before.draft.latestRevisionId,
-          checkoutToken: checkout.token,
-          idempotencyKey: crypto.randomUUID(),
-        });
+        const result = await operation(mutationContext());
         if (controller.snapshot !== before)
           throw new Error(
-            'The Library change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
+            'The change was saved, but newer local edits were preserved. Copy pending edits before reloading the latest draft.',
           );
         if (
           result.draft.id !== before.draft.id ||
-          result.library.draftId !== before.draft.id ||
+          result.draft.revision.id !== result.draft.latestRevisionId
+        )
+          throw new Error(
+            'The response could not be verified. Reload the latest draft before continuing.',
+          );
+        controller.replaceWithLatest(result.draft);
+        return result.result;
+      } finally {
+        savedMutationPending.current = false;
+      }
+    },
+    [checkout, controller, mutationContext],
+  );
+
+  const runLibraryMutation = useCallback(
+    (operation: (context: LibraryMutationContext) => Promise<LibraryMutationResult>) =>
+      runSavedMutation(async (context) => {
+        const result = await operation(context);
+        if (
+          result.library.draftId !== context.draftId ||
           result.library.revisionId !== result.draft.latestRevisionId ||
-          result.draft.revision.id !== result.draft.latestRevisionId ||
           result.library.revisionChecksum !== result.draft.revision.checksum
         )
           throw new Error(
             'The Library response could not be verified. Reload the latest draft before continuing.',
           );
-        controller.replaceWithLatest(result.draft);
-        return result.library;
-      } finally {
-        libraryMutationPending.current = false;
-      }
-    },
-    [checkout, controller],
+        return { draft: result.draft, result: result.library };
+      }),
+    [runSavedMutation],
+  );
+  const restoreRevision = useCallback(
+    (revisionId: string) =>
+      runSavedMutation(async (context) => ({
+        draft: await api.restoreRevision(context, revisionId),
+        result: undefined,
+      })),
+    [runSavedMutation],
   );
 
   useEffect(() => {
@@ -169,16 +220,19 @@ export function EditorProvider({
   }, [controller]);
 
   const reloadLatest = useCallback(async () => {
-    const latest = await api.getDraft(initialDraft.id);
-    controller.replaceWithLatest(latest);
+    await controller.discardAndReplace(() => api.getDraft(initialDraft.id));
   }, [controller, initialDraft.id]);
 
   const renameDraft = useCallback(
     async (name: string) => {
-      const renamed = await api.renameDraft(initialDraft.id, name);
+      const renamed = await api.renameDraft(mutationContext(), name);
       controller.updateDraftName(renamed);
     },
-    [controller, initialDraft.id],
+    [controller, mutationContext],
+  );
+  const labelRevision = useCallback(
+    (revisionId: string, label: string) => api.labelRevision(mutationContext(), revisionId, label),
+    [mutationContext],
   );
 
   const copyRecoveryData = useCallback(async () => {
@@ -207,23 +261,38 @@ export function EditorProvider({
       saveState: autosave.state,
       autosave,
       updateDocument: (update, mutation) => controller.mutate(update, mutation),
-      stageDocument: (document) => controller.stage(document),
+      stageDocument: (document, mutation, renderDocument) =>
+        controller.stage(document, mutation, renderDocument),
       completeDocument: (document, mutation) => controller.complete(document, mutation),
       flushTextAction: controller.flushTextAction,
       retryAutosave: controller.retry,
       copyRecoveryData,
       reloadLatest,
+      discardLocal: () => controller.discardAndReplace(),
+      stopAutosave: controller.stopForAuthority,
       renameDraft,
+      labelRevision,
+      restoreRevision,
       runLibraryMutation,
     }),
-    [autosave, controller, copyRecoveryData, reloadLatest, renameDraft, runLibraryMutation],
+    [
+      autosave,
+      controller,
+      copyRecoveryData,
+      reloadLatest,
+      renameDraft,
+      labelRevision,
+      restoreRevision,
+      runLibraryMutation,
+    ],
   );
 
   const documentValue = useMemo<EditorDocumentValue>(
     () => ({
       document: autosave.document,
       updateDocument: (update, mutation) => controller.mutate(update, mutation),
-      stageDocument: (document) => controller.stage(document),
+      stageDocument: (document, mutation, renderDocument) =>
+        controller.stage(document, mutation, renderDocument),
       completeDocument: (document, mutation) => controller.complete(document, mutation),
     }),
     [autosave.document, controller],
@@ -232,7 +301,13 @@ export function EditorProvider({
   return (
     <EditorContext.Provider value={value}>
       <EditorDocumentContext.Provider value={documentValue}>
-        {children}
+        {autosave.recovery === 'checking' ? (
+          <main className="state-page">
+            <p role="status">Checking this browser for pending changes…</p>
+          </main>
+        ) : (
+          children
+        )}
       </EditorDocumentContext.Provider>
     </EditorContext.Provider>
   );

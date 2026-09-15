@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -99,9 +101,17 @@ describe('repository contract', () => {
     const updatedDocument = structuredClone(created.document);
     updatedDocument.pages[0].title = 'New homepage';
 
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document: updatedDocument,
       actor,
       idempotencyKey: 'save-concurrent-0001',
@@ -116,6 +126,8 @@ describe('repository contract', () => {
       repository.saveDraft({
         draftId: created.id,
         expectedChecksum: created.revision.checksum,
+        expectedRevisionId: created.revision.id,
+        checkoutToken: saveCheckout.token,
         document: created.document,
         actor,
         idempotencyKey: 'save-concurrent-stale',
@@ -147,9 +159,17 @@ describe('repository contract', () => {
     hero.headingWidth.mobile = 71;
     hero.bodyWidth.mobile = 53;
 
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document,
       actor,
       idempotencyKey: 'save-hero-widths-01',
@@ -187,9 +207,17 @@ describe('repository contract', () => {
     });
     const changed = structuredClone(created.document);
     changed.site.shortName = 'Changed Point';
+    const saveCheckout = await repository.acquireCheckout({
+      draftId: created.id,
+      actor,
+      clientId: 'repository-fixture-01',
+      requestId: 'checkout',
+    });
     const saved = await repository.saveDraft({
       draftId: created.id,
       expectedChecksum: created.revision.checksum,
+      expectedRevisionId: created.revision.id,
+      checkoutToken: saveCheckout.token,
       document: changed,
       actor,
       idempotencyKey: 'save-restore-0001',
@@ -201,6 +229,8 @@ describe('repository contract', () => {
       draftId: created.id,
       revisionId: created.revision.id,
       expectedChecksum: saved.revision.checksum,
+      expectedRevisionId: saved.revision.id,
+      checkoutToken: saveCheckout.token,
       actor,
       idempotencyKey: 'restore-0001',
       requestId: 'request-8',
@@ -230,20 +260,50 @@ describe('repository contract', () => {
     });
 
     expect(
-      (await repository.setDraftStatus(created.id, 'archived', actor, 'request-10')).status,
+      (
+        await repository.setDraftStatus(
+          created.id,
+          'archived',
+          actor,
+          'request-10',
+          await acquireDraftProof(repository, created.id, actor),
+        )
+      ).status,
     ).toBe('archived');
     expect(
-      (await repository.setDraftStatus(created.id, 'active', actor, 'request-11')).status,
+      (
+        await repository.setDraftStatus(
+          created.id,
+          'active',
+          actor,
+          'request-11',
+          await acquireDraftProof(repository, created.id, actor),
+        )
+      ).status,
     ).toBe('active');
     await expect(
-      repository.purgeDraft(created.id, actor, 'request-active-delete'),
+      repository.purgeDraft(
+        created.id,
+        actor,
+        'request-active-delete',
+        await acquireDraftProof(repository, created.id, actor),
+      ),
     ).rejects.toBeInstanceOf(ConflictError);
-    await repository.setDraftStatus(created.id, 'archived', actor, 'request-rearchive');
-    expect((await repository.purgeDraft(created.id, actor, 'request-12')).status).toBe('deleted');
+    await repository.setDraftStatus(
+      created.id,
+      'archived',
+      actor,
+      'request-rearchive',
+      await acquireDraftProof(repository, created.id, actor),
+    );
+    const deletedProof = await acquireDraftProof(repository, created.id, actor);
+    expect(
+      (await repository.purgeDraft(created.id, actor, 'request-12', deletedProof)).status,
+    ).toBe('deleted');
     expect(await repository.listDrafts()).toEqual([]);
     expect(await repository.listDrafts('deleted')).toEqual([]);
     await expect(
-      repository.setDraftStatus(created.id, 'active', actor, 'request-13'),
+      repository.setDraftStatus(created.id, 'active', actor, 'request-13', deletedProof),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

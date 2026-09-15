@@ -1,3 +1,11 @@
+import { z } from 'zod';
+import type { DraftRecord } from '../repositories/contracts';
+import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
+import { preparePublicationInputs } from './inputs';
+import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
+import { retryCapturedPublication } from './retry';
+import { reconcileCompletedPublication } from './reconcile';
+
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface PublishJobRecord {
@@ -53,7 +61,7 @@ const selection =
 
 const leaseExpiry = (now: string) => new Date(Date.parse(now) + 15 * 60_000).toISOString();
 
-const activeCandidate = `EXISTS (
+const activeCandidate = `COALESCE(json_extract(candidate_json,'$.publicationProtocol'),1)=1 AND EXISTS (
   SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
   WHERE d.status='active' AND d.id=json_extract(candidate_json,'$.draftId')
     AND r.id=json_extract(candidate_json,'$.revisionId')
@@ -63,11 +71,285 @@ const activeCandidate = `EXISTS (
 export class D1PublishJobStore {
   constructor(private readonly database: D1Database) {}
 
+  async recoverQueued(input: QueuedRecoveryInput) {
+    if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+    if (input.action === 'verify-completed')
+      return reconcileCompletedPublication(this.database, input);
+    return recoverQueuedPublication(this.database, input);
+  }
+
+  retryCaptured(
+    input: QueuedRecoveryInput,
+    workflowRevision: string,
+    verifyBase: (sha: string) => Promise<void>,
+  ) {
+    return retryCapturedPublication(this.database, input, workflowRevision, verifyBase);
+  }
+
+  /** Capture once. Browser closure and later edits cannot substitute these inputs. */
+  async captureStaging(input: {
+    draft: DraftRecord;
+    workflowRevision: string;
+    baseSha: string;
+    actor: string;
+    idempotencyKey: string;
+    requestId: string;
+    preflightId?: string;
+  }): Promise<PublishJobRecord> {
+    z.string()
+      .regex(/^[A-Za-z0-9._:-]{16,100}$/)
+      .parse(input.idempotencyKey);
+    z.string()
+      .regex(/^[a-f0-9]{40}$/)
+      .parse(input.baseSha);
+    const id = crypto.randomUUID();
+    const prepared = await preparePublicationInputs(
+      this.database,
+      input.draft,
+      id,
+      input.workflowRevision,
+    );
+    const authority = this.database
+      .prepare(
+        `SELECT json(CASE WHEN EXISTS (
+      SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role IN ('publisher','administrator')
+    ) THEN 'true' ELSE 'publication authority changed' END)`,
+      )
+      .bind(input.actor);
+    const existing = await this.getByKey(input.idempotencyKey);
+    if (existing) {
+      await authority.first();
+      if (
+        existing.candidateChecksum !== prepared.candidateChecksum ||
+        existing.baseSha !== input.baseSha ||
+        existing.requestedBy !== input.actor
+      )
+        throw new Error('IDEMPOTENCY_CONFLICT');
+      return existing;
+    }
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('');
+    const now = new Date().toISOString();
+    try {
+      await this.database.batch([
+        authority,
+        ...(input.preflightId
+          ? [
+              this.database
+                .prepare(
+                  `SELECT json(CASE WHEN EXISTS (
+          SELECT 1 FROM publish_preflights WHERE id=? AND draft_id=? AND revision_id=?
+            AND revision_checksum=? AND candidate_checksum=? AND status='passed'
+            AND id=(SELECT id FROM publish_preflights WHERE draft_id=? ORDER BY completed_at DESC,rowid DESC LIMIT 1)
+        ) THEN 'true' ELSE 'publication preflight changed' END)`,
+                )
+                .bind(
+                  input.preflightId,
+                  input.draft.id,
+                  input.draft.revision.id,
+                  input.draft.revision.checksum,
+                  prepared.candidateChecksum,
+                  input.draft.id,
+                ),
+            ]
+          : []),
+        this.database
+          .prepare(
+            `SELECT json(CASE WHEN EXISTS (
+        SELECT 1 FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id
+        WHERE d.id=? AND d.status='active' AND r.id=? AND r.checksum=?
+      ) THEN 'true' ELSE 'publication revision changed' END)`,
+          )
+          .bind(input.draft.id, input.draft.revision.id, input.draft.revision.checksum),
+        this.database.prepare(`SELECT json(CASE WHEN NOT EXISTS (
+        SELECT 1 FROM publication_slots WHERE target='staging'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running')
+      ) THEN 'true' ELSE 'publication slot occupied' END)`),
+        this.database
+          .prepare(
+            `INSERT INTO publish_jobs
+        (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+        VALUES (?,?,'staging','queued',?,?,'PointCommunity/pointsite-staging',?,?,?)`,
+          )
+          .bind(
+            id,
+            input.idempotencyKey,
+            JSON.stringify(prepared.candidate),
+            prepared.candidateChecksum,
+            input.baseSha,
+            input.actor,
+            now,
+          ),
+        ...prepared.statements,
+        this.database
+          .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('staging',?)")
+          .bind(id),
+        this.database
+          .prepare('INSERT INTO publication_runs(job_id,nonce,dispatch_revision) VALUES (?,?,?)')
+          .bind(id, nonce, input.baseSha),
+        this.audit(input.actor, 'publish.queued', id, input.requestId, {
+          candidateChecksum: prepared.candidateChecksum,
+          baseSha: input.baseSha,
+        }),
+      ]);
+    } catch (error) {
+      // Another identical request may have committed while this one prepared inputs.
+      const committed = await this.getByKey(input.idempotencyKey);
+      if (!committed) throw error;
+      await authority.first();
+      if (
+        committed.candidateChecksum !== prepared.candidateChecksum ||
+        committed.baseSha !== input.baseSha ||
+        committed.requestedBy !== input.actor
+      )
+        throw new Error('IDEMPOTENCY_CONFLICT');
+      return committed;
+    }
+    const created = await this.getById(id);
+    if (!created) throw new Error('PUBLISH_JOB_CREATE_FAILED');
+    return created;
+  }
+
+  async capturedRetry(
+    key: string,
+    actor: string,
+    baseSha: string,
+    candidate: {
+      draftId: string;
+      revisionId: string;
+      revisionChecksum: string;
+      workflowRevision: string;
+    },
+  ) {
+    const job = await this.getByKey(key);
+    if (!job) return null;
+    if (
+      job.requestedBy !== actor ||
+      job.baseSha !== baseSha ||
+      job.candidate.publicationProtocol !== 2 ||
+      Object.entries(candidate).some(([name, value]) => job.candidate[name] !== value)
+    )
+      throw new Error('IDEMPOTENCY_CONFLICT');
+    const authorized = await this.database
+      .prepare(
+        `SELECT 1 FROM user_roles WHERE email=? AND active=1
+      AND role IN ('publisher','administrator')`,
+      )
+      .bind(actor)
+      .first();
+    if (!authorized) throw new Error('PUBLISH_AUTHORITY_CHANGED');
+    return job;
+  }
+
+  prepareInputs(draft: DraftRecord, workflowRevision: string) {
+    return preparePublicationInputs(this.database, draft, crypto.randomUUID(), workflowRevision);
+  }
+
+  async draftHead(draftId: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT r.id,r.checksum FROM drafts d
+      JOIN revisions r ON r.id=d.latest_revision_id AND r.draft_id=d.id WHERE d.id=?`,
+      )
+      .bind(draftId)
+      .first<{ id: string; checksum: string }>();
+    if (!row) throw new Error('DRAFT_NOT_FOUND');
+    return { revision: row };
+  }
+
+  async cloudAvailability() {
+    const row = await this.database
+      .prepare(
+        `SELECT j.status FROM publication_slots s
+      JOIN publish_jobs j ON j.id=s.job_id WHERE s.target='staging'`,
+      )
+      .first<{ status: PublishJobStatus }>();
+    if (row)
+      return {
+        state: 'busy' as const,
+        phase:
+          row.status === 'succeeded'
+            ? ('review' as const)
+            : row.status === 'queued' || row.status === 'running'
+              ? row.status
+              : ('recovery' as const),
+      };
+    // A legacy process may still have an external effect after its lease expires.
+    const legacy = await this.database
+      .prepare(
+        `SELECT status FROM publish_jobs
+      WHERE environment='staging' AND status IN ('queued','running') LIMIT 1`,
+      )
+      .first<{ status: 'queued' | 'running' }>();
+    return legacy
+      ? { state: 'busy' as const, phase: legacy.status }
+      : { state: 'available' as const };
+  }
+
+  async dispatchStatus(id: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,
+      COALESCE(run_id,reserved_run_id) AS run_id,
+      (reserved_run_id IS NOT NULL AND deploy_authorized_at IS NULL
+        AND j.status IN ('queued','running')) AS can_reconcile,
+      (j.environment IN ('staging','production-merge') AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
+        AND COALESCE((SELECT attempt FROM publication_retries WHERE job_id=j.id),0)<3
+        AND NOT EXISTS(SELECT 1 FROM publication_retries WHERE parent_job_id=j.id)) AS can_retry_captured,
+      (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.deployment_json IS NOT NULL
+        AND pr.run_id IS NOT NULL) AS can_verify_completed,
+      (j.status='running' AND pr.deploy_authorized_at IS NOT NULL AND pr.commit_authorized_at IS NOT NULL
+        AND pr.build_json IS NOT NULL AND pr.run_id IS NOT NULL AND j.result_sha IS NOT NULL) AS can_verify_output
+      FROM publication_runs pr JOIN publish_jobs j ON j.id=pr.job_id WHERE job_id=?`,
+      )
+      .bind(id)
+      .first<{
+        dispatch_count: number;
+        dispatch_after: string;
+        dispatch_error: string | null;
+        run_id: string | null;
+        environment: string;
+        can_reconcile: number;
+        can_retry_captured: number;
+        can_verify_completed: number;
+        can_verify_output: number;
+      }>();
+    if (!row) return undefined;
+    return {
+      attempts: row.dispatch_count,
+      retryAt: row.dispatch_after,
+      reserved: row.run_id !== null,
+      canReconcileStopped: row.can_reconcile === 1,
+      canRetryCaptured: row.can_retry_captured === 1,
+      canVerifyCompleted: row.can_verify_completed === 1,
+      canVerifyOutput: row.can_verify_output === 1,
+      needsAttention: !row.run_id && row.dispatch_count >= MAX_DISPATCH_ATTEMPTS,
+      ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
+      ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)
+        ? {
+            workflowUrl: `https://github.com/PointCommunity/${row.environment === 'staging' ? 'pointsite-staging' : 'pointsite'}/actions/runs/${row.run_id}`,
+          }
+        : {}),
+    };
+  }
+
   async getByKey(key: string): Promise<PublishJobRecord | null> {
     const row = await this.database
-      .prepare(`SELECT ${selection} FROM publish_jobs WHERE idempotency_key=?`)
+      .prepare(
+        `SELECT ${selection} FROM publish_jobs WHERE idempotency_key=? AND environment='staging'`,
+      )
       .bind(key)
       .first<JobRow>();
+    if (
+      !row &&
+      (await this.database
+        .prepare('SELECT 1 FROM publication_tombstones WHERE idempotency_key=?')
+        .bind(key)
+        .first())
+    )
+      throw new Error('IDEMPOTENCY_CONFLICT');
     return row ? fromRow(row) : null;
   }
 
@@ -377,7 +659,7 @@ export class D1PublishJobStore {
   private async recoverExpiredLease(now: string, actor: string, requestId: string): Promise<void> {
     const expired = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running') AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY requested_at DESC,id DESC LIMIT 1`,
+        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND status IN ('queued','running') AND COALESCE(json_extract(candidate_json,'$.publicationProtocol'),1)=1 AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY requested_at DESC,id DESC LIMIT 1`,
       )
       .bind(now)
       .first<JobRow>();

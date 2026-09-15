@@ -12,6 +12,7 @@ export async function createInstallationToken(input: {
   installationId: string;
   privateKey: string;
   fetcher?: typeof fetch;
+  repository?: 'pointsite-staging' | 'pointsite';
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1_000);
   const key = await importPKCS8(input.privateKey.replaceAll('\\n', '\n'), 'RS256');
@@ -23,7 +24,18 @@ export async function createInstallationToken(input: {
     .sign(key);
   const response = await (input.fetcher ?? fetch)(
     `https://api.github.com/app/installations/${encodeURIComponent(input.installationId)}/access_tokens`,
-    { method: 'POST', headers: githubHeaders(jwt) },
+    {
+      method: 'POST',
+      headers: { ...githubHeaders(jwt), 'content-type': 'application/json' },
+      ...(input.repository
+        ? {
+            body: JSON.stringify({
+              repositories: [input.repository],
+              permissions: { contents: 'write', checks: 'read', metadata: 'read' },
+            }),
+          }
+        : {}),
+    },
   );
   if (!response.ok) throw new Error(`GitHub App token exchange failed (${response.status})`);
   return TokenResponse.parse(await response.json()).token;
@@ -36,4 +48,40 @@ export function githubHeaders(token: string): HeadersInit {
     'x-github-api-version': '2022-11-28',
     'user-agent': 'PointSite-Builder',
   };
+}
+
+/** Check the current account ID and repository permission, never a cached user role. */
+export async function createPublisherToken(input: {
+  appId: string;
+  installationId: string;
+  privateKey: string;
+  repository: 'pointsite-staging' | 'pointsite';
+  subject: string;
+  login: string;
+  fetcher?: typeof fetch;
+}): Promise<string> {
+  try {
+    z.string()
+      .regex(/^github:[1-9][0-9]*$/)
+      .parse(input.subject);
+    z.string()
+      .regex(/^[A-Za-z0-9-]{1,39}$/)
+      .parse(input.login);
+    const token = await createInstallationToken(input);
+    const response = await (input.fetcher ?? fetch)(
+      `https://api.github.com/repos/PointCommunity/${input.repository}/collaborators/${encodeURIComponent(input.login)}/permission`,
+      { headers: githubHeaders(token), redirect: 'error', signal: AbortSignal.timeout(10_000) },
+    );
+    if (!response.ok) throw new Error('Permission unavailable');
+    const permission = z
+      .object({
+        permission: z.enum(['admin', 'maintain', 'write']),
+        user: z.object({ id: z.number().int().positive() }),
+      })
+      .parse(await response.json());
+    if (`github:${permission.user.id}` !== input.subject) throw new Error('Account changed');
+    return token;
+  } catch {
+    throw new Error('PUBLISH_GITHUB_AUTHORITY_CHANGED');
+  }
 }

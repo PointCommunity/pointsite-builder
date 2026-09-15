@@ -1,5 +1,5 @@
 /**
- * Git blob identities for the canonical site-kit files synchronized to protected Staging.
+ * Git blob identities for the canonical site-kit files synchronized to Staging.
  * Update these values only when the matching files have been reviewed and synced there.
  */
 export const STAGING_RENDERER_CONTRACT = Object.freeze({
@@ -23,3 +23,18 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 } satisfies Record<string, string>);
 
 export type StagingRendererContract = Record<string, string>;
+
+/** Reviewed reusable runtime and caller; content commits never select executable code. */
+export const PUBLICATION_WORKFLOW_REVISION = 'bed2916eb4ab7c3ebfd56a951a43b40cbd2b0081';
+export const PUBLICATION_CALLER_BLOB = 'd1957e6261429d002da23d3359885151f69d22d8';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'ca91be0a8c0ae67c8c0e4633bf2c90c9ffe35286';
+
+/** Verification advances independently from the original deployment runtime. */
+export const VERIFICATION_WORKFLOW_REVISION = 'e1ef2ae8369ff699550b04794c1955339d5e96de';
+export const VERIFICATION_CALLER_BLOBS = Object.freeze({
+  staging: '6aa66fbf8cc686a38ae57ac6f5e450ff466d24cd',
+  production: '4ae1253337307dd610353fbd886bc6135ddd39fa',
+});
+
+/** Reviewed native Production rollback caller, scoped to the same reusable runtime. */
+export const ROLLBACK_PRODUCTION_CALLER_BLOB = '83d166b34f9a1be139b0778a3b606b85cd44f99f';

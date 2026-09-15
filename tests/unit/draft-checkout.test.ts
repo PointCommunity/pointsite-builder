@@ -22,6 +22,8 @@ describe('draft checkout timing and restoration', () => {
     expect(isGenuineActivity(new Event('pointerdown'), false)).toBe(false);
     expect(isGenuineActivity(new Event('poll'))).toBe(false);
     expect(isGenuineActivity(new Event('timer'))).toBe(false);
+    expect(isGenuineActivity(new Event('online'))).toBe(false);
+    expect(isGenuineActivity(new Event('focus'))).toBe(false);
   });
 
   it('clamps invalid restored locations and bounded scroll values', () => {

@@ -1,4 +1,5 @@
 import type { SiteDocument } from '../../site-kit/types';
+import type { DraftAssetObject } from '../media/draft-assets';
 import type {
   DraftAction,
   DraftActionCategory,
@@ -46,6 +47,12 @@ export interface CheckoutCommand {
   token: string;
   requestId: string;
   now?: string;
+  activity?: boolean;
+}
+
+export interface AcquireCheckoutCommand extends Omit<CheckoutCommand, 'token' | 'activity'> {
+  resumeOnly?: boolean;
+  expectedStatus?: Exclude<DraftStatus, 'deleted'>;
 }
 
 export interface RevisionRecord {
@@ -78,6 +85,17 @@ export interface DraftRecord {
   deletedAt: string | null;
 }
 
+export type RevisionSummary = Omit<RevisionRecord, 'document'>;
+export type DraftSummary = Omit<DraftRecord, 'document' | 'revision'> & {
+  revision: RevisionSummary;
+};
+export const REVISION_PAGE_SIZE = 100;
+export interface RevisionListOptions {
+  beforeSequence?: number;
+  query?: string;
+  filter?: 'all' | 'named' | 'current';
+}
+
 export interface AuditEventRecord {
   id: string;
   occurredAt: string;
@@ -99,29 +117,43 @@ export interface CreateDraftInput {
   requestId: string;
 }
 
+export interface ProductionDraftSource {
+  document: SiteDocument;
+  assets: Map<string, DraftAssetObject>;
+  provenance: {
+    sourceCommit: string;
+    deploymentId: string;
+    artifactDigest: string;
+    documentChecksum: string;
+    capturedAt: string;
+  };
+}
+
 export interface DeletedDraftReceipt {
   id: string;
   status: 'deleted';
   deletedAt: string;
 }
 
-export interface SaveDraftInput {
-  draftId: string;
-  expectedRevisionId?: string;
+export interface DraftMutationProof {
+  expectedRevisionId: string;
   expectedChecksum: string;
+  checkoutToken: string;
+}
+
+export interface SaveDraftInput extends DraftMutationProof {
+  draftId: string;
   document: SiteDocument;
   actor: string;
   idempotencyKey: string;
   requestId: string;
   action: DraftAction;
-  checkoutToken?: string;
   label?: string;
 }
 
-export interface RestoreRevisionInput {
+export interface RestoreRevisionInput extends DraftMutationProof {
   draftId: string;
   revisionId: string;
-  expectedChecksum: string;
   actor: string;
   idempotencyKey: string;
   requestId: string;
@@ -129,11 +161,12 @@ export interface RestoreRevisionInput {
 
 export interface DraftRepository {
   listDrafts(status?: DraftStatus): Promise<DraftRecord[]>;
+  listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]>;
   getDraft(id: string): Promise<DraftRecord>;
   getRevision(id: string): Promise<RevisionRecord>;
   createDraft(input: CreateDraftInput): Promise<DraftRecord>;
   saveDraft(input: SaveDraftInput): Promise<DraftRecord>;
-  listRevisions(draftId: string): Promise<RevisionRecord[]>;
+  listRevisions(draftId: string, options?: RevisionListOptions): Promise<RevisionSummary[]>;
   restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord>;
   labelRevision(
     draftId: string,
@@ -141,22 +174,30 @@ export interface DraftRepository {
     label: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<RevisionRecord>;
   renameDraft(
     draftId: string,
     name: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord>;
   setDraftStatus(
     draftId: string,
     status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord>;
-  purgeDraft(draftId: string, actor: string, requestId: string): Promise<DeletedDraftReceipt>;
+  purgeDraft(
+    draftId: string,
+    actor: string,
+    requestId: string,
+    proof: DraftMutationProof,
+  ): Promise<DeletedDraftReceipt>;
   listCheckoutAvailability(actor: string, now?: string): Promise<DraftCheckoutAvailability[]>;
-  acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout>;
+  acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout>;
   touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout>;
   releaseCheckout(input: CheckoutCommand): Promise<void>;
   assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void>;

@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 61 — Homelab Builder tasks</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101218;
+        color: #edf0f8;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 1080px;
+        margin: auto;
+        padding: 32px 24px 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+      }
+      h2 {
+        margin-top: 40px;
+        color: #a8c9ff;
+      }
+      a {
+        color: #9fd7ff;
+      }
+      code {
+        color: #d5c0ff;
+        overflow-wrap: anywhere;
+      }
+      article {
+        padding: 10px 20px;
+        margin: 16px 0;
+        border: 1px solid #424957;
+        border-radius: 6px;
+      }
+      .gate {
+        padding: 16px;
+        background: #25221c;
+        border-left: 4px solid #ffc770;
+      }
+      dt {
+        font-weight: 700;
+      }
+      dd {
+        margin: 0 0 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #61: Ordered implementation tasks</h1>
+    <p>
+      <a href="plan.html">Architecture, scope and release plan</a>. September 14, 2026. All tasks
+      below retain their full acceptance criteria. Each task names prerequisites, a bounded change,
+      acceptance criteria and verification. Record evidence before marking complete. Preserve
+      existing Issue #61 work; its earlier passing tests do not qualify the current changed tree.
+    </p>
+    <p class="gate">
+      Local evidence, September 14: SQLite migrations, transactions, HTTP guards, persistence,
+      scheduler, identity bootstrap, current-Production capture, independent draft media, backups
+      and deletion-safe restore have focused passing checks. The native frontend and server bundle
+      build. This is implementation evidence for H03–H13; live backup storage, callback
+      configuration, full QA and release gates remain open. Native browser
+      create/autosave/reload/private images/form preview/Admin checks and operator restore/session
+      isolation checks pass. Their owned browser tab and server were cleaned up. No new Builder host
+      or Pages cutover has been deployed.
+    </p>
+    <ul>
+      <li>
+        H01–H02: policy, profile, gated local release commands and CI review hashes implemented;
+        exact-head CI remains pending.
+      </li>
+      <li>
+        H03–H05: native SQL adapter, 36 workspace migrations, 7 control migrations and shared
+        services implemented.
+      </li>
+      <li>
+        H06–H08: native HTTP/build, isolated identity and scheduler implemented; local browser
+        checks pass; GitHub callback confirmation and live sign-in remain pending.
+      </li>
+      <li>
+        H09–H10: live baseline capture confirms source 0187c95c8a9d3441049616a801f66f6f6d11050e,
+        deployment 6276181817, 11 routes, 9 forms and 19 verified images. Rollback-source,
+        independent-image and retry tests pass; live comparison matches all eight published forms,
+        53 field controls and 14 document link targets. The ninth form is an unused Library record;
+        imported metadata/layout remain the existing Builder conversion.
+      </li>
+      <li>
+        H11–H13: consistent backup pairs, retention, private files, deletion replay, checkout
+        fencing and authority rollback refusal pass local checks. Operator entry points,
+        recovery-session invalidation and Admin browser verification pass. See
+        <a href="native-operations.html">native operations</a>; live backup storage remains pending.
+      </li>
+      <li>
+        H14–H18: rollback work preserved; source-commit attestation changes implemented.
+        Origin-bound OIDC and two-database Staging conflict checks pass. Workflow lint, Staging
+        tests/build and dependency audit pass. Trusted runtime/caller pins are committed and
+        verified; retained-renderer restoration reproduces all 101 output files and their exact
+        artifact digest in a disposable local transport rehearsal. Pages cutover and real OIDC
+        execution remain pending.
+      </li>
+      <li>
+        H19–H22: Linux amd64 container, non-root/read-only root, draft persistence across restart
+        and private backup integrity pass. Both charts render with independent Ceph
+        workspace/control and NAS backup volumes; environment vault items are saved. GitHub passkey
+        confirmation blocks callback editing. H23–H28: full check (693 tests), performance and audit
+        pass; full browser QA passes: 242 tests and 15 configured skips. Clean source/image, live
+        Canary, Pages cutover, exact approval, Production and cleanup remain pending.
+      </li>
+    </ul>
+
+    <p>
+      Prepared homelab configuration is committed to canonical Gitea master at
+      <code>7d4b7c12ef52c4b0173e27b30a2125efb0a1ae60</code>, outside Argo app discovery. No Builder
+      deployment or Pages cutover has occurred.
+    </p>
+    <h2>Foundation: fail early on storage and identity</h2>
+    <article id="h01">
+      <h3>H01 — Align release policy</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>Approved user scope; completed plan and task coverage review.</dd>
+        <dt>Files</dt>
+        <dd>
+          <code>AGENTS.md</code>, <code>pipeliner.config.json</code>, shared Builder policy and
+          release-profile metadata. Split downstream skill/auditor updates into H02.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Canary-first, explicit exact-candidate approval and same-digest Production promotion
+          replace direct Worker release. Content publication remains a separate authorization. Issue
+          #61 remains the sole active Issue.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Read live Issue/Project/PR metadata; inspect the complete policy/config diff; repository
+          profile validation.
+        </dd>
+      </dl>
+    </article>
+    <article id="h02">
+      <h3>H02 — Align release tools and skills</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H01.</dd>
+        <dt>Files</dt>
+        <dd>
+          Builder review/release/closure skills and their alignment tests, in batches of at most
+          five affected files.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Commands and URL checks use homelab Canary and Production; tests reject promotion without
+          approval or with a different digest. Old Worker verification remains explicitly scoped if
+          retained.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          <code>npm run skills:check</code>; negative release-gate tests and exact skill/policy
+          agreement.
+        </dd>
+      </dl>
+    </article>
+    <article id="h03">
+      <h3>H03 — Prove native SQLite semantics</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H01.</dd>
+        <dt>Files</dt>
+        <dd>
+          <code>server/sqlite.ts</code>, a focused native SQLite integration test, native test
+          configuration if required.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Existing prepared queries, bindings, BLOBs, result shapes and multi-statement batches
+          work. A failed trigger rolls back the entire batch; foreign keys and concurrent-writer
+          handling fail safely. Never report synthetic D1 billing metrics as actual usage.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Run the focused test against real <code>node:sqlite</code>, including all consumed SQL API
+          methods and rejected bindings.
+        </dd>
+      </dl>
+    </article>
+    <article id="h04">
+      <h3>H04 — Rehearse fresh migrations</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H03.</dd>
+        <dt>Files</dt>
+        <dd>
+          <code>server/migrations.ts</code>, native migration test, migration metadata and necessary
+          SQL compatibility fixes.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Apply all workspace and recovery migrations to fresh private files; record immutable
+          checksums. Re-running is a no-op. Changed, unknown or failed migrations refuse readiness
+          without silently resetting data.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Fresh/repeated/failed/tampered migration tests, <code>PRAGMA integrity_check</code>,
+          foreign-key checks and compatibility readback.
+        </dd>
+      </dl>
+    </article>
+    <p class="gate">
+      Checkpoint A — Native storage proves real business SQL and atomic failure behavior before the
+      app is ported. Policy has a concrete approval boundary.
+    </p>
+
+    <h2>Working Node application</h2>
+    <article id="h05">
+      <h3>H05 — Extract runtime-neutral application wiring</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H03–H04.</dd>
+        <dt>Files</dt>
+        <dd>
+          <code>worker/index.ts</code>, <code>src/server/application.ts</code>,
+          <code>src/server/config.ts</code>, configuration tests.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Node reuses existing services and security middleware. Environment/origin/storage settings
+          are validated. No D1, Time Travel or Cloudflare credential is required by homelab startup.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Typecheck, runtime configuration rejection tests, Hono API tests with native SQLite.
+        </dd>
+      </dl>
+    </article>
+    <article id="h06">
+      <h3>H06 — Serve and stop the Node app safely</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H05.</dd>
+        <dt>Files</dt>
+        <dd>
+          <code>server/index.ts</code>, Vite configuration, package manifests, native HTTP
+          integration test.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Frontend, API, authenticated private assets, health and database readiness work through
+          Node. Enforce body limits, safe paths, host/origin validation, secure cookies and cache
+          headers. Shutdown drains requests and closes owned resources.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Real HTTP tests for GET/HEAD, traversal, malformed/oversized requests, missing assets,
+          multi-cookie responses, denied private media and graceful restart.
+        </dd>
+      </dl>
+    </article>
+    <article id="h07">
+      <h3>H07 — Isolate GitHub authentication</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H06.</dd>
+        <dt>Files</dt>
+        <dd>GitHub auth/config modules, trusted role bootstrap helper, auth integration tests.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Both new origins require GitHub sign-in and existing role/repository authorization.
+          Host-only sessions and independent secrets prevent cross-environment reuse. Initial
+          Administrator is tied to the existing verified identity; no first-login privilege grant.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          State/origin/replay/revocation tests, cross-host cookie rejection and bootstrap
+          idempotency/identity tests. Register and verify callbacks during H22; do not log secrets.
+        </dd>
+      </dl>
+    </article>
+    <article id="h08">
+      <h3>H08 — Run durable background publication dispatch</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H05–H07.</dd>
+        <dt>Files</dt>
+        <dd>
+          Shared scheduled service, Node lifecycle entry, dispatch configuration, scheduler tests.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          One non-overlapping bounded scheduler advances durable jobs after browsers close. Restart
+          resumes safely without duplicate dispatch. Canary never schedules public Production
+          promotion or rollback.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Closed-browser, restart, dispatch lost-response, overlap and shutdown tests; explicit
+          Canary Production-denial test.
+        </dd>
+      </dl>
+    </article>
+    <p class="gate">
+      Checkpoint B — Real Node HTTP and SQLite prove authenticated draft
+      create/edit/autosave/refresh/reopen after restart. Retest backend checkout ownership, device
+      transfer, pending-journal recovery and private media before adding deployment.
+    </p>
+
+    <h2>Current Production drafts and data recovery</h2>
+    <article id="h09">
+      <h3>H09 — Capture current Production source</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H07.</dd>
+        <dt>Files</dt>
+        <dd>Production reader/import helper, source inventory artifact, source capture tests.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Record the current native Production deployment and source commit,
+          route/content/form/link/media inventory and hashes. Reject unsupported or inconsistent
+          source. Existing structured TypeScript is parsed or converted in a bounded trusted
+          process, never executed with publishing credentials.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Compare repository and live deployment identity; tamper, source-change, missing-asset and
+          unsupported-format tests.
+        </dd>
+      </dl>
+    </article>
+    <article id="h10">
+      <h3>H10 — Create an independent draft from Production</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H09.</dd>
+        <dt>Files</dt>
+        <dd>
+          Draft creation route/provider, import mapping, draft asset integration, focused import
+          tests.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Imported SiteDocument passes schema and content inventory checks. Each draft owns copied
+          media and immutable provenance; editing one cannot alter another or public Production.
+          Latest Builder-authored export is supported; historical defaults are never a silent
+          fallback.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Native create/retry/failure tests; compare all source fields and asset hashes; browser
+          review of all imported routes and forms.
+        </dd>
+      </dl>
+    </article>
+    <article id="h11">
+      <h3>H11 — Make consistent private backups</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H04, H10.</dd>
+        <dt>Files</dt>
+        <dd>Native backup helper, backup state/manifest, focused backup tests.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Use SQLite's online backup API and integrity checks, then atomically publish a private
+          off-volume backup. Retain seven daily and four weekly successful backups; do not prune
+          pinned recovery evidence. Report failures and last successful backup without leaking data.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Back up during saves; verify hashes/integrity and reopen a disposable copy; test
+          incomplete destination, disk failure and retention boundaries.
+        </dd>
+      </dl>
+    </article>
+    <article id="h12">
+      <h3>H12 — Rehearse restore without resurrection</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H11.</dd>
+        <dt>Files</dt>
+        <dd>
+          Native restore helper, recovery/deletion integration, restore tests, operator runbook.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Restore requires a stopped/quarantined writer and an explicitly selected backup. Keep
+          independent deletion authority newer than the workspace restore; fence stale
+          sessions/checkouts/jobs. Verify final integrity before serving traffic. Only disposable
+          databases are restored during QA.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Create/save/delete/backup/restore sequence proves deliberately deleted data stays deleted
+          and completed publications do not replay. Rehearse failure rollback and preceding-image
+          compatibility.
+        </dd>
+      </dl>
+    </article>
+    <article id="h13">
+      <h3>H13 — Show truthful local storage status</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H11–H12.</dd>
+        <dt>Files</dt>
+        <dd>Admin service, Admin UI, shared API types, Admin tests.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Homelab shows actual SQLite storage, workspace readiness and backup freshness/failure. D1
+          quota and Time Travel claims are absent from the homelab experience. Existing role
+          restrictions and accessible status feedback remain.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Failure/unknown/freshness tests and keyboard/browser review; no Cloudflare requests in
+          native runtime tests.
+        </dd>
+      </dl>
+    </article>
+    <p class="gate">
+      Checkpoint C — Current Production is faithfully imported into independent drafts; restart and
+      disposable backup/restore pass. No old D1 data has been changed or deleted.
+    </p>
+
+    <h2>Complete Pages publication and rollback</h2>
+    <article id="h14">
+      <h3>H14 — Finish the preserved rollback implementation</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H04, H08.</dd>
+        <dt>Files</dt>
+        <dd>
+          Existing uncommitted rollback service/SQL/runner routes and focused tests, reviewed in
+          bounded batches of at most five files.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Selected retained release, fresh Administrator, immutable inputs, native run/deployment
+          ownership, retry and cancellation are enforced. Finish missing caller/runtime hash wiring.
+          No synthetic draft or automatic content rollback.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Existing rollback integration/UI tests plus native SQLite retention, trigger and
+          lost-finalization tests; reject wrong target, role and deployment.
+        </dd>
+      </dl>
+    </article>
+    <article id="h15">
+      <h3>H15 — Complete the trusted Pages rollback runtime</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H14.</dd>
+        <dt>Files</dt>
+        <dd>
+          Staging rollback output/run helpers, rollback reusable workflow and workflow/output tests.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Rebuild or restore exact retained source with safe extraction, digest comparison and
+          bounded output. Verify all static files and native Pages deployment. Document pre-existing
+          baseline findings separately; do not disguise them as clean accessibility evidence.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Staging test/lint/type/build gates; baseline and recorded-renderer restore tests;
+          malicious archive/path tests and runner credential isolation.
+        </dd>
+      </dl>
+    </article>
+    <article id="h16">
+      <h3>H16 — Bind publishing to the new Builder origins</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H07–H08, H15.</dd>
+        <dt>Files</dt>
+        <dd>
+          Builder runner-auth/renderer contract, Staging bootstrap/publication client, Production
+          caller workflow; split hash-pinning updates after trusted runtime commit.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          OIDC audience, caller and reusable-workflow revisions are immutable and agree across
+          repositories. Production callbacks trust only builder.eaglepass.io. Remove old
+          shared-session Staging dependency without weakening Builder authentication.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Cross-repository contract tests, wrong-audience/caller/revision rejection, no cookie-based
+          runner access and exact blob readback.
+        </dd>
+      </dl>
+    </article>
+    <article id="h17">
+      <h3>H17 — Prove shared Staging isolation</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H10, H16.</dd>
+        <dt>Files</dt>
+        <dd>
+          Publishing/acceptance guard where necessary, environment indicator, cross-environment
+          publication tests.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Two independent Builder databases cannot overwrite intervening Staging publication or
+          accept a displaced candidate. Canary approvals and sessions cannot promote from
+          Production. Staging publication remains an explicit user action.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Two-database race with native deployment/source fixtures; stale acceptance and direct
+          Canary Production API denial; closed-browser completion.
+        </dd>
+      </dl>
+    </article>
+    <article id="h18">
+      <h3>H18 — Prepare the Pages hosting cutover</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H15–H17.</dd>
+        <dt>Files</dt>
+        <dd>
+          Existing Staging deploy workflow/Pages configuration, Production workflow baseline,
+          content-host runbook.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Pages serves the expected domains and existing approved content, with explicit public
+          Staging fallback. Record previous DNS/Worker/Pages state and reversible cutover order.
+          Builder app deployment cannot accidentally publish fixture content.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Render/build existing baseline, workflow permissions/concurrency checks, native
+          Pages/environment settings readback; execute cutover only in H25.
+        </dd>
+      </dl>
+    </article>
+    <p class="gate">
+      Checkpoint D — Publication, acceptance, promotion and rollback pass exact-identity and failure
+      tests across independent stores. No public Production content has changed.
+    </p>
+
+    <h2>Package, validate and deploy Canary</h2>
+    <article id="h19">
+      <h3>H19 — Package the native runtime</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H06–H18.</dd>
+        <dt>Files</dt>
+        <dd>Containerfile, ignore file, native build/release helper, package manifests.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Pinned Node base, non-root runtime, explicit linux/amd64, immutable source metadata, only
+          required runtime assets and dependencies. Start with empty volumes and restart with
+          existing data. No credentials or private data enter image layers.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Local container smoke/readiness/persistence/shutdown tests; inspect image metadata and
+          included files. Inventory all owned images, volumes and processes for cleanup.
+        </dd>
+      </dl>
+    </article>
+    <article id="h20">
+      <h3>H20 — Prepare Canary desired state</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H19.</dd>
+        <dt>Files</dt>
+        <dd>
+          Homelab <code>apps/builder-canary/Chart.yaml</code>, <code>values.yaml</code> and only
+          necessary backup resources.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          One replica, Recreate, Ceph RWO private storage, scoped mounts, resource limits, probes,
+          TLS, DNS and private backups. Secret references use 1Password. Existing app health remains
+          the baseline.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Helm dependency/lint/render checks, secret-free diff, PVC/reclaim/backup ownership review
+          and live Ceph/NAS/network preflight.
+        </dd>
+      </dl>
+    </article>
+    <article id="h21">
+      <h3>H21 — Prepare Production promotion configuration</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H20.</dd>
+        <dt>Files</dt>
+        <dd>
+          Unpublished Production chart preparation and promotion verifier/runbook; do not push an
+          auto-discovered live Production chart before approval.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Production preserves separate hostname, storage, secrets and session identity. Promotion
+          checks source/tree/digest/config tuple and requires exact approval. Previous digest stays
+          explicitly retained and pullable.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Render Production configuration locally; negative promotion tests; prove promotion copies
+          only the approved image/configuration and never Canary data.
+        </dd>
+      </dl>
+    </article>
+    <article id="h22">
+      <h3>H22 — Provision isolated secrets and callbacks</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H07, H20–H21.</dd>
+        <dt>Files</dt>
+        <dd>
+          Environment-specific 1Password item references in desired state; GitHub App callback
+          registration.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Both new callback URLs are registered, existing callback preserved, independent session
+          secrets and expected GitHub installation permissions verified. Credentials flow through
+          1Password; values never enter logs or Git.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Read back non-secret item metadata/callback URLs; operator Secret readiness and supported
+          authenticated browser sign-in. Human-only provider settings are an explicit prerequisite
+          if native tooling cannot complete them.
+        </dd>
+      </dl>
+    </article>
+    <article id="h23">
+      <h3>H23 — Qualify the exact source</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H01–H22.</dd>
+        <dt>Files</dt>
+        <dd>
+          Existing test/contract/runbook configuration and PR evidence; fix failures in their owning
+          slices.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Full sequential Builder gates, focused native/browser/security tests, all supporting
+          repository gates and exact-head GitHub Quality pass. Review all unfinished rollback and
+          hosting changes. No old test result substitutes for the changed source.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          <code>npm run check</code> → <code>npm run test:performance</code> →
+          <code>npm run test:e2e</code>; audit; diff check; exact SHA/tree and CI readback. Four
+          Vitest/two Playwright workers.
+        </dd>
+      </dl>
+    </article>
+    <article id="h24">
+      <h3>H24 — Deploy and verify Canary</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H23.</dd>
+        <dt>Files</dt>
+        <dd>
+          Canary image digest pin in canonical homelab chart; existing Issue/PR candidate evidence.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Build clean pushed source locally, publish to Zot, push only Canary desired state to Gitea
+          and let Argo reconcile. Verify exact running image/source/config, authenticated editing,
+          private media, readiness, restart persistence and off-volume backup. Unrelated cluster
+          health remains green.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Argo revision/health, pod image ID/probes/logs, public TLS/HTTP, supported authenticated
+          browser checks, native backup readback and cluster/storage/network health.
+        </dd>
+      </dl>
+    </article>
+    <article id="h25">
+      <h3>H25 — Execute the Pages cutover</h3>
+      <p>
+        A successful recovery at a newer verifier-only branch revision must resume Review, including
+        when the draft has newer edits. Compare current Staging main with the passed recovery's
+        recorded dispatch revision for captured cloud jobs; preserve the original published commit
+        in the acceptance tuple and revalidate its full deployment proof server-side. Reproduce the
+        blocked Review first, test missing/failed recovery and subsequent branch drift, then qualify
+        and deploy the corrected Builder Canary. Never release the slot or record acceptance to work
+        around the display defect.
+      </p>
+      <p>
+        The cloud recovery runner reproduced the deployment attribution defect and rejected the
+        Pages sourceCommit field. Correct both using the native check/deployment link and exact
+        retained source commit. A verifier upgrade must remain possible after publication: capture
+        its separate dispatch revision, permit only changes to the verification caller, runtime,
+        implementation and regression test, and reject every content or other file change. Validate
+        complete Git trees before capture and finalization; bind OIDC to the captured verification
+        revision. Keep the original publication source, artifact, deployment and live file checks
+        unchanged. Test failures first, qualify both repositories, pin the reviewed runtime, deploy
+        Canary, then retry the existing publication without rebuilding or deploying website content.
+      </p>
+      <p>
+        September 14 verification found that native HTTP represents an empty POST as a stream, while
+        publication, verification and rollback machine routes rejected every stream. Before retrying
+        the first Pages publication: reproduce with real HTTP, reject actual bytes in the shared
+        route guard, rerun sequential QA, and deploy a new verified Canary image. Keep DNS on the
+        existing Staging Worker until the Pages deployment is ready.
+      </p>
+      <p>
+        The corrected Canary passed live GitHub reservation and claim. Build preparation then
+        exposed a second native adapter mismatch: SQL BLOB results must preserve the existing
+        number-array contract used by image chunk validation. Add native byte-array and captured
+        image checksum regression checks, correct the adapter, repeat QA and release, then recover
+        the failed captured job through the supported workflow. No content commit or deployment
+        occurred during either failure.
+      </p>
+      <p>
+        Browser qualification also reproduced focus loss when the initial Production status response
+        removes its focused refresh button. Keep that button disabled during initial loading,
+        reproduce the response race with a controlled browser test, and repeat full QA before
+        releasing the combined candidate.
+      </p>
+      <p>
+        Pages deployed and all 97 public files passed HTTPS checksum verification. Recovery capture
+        exposed an incorrect GitHub API assumption: the deployment's App attribution is null, while
+        the native GitHub Actions check run directly identifies its deployment. Replace the
+        attribution assumption with that exact check-run/deployment link across publication,
+        verification recovery and rollback. Preserve source, environment, run, status and OIDC
+        gates; reject missing or substituted links in regression tests before another Canary
+        release.
+      </p>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H18, H24.</dd>
+        <dt>Files</dt>
+        <dd>
+          Previously prepared Staging/Production workflow configuration and scoped domain settings.
+        </dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Staging is served by Pages with existing content, correct TLS and truthful public-access
+          behavior. Public Production content remains byte-verified against its baseline. Old
+          Builder/D1 remain intact. Any failed cutover is reverted to its recorded previous state.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Native Pages deployments, DNS/TLS, all exported routes/assets and release attestations;
+          authenticate Builder and deny private APIs/media anonymously.
+        </dd>
+      </dl>
+    </article>
+    <p class="gate">
+      Checkpoint E — Present builder-canary.eaglepass.io, exact source/tree, image digest, GitOps
+      configuration commit and change-specific PM test steps. Record limitations in live content
+      promotion evidence. Explicit approval is required before H27.
+    </p>
+
+    <h2>Approval, Production and cleanup</h2>
+    <article id="h26">
+      <h3>H26 — Obtain exact Canary approval</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H24–H25.</dd>
+        <dt>Files</dt>
+        <dd>Existing PR/Issue candidate evidence.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Chris tests sign-in, current-Production drafts, autosave/refresh, independent
+          drafts/assets, Staging workflow and environment isolation, then explicitly approves the
+          unchanged candidate. Findings return to their owning task and produce a new qualified
+          candidate.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Record explicit approval tied to source/tree/digest/Canary config. No approval inferred
+          from silence, tests or earlier general implementation authorization.
+        </dd>
+      </dl>
+    </article>
+    <article id="h27">
+      <h3>H27 — Promote the same image to Production</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H26; candidate unchanged.</dd>
+        <dt>Files</dt>
+        <dd>Prepared Production homelab chart and exact reviewed source merge.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Promote the approved digest without rebuilding. Initialize independent Production storage
+          from current public Production, preserve old D1 data and Canary state, and verify live
+          authenticated behavior plus backup. Any changed merge tree invalidates approval.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Source/tree equality, registry and running image digest, Gitea/Argo revision,
+          TLS/readiness/auth/persistence/import evidence; previous rollback image remains pullable.
+        </dd>
+      </dl>
+    </article>
+    <article id="h28">
+      <h3>H28 — Verify rollback readiness and clean up</h3>
+      <dl>
+        <dt>Depends on</dt>
+        <dd>H27.</dd>
+        <dt>Files</dt>
+        <dd>Release runbook, owned QA inventory and existing Issue/PR evidence.</dd>
+        <dt>Acceptance</dt>
+        <dd>
+          Previous image/config and tested backup restoration procedure are recorded. Remove
+          task-owned test servers, images, volumes, caches and outputs; protect active and rollback
+          registry digests and unrelated resources. Final PM completion gate remains separate from
+          deployment.
+        </dd>
+        <dt>Verify</dt>
+        <dd>
+          Registry retained-image readback, cleanup inventory/process/image checks, final
+          application/cluster/storage health. Set Done/close only after the required explicit Issue
+          completion approval.
+        </dd>
+      </dl>
+    </article>
+
+    <h2>Coverage audit</h2>
+    <ul>
+      <li>Homelab hosting and no D1 runtime dependency: H03–H06, H13, H19–H24.</li>
+      <li>GitHub sign-in and role security: H07, H16–H17, H22–H24.</li>
+      <li>
+        Fresh drafts from current public Production and old data preservation: H09–H10, H12,
+        H24–H27.
+      </li>
+      <li>
+        Autosave, pending recovery, history, checkout and media independence: Checkpoint B, H10,
+        H12, H23–H24.
+      </li>
+      <li>
+        Backup integrity, private retention and deletion-safe recovery: H11–H13, H20, H24, H28.
+      </li>
+      <li>
+        Pages Staging/Production, explicit acceptance and content rollback: H08, H14–H18, H25.
+      </li>
+      <li>
+        Canary isolation, exact approval, same-digest promotion and rollback retention: H01–H02,
+        H17, H21, H24–H28.
+      </li>
+      <li>
+        Sequential QA, immutable provenance, GitOps authority, PM testing and cleanup: H19–H28.
+      </li>
+    </ul>
+  </body>
+</html>

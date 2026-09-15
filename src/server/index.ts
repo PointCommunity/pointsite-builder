@@ -23,12 +23,31 @@ import type { FeedbackService } from './feedback/service';
 import { createFeedbackRoutes } from './routes/feedback';
 import type { D1OwnershipMigration } from './maintenance/asset-migration';
 import { createAssetMigrationRoutes } from './routes/asset-migration';
+import {
+  createPublicationRunnerRoutes,
+  createPublicationVerificationRoutes,
+  createRollbackRunnerRoutes,
+} from './routes/publication-runner';
+import type { D1PublicationRunner } from './publish/runner';
+import type { D1PublicationVerifier } from './publish/verification';
+import type { D1ProductionPublisher } from './publish/promotion';
+import { createProductionRoutes } from './routes/production';
+import { createVerificationSessionRoutes } from './routes/publication-verification';
+import type { D1CloudRollback } from './publish/rollback';
 
 export interface AppDependencies {
   repository: DraftRepository;
   authenticate(request: Request): Promise<Actor>;
   environment: string;
   version: string;
+  readiness?: () => Promise<void>;
+  release?: {
+    sourceRevision: string;
+    gitTree?: string;
+    sourceClean: boolean;
+    workerVersionId: string | null;
+    storageWriteFormat: 'legacy' | 'compact-v1';
+  };
   publisher?: StagingPublisher;
   media?: MediaService;
   library?: D1LibraryService;
@@ -39,6 +58,10 @@ export interface AppDependencies {
   auth?: GitHubAuthenticator;
   feedback?: FeedbackService;
   ownershipMigration?: D1OwnershipMigration;
+  publicationRunner?: D1PublicationRunner;
+  publicationVerifier?: D1PublicationVerifier;
+  production?: D1ProductionPublisher;
+  rollback?: D1CloudRollback;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -49,22 +72,48 @@ export function createApp(dependencies: AppDependencies) {
   app.use('/api/*', async (context, next) => {
     const requestId = crypto.randomUUID();
     context.set('requestId', requestId);
-    if (context.req.path !== '/api/health') {
-      context.set('actor', await dependencies.authenticate(context.req.raw));
-    }
     await next();
     context.res = applySecurityHeaders(context.res);
     context.res.headers.set('x-request-id', requestId);
   });
 
-  app.get('/api/health', (context) =>
-    context.json({
+  // Only these exact machine operations use the pinned GitHub OIDC identity.
+  // Unknown runner paths continue through normal user authentication below.
+  app.route('/api/publish/runner', createPublicationRunnerRoutes(dependencies.publicationRunner));
+  app.route('/api/publish/rollback-runner', createRollbackRunnerRoutes(dependencies.rollback));
+  app.route(
+    '/api/publish/verification',
+    createPublicationVerificationRoutes(dependencies.publicationVerifier),
+  );
+  app.use('/api/*', async (context, next) => {
+    if (context.req.path !== '/api/health')
+      context.set('actor', await dependencies.authenticate(context.req.raw));
+    await next();
+  });
+
+  app.get('/api/health', (context) => {
+    context.header('Cache-Control', 'no-store');
+    return context.json({
       ok: true,
       environment: dependencies.environment,
       version: dependencies.version,
-    }),
-  );
+      ...(dependencies.release
+        ? { ...dependencies.release, storageReaders: ['legacy', 'compact-v1'] }
+        : {}),
+    });
+  });
   app.get('/api/me', (context) => context.json(context.get('actor')));
+  app.get('/api/ready', async (context) => {
+    context.header('Cache-Control', 'no-store');
+    try {
+      if (!dependencies.readiness) throw new Error('READINESS_NOT_CONFIGURED');
+      await dependencies.readiness();
+      return context.json({ ready: true });
+    } catch {
+      // Provider errors can contain private SQL or bindings; expose only state.
+      return context.json({ ready: false }, 503);
+    }
+  });
   app.get('/auth/login', (context) => {
     if (!dependencies.auth) throw new AuthenticationError();
     return dependencies.auth.beginLogin(context.req.raw);
@@ -89,6 +138,14 @@ export function createApp(dependencies: AppDependencies) {
   app.route('/api/feedback', createFeedbackRoutes(dependencies.feedback, mutationLimiter));
   app.route('/api/drafts', createRevisionRoutes(dependencies.repository, mutationLimiter));
   app.route('/api/publish', createPublishRoutes(dependencies.publisher, dependencies.approvals));
+  app.route('/api/publish', createProductionRoutes(dependencies.production, dependencies.rollback));
+  app.route(
+    '/api/publish',
+    createVerificationSessionRoutes(
+      dependencies.publicationVerifier,
+      Boolean(dependencies.production),
+    ),
+  );
   app.route('/api/media', createMediaRoutes(dependencies.media, mutationLimiter));
   app.route(
     '/api/admin/asset-migration',
@@ -124,6 +181,27 @@ export function createApp(dependencies: AppDependencies) {
     }
     if (error instanceof AuthorizationError) {
       return secured(errorResponse(new ApiError(403, 'FORBIDDEN', error.message), requestId));
+    }
+    if (context.req.path === '/api/ready') {
+      // Role lookup also uses D1; an outage can fail before the readiness handler.
+      return secured(
+        new Response(JSON.stringify({ ready: false }), {
+          status: 503,
+          headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+        }),
+      );
+    }
+    if (error.message === 'WORKSPACE_ACCESS_UNAVAILABLE') {
+      const response = errorResponse(
+        new ApiError(
+          503,
+          'WORKSPACE_ACCESS_UNAVAILABLE',
+          'Workspace access is temporarily unavailable.',
+        ),
+        requestId,
+      );
+      response.headers.set('cache-control', 'no-store');
+      return secured(response);
     }
     if (error instanceof NotFoundError) {
       return secured(errorResponse(new ApiError(404, 'NOT_FOUND', error.message), requestId));

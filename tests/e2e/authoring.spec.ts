@@ -1,6 +1,8 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import type { PendingJournalState } from '../../src/client/editor/pending-journal';
+import type * as JournalModule from '../../src/client/editor/pending-journal';
 import type { DraftRecord, RevisionRecord, Role } from '../../src/server/repositories/contracts';
 import type {
   LibraryItem,
@@ -129,11 +131,13 @@ async function installApi(
     },
   ];
   let conflictNextSave = false;
+  let ownedDraftId: string | null = null;
   let nextSaveGate: Promise<void> | null = null;
   let releaseNextSave: (() => void) | null = null;
   const saveRequests: Array<{
     action: { category: string; context: string };
     idempotencyKey: string | null;
+    expectedRevisionId: string | null;
     document: DraftRecord['document'];
   }> = [];
   await page.route('**/api/**', async (route) => {
@@ -147,12 +151,15 @@ async function installApi(
       body = {
         items: drafts.map(({ id }) => ({ draftId: id, state: 'available', expiresAt: null })),
       };
-    else if (path === '/api/drafts/checkout/owned') body = null;
+    else if (path === '/api/drafts/checkout/owned')
+      body = ownedDraftId ? { draftId: ownedDraftId } : null;
     else if (path.endsWith('/checkout') && method === 'GET') body = { active: true };
     else if (path.endsWith('/checkout') && method === 'DELETE') {
+      ownedDraftId = null;
       status = 204;
       body = undefined;
-    } else if (path.endsWith('/checkout'))
+    } else if (path.endsWith('/checkout')) {
+      ownedDraftId = path.split('/').at(-2)!;
       body = {
         draftId: path.split('/').at(-2),
         actor: `${role}@pointatx.org`,
@@ -164,7 +171,15 @@ async function installApi(
         event: 'acquired',
         viewState: null,
       };
-    else if (path === '/api/drafts' && method === 'GET') body = { items: drafts, nextCursor: null };
+    } else if (path === '/api/drafts' && method === 'GET')
+      body = {
+        items: drafts.map((item) => ({
+          ...item,
+          document: undefined,
+          revision: { ...item.revision, document: undefined },
+        })),
+        nextCursor: null,
+      };
     else if (path === '/api/drafts' && method === 'POST') {
       const input = request.postDataJSON() as { name: string };
       const created = {
@@ -198,6 +213,7 @@ async function installApi(
         saveRequests.push({
           action: input.action as { category: string; context: string },
           idempotencyKey: request.headers()['idempotency-key'] ?? null,
+          expectedRevisionId: request.headers()['x-draft-revision'] ?? null,
           document: input.document,
         });
         const gate = nextSaveGate;
@@ -226,6 +242,7 @@ async function installApi(
         updatedAt: new Date().toISOString(),
       } as DraftRecord;
       drafts[index] = updated;
+      if (updated.id === draft.id) Object.assign(draft, updated);
       body = updated;
     } else if (/\/api\/drafts\/[^/]+$/.test(path) && method === 'DELETE') {
       const id = path.split('/').at(-1);
@@ -429,9 +446,18 @@ async function installApi(
       };
     else if (path.endsWith('/admin/capacity'))
       body = {
-        privateMedia: { used: 1, limit: 10, percent: 10, warning: false, unit: 'bytes' },
-        revisionData: { used: 8, limit: 10, percent: 80, warning: true, unit: 'bytes' },
-        writesToday: { used: 1, limit: 100000, percent: 0, warning: false, unit: 'operations' },
+        storage: {
+          allocatedBytes: 10485760,
+          privateMediaBytes: 1048576,
+          revisionPayloadBytes: 8388608,
+          receiptPayloadBytes: 0,
+        },
+        activity: {
+          auditEvents: 1,
+          periodStart: '2026-09-05T00:00:00Z',
+          periodEnd: '2026-09-05T00:00:00Z',
+        },
+        providerUsage: { state: 'unknown', reason: 'Provider counters unavailable.' },
         measuredAt: '2026-09-05T00:00:00Z',
       };
     else if (path.endsWith('/publish/staging/workflow'))
@@ -465,6 +491,314 @@ async function installApi(
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
+
+async function readPending(page: Page): Promise<PendingJournalState | null> {
+  return page.evaluate(
+    () =>
+      new Promise<PendingJournalState | null>((resolve, reject) => {
+        const open = indexedDB.open('pointsite-builder-pending-v1', 1);
+        open.onerror = () => reject(new Error('Journal fixture could not open'));
+        open.onsuccess = () => {
+          const database = open.result;
+          const transaction = database.transaction('pending', 'readonly');
+          const request = transaction.objectStore('pending').getAll();
+          transaction.oncomplete = () => {
+            database.close();
+            const records = request.result as Array<{ payload: string | null }>;
+            const payload = records.find((record) => record.payload)?.payload;
+            resolve(payload ? (JSON.parse(payload) as PendingJournalState) : null);
+          };
+          transaction.onabort = () => {
+            database.close();
+            reject(new Error('Journal fixture could not read'));
+          };
+        };
+      }),
+  );
+}
+
+test('refresh restores pending text with the same action identity and clears its acknowledged journal', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  // Keep HTTP fixture access available while the editor observes an offline connection.
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Church name').fill('Pending church name after refresh');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  const pending = await readPending(page);
+  expect(pending?.actions).toHaveLength(1);
+  expect(controls.saveRequests).toHaveLength(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Church name')).toHaveValue('Pending church name after refresh');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  expect((await readPending(page))?.actions[0].idempotencyKey).toBe(
+    pending?.actions[0].idempotencyKey,
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect.poll(() => readPending(page)).toBeNull();
+  expect(controls.saveRequests).toHaveLength(1);
+  expect(controls.saveRequests[0]).toMatchObject({
+    idempotencyKey: pending?.actions[0].idempotencyKey,
+    expectedRevisionId: pending?.baseRevisionId,
+    action: { category: 'text-edit', context: 'site-settings' },
+  });
+});
+
+test('denied browser storage blocks recovery without sending and reports explicit discard failure', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.addInitScript(() => {
+    IDBFactory.prototype.open = () => {
+      throw new DOMException('Storage denied', 'SecurityError');
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Autosave recovery' })
+      .or(page.getByRole('alert', { name: 'Autosave recovery' })),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy pending draft' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Retry recovery' }).click();
+  await expect(page.getByText('Pending recovery needs attention.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Discard pending changes and leave' }).click();
+  await expect(
+    page.getByText('Recovery could not be cleared safely. Keep this tab open and retry.'),
+  ).toBeVisible();
+  expect(controls.saveRequests).toHaveLength(0);
+});
+
+test('lost access preserves pending changes and allows local discard without a remote read', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  await installApi(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => {} },
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Church name').fill('Preserve after permission change');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  const pending = await readPending(page);
+  expect(pending).not.toBeNull();
+  let saves = 0;
+  let draftReads = 0;
+  await page.route(`**/api/drafts/${pending!.scope.draftId}`, (route) => {
+    if (route.request().method() === 'PUT') saves += 1;
+    if (route.request().method() === 'GET') draftReads += 1;
+    return route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{"code":"FORBIDDEN","message":"Access changed"}',
+    });
+  });
+  await page.route('**/api/drafts/*/checkout', (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{"code":"FORBIDDEN","message":"Access changed"}',
+    }),
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
+  await expect(page.getByText('Editing access is unavailable.', { exact: true })).toBeVisible();
+  expect((await readPending(page))?.actions).toHaveLength(1);
+  const sendsAtAccessLoss = saves;
+  expect(sendsAtAccessLoss).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Copy pending draft' }).click();
+  await page.getByRole('button', { name: 'Discard pending changes and leave' }).click();
+  await expect(page.getByRole('button', { name: 'Open editor', exact: true })).toBeVisible();
+  expect(await readPending(page)).toBeNull();
+  expect(saves).toBe(sendsAtAccessLoss);
+  expect(draftReads).toBe(0);
+});
+
+test('automatic recovery cannot take a superseded checkout before explicit Open editor', async ({
+  page,
+}) => {
+  await page.unroute('**/api/**');
+  const controls = await installApi(page);
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Church name').fill('Pending before transfer');
+  await expect(page.locator('.pending-journal-status')).toHaveText(
+    'Pending changes protected on this browser.',
+  );
+  const pending = await readPending(page);
+  const attempts: boolean[] = [];
+  await page.route('**/api/drafts/*/checkout', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const input = route.request().postDataJSON() as { resumeOnly?: boolean };
+    attempts.push(Boolean(input.resumeOnly));
+    return input.resumeOnly
+      ? route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: '{"code":"CONFLICT","message":"Checkout moved to another client"}',
+        })
+      : route.fallback();
+  });
+  await page.reload();
+  await expect.poll(() => attempts).toEqual([true]);
+  await expect(page.getByRole('button', { name: 'Open editor', exact: true })).toBeVisible();
+  expect(controls.saveRequests).toHaveLength(0);
+  expect((await readPending(page))?.actions[0].idempotencyKey).toBe(
+    pending?.actions[0].idempotencyKey,
+  );
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Church name')).toHaveValue('Pending before transfer');
+  expect(attempts).toEqual([true, false]);
+});
+
+for (const kind of ['control', 'unfinished resize']) {
+  test(`refresh restores a pending ${kind} before continuing remote saves`, async ({ page }) => {
+    await page.unroute('**/api/**');
+    const controls = await installApi(page);
+    await page.addInitScript(() =>
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }),
+    );
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+    if (kind === 'control') {
+      await page.getByRole('button', { name: 'Forms', exact: true }).click();
+      await page.getByRole('button', { name: 'New form', exact: true }).click();
+    } else {
+      await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+      const canvas = page.locator('.visual-editor iframe').contentFrame();
+      await canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+      const handle = canvas.getByRole('button', { name: 'Resize Hero body width', exact: true });
+      const box = await handle.boundingBox();
+      expect(box).not.toBeNull();
+      await handle.dispatchEvent('pointerdown', {
+        pointerId: 7,
+        clientX: box!.x + box!.width / 2,
+        clientY: box!.y + box!.height / 2,
+      });
+      await canvas.locator('body').dispatchEvent('pointermove', {
+        pointerId: 7,
+        clientX: box!.x - 90,
+        clientY: box!.y + box!.height / 2,
+      });
+    }
+    await expect(page.locator('.pending-journal-status')).toHaveText(
+      'Pending changes protected on this browser.',
+    );
+    const before = await readPending(page);
+    const action = kind === 'control' ? before?.actions.at(-1) : before?.staged;
+    expect(action).toBeTruthy();
+    if (kind !== 'control') expect(before?.actions).toHaveLength(0);
+    expect(controls.saveRequests).toHaveLength(0);
+    await page.reload();
+    await expect(page.locator('.pending-journal-status')).toHaveText(
+      'Pending changes protected on this browser.',
+    );
+    const restored = await readPending(page);
+    expect(restored?.actions[0].document).toEqual(action?.document);
+    expect(restored?.actions[0].idempotencyKey).toBe(action?.idempotencyKey);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+      window.dispatchEvent(new Event('online'));
+    });
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect.poll(() => readPending(page)).toBeNull();
+    expect(controls.saveRequests).toHaveLength(1);
+    expect(controls.saveRequests[0]).toMatchObject({
+      idempotencyKey: action?.idempotencyKey,
+      action: action?.action,
+      document: action?.document,
+    });
+  });
+}
+
+test('sign-out requires explicit pending discard and preserves another actor recovery', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await page.evaluate(async (draft) => {
+    const source = '/src/client/editor/pending-journal.ts';
+    const { PendingJournal } = (await import(source)) as typeof JournalModule;
+    for (const actor of ['administrator@pointatx.org', 'another-user@pointatx.org']) {
+      const scope = { actor, draftId: draft.id, clientId: 'signout-browser-0001' };
+      const journal = new PendingJournal(scope);
+      await journal.load();
+      await journal.write({
+        version: 1,
+        scope,
+        baseRevisionId: draft.latestRevisionId,
+        baseChecksum: draft.revision.checksum,
+        updatedAt: new Date().toISOString(),
+        staged: null,
+        actions: [
+          {
+            idempotencyKey: crypto.randomUUID(),
+            document: draft.document,
+            action: { category: 'text-edit', context: 'site-settings' },
+            expectedRevisionId: null,
+            expectedChecksum: null,
+            ready: false,
+          },
+        ],
+      });
+    }
+  }, original());
+  let logoutRequests = 0;
+  await page.route('**/auth/logout', (route) => {
+    logoutRequests += 1;
+    return route.fulfill({ contentType: 'text/html', body: '<h1>Signed out fixture</h1>' });
+  });
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('alert', { name: 'Pending changes before sign out' })).toBeVisible();
+  expect(logoutRequests).toBe(0);
+  await page.getByRole('button', { name: 'Keep working' }).click();
+  await expect(page.getByRole('alert', { name: 'Pending changes before sign out' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard my pending changes and sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Signed out fixture' })).toBeVisible();
+  expect(logoutRequests).toBe(1);
+  const remaining = await page.evaluate(async () => {
+    const source = '/src/client/editor/pending-journal.ts';
+    const { PendingJournal } = (await import(source)) as typeof JournalModule;
+    return [
+      await PendingJournal.countPending('administrator@pointatx.org'),
+      await PendingJournal.countPending('another-user@pointatx.org'),
+    ];
+  });
+  expect(remaining).toEqual([0, 1]);
+});
 
 test('renames inline with keyboard and pointer while keeping publishing, history and list names consistent', async ({
   page,
@@ -596,6 +930,17 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   page,
 }) => {
   test.setTimeout(60_000);
+  const lifecycleProofs: Record<string, string>[] = [];
+  const lifecycleStatuses: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/drafts\/[^/]+$/.test(path) && ['PATCH', 'DELETE'].includes(request.method()))
+      lifecycleProofs.push(request.headers());
+    if (path.endsWith('/checkout') && request.method() === 'POST') {
+      const input = request.postDataJSON() as { expectedStatus?: string };
+      if (input.expectedStatus) lifecycleStatuses.push(input.expectedStatus);
+    }
+  });
   await page.goto('/');
   await page.getByLabel('New draft name').fill('Fall launch');
   await page.getByRole('button', { name: 'Create draft' }).click();
@@ -612,6 +957,16 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   await expect(sourceCard.getByRole('button', { name: 'Duplicate' })).toBeVisible();
   await expect(sourceCard.getByRole('button', { name: 'Unarchive' })).toBeVisible();
   await expect(sourceCard.getByRole('button', { name: 'Delete' })).toBeVisible();
+  const previewRead = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === '/api/drafts/10000000-0000-4000-8000-000000000001',
+  );
+  await sourceCard.getByRole('button', { name: 'Open editor' }).click();
+  await previewRead;
+  await expect(page.locator('iframe.preview-frame')).toBeVisible();
+  await expect(page.locator('.visual-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: '← All drafts' }).click();
 
   const deleteTrigger = sourceCard.getByRole('button', { name: 'Delete' });
   await deleteTrigger.click();
@@ -633,6 +988,13 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   await dialog.getByLabel('Type DELETE to confirm').fill('DELETE');
   await dialog.getByRole('button', { name: 'Delete draft' }).click();
   await expect(page.getByRole('heading', { name: 'Sunday update', exact: true })).toHaveCount(0);
+  expect(lifecycleStatuses).toEqual(['active', 'archived', 'active', 'archived']);
+  expect(lifecycleProofs).toHaveLength(4);
+  for (const proof of lifecycleProofs) {
+    expect(proof['x-draft-checkout']).toBe('30000000-0000-4000-8000-000000000001');
+    expect(proof['x-draft-revision']).toMatch(/^[a-f0-9-]{36}$/);
+    expect(proof['if-match']).toMatch(/^"[a-f0-9]{64}"$/);
+  }
 });
 
 test('operates page modules by keyboard and announces the result', async ({ page }) => {
@@ -795,7 +1157,6 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
 
   await expect(page.getByText('All changes saved')).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
   canvas = page.locator('.visual-editor iframe').contentFrame();
   await expect(
@@ -1041,10 +1402,11 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await expect.poll(() => canvas.locator('body').evaluate(() => innerWidth)).toBe(1280);
   const authored = await measure(canvas);
   await page.reload();
-  await page.getByRole('button', { name: 'Open editor' }).click();
   await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await expect.poll(() => canvas.locator('body').evaluate(() => innerWidth)).toBe(1280);
   expect(await measure(canvas)).toEqual(authored);
   await page.getByRole('button', { name: 'Preview' }).click();
   await page.getByRole('button', { name: 'Preview at desktop width' }).click();
@@ -1123,10 +1485,55 @@ test('keeps a non-auto desktop grid position identical in canvas and Preview', a
   expect(previewGeometry.width).toBeCloseTo(canvasGeometry.width, 0);
 });
 
+test('preserves the latest resize when Undo precedes the history timer', async ({ page }) => {
+  await page.clock.install();
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('heading', { level: 1, name: 'Our Beliefs' }).click();
+  const handle = canvas.getByRole('button', { name: 'Resize Hero heading width', exact: true });
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(1);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(2);
+  await page.getByRole('button', { name: 'undo', exact: true }).dispatchEvent('click');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(3);
+  const width = () =>
+    controls.saveRequests
+      .at(-1)
+      ?.document.pages.find((candidate) => candidate.title === 'Our Beliefs')
+      ?.blocks.flatMap((section) => section.items)
+      .map((item) => item.element)
+      .find((element) => element.type === 'hero')?.headingWidth.desktop;
+  expect(width()).toBe(95);
+  await expect(page.getByRole('button', { name: 'redo', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'redo', exact: true }).dispatchEvent('click');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(4);
+  expect(width()).toBe(90);
+  await handle.press('ArrowLeft');
+  await expect.poll(() => controls.saveRequests.length).toBe(5);
+  await handle.press('Control+z');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(6);
+  expect(width()).toBe(90);
+  expect(controls.saveRequests.at(-1)?.action.category).toBe('undo');
+  await handle.press('Control+y');
+  await page.clock.runFor(500);
+  await expect.poll(() => controls.saveRequests.length).toBe(7);
+  expect(width()).toBe(85);
+  expect(controls.saveRequests.at(-1)?.action.category).toBe('redo');
+});
+
 test('keeps every page Hero inside the phone canvas and resizes Hero text by drag or keyboard', async ({
   page,
 }) => {
   test.setTimeout(60_000);
+  await page.clock.install();
   const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
@@ -1313,7 +1720,6 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     .toBe(requestedDragWidth);
 
   await page.reload();
-  await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
   await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
   const reloadedCanvas = page.locator('.visual-editor iframe').contentFrame();
@@ -1333,6 +1739,9 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     exact: true,
   });
   const orderedBaseline = controls.saveRequests.length;
+  // These two keystrokes deliberately share Puck's 250 ms history entry.
+  // Keep remote acknowledgement timing from changing that grouping across engines.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   const releaseFirstResize = controls.holdNextSave();
   await reloadedHeadingHandle.press('ArrowLeft');
   await expect.poll(() => controls.saveRequests.length).toBe(orderedBaseline + 1);
@@ -1361,6 +1770,8 @@ test('keeps every page Hero inside the phone canvas and resizes Hero text by dra
     bodyWidth: { desktop: 100, tablet: 100, mobile: requestedDragWidth },
   });
 
+  await page.clock.runFor(300);
+  await page.clock.resume();
   await expect(page.getByText('All changes saved')).toBeVisible();
   const undoBaseline = controls.saveRequests.length;
   await page.getByRole('button', { name: 'undo' }).click();
@@ -1885,7 +2296,6 @@ test('builds a standardized section by dragging an element from the toybox', asy
     await expect(page.getByText('All changes saved')).toBeVisible();
   }
   await page.reload();
-  await page.getByRole('button', { name: 'Open editor' }).click();
   const reloadedCanvas = page.locator('.visual-editor iframe').contentFrame();
   await expect(reloadedCanvas.getByRole('heading', { name: 'Section heading' })).toBeVisible();
   await expect(reloadedCanvas.locator('section[aria-label="Two column section"]')).toBeVisible();
@@ -2476,11 +2886,17 @@ test('builds a form and places linked YouTube media without code', async ({
   );
 });
 
-test('manages roles and exposes capacity warnings to administrators', async ({ page }) => {
+test('manages roles and distinguishes measured storage from unknown provider usage', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Admin' }).click();
-  await expect(page.getByText('80% — action recommended')).toBeVisible();
+  await expect(
+    page.getByText('Provider usage: unknown. Provider counters unavailable.'),
+  ).toBeVisible();
+  await expect(page.getByText('8.0 MiB')).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
   await page.getByLabel('GitHub username').fill('point-publisher');
   await page.locator('.inline-editor select').selectOption('publisher');
   await page.getByRole('button', { name: 'Add person' }).click();

@@ -112,7 +112,8 @@ export class D1DraftAssets {
         ),
     ];
     for (let offset = 0, index = 0; offset < bytes.byteLength; offset += chunkBytes, index++) {
-      const chunk = bytes.slice(offset, offset + chunkBytes);
+      // Node Buffer.slice shares its backing allocation; store only this chunk's owned bytes.
+      const chunk = Uint8Array.from(bytes.subarray(offset, offset + chunkBytes));
       statements.push(
         this.database
           .prepare(
@@ -138,6 +139,7 @@ export class D1DraftAssets {
     draftId: string;
     document: SiteDocument;
     sourceDraftId?: string;
+    sourceObjects?: Map<string, DraftAssetObject>;
     actor: string;
     now: string;
   }): Promise<{ document: SiteDocument; statements: D1PreparedStatement[] }> {
@@ -150,7 +152,7 @@ export class D1DraftAssets {
           input.sourceDraftId,
           document.media.map((item) => item.sourcePath),
         )
-      : undefined;
+      : input.sourceObjects;
     for (const item of document.media) {
       const originalPath = item.sourcePath;
       let sourcePath = copied.get(originalPath);
@@ -172,6 +174,24 @@ export class D1DraftAssets {
       }
       item.sourcePath = sourcePath;
     }
+    // Direct image links need the same ownership rewrite as media records.
+    const rewrite = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (
+          ['href', 'linkHref'].includes(key) &&
+          typeof child === 'string' &&
+          child.startsWith('/assets/')
+        ) {
+          const path = decodeURI(child.split(/[?#]/, 1)[0]);
+          const replacement = copied.get(path);
+          if (replacement)
+            (value as Record<string, unknown>)[key] =
+              replacement + child.slice(child.split(/[?#]/, 1)[0].length);
+        } else rewrite(child);
+      }
+    };
+    rewrite(document);
     return { document, statements };
   }
 
@@ -334,12 +354,6 @@ export class D1DraftAssets {
     for (const { source_path: sourcePath } of paths.results)
       await this.readForDraft(draftId, sourcePath);
     return paths.results.length;
-  }
-
-  purgeStatements(draftId: string): D1PreparedStatement[] {
-    return [
-      this.database.prepare('DELETE FROM draft_asset_versions WHERE draft_id=?').bind(draftId),
-    ];
   }
 
   private async find(draftId: string, sourcePath: string): Promise<AssetRow | null> {

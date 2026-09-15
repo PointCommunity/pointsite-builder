@@ -79,6 +79,32 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
+  /ready:
+    get:
+      operationId: readiness
+      description: Authenticated, uncached database reachability check. Liveness remains independently available at /health. No SQL or provider error details are returned.
+      responses:
+        '200':
+          description: Database check succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready]
+                additionalProperties: false
+                properties:
+                  ready: { type: boolean, const: true }
+        '401': { $ref: '#/components/responses/Error' }
+        '503':
+          description: Database check unavailable or failed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready]
+                additionalProperties: false
+                properties:
+                  ready: { type: boolean, const: false }
   /me:
     get:
       operationId: getMe
@@ -93,6 +119,11 @@ paths:
   /drafts:
     get:
       operationId: listDrafts
+      parameters:
+        - name: view
+          in: query
+          description: Request document-free summaries. Omit only for legacy clients that need full documents.
+          schema: { type: string, enum: [summary] }
       responses:
         '200':
           description: Draft summaries visible to actor
@@ -100,6 +131,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DraftList'
+        '422': { $ref: '#/components/responses/Error' }
     post:
       operationId: createDraft
       parameters:
@@ -144,6 +176,7 @@ paths:
           required: true
           schema: { type: string }
           description: Current revision checksum in quotes
+        - $ref: '#/components/parameters/LibraryRevision'
         - $ref: '#/components/parameters/CheckoutToken'
       requestBody:
         required: true
@@ -171,6 +204,9 @@ paths:
       operationId: updateDraftLifecycle
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -179,6 +215,7 @@ paths:
               type: object
               additionalProperties: false
               minProperties: 1
+              maxProperties: 1
               properties:
                 name: { type: string, minLength: 1, maxLength: 100 }
                 status: { type: string, enum: [active, archived] }
@@ -188,6 +225,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
     delete:
       operationId: purgeArchivedDraft
       description: >-
@@ -198,6 +242,9 @@ paths:
         lease blocks purge. Retains only a content-free deletion receipt; no recovery window.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -210,21 +257,38 @@ paths:
                 confirmation: { type: string, const: DELETE }
       responses:
         '200':
-          description: Complete archived workspace purged, or content-free receipt from a prior purge
+          description: Complete archived workspace purged
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DeletedDraftReceipt' }
         '409':
-          description: Draft is not archived, has an active checkout, or publication is in progress
+          description: Draft is not archived, checkout proof is stale, or publication is in progress
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '422': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
   /drafts/{draftId}/revisions:
     parameters:
       - $ref: '#/components/parameters/DraftId'
     get:
       operationId: listRevisions
+      parameters:
+        - name: cursor
+          in: query
+          description: Exclusive sequence cursor from the preceding page.
+          schema: { type: string, pattern: '^[1-9][0-9]{0,15}$' }
+        - name: query
+          in: query
+          description: Search retained revision names, sequence numbers and people.
+          schema: { type: string, maxLength: 100 }
+        - name: filter
+          in: query
+          schema: { type: string, enum: [all, named, current], default: all }
       responses:
         '200':
           description: Revision metadata newest first
@@ -232,6 +296,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RevisionList'
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /drafts/checkouts:
     get:
       operationId: listDraftCheckouts
@@ -270,7 +336,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CheckoutClient' }
+            schema: { $ref: '#/components/schemas/CheckoutAcquire' }
       responses:
         '200': { description: 'Acquired, resumed, or transferred checkout' }
         '409': { $ref: '#/components/responses/Error' }
@@ -283,9 +349,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CheckoutClient' }
+            schema: { $ref: '#/components/schemas/CheckoutTouch' }
       responses:
-        '200': { description: Renewed checkout and persisted safe view state }
+        '200':
+          {
+            description: Persisted changed view state; renews checkout only for genuine activity. Passive context saves preserve expiry.,
+          }
         '409': { $ref: '#/components/responses/Error' }
     delete:
       operationId: releaseDraftCheckout
@@ -310,6 +379,9 @@ paths:
       operationId: labelRevision
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/LibraryRevision'
+        - $ref: '#/components/parameters/LibraryChecksum'
       requestBody:
         required: true
         content:
@@ -326,10 +398,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Revision' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
+
   /drafts/{draftId}/restore:
     parameters:
       - $ref: '#/components/parameters/DraftId'
       - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CheckoutToken'
+      - $ref: '#/components/parameters/LibraryRevision'
+      - $ref: '#/components/parameters/LibraryChecksum'
     post:
       operationId: restoreRevision
       requestBody:
@@ -349,7 +431,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
         '412': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '428': { $ref: '#/components/responses/Error' }
   /drafts/{draftId}/library:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -595,11 +682,11 @@ paths:
     post:
       operationId: publishStaging
       description: >-
-        Starts or resumes the exact preflighted candidate under the shared publication lease.
-        Each request uploads at most 20 blobs and checkpoints completed blob identities.
-        Returns 202 while work remains or 201 after every file is uploaded and the exact
-        non-forced Staging branch update completes. Running is not release success.
-        Continue the returned job with POST; GET never advances publishing.
+        Captures the exact metadata-preflighted revision, owned assets, renderer and destination
+        base into a durable cloud job. Returns 202 for queued/running work; the native schedule
+        dispatches independently of the browser with bounded retries. GET status never advances
+        publishing. An identical retry returns the captured job even after later editor changes.
+        Legacy jobs retain their explicit POST continuation contract during cutover.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -620,12 +707,18 @@ paths:
           description: Staging candidate commit and durable publish job
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/StagingPublishResult' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CapturedStagingJob'
+                  - $ref: '#/components/schemas/StagingPublishResult'
         '202':
-          description: Upload checkpointed; continue the same job to finish publishing
+          description: Captured cloud job or legacy upload checkpoint
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/StagingPublishProgress' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CapturedStagingJob'
+                  - $ref: '#/components/schemas/StagingPublishProgress'
         '409': { $ref: '#/components/responses/Error' }
   /publish/staging/preflight:
     post:
@@ -675,17 +768,122 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GitSha' }
-  /publish/production:
-    post:
-      operationId: prepareProductionPullRequest
+  /publish/production/workflow:
+    get:
+      operationId: getProductionWorkflow
+      description: Administrator-only saved progress; reads pinned metadata without dispatching or calling providers.
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: draftId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
       responses:
-        '403':
-          description: Always disabled until production-preparation configuration and approval exist
+        '200':
+          description: Explicitly disabled, or latest Production job and shared-slot occupancy
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema: { $ref: '#/components/schemas/ProductionWorkflowSnapshot' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /publish/production:
+    post:
+      operationId: captureAcceptedProductionCandidate
+      description: >-
+        Administrator only. Capture the exact current Staging acceptance and immutable inputs,
+        with fresh repository permission, native evidence and expected Production base checks.
+        Requires same-origin JSON, Fetch Metadata and a request-bound Idempotency-Key. Duplicate
+        requests return the existing job. Worker configuration remains disabled until rollback
+        and the remaining coordinated rollout gates are complete.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stagingJobId, approvalId, tuple]
+              properties:
+                stagingJobId: { type: string, format: uuid }
+                approvalId: { type: string, format: uuid }
+                tuple:
+                  allOf:
+                    - $ref: '#/components/schemas/CandidateTuple'
+                    - type: object
+                      required: [publicationProtocol, workflowRevision, artifactDigest]
+      responses:
+        '202':
+          description: Immutable Production job queued or running
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductionJobReceipt' }
+        '200':
+          description: Existing completed job receipt; no new publication
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductionJobReceipt' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /publish/production/jobs/{jobId}/recovery:
+    post:
+      operationId: recoverProductionPublication
+      description: >-
+        Administrator only, with same-origin JSON and a stable Idempotency-Key. Recover only the
+        selected Production job. Captured retry preserves the exact unrevoked acceptance and
+        requires an unchanged destination or the cancelled parent's recorded commit, at most three
+        times. Cancellation/reconciliation never repeats a deployment. A recorded completion can
+        be verified against successful native execution and current live identity. New publication
+        remains forbidden after deployment authorization; missing acknowledgments need separate
+        recovery. Worker configuration remains disabled pending the coordinated rollout.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, expectedAttempts]
+              properties:
+                action:
+                  {
+                    type: string,
+                    enum: [retry, cancel, reconcile, retry-captured, verify-completed],
+                  }
+                expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
+      responses:
+        '200':
+          description: Exact recovery committed or its historical receipt replayed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [recovered]
+                properties:
+                  recovered: { type: boolean, const: true }
+                  jobId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /publish/jobs/{jobId}:
     get:
       operationId: getJob
@@ -751,6 +949,64 @@ paths:
         '415': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /publish/jobs/{jobId}/recovery:
+    post:
+      operationId: recoverQueuedPublication
+      description: >-
+        Recover a captured cloud job before deployment authorization.
+        Requires a current Publisher or Administrator for Staging, or Administrator for Production,
+        same-origin JSON, Fetch Metadata and an Idempotency-Key. Retry resets exhausted dispatch
+        attempts after the recorded backoff without changing the candidate or nonce. Cancel fences
+        the job and releases only its slot atomically. Reconcile a reserved job only with verified
+        terminal native execution and no deployment authorization; concurrent authorization prevents
+        release. A confirmed Git commit stays recorded. Exact receipt replay never repeats the action.
+        Retry-captured copies a cancelled Staging candidate into a new job and nonce, at most three
+        times, after fresh role, runtime, slot and destination-base checks. Later draft edits are
+        not substituted. Jobs with deployment authorization are ineligible.
+        Verify-completed records an already deployed result only after terminal native execution,
+        passing checks and current live identity match its stored acknowledgment. It never publishes
+        again or restores revoked approval. Production requires an Administrator.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, expectedAttempts]
+              properties:
+                action:
+                  {
+                    type: string,
+                    enum: [retry, cancel, reconcile, retry-captured, verify-completed],
+                  }
+                expectedAttempts: { type: integer, minimum: 0, maximum: 6 }
+      responses:
+        '200':
+          description: Recovery committed or its exact receipt replayed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [recovered]
+                properties:
+                  recovered: { type: boolean, const: true }
+                  jobId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /publish/jobs/{jobId}/verification:
     post:
       operationId: refreshStagingVerification
@@ -778,6 +1034,11 @@ paths:
   /approvals:
     post:
       operationId: recordApproval
+      description: >-
+        Cloud decisions bind the exact artifact and runtime, current verified Staging deployment,
+        accepting actor and last-seen decision. Cloud requests require expectedApprovalId (null
+        for no previous decision). Fresh native evidence and expected Production base are checked
+        before approval. Decisions are append-only; retries cannot reinstate a revoked acceptance.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -791,6 +1052,10 @@ paths:
               properties:
                 publishJobId: { type: string, minLength: 1, maxLength: 100 }
                 expectedTuple: { $ref: '#/components/schemas/CandidateTuple' }
+                expectedApprovalId:
+                  oneOf:
+                    - { type: string, format: uuid }
+                    - { type: 'null' }
                 decision: { type: string, enum: [approved, rejected, revoked] }
                 note: { type: string, maxLength: 500 }
       responses:
@@ -850,7 +1115,14 @@ paths:
     get:
       operationId: getCapacity
       responses:
-        '200': { description: Storage and operation estimates with warning thresholds }
+        '200':
+          description: >-
+            Allocated storage when supplied by D1, media/revision/receipt payload bytes,
+            UTC audit activity period, and a read-only provider analytics snapshot.
+            Provider state is reported, stale or unknown. Known snapshots include requested UTC
+            period, collection and refresh timestamps, account-wide and Builder D1 row reads/writes,
+            and provider-reported Builder storage. Missing data never becomes zero. Analytics may
+            arrive late and do not verify plan allowance; audit activity is not billed writes.
   /admin/asset-migration:
     get:
       operationId: getAssetOwnershipMigrationStatus
@@ -895,7 +1167,7 @@ components:
     githubSession:
       type: apiKey
       in: cookie
-      name: __Secure-pointsite_builder_session
+      name: __Host-pointsite_builder_session
   parameters:
     LibraryRevision:
       name: X-Draft-Revision
@@ -974,6 +1246,58 @@ components:
       required: [clientId]
       properties:
         clientId: { type: string, minLength: 16, maxLength: 100 }
+    CheckoutAcquire:
+      type: object
+      additionalProperties: false
+      required: [clientId]
+      properties:
+        clientId: { type: string, minLength: 16, maxLength: 100 }
+        resumeOnly:
+          type: boolean
+          default: false
+          description: Automatic recovery uses true. It rotates only the same actor and active client's token, preserves inactivity expiry, and cannot acquire or transfer a checkout. False is reserved for explicit editor or lifecycle actions.
+        expectedStatus:
+          type: string
+          enum: [active, archived]
+          default: active
+          description: Status displayed when explicitly starting the action. Archived checkouts permit unarchive or purge only. Automatic resume requires active.
+    CheckoutTouch:
+      type: object
+      additionalProperties: false
+      required: [clientId]
+      properties:
+        clientId: { type: string, minLength: 16, maxLength: 100 }
+        activity:
+          type: boolean
+          default: true
+          description: False for passive view-state persistence. Updated clients report activity only for visible pointer, touch or keyboard input.
+        viewState:
+          type: object
+          additionalProperties: false
+          required:
+            [
+              draftId,
+              panel,
+              pageId,
+              selectedElementId,
+              previewViewport,
+              previewZoom,
+              scrollPositions,
+              updatedAt,
+            ]
+          properties:
+            draftId: { type: string, format: uuid }
+            panel:
+              { type: string, enum: [layout, forms, library, preview, history, settings, admin] }
+            pageId: { type: [string, 'null'], maxLength: 100 }
+            selectedElementId: { type: [string, 'null'], maxLength: 100 }
+            previewViewport: { type: string, enum: [phone, tablet, desktop] }
+            previewZoom: { type: number, minimum: 0.25, maximum: 2 }
+            scrollPositions:
+              type: object
+              propertyNames: { maxLength: 40 }
+              additionalProperties: { type: number, minimum: 0, maximum: 1000000 }
+            updatedAt: { type: string }
     CheckoutAvailability:
       type: object
       additionalProperties: false
@@ -989,6 +1313,14 @@ components:
         ok: { type: boolean }
         environment: { type: string }
         version: { type: string }
+        sourceRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        sourceClean: { type: boolean }
+        workerVersionId: { type: [string, 'null'], format: uuid }
+        storageWriteFormat: { type: string, enum: [legacy, compact-v1] }
+        storageReaders:
+          type: array
+          items: { type: string, enum: [legacy, compact-v1] }
+          uniqueItems: true
     Actor:
       type: object
       required: [email, role]
@@ -998,13 +1330,15 @@ components:
         role: { type: string, enum: [viewer, editor, publisher, administrator] }
     DraftSummary:
       type: object
-      required: [id, siteId, name, status, latestRevisionId, createdBy, createdAt, updatedAt]
+      required:
+        [id, siteId, name, status, latestRevisionId, revision, createdBy, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         siteId: { type: string, const: pointsite }
         name: { type: string }
         status: { type: string, enum: [active, archived, deleted] }
         latestRevisionId: { type: string, format: uuid }
+        revision: { $ref: '#/components/schemas/RevisionSummary' }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1016,7 +1350,8 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/Draft' }
+          maxItems: 100
+          items: { $ref: '#/components/schemas/DraftSummary' }
         nextCursor: { type: ['string', 'null'] }
     Draft:
       allOf:
@@ -1026,7 +1361,7 @@ components:
           properties:
             document: { $ref: '#/components/schemas/SiteDocument' }
             revision: { $ref: '#/components/schemas/Revision' }
-    Revision:
+    RevisionSummary:
       type: object
       required:
         [
@@ -1035,7 +1370,6 @@ components:
           sequence,
           parentRevisionId,
           checksum,
-          document,
           label,
           schemaVersion,
           rendererVersion,
@@ -1050,7 +1384,6 @@ components:
         sequence: { type: integer, minimum: 1 }
         parentRevisionId: { type: [string, 'null'], format: uuid }
         checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
-        document: { $ref: '#/components/schemas/SiteDocument' }
         schemaVersion: { type: integer }
         rendererVersion: { type: string }
         actionCategory:
@@ -1095,6 +1428,13 @@ components:
         label: { type: [string, 'null'] }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
+    Revision:
+      allOf:
+        - $ref: '#/components/schemas/RevisionSummary'
+        - type: object
+          required: [document]
+          properties:
+            document: { $ref: '#/components/schemas/SiteDocument' }
     DraftAction:
       type: object
       additionalProperties: false
@@ -1144,7 +1484,8 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/Revision' }
+          maxItems: 100
+          items: { $ref: '#/components/schemas/RevisionSummary' }
         nextCursor: { type: ['string', 'null'] }
     LibraryMetadata:
       type: object
@@ -1288,6 +1629,7 @@ components:
       additionalProperties: false
       required: [currentStagingSha, reviewUrl, preflight, availability, job, approval]
       properties:
+        publicationProtocol: { type: integer, const: 2 }
         currentStagingSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         reviewUrl: { type: string, format: uri }
         preflight: { $ref: '#/components/schemas/StagingPreflightSummary' }
@@ -1330,10 +1672,10 @@ components:
             state: { type: string, const: available }
         - type: object
           additionalProperties: false
-          required: [state, phase, retryAt]
+          required: [state, phase]
           properties:
             state: { type: string, const: busy }
-            phase: { type: string, enum: [queued, running] }
+            phase: { type: string, enum: [queued, running, review, recovery] }
             retryAt: { type: string, format: date-time }
     StagingWorkflowJob:
       type: object
@@ -1354,6 +1696,22 @@ components:
         ]
       properties:
         id: { type: string, format: uuid }
+        publicationProtocol: { type: integer, const: 2 }
+        workflowRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        dispatch:
+          type: object
+          additionalProperties: false
+          required: [attempts, retryAt, needsAttention]
+          properties:
+            attempts: { type: integer, minimum: 0 }
+            retryAt: { type: string, format: date-time }
+            needsAttention: { type: boolean }
+            reserved: { type: boolean }
+            canReconcileStopped: { type: boolean }
+            canRetryCaptured: { type: boolean }
+            canVerifyCompleted: { type: boolean }
+            failureCode: { type: string, pattern: '^PUBLISH_[A-Z_]+$' }
+            workflowUrl: { type: string, format: uri }
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
         candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
         draftId: { type: string, format: uuid }
@@ -1384,6 +1742,7 @@ components:
       additionalProperties: false
       required: [id, publishJobId, decision, createdAt]
       properties:
+        tuple: { $ref: '#/components/schemas/CandidateTuple' }
         id: { type: string, format: uuid }
         publishJobId: { type: string, format: uuid }
         decision: { type: string, enum: [approved, rejected, revoked] }
@@ -1403,7 +1762,14 @@ components:
           stagingCommitSha,
           productionBaseSha,
         ]
+      dependentRequired:
+        publicationProtocol: [workflowRevision, artifactDigest]
+        workflowRevision: [publicationProtocol, artifactDigest]
+        artifactDigest: [publicationProtocol, workflowRevision]
       properties:
+        publicationProtocol: { type: integer, const: 2 }
+        workflowRevision: { type: string, pattern: '^[a-f0-9]{40}$' }
+        artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
         siteId: { type: string, const: pointsite }
         revisionId: { type: string, format: uuid }
         revisionChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
@@ -1413,6 +1779,75 @@ components:
         stagingBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         stagingCommitSha: { type: string, pattern: '^[a-f0-9]{40}$' }
         productionBaseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+    CapturedStagingJob:
+      type: object
+      additionalProperties: false
+      required: [environment, jobId, status, publicationProtocol, candidateChecksum]
+      properties:
+        environment: { type: string, const: staging }
+        jobId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        publicationProtocol: { type: integer, const: 2 }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ProductionWorkflowSnapshot:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [enabled]
+          properties:
+            enabled: { type: boolean, const: false }
+        - type: object
+          additionalProperties: false
+          required: [enabled, busy, job]
+          properties:
+            enabled: { type: boolean, const: true }
+            busy: { type: boolean }
+            job:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required:
+                    [
+                      id,
+                      status,
+                      candidateChecksum,
+                      revisionId,
+                      stagingJobId,
+                      approvalId,
+                      artifactDigest,
+                      baseSha,
+                      commitSha,
+                      requestedAt,
+                      completedAt,
+                      evidence,
+                    ]
+                  properties:
+                    id: { type: string, format: uuid }
+                    status: { $ref: '#/components/schemas/StagingWorkflowJob/properties/status' }
+                    candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    revisionId: { type: string, format: uuid }
+                    stagingJobId: { type: string, format: uuid }
+                    approvalId: { type: string, format: uuid }
+                    artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    baseSha: { type: string, pattern: '^[a-f0-9]{40}$' }
+                    commitSha:
+                      {
+                        $ref: '#/components/schemas/StagingWorkflowJob/properties/stagingCommitSha',
+                      }
+                    requestedAt: { type: string, format: date-time }
+                    completedAt:
+                      { $ref: '#/components/schemas/StagingWorkflowJob/properties/completedAt' }
+                    evidence: { type: object, additionalProperties: true }
+                    dispatch:
+                      { $ref: '#/components/schemas/StagingWorkflowJob/properties/dispatch' }
+    ProductionJobReceipt:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
     StagingPublishProgress:
       type: object
       additionalProperties: false

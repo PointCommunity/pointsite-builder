@@ -27,6 +27,7 @@ async function setup(imageCount = 100) {
   for (const migration of [
     'migrations/0001_initial.sql',
     'migrations/0010_publish_preflight_leases.sql',
+    'migrations/0030_publication_retention.sql',
   ]) {
     await database.exec((await readFile(migration, 'utf8')).replace(/\s+/g, ' ').trim());
   }

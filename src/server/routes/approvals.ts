@@ -9,6 +9,7 @@ import type { ApiVariables } from './drafts';
 const ApprovalInputSchema = z.strictObject({
   publishJobId: z.string().min(1).max(100),
   expectedTuple: CandidateTupleSchema,
+  expectedApprovalId: z.uuid().nullable().optional(),
   decision: z.enum(['approved', 'rejected', 'revoked']),
   note: z.string().trim().max(500).optional(),
 });
@@ -20,7 +21,17 @@ const EligibilitySchema = z.strictObject({
 
 const mapError = (error: unknown): never => {
   if (!(error instanceof Error)) throw error;
+  if (['APPROVAL_AUTHORITY_CHANGED', 'PUBLISH_GITHUB_AUTHORITY_CHANGED'].includes(error.message))
+    throw new ApiError(
+      403,
+      error.message,
+      'Your publishing authority changed; refresh your session',
+    );
   const conflict = new Set([
+    'APPROVAL_CLOUD_CANDIDATE_REQUIRED',
+    'APPROVAL_STATE_CHANGED',
+    'PUBLICATION_VERIFICATION_UNCONFIRMED',
+    'PRODUCTION_BASE_DRIFT',
     'APPROVAL_JOB_NOT_SUCCEEDED',
     'APPROVAL_TUPLE_MISMATCH',
     'APPROVAL_EVIDENCE_INCOMPLETE',
@@ -68,7 +79,10 @@ export function createApprovalRoutes(
     if (!parsed.success)
       throw new ApiError(422, 'VALIDATION_FAILED', 'Review the exact approval candidate');
     try {
-      if (parsed.data.decision === 'approved') {
+      if (
+        parsed.data.decision === 'approved' &&
+        !('publicationProtocol' in parsed.data.expectedTuple)
+      ) {
         if (!stagingBaseSha)
           throw new ApiError(
             503,

@@ -45,6 +45,19 @@ export class D1OwnershipMigration {
       .prepare('SELECT state FROM draft_asset_migration WHERE id=1')
       .first<{ state: 'pending' | 'complete' }>();
     if (!state) throw new Error('ASSET_MIGRATION_NOT_CONFIGURED');
+    // Completion retires shared storage under database guards. New independent
+    // revisions need no legacy verification and must not restart history scans.
+    if (state.state === 'complete') {
+      return {
+        ...state,
+        remainingDrafts: 0,
+        legacyAssets: 0,
+        legacyBytes: 0,
+        recoveredUploads: await this.database
+          .prepare('SELECT COUNT(*) FROM draft_asset_migration_recovered')
+          .first<number>('COUNT(*)'),
+      };
+    }
     const counts = await this.database
       .prepare(
         `SELECT
@@ -59,15 +72,12 @@ export class D1OwnershipMigration {
         legacyBytes: number;
         recoveredUploads: number;
       }>();
-    return {
-      ...state,
-      ...counts,
-      remainingDrafts: state.state === 'complete' ? 0 : counts?.remainingDrafts,
-    };
+    return { ...state, ...counts };
   }
 
   async step(actor: string, requestId: string) {
-    if ((await this.status()).state === 'complete') return this.status();
+    const status = await this.status();
+    if (status.state === 'complete') return status;
     const next = await this.database
       .prepare(`SELECT DISTINCT draft_id FROM (${missingSource}) ORDER BY draft_id LIMIT 1`)
       .first<{ draft_id: string }>();

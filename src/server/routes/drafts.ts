@@ -1,3 +1,4 @@
+import { MAX_DRAFT_DOCUMENT_BYTES } from '../../shared/draft-limits';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { defaultSiteDocument } from '../../site-kit/default-site';
@@ -27,6 +28,10 @@ const SaveDraftSchema = z.strictObject({
   label: z.string().trim().max(100).optional(),
 });
 const ClientSchema = z.strictObject({ clientId: z.string().min(16).max(100) });
+const AcquireCheckoutSchema = ClientSchema.extend({
+  resumeOnly: z.boolean().optional(),
+  expectedStatus: z.enum(['active', 'archived']).optional(),
+});
 const ViewStateSchema = z.strictObject({
   draftId: z.uuid(),
   panel: z.enum(['layout', 'forms', 'library', 'preview', 'history', 'settings', 'admin']),
@@ -37,9 +42,12 @@ const ViewStateSchema = z.strictObject({
   scrollPositions: z.record(z.string().max(40), z.number().min(0).max(1_000_000)),
   updatedAt: z.string(),
 });
-const TouchCheckoutSchema = ClientSchema.extend({ viewState: ViewStateSchema.optional() });
+const TouchCheckoutSchema = ClientSchema.extend({
+  viewState: ViewStateSchema.optional(),
+  activity: z.boolean().optional(),
+});
 
-export const MAX_DRAFT_DOCUMENT_BYTES = 1_500_000;
+export { MAX_DRAFT_DOCUMENT_BYTES } from '../../shared/draft-limits';
 
 function validationError(error: z.ZodError): ApiError {
   return new ApiError(
@@ -59,6 +67,26 @@ function preconditionChecksum(value: string | undefined): string {
     throw new ApiError(428, 'PRECONDITION_REQUIRED', 'If-Match must contain the current checksum');
   }
   return match[1];
+}
+
+export function draftMutationProof(request: Request) {
+  const checkoutToken = request.headers.get('x-draft-checkout');
+  if (!checkoutToken)
+    throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
+  const revision = request.headers.get('x-draft-revision');
+  if (!revision)
+    throw new ApiError(
+      428,
+      'PRECONDITION_REQUIRED',
+      'Reopen this draft to send its exact revision',
+    );
+  const expectedRevision = z.uuid().safeParse(revision);
+  if (!expectedRevision.success) throw validationError(expectedRevision.error);
+  return {
+    checkoutToken,
+    expectedRevisionId: expectedRevision.data,
+    expectedChecksum: preconditionChecksum(request.headers.get('if-match') ?? undefined),
+  };
 }
 
 export function createDraftRoutes(
@@ -94,13 +122,15 @@ export function createDraftRoutes(
     const actor = requireRole(context.get('actor'), 'editor');
     if (!limiter.consume(actor.email)) throw new ApiError(429, 'RATE_LIMITED', 'Try again shortly');
     const raw = await requireMutationRequest(context.req.raw, new URL(context.req.url).origin);
-    const parsed = ClientSchema.safeParse(raw);
+    const parsed = AcquireCheckoutSchema.safeParse(raw);
     if (!parsed.success) throw validationError(parsed.error);
     return context.json(
       await repository.acquireCheckout({
         draftId: context.req.param('draftId'),
         actor: actor.email,
         clientId: parsed.data.clientId,
+        resumeOnly: parsed.data.resumeOnly,
+        expectedStatus: parsed.data.expectedStatus,
         requestId: context.get('requestId'),
       }),
     );
@@ -122,6 +152,7 @@ export function createDraftRoutes(
           actor: actor.email,
           clientId: parsed.data.clientId,
           token,
+          activity: parsed.data.activity,
           requestId: context.get('requestId'),
         },
         parsed.data.viewState,
@@ -149,7 +180,12 @@ export function createDraftRoutes(
 
   routes.get('/', async (context) => {
     requireRole(context.get('actor'), 'viewer');
-    const items = await repository.listDrafts();
+    const view = context.req.query('view');
+    if (view !== undefined && view !== 'summary')
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Unknown draft list view');
+    // Already-open clients still need the original document-bearing response.
+    const items =
+      view === 'summary' ? await repository.listDraftSummaries() : await repository.listDrafts();
     return context.json({ items, nextCursor: null });
   });
 
@@ -213,19 +249,16 @@ export function createDraftRoutes(
     }
     const document = SiteDocumentSchema.safeParse(parsed.data.document);
     if (!document.success) throw validationError(document.error);
-    const checkoutToken = context.req.header('x-draft-checkout');
-    if (!checkoutToken)
-      throw new ApiError(428, 'CHECKOUT_REQUIRED', 'Open this draft for editing before saving');
+    const proof = draftMutationProof(context.req.raw);
     try {
       const draft = await repository.saveDraft({
         draftId: context.req.param('draftId'),
-        expectedChecksum: preconditionChecksum(context.req.header('if-match')),
+        ...proof,
         document: document.data,
         actor: actor.email,
         idempotencyKey: context.req.header('idempotency-key') ?? '',
         requestId: context.get('requestId'),
         action: parsed.data.action,
-        checkoutToken,
         label: parsed.data.label,
       });
       return context.json(draft);

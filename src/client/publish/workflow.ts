@@ -1,8 +1,61 @@
+import type { CandidateTuple } from '../api';
+
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
 
+export type RollbackSnapshot =
+  | { enabled: false }
+  | {
+      enabled: true;
+      releases: { id: string; kind: string; verifiedAt: string; artifactDigest: string }[];
+      publicationJobId: string | null;
+      job: {
+        id: string;
+        status: 'queued' | 'running' | 'succeeded' | 'cancelled';
+        sourceReleaseId: string;
+        requestedAt: string;
+        attempts: number;
+        canVerify: boolean;
+        workflowUrl: string | null;
+      } | null;
+    };
+export type RollbackSelection = {
+  sourceReleaseId: string;
+  previousReleaseId: string;
+  baseSha: string;
+  previousDeploymentId: string;
+  replaceJobId?: string;
+};
+
+export interface PublicationVerificationState {
+  id: string;
+  status: 'queued' | 'running' | 'passed' | 'failed';
+  attempt: number;
+  dispatchAttempts: number;
+  requestedAt: string;
+  retryAt: string;
+  reported: boolean;
+  needsAttention: boolean;
+  failureCode?: string;
+  workflowUrl?: string;
+}
+
 export interface StagingWorkflowJob {
   id: string;
+  publicationProtocol?: 2;
+  workflowRevision?: string;
+  dispatch?: {
+    attempts: number;
+    retryAt: string;
+    needsAttention: boolean;
+    reserved?: boolean;
+    canReconcileStopped?: boolean;
+    canRetryCaptured?: boolean;
+    canVerifyCompleted?: boolean;
+    canVerifyOutput?: boolean;
+    failureCode?: string;
+    workflowUrl?: string;
+  };
   status: PublishJobStatus;
   candidateChecksum: string;
   draftId: string;
@@ -17,6 +70,8 @@ export interface StagingWorkflowJob {
   completedAt: string | null;
   evidence: {
     verificationStatus?: VerificationStatus;
+    verification?: { dispatchRevision: string };
+    artifactDigest?: string;
     failureCode?: string;
     failedChecks?: string[];
     failedCheckUrls?: Record<string, string>;
@@ -31,9 +86,37 @@ export interface StagingAcceptanceSummary {
   publishJobId: string;
   decision: 'approved' | 'rejected' | 'revoked';
   createdAt: string;
+  tuple?: CandidateTuple;
 }
 
+export type ProductionWorkflowSnapshot =
+  | { enabled: false }
+  | {
+      enabled: true;
+      busy: boolean;
+      job:
+        | (Pick<
+            StagingWorkflowJob,
+            | 'id'
+            | 'status'
+            | 'candidateChecksum'
+            | 'revisionId'
+            | 'requestedAt'
+            | 'completedAt'
+            | 'dispatch'
+            | 'evidence'
+          > & {
+            stagingJobId: string;
+            approvalId: string;
+            artifactDigest: string;
+            baseSha: string;
+            commitSha: string | null;
+          })
+        | null;
+    };
+
 export interface StagingWorkflowSnapshot {
+  publicationProtocol?: 2;
   currentStagingSha: string;
   reviewUrl: string;
   preflight:
@@ -49,7 +132,8 @@ export interface StagingWorkflowSnapshot {
         reason: 'not-validated' | 'revision-changed' | 'renderer-contract-changed' | 'failed';
       };
   availability:
-    { state: 'available' } | { state: 'busy'; phase: 'queued' | 'running'; retryAt: string };
+    | { state: 'available' }
+    | { state: 'busy'; phase: 'queued' | 'running' | 'review' | 'recovery'; retryAt?: string };
   job: StagingWorkflowJob | null;
   approval: StagingAcceptanceSummary | null;
 }
@@ -116,24 +200,73 @@ export function deriveStagingWorkflow(input: {
     );
 
   const { job, approval, currentStagingSha, preflight, availability } = input.snapshot;
+  if (input.snapshot.publicationProtocol === 2 && job && job.publicationProtocol !== 2) {
+    if (availability.state === 'busy')
+      return state(
+        'waiting',
+        2,
+        'Previous publication needs reconciliation',
+        'Your draft is saved. The previous publication must finish or be reconciled before cloud publishing can start.',
+        { canRefresh: true, shouldPoll: true },
+      );
+    return state(
+      'ready',
+      1,
+      'Publish this version through the cloud workflow',
+      'Create a fresh captured candidate with verified build and deployment evidence before accepting it.',
+      { canPublish: true, canRefresh: true },
+    );
+  }
 
   const revisionChanged =
     Boolean(job) &&
     (job!.revisionId !== input.revisionId || job!.revisionChecksum !== input.revisionChecksum);
-  const stagingChanged = Boolean(
-    job && job.stagingCommitSha && currentStagingSha !== job.stagingCommitSha,
-  );
+  // Recovery can verify unchanged published content at a newer verifier-only main revision.
+  const verifiedStagingSha =
+    job?.publicationProtocol === 2 && job.evidence.verificationStatus === 'passed'
+      ? (job.evidence.verification?.dispatchRevision ?? job.stagingCommitSha)
+      : job?.stagingCommitSha;
+  const stagingChanged = Boolean(verifiedStagingSha && currentStagingSha !== verifiedStagingSha);
 
-  if (!revisionChanged && job && (job.status === 'queued' || job.status === 'running'))
+  const captured = job?.publicationProtocol === 2;
+  if (captured && job.status === 'queued' && job.dispatch?.needsAttention)
+    return state(
+      'paused',
+      2,
+      'Publication needs attention',
+      job.dispatch.reserved === false
+        ? 'Automatic dispatch retries stopped. Your captured version is saved. Retry after the recorded wait, or cancel this queued publication.'
+        : 'Automatic dispatch retries stopped. Your captured version is saved. Check status to reconcile its native execution.',
+      { canRefresh: true },
+    );
+  if (
+    (!revisionChanged || captured) &&
+    job &&
+    (job.status === 'queued' || job.status === 'running')
+  ) {
+    if (captured && input.monitoringPaused)
+      return state(
+        'paused',
+        2,
+        'Automatic monitoring paused',
+        'Your captured publication continues in the cloud. Check status to read its latest progress.',
+        { canRefresh: true },
+      );
     return state(
       'publishing',
       2,
-      'Publishing to protected Staging',
-      'The exact candidate is being created. This workflow will continue automatically.',
+      'Publishing to public Staging',
+      captured
+        ? revisionChanged
+          ? 'The captured version continues in the cloud. Your newer saved edits are separate from this publication.'
+          : 'The captured version continues in the cloud, even after you close Builder.'
+        : 'The exact candidate is being created. This workflow will continue automatically.',
       { canRefresh: true, shouldPoll: true },
     );
-
-  const completedCurrentJob = !revisionChanged && !stagingChanged && job?.status === 'succeeded';
+  }
+  const capturedReview = captured && approval?.publishJobId !== job?.id;
+  const completedCurrentJob =
+    (!revisionChanged || capturedReview) && !stagingChanged && job?.status === 'succeeded';
   const preflightPassed =
     preflight.state === 'passed' &&
     preflight.revisionId === input.revisionId &&
@@ -159,7 +292,7 @@ export function deriveStagingWorkflow(input: {
       { canRefresh: true, shouldPoll: true },
     );
 
-  if (!job || revisionChanged)
+  if (!job || (revisionChanged && !capturedReview))
     return state(
       'ready',
       2,
@@ -187,6 +320,18 @@ export function deriveStagingWorkflow(input: {
     );
 
   const verification = job.evidence.verificationStatus;
+  if (
+    captured &&
+    verification === 'passed' &&
+    (!job.workflowRevision || !job.evidence.artifactDigest)
+  )
+    return state(
+      'failed',
+      3,
+      'Staging evidence is incomplete',
+      'The captured build identity is missing. Acceptance stays locked until this publication is reconciled.',
+      { canRefresh: true },
+    );
   if (verification === 'failed')
     return state(
       'failed',
@@ -209,7 +354,9 @@ export function deriveStagingWorkflow(input: {
       'verifying',
       3,
       'Verifying the exact Staging candidate',
-      'Build, deployment, live routes, accessibility, responsive behavior, and security checks are running.',
+      captured
+        ? 'The cloud build, deployment identity, and live file checks are running.'
+        : 'Build, deployment, live routes, accessibility, responsive behavior, and security checks are running.',
       { canRefresh: true, shouldPoll: true },
     );
   }
@@ -219,7 +366,7 @@ export function deriveStagingWorkflow(input: {
       'accepted',
       5,
       'Official Staging candidate accepted',
-      'This exact revision is accepted on Staging. The public website has not changed.',
+      'This exact revision is accepted on Staging. Production has its own publication status.',
       { canRefresh: true },
     );
 
@@ -227,7 +374,7 @@ export function deriveStagingWorkflow(input: {
     'review-ready',
     4,
     'Staging is ready for review',
-    'All mandatory evidence passed. Review the protected site, then deliberately accept this exact revision.',
+    'All mandatory evidence passed. Review the public Staging site, then deliberately accept this exact revision.',
     { canRefresh: true, canAccept: true },
   );
 }

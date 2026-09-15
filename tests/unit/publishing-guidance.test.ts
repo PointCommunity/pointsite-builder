@@ -50,8 +50,8 @@ describe('non-technical publishing guidance', () => {
     const guidance = getPublishingNextStep(lifecycle('accepted', 5), 'administrator', 76);
     expect(guidance.primaryAction).toBeNull();
     expect(guidance.title).toBe('Your Staging work is complete');
-    expect(guidance.guidance).toMatch(/No Production action is available/i);
-    expect(guidance.effect).toMatch(/Production is unchanged/i);
+    expect(guidance.guidance).toMatch(/Check the Production section below/i);
+    expect(guidance.effect).toMatch(/Production has its own publication status/i);
   });
 
   it.each([
@@ -86,6 +86,11 @@ describe('non-technical publishing guidance', () => {
       /draft is safe/i,
     ],
     ['INTERNAL_ERROR', 'The publishing service needs attention', /support reference/i],
+    [
+      'CANDIDATE_MEDIA_TOO_LARGE',
+      'Page images exceed the publishing limit',
+      /20 MiB.*reduce image sizes/i,
+    ],
     ['REQUEST_FAILED', 'Builder could not complete that action', /try the same action once/i],
   ])('maps %s to a plain-language recovery', (code, title, guidance) => {
     const recovery = getActionFailureGuidance(code);

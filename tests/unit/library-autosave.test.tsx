@@ -112,6 +112,7 @@ it('adopts the committed draft and uses its checksum in subsequent saves', async
     expect.anything(),
     expect.any(String),
     'token',
+    result.draft.latestRevisionId,
   );
 });
 
@@ -216,7 +217,7 @@ it('rejects overlapping mutations and preserves the draft on server failures', a
     );
     await Promise.resolve();
   });
-  await expect(editor.runLibraryMutation(vi.fn())).rejects.toThrow('current Library change');
+  await expect(editor.runLibraryMutation(vi.fn())).rejects.toThrow('current draft change');
   const rejection = expect(pending).rejects.toThrow('Server unavailable');
   await act(async () => {
     fail(new Error('Server unavailable'));
@@ -224,4 +225,87 @@ it('rejects overlapping mutations and preserves the draft on server failures', a
   });
   expect(editor.document).toEqual(draft.document);
   expect(editor.draft.revision.checksum).toBe('before');
+});
+
+it('restores through current checkout proof and refuses to replace existing pending work', async () => {
+  const { result } = setup();
+  const restore = vi.spyOn(api, 'restoreRevision').mockResolvedValue(result.draft);
+  await act(async () => {
+    await editor.restoreRevision('earlier');
+  });
+  expect(restore).toHaveBeenCalledWith(
+    expect.objectContaining({
+      draftId: 'draft',
+      expectedRevisionId: 'revision',
+      expectedChecksum: 'before',
+      checkoutToken: 'token',
+    }),
+    'earlier',
+  );
+  expect(editor.document).toEqual(result.draft.document);
+  act(() => {
+    const next = structuredClone(editor.document);
+    next.site.mission = 'Pending after restore';
+    editor.stageDocument(next);
+  });
+  await expect(editor.restoreRevision('earlier')).rejects.toThrow('pending edits are preserved');
+  expect(restore).toHaveBeenCalledOnce();
+  expect(editor.document.site.mission).toBe('Pending after restore');
+});
+
+it('preserves edits completed while a History restore is in flight', async () => {
+  const { result } = setup();
+  let finish!: (draft: DraftRecord) => void;
+  vi.spyOn(api, 'restoreRevision').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = editor.restoreRevision('earlier');
+    await Promise.resolve();
+  });
+  const rejection = expect(pending).rejects.toThrow('newer local edits were preserved');
+  act(() => {
+    editor.updateDocument(
+      (document) => ({ ...document, site: { ...document.site, mission: 'Keep this later edit' } }),
+      { category: 'control-change', context: 'site-settings' },
+    );
+  });
+  await act(async () => {
+    finish(result.draft);
+    await rejection;
+  });
+  expect(editor.document.site.mission).toBe('Keep this later edit');
+  expect(editor.autosave.pendingCount).toBe(1);
+  expect(editor.draft.revision.checksum).toBe('before');
+});
+
+it('sends metadata proof without replacing pending document edits', async () => {
+  const { draft } = setup();
+  const rename = vi.spyOn(api, 'renameDraft').mockResolvedValue({ ...draft, name: 'Renamed' });
+  const label = vi
+    .spyOn(api, 'labelRevision')
+    .mockResolvedValue({ ...draft.revision, label: 'Named' });
+  act(() => {
+    const next = structuredClone(editor.document);
+    next.site.mission = 'Keep pending';
+    editor.stageDocument(next);
+  });
+  await act(async () => {
+    await editor.renameDraft('Renamed');
+    await editor.labelRevision('revision', 'Named');
+  });
+  const proof: unknown = expect.objectContaining({
+    draftId: 'draft',
+    expectedRevisionId: 'revision',
+    expectedChecksum: 'before',
+    checkoutToken: 'token',
+  });
+  expect(rename).toHaveBeenCalledWith(proof, 'Renamed');
+  expect(label).toHaveBeenCalledWith(proof, 'revision', 'Named');
+  expect(editor.document.site.mission).toBe('Keep pending');
+  expect(editor.draft.name).toBe('Renamed');
 });

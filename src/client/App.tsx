@@ -3,6 +3,7 @@ import type {
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRecord,
+  DraftSummary,
 } from '../server/repositories/contracts';
 import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
@@ -14,6 +15,8 @@ import {
   saveFeedbackWorkspace,
 } from './feedback/workspace';
 import type { EditorPanel } from '../server/repositories/contracts';
+import type { LibraryMutationContext } from '../shared/library';
+import { PendingJournal } from './editor/pending-journal';
 
 export class BuilderErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -55,12 +58,15 @@ export function App() {
     return saved === 'light' ? 'light' : 'dark';
   });
   const [actor, setActor] = useState<ActorResponse | null>(null);
-  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [selected, setSelected] = useState<DraftRecord | null>(null);
   const [checkout, setCheckout] = useState<DraftCheckout | null>(null);
   const [checkouts, setCheckouts] = useState<DraftCheckoutAvailability[]>([]);
   const [checkoutConflict, setCheckoutConflict] = useState(false);
   const checkoutTrigger = useRef<HTMLButtonElement | null>(null);
+  const logoutForm = useRef<HTMLFormElement | null>(null);
+  const [pendingSignout, setPendingSignout] = useState(false);
+  const [signoutError, setSignoutError] = useState('');
   const [clientId] = useState(() => {
     const key = 'pointsite-builder:editing-client:v1';
     const existing = globalThis.sessionStorage?.getItem(key);
@@ -72,6 +78,28 @@ export function App() {
   const [state, setState] = useState<'loading' | 'ready' | 'signed-out' | 'denied' | 'error'>(
     'loading',
   );
+  const runLifecycle = async <T,>(
+    draft: DraftSummary,
+    operation: (context: LibraryMutationContext) => Promise<T>,
+  ): Promise<T> => {
+    if (draft.status === 'deleted') throw new Error('Refresh the draft list before continuing.');
+    const acquired = await api.acquireCheckout(draft.id, clientId, {
+      expectedStatus: draft.status,
+    });
+    try {
+      return await operation({
+        draftId: draft.id,
+        expectedRevisionId: draft.latestRevisionId,
+        expectedChecksum: draft.revision.checksum,
+        checkoutToken: acquired.token,
+        idempotencyKey: crypto.randomUUID(),
+      });
+    } finally {
+      // Successful lifecycle mutations clear the lease atomically. A failed release
+      // must not replace the mutation result; any remaining lease expires normally.
+      await api.releaseCheckout(draft.id, clientId, acquired.token).catch(() => undefined);
+    }
+  };
   const failureState = (error: unknown) => {
     if (error instanceof ClientApiError && error.status === 401) return 'signed-out' as const;
     if (error instanceof ClientApiError && error.status === 403) return 'denied' as const;
@@ -90,7 +118,7 @@ export function App() {
   useEffect(() => {
     let active = true;
     void Promise.all([api.me(), api.listDrafts()])
-      .then(([identity, items]) => {
+      .then(async ([identity, items]) => {
         if (!active) return;
         setActor(identity);
         setDrafts(items);
@@ -103,7 +131,8 @@ export function App() {
             returningDraft &&
             (identity.role === 'viewer' || returningDraft.status !== 'active')
           ) {
-            setSelected(returningDraft);
+            const current = await api.getDraft(returningDraft.id);
+            if (active) setSelected(current);
             return;
           }
         }
@@ -114,7 +143,7 @@ export function App() {
               if (!active || !owned) return;
               const draft = items.find((item) => item.id === owned.draftId);
               if (!draft) return;
-              const acquired = await api.acquireCheckout(draft.id, clientId);
+              const acquired = await api.acquireCheckout(draft.id, clientId, { resumeOnly: true });
               if (!active) return;
               setCheckout(acquired);
               setSelected(await api.getDraft(draft.id));
@@ -248,7 +277,26 @@ export function App() {
               return Promise.resolve();
             }}
           />
-          <form action="/auth/logout" method="post">
+          <form
+            ref={logoutForm}
+            action="/auth/logout"
+            method="post"
+            onSubmit={(event) => {
+              if (typeof indexedDB === 'undefined') return;
+              event.preventDefault();
+              void PendingJournal.prepareSignout(actor.email)
+                .then((ready) => {
+                  if (ready) logoutForm.current?.submit();
+                  else setPendingSignout(true);
+                })
+                .catch(() => {
+                  setSignoutError(
+                    'Browser recovery could not be checked. Retry before signing out.',
+                  );
+                  setPendingSignout(true);
+                });
+            }}
+          >
             <button className="button" type="submit">
               Sign out
             </button>
@@ -256,6 +304,43 @@ export function App() {
         </div>
       </header>
       <main id="main-content">
+        {pendingSignout ? (
+          <section
+            className="autosave-recovery"
+            role="alert"
+            aria-label="Pending changes before sign out"
+          >
+            <p>
+              {signoutError ||
+                'Pending changes remain on this browser. Return to the draft to save them, or discard your pending changes before signing out.'}
+            </p>
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                setPendingSignout(false);
+                setSignoutError('');
+              }}
+            >
+              Keep working
+            </button>
+            <button
+              className="button button--danger"
+              type="button"
+              onClick={() => {
+                void PendingJournal.discardPending(actor.email)
+                  .then(() => logoutForm.current?.submit())
+                  .catch(() =>
+                    setSignoutError(
+                      'Sign-out could not finish. Retry after saving or discarding pending changes.',
+                    ),
+                  );
+              }}
+            >
+              Discard my pending changes and sign out
+            </button>
+          </section>
+        ) : null}
         <DraftList
           drafts={drafts}
           role={actor.role}
@@ -263,7 +348,7 @@ export function App() {
           onOpen={async (draft, trigger) => {
             checkoutTrigger.current = trigger ?? null;
             if (actor.role === 'viewer' || draft.status !== 'active') {
-              setSelected(draft);
+              setSelected(await api.getDraft(draft.id));
               return;
             }
             try {
@@ -289,19 +374,23 @@ export function App() {
             setSelected(draft);
           }}
           onArchive={async (draft) => {
-            const updated = await api.setDraftStatus(draft.id, 'archive');
+            const updated = await runLifecycle(draft, (context) =>
+              api.setDraftStatus(context, 'archive'),
+            );
             setDrafts((current) =>
               current.map((item) => (item.id === updated.id ? updated : item)),
             );
           }}
           onUnarchive={async (draft) => {
-            const updated = await api.setDraftStatus(draft.id, 'recover');
+            const updated = await runLifecycle(draft, (context) =>
+              api.setDraftStatus(context, 'recover'),
+            );
             setDrafts((current) =>
               current.map((item) => (item.id === updated.id ? updated : item)),
             );
           }}
           onDelete={async (draft) => {
-            await api.deleteDraft(draft.id);
+            await runLifecycle(draft, api.deleteDraft);
             setDrafts((current) => current.filter((item) => item.id !== draft.id));
           }}
         />

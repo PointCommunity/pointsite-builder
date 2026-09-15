@@ -1,6 +1,7 @@
 import type { AuditEventRecord, Role } from '../repositories/contracts';
 import { ConflictError } from '../repositories/memory';
 import { unboundFetch } from '../github/app-auth';
+import { readProviderUsage, type ProviderUsage } from './provider-usage';
 
 export interface AdminRoleRecord {
   githubLogin: string;
@@ -47,33 +48,34 @@ export class GitHubUserResolver implements GitHubAccountResolver {
   }
 }
 
-export interface CapacityMetric {
-  used: number;
-  limit: number;
-  percent: number;
-  warning: boolean;
-  unit: 'bytes' | 'operations';
-}
-
 export interface CapacityReport {
-  privateMedia: CapacityMetric;
-  revisionData: CapacityMetric;
-  writesToday: CapacityMetric;
+  nativeStorage?: NativeStorageReport;
+  storage: {
+    allocatedBytes: number | null;
+    privateMediaBytes: number;
+    revisionPayloadBytes: number;
+    receiptPayloadBytes: number;
+  };
+  activity: { auditEvents: number; periodStart: string; periodEnd: string };
+  providerUsage: ProviderUsage;
   measuredAt: string;
 }
 
-const metric = (used: number, limit: number, unit: CapacityMetric['unit']): CapacityMetric => ({
-  used,
-  limit,
-  percent: Math.min(100, Math.round((used / limit) * 10_000) / 100),
-  warning: used >= limit * 0.7,
-  unit,
-});
+export interface NativeStorageReport {
+  engine: 'sqlite';
+  offVolume: boolean;
+  backup: {
+    state: 'never' | 'running' | 'succeeded' | 'failed';
+    checkedAt: string | null;
+    lastSucceededAt: string | null;
+  };
+}
 
 export class D1AdminService {
   constructor(
     private readonly database: D1Database,
     private readonly identities: GitHubAccountResolver = new GitHubUserResolver(),
+    private readonly nativeStorage?: () => Promise<NativeStorageReport>,
   ) {}
 
   async listRoles(): Promise<AdminRoleRecord[]> {
@@ -199,24 +201,42 @@ export class D1AdminService {
   }
 
   async capacity(): Promise<CapacityReport> {
-    const [media, revisions, writes] = await Promise.all([
-      this.database
-        .prepare('SELECT COALESCE(SUM(byte_size), 0) AS used FROM media_assets')
-        .first<{ used: number }>(),
-      this.database
-        .prepare('SELECT COALESCE(SUM(length(document_json)), 0) AS used FROM revisions')
-        .first<{ used: number }>(),
-      this.database
-        .prepare(
-          "SELECT COUNT(*) AS used FROM audit_events WHERE occurred_at >= datetime('now', 'start of day')",
-        )
-        .first<{ used: number }>(),
-    ]);
+    const measuredAt = new Date().toISOString();
+    const periodStart = `${measuredAt.slice(0, 10)}T00:00:00.000Z`;
+    const result = await this.database
+      .prepare(
+        `SELECT
+      (SELECT COALESCE(SUM(byte_size),0) FROM draft_asset_versions)
+        +(SELECT COALESCE(SUM(byte_size),0) FROM media_object_chunks) AS privateMediaBytes,
+      (SELECT COALESCE(SUM(length(CAST(document_json AS BLOB))),0) FROM revisions)
+        +(SELECT COALESCE(SUM(length(payload)),0) FROM revision_payloads) AS revisionPayloadBytes,
+      (SELECT COALESCE(SUM(length(CAST(response_json AS BLOB))),0) FROM idempotency_keys) AS receiptPayloadBytes,
+      (SELECT COUNT(*) FROM audit_events WHERE occurred_at>=? AND occurred_at<=?) AS auditEvents`,
+      )
+      .bind(periodStart, measuredAt)
+      .all<{
+        privateMediaBytes: number;
+        revisionPayloadBytes: number;
+        receiptPayloadBytes: number;
+        auditEvents: number;
+      }>();
+    const counts = result.results[0];
     return {
-      privateMedia: metric(media?.used ?? 0, 250 * 1024 * 1024, 'bytes'),
-      revisionData: metric(revisions?.used ?? 0, 500 * 1024 * 1024, 'bytes'),
-      writesToday: metric(writes?.used ?? 0, 100_000, 'operations'),
-      measuredAt: new Date().toISOString(),
+      storage: {
+        allocatedBytes:
+          Number.isFinite(result.meta.size_after) && result.meta.size_after > 0
+            ? result.meta.size_after
+            : null,
+        privateMediaBytes: counts.privateMediaBytes,
+        revisionPayloadBytes: counts.revisionPayloadBytes,
+        receiptPayloadBytes: counts.receiptPayloadBytes,
+      },
+      activity: { auditEvents: counts.auditEvents, periodStart, periodEnd: measuredAt },
+      providerUsage: this.nativeStorage
+        ? { state: 'unknown', reason: 'Local SQLite has no provider billing counters.' }
+        : await readProviderUsage(this.database),
+      ...(this.nativeStorage ? { nativeStorage: await this.nativeStorage() } : {}),
+      measuredAt,
     };
   }
 }

@@ -1,14 +1,23 @@
 /* eslint-disable @typescript-eslint/require-await -- async parity with the D1 repository is intentional */
 
-import { checksumDocument } from '../../site-kit/canonicalize';
+import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
 import { checkoutExpiry } from '../../shared/draft-checkout';
+import { createRequestHash, saveRequestHash } from './request-hash';
+import {
+  REVISION_PAGE_SIZE,
+  type RevisionListOptions,
+  type RevisionSummary,
+  type DraftSummary,
+} from './contracts';
 import type {
   AuditEventRecord,
+  AcquireCheckoutCommand,
   CheckoutCommand,
   CreateDraftInput,
   DeletedDraftReceipt,
   DraftRecord,
+  DraftMutationProof,
   DraftCheckout,
   DraftCheckoutAvailability,
   DraftRepository,
@@ -41,6 +50,7 @@ export class InMemoryRepository implements DraftRepository {
   readonly #drafts = new Map<string, DraftRecord>();
   readonly #revisions = new Map<string, RevisionRecord[]>();
   readonly #idempotency = new Map<string, DraftRecord | null>();
+  readonly #requestHashes = new Map<string, string>();
   readonly #audit: AuditEventRecord[] = [];
   readonly #checkouts = new Map<
     string,
@@ -56,7 +66,20 @@ export class InMemoryRepository implements DraftRepository {
     return [...this.#drafts.values()]
       .filter((draft) => (status ? draft.status === status : draft.status !== 'deleted'))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 100)
       .map(clone);
+  }
+
+  async listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]> {
+    return [...this.#drafts.values()]
+      .filter((draft) => (status ? draft.status === status : draft.status !== 'deleted'))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 100)
+      .map(({ document, revision: { document: revisionDocument, ...revision }, ...draft }) => {
+        void document;
+        void revisionDocument;
+        return clone({ ...draft, revision });
+      });
   }
 
   async getDraft(id: string): Promise<DraftRecord> {
@@ -75,20 +98,28 @@ export class InMemoryRepository implements DraftRepository {
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
     const operationKey = `draft.create:${input.actor}:${input.idempotencyKey}`;
+    const document = migrateDocument(clone(input.document)).document;
+    const [requestHash, checksum] = await Promise.all([
+      createRequestHash(input),
+      checksumDocument(document),
+    ]);
     const prior = this.#idempotency.get(operationKey);
     if (prior === null)
       throw new ConflictError('This request belongs to a permanently deleted draft');
-    if (prior) return clone(prior);
+    if (prior) {
+      if (this.#requestHashes.get(operationKey) !== requestHash)
+        throw new ConflictError('This request identity was already used with different input');
+      return clone(prior);
+    }
 
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
-    const document = migrateDocument(clone(input.document)).document;
     const revision: RevisionRecord = {
       id: crypto.randomUUID(),
       draftId: id,
       sequence: 1,
       parentRevisionId: null,
-      checksum: await checksumDocument(document),
+      checksum,
       document,
       label: 'Initial PointSite import',
       schemaVersion: document.schemaVersion,
@@ -114,6 +145,7 @@ export class InMemoryRepository implements DraftRepository {
     this.#drafts.set(id, clone(draft));
     this.#revisions.set(id, [clone(revision)]);
     this.#idempotency.set(operationKey, clone(draft));
+    this.#requestHashes.set(operationKey, requestHash);
     this.#recordAudit(input.actor, 'draft.create', id, input.requestId, {
       revisionId: revision.id,
       sequence: revision.sequence,
@@ -122,26 +154,35 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async saveDraft(input: SaveDraftInput): Promise<DraftRecord> {
-    if (input.checkoutToken)
-      await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
+    const document = migrateDocument(clone(input.document)).document;
+    const [requestHash, checksum, checkoutHash] = await Promise.all([
+      saveRequestHash(input),
+      checksumDocument(document),
+      hashToken(input.checkoutToken),
+    ]);
     const current = this.#drafts.get(input.draftId);
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
+    this.#checkedCheckout(input.draftId, input.actor, checkoutHash);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
-    if (input.expectedRevisionId && input.expectedRevisionId !== current.revision.id)
-      throw new ConflictError('The draft has a newer revision');
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
     if (prior === null) throw new NotFoundError(`Draft ${input.draftId} was not found`);
-    if (prior) return clone(prior);
+    if (prior) {
+      if (this.#requestHashes.get(operationKey) !== requestHash)
+        throw new ConflictError('This request identity was already used with different input');
+      return clone(prior);
+    }
+
+    if (input.expectedRevisionId !== current.revision.id)
+      throw new ConflictError('The draft has a newer revision');
 
     if (current.revision.checksum !== input.expectedChecksum) {
       throw new ConflictError('The draft has a newer revision');
     }
 
-    const document = migrateDocument(clone(input.document)).document;
-    const checksum = await checksumDocument(document);
     if (checksum === current.revision.checksum) {
       this.#idempotency.set(operationKey, clone(current));
+      this.#requestHashes.set(operationKey, requestHash);
       return clone(current);
     }
 
@@ -172,15 +213,8 @@ export class InMemoryRepository implements DraftRepository {
     revisions.push(clone(revision));
     this.#revisions.set(input.draftId, revisions);
     this.#drafts.set(input.draftId, clone(updated));
-    if (input.checkoutToken) {
-      const checkout = this.#checkouts.get(input.draftId)!;
-      this.#checkouts.set(input.draftId, {
-        ...checkout,
-        lastActivityAt: now,
-        expiresAt: checkoutExpiry(now),
-      });
-    }
     this.#idempotency.set(operationKey, clone(updated));
+    this.#requestHashes.set(operationKey, requestHash);
     this.#recordAudit(input.actor, 'draft.save', input.draftId, input.requestId, {
       sequence: revision.sequence,
       actionCategory: input.action.category,
@@ -189,9 +223,31 @@ export class InMemoryRepository implements DraftRepository {
     return clone(updated);
   }
 
-  async listRevisions(draftId: string): Promise<RevisionRecord[]> {
+  async listRevisions(
+    draftId: string,
+    options: RevisionListOptions = {},
+  ): Promise<RevisionSummary[]> {
     if (!this.#drafts.has(draftId)) throw new NotFoundError(`Draft ${draftId} was not found`);
-    return clone([...(this.#revisions.get(draftId) ?? [])].reverse());
+    const query = options.query?.trim().toLowerCase() ?? '';
+    return clone(
+      [...(this.#revisions.get(draftId) ?? [])]
+        .reverse()
+        .filter(
+          (revision) =>
+            revision.sequence < (options.beforeSequence ?? Number.MAX_SAFE_INTEGER) &&
+            (options.filter !== 'named' || revision.label !== null) &&
+            (options.filter !== 'current' ||
+              revision.id === this.#drafts.get(draftId)!.latestRevisionId) &&
+            `${revision.label ?? ''} ${revision.sequence} ${revision.createdBy}`
+              .toLowerCase()
+              .includes(query),
+        )
+        .slice(0, REVISION_PAGE_SIZE + 1)
+        .map(({ document, ...summary }) => {
+          void document;
+          return summary;
+        }),
+    );
   }
 
   async restoreRevision(input: RestoreRevisionInput): Promise<DraftRecord> {
@@ -199,8 +255,7 @@ export class InMemoryRepository implements DraftRepository {
     const source = revisions?.find((revision) => revision.id === input.revisionId);
     if (!source) throw new NotFoundError(`Revision ${input.revisionId} was not found`);
     return this.saveDraft({
-      draftId: input.draftId,
-      expectedChecksum: input.expectedChecksum,
+      ...input,
       document: source.document,
       actor: input.actor,
       idempotencyKey: `restore:${input.idempotencyKey.slice(0, 92)}`,
@@ -216,9 +271,15 @@ export class InMemoryRepository implements DraftRepository {
     label: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<RevisionRecord> {
-    if ((await this.getDraft(draftId)).status !== 'active')
-      throw new ConflictError('Only active drafts can be edited');
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
+    if (current.status !== 'active') throw new ConflictError('Only active drafts can be edited');
     const revisions = this.#revisions.get(draftId);
     const index = revisions?.findIndex((revision) => revision.id === revisionId) ?? -1;
     if (!revisions || index < 0) throw new NotFoundError(`Revision ${revisionId} was not found`);
@@ -239,9 +300,14 @@ export class InMemoryRepository implements DraftRepository {
     name: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = this.#drafts.get(draftId);
-    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be renamed');
     const updated = { ...current, name, updatedAt: new Date().toISOString() };
     this.#drafts.set(draftId, clone(updated));
@@ -254,9 +320,14 @@ export class InMemoryRepository implements DraftRepository {
     status: Exclude<DraftStatus, 'deleted'>,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DraftRecord> {
-    const current = this.#drafts.get(draftId);
-    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status === status) return clone(current);
     const allowed =
       (current.status === 'active' && status === 'archived') ||
@@ -271,7 +342,7 @@ export class InMemoryRepository implements DraftRepository {
       deletedAt: null,
     };
     this.#drafts.set(draftId, clone(updated));
-    if (status === 'archived') this.#clearEditorState(draftId);
+    this.#clearEditorState(draftId);
     this.#recordAudit(actor, `draft.${status}`, draftId, requestId, {
       previousStatus: current.status,
     });
@@ -282,8 +353,14 @@ export class InMemoryRepository implements DraftRepository {
     draftId: string,
     actor: string,
     requestId: string,
+    proof: DraftMutationProof,
   ): Promise<DeletedDraftReceipt> {
-    const current = await this.getDraft(draftId);
+    const current = this.#metadataCurrent(
+      draftId,
+      actor,
+      proof,
+      await hashToken(proof.checkoutToken),
+    );
     if (current.status !== 'archived')
       throw new ConflictError('Only archived drafts can be deleted');
     const revisionIds = new Set(
@@ -306,6 +383,23 @@ export class InMemoryRepository implements DraftRepository {
     }
     this.#recordAudit(actor, 'draft.deleted', draftId, requestId, {});
     return { id: draftId, status: 'deleted', deletedAt: new Date().toISOString() };
+  }
+
+  #metadataCurrent(
+    draftId: string,
+    actor: string,
+    proof: DraftMutationProof,
+    tokenHash: string,
+  ): DraftRecord {
+    const current = this.#drafts.get(draftId);
+    if (!current) throw new NotFoundError(`Draft ${draftId} was not found`);
+    if (
+      current.latestRevisionId !== proof.expectedRevisionId ||
+      current.revision.checksum !== proof.expectedChecksum
+    )
+      throw new ConflictError('The draft has a newer revision');
+    this.#checkedCheckout(draftId, actor, tokenHash, undefined, current.status);
+    return current;
   }
 
   #clearEditorState(draftId: string): void {
@@ -336,12 +430,24 @@ export class InMemoryRepository implements DraftRepository {
       });
   }
 
-  async acquireCheckout(input: Omit<CheckoutCommand, 'token'>): Promise<DraftCheckout> {
+  async acquireCheckout(input: AcquireCheckoutCommand): Promise<DraftCheckout> {
+    const token = crypto.randomUUID();
+    const tokenHash = await hashToken(token);
     const draft = this.#drafts.get(input.draftId);
     if (!draft) throw new NotFoundError(`Draft ${input.draftId} was not found`);
-    if (draft.status !== 'active') throw new ConflictError('Only active drafts can be checked out');
+    const expectedStatus = input.expectedStatus ?? 'active';
+    if (draft.status !== expectedStatus || (input.resumeOnly && expectedStatus !== 'active'))
+      throw new ConflictError('The draft status changed; refresh before continuing');
     const now = input.now ?? new Date().toISOString();
     const current = this.#checkouts.get(input.draftId);
+    if (
+      input.resumeOnly &&
+      (!current ||
+        current.expiresAt <= now ||
+        current.actor.toLowerCase() !== input.actor.toLowerCase() ||
+        current.clientId !== input.clientId)
+    )
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     if (
       current &&
       current.expiresAt > now &&
@@ -358,8 +464,6 @@ export class InMemoryRepository implements DraftRepository {
         input.requestId,
         {},
       );
-    const token = crypto.randomUUID();
-    const tokenHash = await hashToken(token);
     const event =
       !current || current.expiresAt <= now
         ? 'acquired'
@@ -373,8 +477,8 @@ export class InMemoryRepository implements DraftRepository {
       clientId: input.clientId,
       tokenHash,
       acquiredAt,
-      lastActivityAt: now,
-      expiresAt: checkoutExpiry(now),
+      lastActivityAt: input.resumeOnly ? current!.lastActivityAt : now,
+      expiresAt: input.resumeOnly ? current!.expiresAt : checkoutExpiry(now),
     };
     this.#checkouts.set(input.draftId, record);
     this.#recordAudit(input.actor, `draft.checkout.${event}`, input.draftId, input.requestId, {});
@@ -382,42 +486,77 @@ export class InMemoryRepository implements DraftRepository {
   }
 
   async touchCheckout(input: CheckoutCommand, viewState?: EditorViewState): Promise<DraftCheckout> {
-    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
-    const current = this.#checkouts.get(input.draftId)!;
+    const current = this.#checkedCheckout(
+      input.draftId,
+      input.actor,
+      await hashToken(input.token),
+      input.now,
+    );
+    if (current.clientId !== input.clientId)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     const now = input.now ?? new Date().toISOString();
-    const updated = { ...current, lastActivityAt: now, expiresAt: checkoutExpiry(now) };
+    const updated =
+      input.activity === false
+        ? current
+        : { ...current, lastActivityAt: now, expiresAt: checkoutExpiry(now) };
     this.#checkouts.set(input.draftId, updated);
-    if (viewState) this.#viewStates.set(input.actor, clone({ ...viewState, updatedAt: now }));
+    const previous = this.#viewStates.get(input.actor);
+    if (
+      viewState &&
+      (!previous ||
+        canonicalize({ ...previous, updatedAt: '' }) !==
+          canonicalize({ ...viewState, draftId: input.draftId, updatedAt: '' }))
+    )
+      this.#viewStates.set(
+        input.actor,
+        clone({ ...viewState, draftId: input.draftId, updatedAt: now }),
+      );
     return {
       ...updated,
       token: input.token,
       event: 'resumed',
-      viewState: clone(viewState ?? this.#viewStates.get(input.actor) ?? null),
+      viewState: clone(this.#viewStates.get(input.actor) ?? null),
     };
   }
 
   async releaseCheckout(input: CheckoutCommand): Promise<void> {
+    const tokenHash = await hashToken(input.token);
     const current = this.#checkouts.get(input.draftId);
     if (!current) return;
-    await this.assertCheckout(input.draftId, input.actor, input.token, input.now);
+    this.#checkedCheckout(
+      input.draftId,
+      input.actor,
+      tokenHash,
+      input.now,
+      this.#drafts.get(input.draftId)?.status,
+    );
+    if (current.clientId !== input.clientId)
+      throw new ConflictError('This editing client no longer owns the draft checkout');
     this.#checkouts.delete(input.draftId);
     this.#recordAudit(input.actor, 'draft.checkout.released', input.draftId, input.requestId, {});
   }
 
-  async assertCheckout(
+  async assertCheckout(draftId: string, actor: string, token: string, now?: string): Promise<void> {
+    this.#checkedCheckout(draftId, actor, await hashToken(token), now);
+  }
+
+  #checkedCheckout(
     draftId: string,
     actor: string,
-    token: string,
+    tokenHash: string,
     now = new Date().toISOString(),
-  ): Promise<void> {
+    expectedStatus: DraftStatus = 'active',
+  ) {
     const current = this.#checkouts.get(draftId);
-    if (!current || current.expiresAt <= now || this.#drafts.get(draftId)?.status !== 'active')
-      throw new ConflictError('The draft checkout expired');
     if (
-      current.actor.toLowerCase() !== actor.toLowerCase() ||
-      current.tokenHash !== (await hashToken(token))
+      !current ||
+      current.expiresAt <= now ||
+      this.#drafts.get(draftId)?.status !== expectedStatus
     )
+      throw new ConflictError('The draft checkout expired');
+    if (current.actor.toLowerCase() !== actor.toLowerCase() || current.tokenHash !== tokenHash)
       throw new ConflictError('This editing client no longer owns the draft checkout');
+    return current;
   }
 
   async ownedCheckout(

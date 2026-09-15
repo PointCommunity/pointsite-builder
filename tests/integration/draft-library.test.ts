@@ -1,10 +1,15 @@
 // @vitest-environment node
+
+import { acquireDraftProof } from '../fixtures/draft-proof';
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { D1DraftAssets } from '../../src/server/media/draft-assets';
 import { D1LibraryService } from '../../src/server/media/library';
+import { D1LibraryProjection } from '../../src/server/media/library-projection';
+import { D1DeletionReceipts } from '../../src/server/maintenance/deletion-receipts';
+import { quarantineWorkspace } from '../../src/server/maintenance/recovery-control';
 import { createApp } from '../../src/server';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 
@@ -37,7 +42,7 @@ beforeEach(async () => {
     compatibilityDate: '2026-09-05',
     modules: true,
     script: 'export default {fetch(){return new Response("ok")}}',
-    d1Databases: { DB: crypto.randomUUID() },
+    d1Databases: { DB: crypto.randomUUID(), CONTROL: crypto.randomUUID() },
   });
   database = await miniflare.getD1Database('DB');
   for (const name of (await readdir('migrations')).filter((name) => name.endsWith('.sql')).sort())
@@ -47,6 +52,12 @@ beforeEach(async () => {
         .replace(/\s+/g, ' ')
         .trim(),
     );
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES (?,'editor',1,'fixture','fixture','fixture')",
+    )
+    .bind(actor)
+    .run();
   repository = new D1DraftRepository(database);
   const assets = new D1DraftAssets(database, {
     read: vi.fn().mockRejectedValue(new Error('Unexpected legacy read')),
@@ -70,6 +81,173 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await miniflare.dispose();
+});
+
+it('records a content-free receipt before deleting archived Library bytes', async () => {
+  const control = await miniflare.getD1Database('CONTROL');
+  for (const name of (await readdir('recovery-migrations'))
+    .filter((name) => name.endsWith('.sql'))
+    .sort())
+    await control.exec(
+      (await readFile(`recovery-migrations/${name}`, 'utf8'))
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+  const assets = new D1DraftAssets(database, {
+    read: vi.fn().mockRejectedValue(new Error('Unexpected legacy read')),
+  });
+  const image = await assets.prepareImage(draft.id, png(), {
+    filename: 'private-unused.png',
+    contentType: 'image/png',
+    altText: 'Private deleted image',
+    actor,
+    now: new Date().toISOString(),
+  });
+  const item = {
+    id: crypto.randomUUID(),
+    mediaType: 'image',
+    sourceType: 'uploaded',
+    filename: 'private-unused.png',
+    sourcePath: image.sourcePath,
+    url: image.sourcePath,
+    displayName: 'Private unused image',
+    altText: 'Private deleted image',
+    tags: [],
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+    archivedAt: draft.updatedAt,
+    usageCount: 0,
+    deleteBlockers: [],
+  };
+  const restoredRows = [
+    ...image.statements,
+    database
+      .prepare(
+        'INSERT INTO draft_library_items(draft_id,item_id,item_json,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?)',
+      )
+      .bind(
+        draft.id,
+        item.id,
+        JSON.stringify(item),
+        draft.createdAt,
+        draft.updatedAt,
+        draft.updatedAt,
+      ),
+    database
+      .prepare('INSERT INTO draft_library_asset_versions(draft_id,item_id,asset_id) VALUES (?,?,?)')
+      .bind(draft.id, item.id, image.assetId),
+  ];
+  await database.batch(restoredRows);
+  const receipts = new D1DeletionReceipts(database, control);
+  library = new D1LibraryService(database, repository, assets, receipts);
+  const result = await library.mutate(context(), { action: 'delete', itemId: item.id });
+  expect(result.library.items.some((row) => row.id === item.id)).toBe(false);
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).toBeNull();
+  const receipt = await control
+    .prepare('SELECT id,target_json,state FROM deletion_receipts')
+    .first<{ id: string; target_json: string; state: string }>();
+  expect(receipt?.state).toBe('committed');
+  expect(JSON.parse(receipt!.target_json)).toEqual({
+    kind: 'library',
+    draftId: draft.id,
+    itemId: item.id,
+    assetIds: [image.assetId],
+  });
+  expect(receipt!.target_json).not.toContain('private-unused');
+  await database.batch(restoredRows);
+  const recoveryId = crypto.randomUUID();
+  await quarantineWorkspace(control, 1, recoveryId);
+  await receipts.replay(2, recoveryId, receipt!.id);
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).toBeNull();
+  expect((await library.list(draft.id)).items.some((row) => row.id === item.id)).toBe(false);
+  await database.batch(restoredRows);
+  await database
+    .prepare(
+      'INSERT INTO draft_library_history(draft_id,item_id,signature,created_at,updated_at) VALUES (?,?,?,?,?)',
+    )
+    .bind(draft.id, item.id, 'history', draft.createdAt, draft.updatedAt)
+    .run();
+  await control
+    .prepare("UPDATE workspace_recovery SET mode='active',recovery_id=NULL,epoch=3 WHERE id=1")
+    .run();
+  const olderRecovery = crypto.randomUUID();
+  await quarantineWorkspace(control, 3, olderRecovery);
+  await expect(receipts.replay(4, olderRecovery, receipt!.id)).rejects.toThrow();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM draft_asset_versions WHERE id=?')
+      .bind(image.assetId)
+      .first(),
+  ).not.toBeNull();
+  expect(
+    await database
+      .prepare('SELECT 1 FROM deletion_replays WHERE recovery_id=?')
+      .bind(olderRecovery)
+      .first(),
+  ).toBeNull();
+});
+
+it('reads Library without history scans or writes, rebuilds in bounded batches, and invalidates on retention', async () => {
+  let current = draft;
+  for (let index = 0; index < 20; index++) {
+    const document = structuredClone(current.document);
+    document.site.shortName = `Revision ${index}`;
+    if (index === 5) document.media[0].alt = 'Changed image description';
+    current = await repository.saveDraft({
+      ...context(current),
+      document,
+      action: { category: 'text-edit', context: 'site-settings' },
+    });
+  }
+  const before = await library.list(draft.id);
+  await expect(
+    database
+      .prepare('UPDATE revisions SET parent_revision_id=NULL WHERE id=?')
+      .bind(current.revision.id)
+      .run(),
+  ).rejects.toThrow('revision parent is immutable');
+  const queries = vi.spyOn(database, 'prepare');
+  await library.list(draft.id);
+  const sql = queries.mock.calls.flat().join(' ');
+  expect(sql).not.toMatch(/json_each|\bINSERT\b|\bUPDATE\b|\bDELETE\b|LAG\(/);
+  queries.mockRestore();
+  await database.batch([
+    database.prepare('DELETE FROM draft_library_history WHERE draft_id=?').bind(draft.id),
+    database.prepare('DELETE FROM draft_library_retained_paths WHERE draft_id=?').bind(draft.id),
+    database.prepare('DELETE FROM draft_library_projection WHERE draft_id=?').bind(draft.id),
+  ]);
+  await expect(library.list(draft.id)).rejects.toThrow('Library history is being prepared');
+  const projection = new D1LibraryProjection(database);
+  for (let step = 0; step < 3; step++) {
+    const result = await projection.backfill(draft.id);
+    expect(result.processed).toBeLessThanOrEqual(8);
+  }
+  expect(await library.list(draft.id)).toEqual(before);
+  expect((await projection.backfill(draft.id)).processed).toBe(0);
+  await database
+    .prepare(
+      "UPDATE idempotency_keys SET expires_at='2000-01-01T00:00:00.000Z' WHERE json_extract(response_json,'$.latestRevisionId') IN (SELECT id FROM revisions WHERE draft_id=? AND sequence=2)",
+    )
+    .bind(draft.id)
+    .run();
+  await database
+    .prepare('DELETE FROM revisions WHERE draft_id=? AND sequence=2')
+    .bind(draft.id)
+    .run();
+  await expect(library.list(draft.id)).rejects.toThrow('Library history is being prepared');
+  for (let step = 0; step < 3; step++) await projection.backfill(draft.id);
+  expect(await library.list(draft.id)).toEqual(before);
 });
 
 it('persists an upload exactly once, scopes its bytes, and rejects key reuse and duplicate files', async () => {
@@ -101,6 +279,41 @@ it('persists an upload exactly once, scopes its bytes, and rejects key reuse and
       .bind(draft.id)
       .first('count'),
   ).toBe(1);
+});
+
+it('backfills legacy media without linkedMedia and preserves extrema when revision clocks go backwards', async () => {
+  const document = { media: [{ ...draft.document.media[0], alt: 'Legacy edit' }] };
+  for (const [sequence, createdAt] of [
+    [2, '2020-01-01T00:00:00.000Z'],
+    [3, '2019-01-01T00:00:00.000Z'],
+  ] as const) {
+    await database
+      .prepare(
+        `INSERT INTO revisions(id,draft_id,sequence,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        draft.id,
+        sequence,
+        'a'.repeat(64),
+        JSON.stringify(document),
+        1,
+        '1.0.0',
+        actor,
+        createdAt,
+      )
+      .run();
+  }
+  expect((await new D1LibraryProjection(database).backfill(draft.id)).processed).toBe(2);
+  expect(
+    await database
+      .prepare(
+        'SELECT created_at,updated_at FROM draft_library_history WHERE draft_id=? AND item_id=?',
+      )
+      .bind(draft.id, document.media[0].id)
+      .first(),
+  ).toEqual({ created_at: '2019-01-01T00:00:00.000Z', updated_at: draft.createdAt });
 });
 
 it('archives unused items, protects retained history, and restores the same identity', async () => {
@@ -243,8 +456,19 @@ it('purges archived Library rows, operation records and all image versions with 
     action: 'upload',
     image: { filename: 'private.png', contentType: 'image/png', bytes: png(), altText: 'Private' },
   });
-  await repository.setDraftStatus(added.draft.id, 'archived', actor, 'archive');
-  await repository.purgeDraft(added.draft.id, actor, 'purge');
+  await repository.setDraftStatus(
+    added.draft.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, added.draft.id, actor),
+  );
+  await repository.purgeDraft(
+    added.draft.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, added.draft.id, actor),
+  );
   for (const table of ['draft_library_items', 'draft_library_operations', 'draft_asset_versions'])
     expect(await database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first('count')).toBe(0);
   expect(

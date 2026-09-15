@@ -3,7 +3,7 @@ import type { RuntimeConfig } from '../config';
 import { createInstallationToken, githubHeaders, unboundFetch } from '../github/app-auth';
 import { AuthorizationError, type Actor, type RoleDirectory } from './roles';
 
-const SESSION_COOKIE = '__Secure-pointsite_builder_session';
+const SESSION_COOKIE = '__Host-pointsite_builder_session';
 const OAUTH_COOKIE = '__Host-pointsite_builder_oauth';
 const SESSION_SECONDS = 8 * 60 * 60;
 const OAUTH_SECONDS = 10 * 60;
@@ -15,7 +15,7 @@ const IdentityFields = {
 const IdentitySchema = z.object(IdentityFields);
 const SessionSchema = z.strictObject({
   ...IdentityFields,
-  kind: z.literal('session'),
+  kind: z.literal('builder-session'),
   exp: z.number().int().positive(),
 });
 const OAuthStateSchema = z.strictObject({
@@ -133,7 +133,7 @@ export class GitHubSessionCodec {
 
   encode(identity: GitHubIdentity, now = new Date(), lifetimeSeconds = SESSION_SECONDS) {
     return this.codec.encode({
-      kind: 'session',
+      kind: 'builder-session',
       id: identity.id,
       login: identity.login,
       exp: Math.floor(now.getTime() / 1_000) + lifetimeSeconds,
@@ -205,7 +205,7 @@ export class GitHubAuthenticator {
       codeChallenge: challenge,
       redirectUri: `${this.config.builderOrigin}/auth/callback`,
     });
-    return new Response(null, {
+    const response = new Response(null, {
       status: 302,
       headers: {
         location: location.toString(),
@@ -216,6 +216,11 @@ export class GitHubAuthenticator {
         ),
       },
     });
+    response.headers.append(
+      'set-cookie',
+      setCookie('__Secure-pointsite_builder_session', '', 0, true),
+    );
+    return response;
   }
 
   async completeLogin(request: Request, now = new Date()): Promise<Response> {
@@ -237,9 +242,13 @@ export class GitHubAuthenticator {
     });
     response.headers.append(
       'set-cookie',
-      setCookie(SESSION_COOKIE, await this.sessions.encode(identity, now), SESSION_SECONDS, true),
+      setCookie(SESSION_COOKIE, await this.sessions.encode(identity, now), SESSION_SECONDS),
     );
     response.headers.append('set-cookie', setCookie(OAUTH_COOKIE, '', 0));
+    response.headers.append(
+      'set-cookie',
+      setCookie('__Secure-pointsite_builder_session', '', 0, true),
+    );
     return response;
   }
 
@@ -260,13 +269,18 @@ export class GitHubAuthenticator {
   }
 
   logout(): Response {
-    return new Response(null, {
+    const response = new Response(null, {
       status: 303,
       headers: {
         location: `${this.config.builderOrigin}/`,
-        'set-cookie': setCookie(SESSION_COOKIE, '', 0, true),
+        'set-cookie': setCookie(SESSION_COOKIE, '', 0),
       },
     });
+    response.headers.append(
+      'set-cookie',
+      setCookie('__Secure-pointsite_builder_session', '', 0, true),
+    );
+    return response;
   }
 }
 

@@ -4,6 +4,7 @@ import type { SiteDocument } from '../../src/site-kit/types';
 import { createApp } from '../../src/server/index';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 import type { Actor } from '../../src/server/auth/roles';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
 
 const origin = 'https://builder.pointatx.org';
 const requestHeaders = {
@@ -46,6 +47,160 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('rejects automatic acquisition or transfer while allowing explicit Open editor', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Automatic recovery authority',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'automatic-create-001',
+      requestId: 'create',
+    });
+    const resume = (clientId: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}/checkout`, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({ clientId, resumeOnly: true }),
+      });
+    expect((await resume('browser-client-0001')).status).toBe(409);
+    const first = await checkout(app, draft.id);
+    const resumed = await resume('browser-client-0001');
+    expect(resumed.status).toBe(200);
+    expect(await responseJson<{ expiresAt: string }>(resumed)).toMatchObject({
+      expiresAt: first.expiresAt,
+    });
+    expect((await resume('browser-client-0002')).status).toBe(409);
+    await checkout(app, draft.id, 'browser-client-0002');
+    expect((await resume('browser-client-0001')).status).toBe(409);
+  });
+
+  it('validates and enforces the exact revision header, then replays a saved request', async () => {
+    const actor: Actor = { email: 'editor@pointatx.org', role: 'editor' };
+    const { app, repository } = appFor(actor);
+    const draft = await repository.createDraft({
+      name: 'Exact base',
+      document: defaultSiteDocument,
+      actor: actor.email,
+      idempotencyKey: 'header-create-0001',
+      requestId: 'create',
+    });
+    const owned = await checkout(app, draft.id);
+    const headers = {
+      ...requestHeaders,
+      'idempotency-key': 'header-save-00001',
+      'if-match': `"${draft.revision.checksum}"`,
+      'x-draft-checkout': owned.token,
+      'x-draft-revision': draft.revision.id,
+    };
+    const body = JSON.stringify({
+      document: { ...draft.document, site: { ...draft.document.site, shortName: 'Header saved' } },
+      action: { category: 'control-change', context: 'site-settings' },
+    });
+    const save = (revision: string) =>
+      app.request(`${origin}/api/drafts/${draft.id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'x-draft-revision': revision },
+        body,
+      });
+    const missingRevision = new Headers(headers);
+    missingRevision.delete('x-draft-revision');
+    expect(
+      (
+        await app.request(`${origin}/api/drafts/${draft.id}`, {
+          method: 'PUT',
+          headers: missingRevision,
+          body,
+        })
+      ).status,
+    ).toBe(428);
+    expect(await repository.listRevisions(draft.id)).toHaveLength(1);
+    expect((await save('invalid')).status).toBe(422);
+    expect((await save(crypto.randomUUID())).status).toBe(412);
+    const first = await save(draft.revision.id);
+    expect(first.status).toBe(200);
+    const repeated = await save(draft.revision.id);
+    expect(repeated.status).toBe(200);
+    expect(await repeated.text()).toBe(await first.text());
+    expect(await repository.listRevisions(draft.id)).toHaveLength(2);
+  });
+  it('reports unavailable readiness when the authentication role database is down', async () => {
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.reject(new Error('private role query')),
+      environment: 'test',
+      version: 'test',
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const response = await app.request(`${origin}/api/ready`);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ ready: false });
+  });
+
+  it('reports an expired recovery lease as unavailable without logging a private database error', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.reject(new Error('WORKSPACE_ACCESS_UNAVAILABLE')),
+      environment: 'test',
+      version: 'test',
+    });
+    const response = await app.request(`${origin}/api/drafts`);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ code: 'WORKSPACE_ACCESS_UNAVAILABLE' });
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it('keeps liveness available while authenticated database readiness fails without leaking provider errors', async () => {
+    let available = false;
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate: () => Promise.resolve({ email: 'viewer@pointatx.org', role: 'viewer' }),
+      environment: 'test',
+      version: 'test',
+      readiness: () => (available ? Promise.resolve() : Promise.reject(new Error('private SQL'))),
+    });
+    expect((await app.request(`${origin}/api/health`)).status).toBe(200);
+    const failed = await app.request(`${origin}/api/ready`);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get('Cache-Control')).toBe('no-store');
+    await expect(failed.json()).resolves.toEqual({ ready: false });
+    available = true;
+    const ready = await app.request(`${origin}/api/ready`);
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toEqual({ ready: true });
+  });
+
+  it('reports uncached native version and storage compatibility without authenticating', async () => {
+    const authenticate = vi.fn().mockRejectedValue(new Error('no browser session'));
+    const release = {
+      sourceRevision: 'a'.repeat(40),
+      sourceClean: true,
+      workerVersionId: crypto.randomUUID(),
+      storageWriteFormat: 'legacy' as const,
+    };
+    const app = createApp({
+      repository: new InMemoryRepository(),
+      authenticate,
+      environment: 'production',
+      version: 'test',
+      release,
+    });
+    const response = await app.request(`${origin}/api/health`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      environment: 'production',
+      version: 'test',
+      ...release,
+      storageReaders: ['legacy', 'compact-v1'],
+    });
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
   it('exposes public process health without private state', async () => {
     const { app } = appFor({ email: 'viewer@pointatx.org', role: 'viewer' });
     const response = await app.request(`${origin}/api/health`);
@@ -92,6 +247,7 @@ describe('draft API', () => {
       ...requestHeaders,
       'idempotency-key': 'save-website-0001',
       'if-match': `"${created.revision.checksum}"`,
+      'x-draft-revision': created.revision.id,
       'x-draft-checkout': lease.token,
     };
     const savedResponse = await app.request(`${origin}/api/drafts/${created.id}`, {
@@ -148,7 +304,7 @@ describe('draft API', () => {
     });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: SiteDocument;
     }>(createdResponse);
     const first = structuredClone(created.document);
@@ -160,6 +316,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'first-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
@@ -174,6 +331,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'stale-save-00001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': lease.token,
       },
       body: JSON.stringify({
@@ -194,7 +352,7 @@ describe('draft API', () => {
     });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: Record<string, unknown>;
     }>(createdResponse);
     created.document.script = 'unsafe';
@@ -204,6 +362,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'invalid-save-0001',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
       },
       body: JSON.stringify({
         document: created.document,
@@ -220,7 +379,7 @@ describe('draft API', () => {
     const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
     const created = await responseJson<{
       id: string;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
       document: SiteDocument;
     }>(
       await app.request(`${origin}/api/drafts`, {
@@ -235,6 +394,7 @@ describe('draft API', () => {
       ...requestHeaders,
       'idempotency-key': 'save-action-contract',
       'if-match': `"${created.revision.checksum}"`,
+      'x-draft-revision': created.revision.id,
     };
 
     const missing = await app.request(`${origin}/api/drafts/${created.id}`, {
@@ -257,7 +417,7 @@ describe('draft API', () => {
 
   it('rejects documents above the canonical D1 safety ceiling before persistence', async () => {
     const { app } = appFor({ email: 'editor@pointatx.org', role: 'editor' });
-    const created = await responseJson<{ id: string; revision: { checksum: string } }>(
+    const created = await responseJson<{ id: string; revision: { checksum: string; id: string } }>(
       await app.request(`${origin}/api/drafts`, {
         method: 'POST',
         headers: { ...requestHeaders, 'idempotency-key': 'create-size-contract' },
@@ -270,6 +430,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'save-size-contract',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
       },
       body: JSON.stringify({
         document: { oversized: 'x'.repeat(1_500_001) },
@@ -292,7 +453,7 @@ describe('draft API', () => {
     const created = await responseJson<{
       id: string;
       document: SiteDocument;
-      revision: { checksum: string };
+      revision: { checksum: string; id: string };
     }>(
       await app.request(`${origin}/api/drafts`, {
         method: 'POST',
@@ -328,6 +489,7 @@ describe('draft API', () => {
         ...requestHeaders,
         'idempotency-key': 'stale-client-save',
         'if-match': `"${created.revision.checksum}"`,
+        'x-draft-revision': created.revision.id,
         'x-draft-checkout': first.token,
       },
       body: JSON.stringify({

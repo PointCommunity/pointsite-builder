@@ -265,3 +265,23 @@ it('reads the production base without sending write credentials or mutating prod
     },
   );
 });
+
+it('requires the reviewed publication caller blob at the captured main revision', async () => {
+  const fetcher = vi.fn<typeof fetch>();
+  const client = new GitHubStagingClient('PointCommunity/pointsite-staging', 'fixture', fetcher);
+  fetcher.mockResolvedValueOnce(Response.json({ sha: 'b'.repeat(40) }));
+  await client.assertPublicationCaller('a'.repeat(40), 'b'.repeat(40));
+  expect(fetcher.mock.calls[0][0]).toBe(
+    `https://api.github.com/repos/PointCommunity/pointsite-staging/contents/.github/workflows/publish-candidate.yml?ref=${'a'.repeat(40)}`,
+  );
+  for (const response of [
+    Response.json({ sha: 'c'.repeat(40) }),
+    new Response('private-provider-body', { status: 404 }),
+    Response.json({ bad: 'private' }),
+  ]) {
+    fetcher.mockResolvedValueOnce(response);
+    await expect(client.assertPublicationCaller('a'.repeat(40), 'b'.repeat(40))).rejects.toThrow(
+      'PUBLICATION_RUNTIME_UNAVAILABLE',
+    );
+  }
+});

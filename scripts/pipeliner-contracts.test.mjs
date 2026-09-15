@@ -64,9 +64,22 @@ test('Builder participant migration keeps Dev distinct from the Human PM and rel
   assert.equal(profile.qa.turns[0].developer, 'Dev');
   assert.equal(profile.qa.turns[0].pm, 'brimdor');
   assert.deepEqual(identityKeys(profile, 'pre-release'), ['sourceCommit', 'gitTree']);
-  assert.deepEqual(identityKeys(profile, 'released'), ['sourceCommit', 'gitTree', 'deploymentId']);
-  assert.equal(profile.release.environments.length, 1);
-  assert.equal(profile.release.environments[0].url, 'https://builder.pointatx.org');
+  assert.deepEqual(identityKeys(profile, 'released'), [
+    'sourceCommit',
+    'gitTree',
+    'imageDigest',
+    'gitopsRevision',
+  ]);
+  assert.equal(profile.release.strategy, 'immutable-promotion');
+  assert.equal(profile.release.environments.length, 2);
+  assert.equal(profile.release.environments[0].url, 'https://builder-canary.eaglepass.io');
+  assert.equal(profile.release.environments[1].url, 'https://builder.eaglepass.io');
+  assert.equal(profile.release.environments[1].promoteWithoutRebuild, true);
+  assert.equal(profile.release.environments[1].buildCommand, '');
+  assert.equal(
+    profile.release.environments[0].approvalPhrase,
+    profile.workflow.approvalPhrases.production,
+  );
   assert.equal(profile.release.cycle, undefined);
   assert.equal(
     reviewRoute({ status: 'In Review', pullRequestState: 'MERGED', findings: true }),
@@ -153,6 +166,15 @@ test('adoption preserves only the exact approved Builder phrases and rejects dri
     const changedTurn = structuredClone(profile);
     changedTurn.qa.turns[0].approvalPhrase = 'Approved';
     await assert.rejects(preview(changedTurn), /exact PM-preserved Builder contract/);
+    const changedOrigin = structuredClone(profile);
+    changedOrigin.release.environments[0].url = 'https://another.eaglepass.io';
+    await assert.rejects(preview(changedOrigin), /exact PM-preserved Builder contract/);
+    const noApproval = structuredClone(profile);
+    noApproval.release.environments[0].approvalPhrase = '';
+    await assert.rejects(preview(noApproval), /exact PM-preserved Builder contract/);
+    const rebuild = structuredClone(profile);
+    rebuild.release.environments[1].promoteWithoutRebuild = false;
+    await assert.rejects(preview(rebuild), /promoteWithoutRebuild true/);
   } finally {
     await rm(targetRoot, { recursive: true, force: true });
   }

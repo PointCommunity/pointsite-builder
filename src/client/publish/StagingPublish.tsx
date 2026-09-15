@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ClientApiError, type CandidateTuple } from '../api';
 import { useEditor } from '../editor/EditorProvider';
 import {
@@ -9,14 +9,16 @@ import {
   type PublishingRole,
 } from './guidance';
 import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow';
+import { ProductionPublish } from './ProductionPublish';
+import { PublicationVerification } from './PublicationVerification';
 
 const POLL_INTERVAL_MS = 10_000;
 const MONITORING_LIMIT_MS = 15 * 60_000;
 const steps = [
   ['Private preflight', 'Check one exact saved version without changing Staging.'],
-  ['Publish', 'Create one protected Staging candidate.'],
+  ['Publish', 'Publish one candidate to publicly readable Staging.'],
   ['Verify', 'Follow required quality and deployment checks.'],
-  ['Review', 'Open the protected Staging website.'],
+  ['Review', 'Open the public Staging website.'],
   ['Accept', 'Record the official Staging candidate.'],
 ] as const;
 
@@ -47,6 +49,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
   const [monitoringPaused, setMonitoringPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<DisplayActionFailure | null>(null);
+  const publishRequest = useRef<{ scope: string; key: string } | null>(null);
+  const recoveryRequest = useRef<{ scope: string; key: string } | null>(null);
+  const nextActionHeading = useRef<HTMLHeadingElement>(null);
 
   const loadWorkflow = useCallback(async () => {
     try {
@@ -59,6 +64,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
       return null;
     }
   }, [draft.id]);
+  const refreshVerification = useCallback(
+    async (focus = false) => {
+      await loadWorkflow();
+      if (focus) nextActionHeading.current?.focus();
+    },
+    [loadWorkflow],
+  );
 
   useEffect(() => {
     setSnapshot(undefined);
@@ -97,9 +109,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     setActionError(null);
     try {
       const currentJob = snapshot?.job;
-      if (currentJob?.status === 'running' || currentJob?.status === 'queued')
+      if (
+        currentJob?.publicationProtocol !== 2 &&
+        (currentJob?.status === 'running' || currentJob?.status === 'queued')
+      )
         await api.continueStagingPublication(currentJob.id);
       if (
+        currentJob?.publicationProtocol !== 2 &&
         lifecycle.phase !== 'waiting' &&
         currentJob?.status === 'succeeded' &&
         currentJob.evidence.verificationStatus !== 'passed'
@@ -144,15 +160,69 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         current = refreshed;
       }
       if (current.availability.state === 'busy') return;
+      const scope = JSON.stringify([
+        draft.id,
+        draft.revision.id,
+        draft.revision.checksum,
+        current.currentStagingSha,
+        current.job?.id,
+        current.job?.status,
+      ]);
+      if (publishRequest.current?.scope !== scope)
+        publishRequest.current = { scope, key: crypto.randomUUID() };
       await api.publishStaging(
         draft.id,
         draft.revision.id,
         draft.revision.checksum,
         current.currentStagingSha,
+        publishRequest.current.key,
       );
+      publishRequest.current = null;
       setMonitoringStartedAt(Date.now());
       setMonitoringPaused(false);
       await loadWorkflow();
+      nextActionHeading.current?.focus();
+    } catch (error) {
+      setActionError(actionFailure(error));
+      await loadWorkflow();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recoverQueued = async (
+    action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
+  ) => {
+    const job = snapshot?.job;
+    if (
+      !job ||
+      job.publicationProtocol !== 2 ||
+      !job.dispatch ||
+      !(
+        (job.status === 'queued' && job.dispatch.reserved === false) ||
+        (action === 'reconcile' && job.dispatch.canReconcileStopped === true) ||
+        (action === 'retry-captured' && job.dispatch.canRetryCaptured === true) ||
+        (action === 'verify-completed' && job.dispatch.canVerifyCompleted === true)
+      )
+    )
+      return;
+    const scope = JSON.stringify([job.id, action, job.dispatch.attempts, job.dispatch.retryAt]);
+    if (recoveryRequest.current?.scope !== scope)
+      recoveryRequest.current = { scope, key: crypto.randomUUID() };
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.recoverQueuedPublication(
+        job.id,
+        action,
+        job.dispatch.attempts,
+        recoveryRequest.current.key,
+      );
+      recoveryRequest.current = null;
+      setMonitoringStartedAt(action.startsWith('retry') ? Date.now() : null);
+      setMonitoringPaused(false);
+      await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -169,6 +239,13 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
     try {
       const production = await api.productionBase();
       const tuple: CandidateTuple = {
+        ...(currentJob.publicationProtocol === 2
+          ? {
+              publicationProtocol: 2 as const,
+              workflowRevision: currentJob.workflowRevision!,
+              artifactDigest: currentJob.evidence.artifactDigest!,
+            }
+          : {}),
         siteId: 'pointsite',
         revisionId: currentJob.revisionId,
         revisionChecksum: currentJob.revisionChecksum,
@@ -179,8 +256,33 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         stagingCommitSha: currentJob.stagingCommitSha,
         productionBaseSha: production.sha,
       };
-      await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
+      if (currentJob.publicationProtocol === 2)
+        await api.acceptStaging(
+          currentJob.id,
+          tuple,
+          'Protected Staging reviewed in Builder',
+          snapshot?.approval?.id ?? null,
+        );
+      else await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
       await loadWorkflow();
+      nextActionHeading.current?.focus();
+    } catch (error) {
+      setActionError(actionFailure(error));
+      await loadWorkflow();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    const approval = snapshot?.approval;
+    if (!approval?.tuple || approval.decision !== 'approved') return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.revokeStaging(approval.publishJobId, approval.tuple, approval.id);
+      await loadWorkflow();
+      nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
       await loadWorkflow();
@@ -227,10 +329,18 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
 
       <section className="publish-next-action" aria-labelledby="publish-next-action-title">
         <p className="eyebrow">Your next step · {roleLabel}</p>
-        <h3 id="publish-next-action-title">
+        <h3 id="publish-next-action-title" ref={nextActionHeading} tabIndex={-1}>
           {verificationFailed ? failedChecksTitle : nextStep.title}
         </h3>
         <p>{nextStep.guidance}</p>
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.revisionId !== draft.revision.id &&
+        ['review-ready', 'accepted'].includes(lifecycle.phase) ? (
+          <p>
+            <strong>Newer edits are not included.</strong> Review the version captured for Staging;
+            your latest draft remains separate.
+          </p>
+        ) : null}
 
         {verificationFailed ? (
           <div className="publish-failure-recovery">
@@ -295,7 +405,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <ol className="publish-review-actions" aria-label="Required Staging review actions">
             <li>
               <strong>Open and review Staging</strong>
-              <span>Check the affected pages and interactions in the protected website.</span>
+              <span>Check the affected pages and interactions in the public Staging website.</span>
               <a
                 className="button button--primary"
                 href={snapshot?.reviewUrl}
@@ -307,7 +417,7 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
             </li>
             <li>
               <strong>Return here and accept it</strong>
-              <span>Accept only after the protected site looks and works as expected.</span>
+              <span>Accept only after the Staging site looks and works as expected.</span>
               <button
                 className="button button--primary"
                 type="button"
@@ -347,7 +457,9 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
                 {busy
                   ? 'Checking…'
                   : lifecycle.phase === 'paused'
-                    ? 'Continue verification'
+                    ? lifecycle.step === 2
+                      ? 'Check publication status'
+                      : 'Continue verification'
                     : lifecycle.phase === 'unavailable'
                       ? 'Try loading again'
                       : lifecycle.phase === 'waiting'
@@ -362,10 +474,104 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           <strong>What this means: </strong>
           {nextStep.effect}
         </p>
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.status === 'queued' &&
+        snapshot.job.dispatch?.reserved === false ? (
+          <div className="publish-actions">
+            {snapshot.job.dispatch.needsAttention ? (
+              <button
+                className="button"
+                type="button"
+                disabled={busy || Date.parse(snapshot.job.dispatch.retryAt) > Date.now()}
+                onClick={() => void recoverQueued('retry')}
+              >
+                Retry queued publication
+              </button>
+            ) : null}
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('cancel')}
+            >
+              Cancel queued publication
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canReconcileStopped === true ? (
+          <div className="publish-actions">
+            <p>
+              If the cloud run stopped before deployment, Builder can check it and release this job.
+              Any recorded source commit stays in the publication history.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('reconcile')}
+            >
+              Recover stopped publication
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 && snapshot.job.dispatch?.canRetryCaptured ? (
+          <div className="publish-actions">
+            <p>
+              Retry this publication's captured revision. Later edits stay in your draft. Builder
+              checks that the destination has not changed before starting a new job.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('retry-captured')}
+            >
+              Retry captured candidate
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canVerifyCompleted &&
+        !snapshot.job.dispatch.canVerifyOutput ? (
+          <div className="publish-actions">
+            <p>
+              The cloud runner reported deployment. Builder can verify its completed checks and
+              current release to recover a missing final update.
+            </p>
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void recoverQueued('verify-completed')}
+            >
+              Verify completed deployment
+            </button>
+          </div>
+        ) : null}
+        {snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.job.dispatch?.canVerifyOutput &&
+        (role === 'publisher' || role === 'administrator') ? (
+          <PublicationVerification
+            key={snapshot.job.id}
+            target="staging"
+            jobId={snapshot.job.id}
+            dispatchAttempts={snapshot.job.dispatch.attempts}
+            disabled={busy}
+            onRefresh={refreshVerification}
+          />
+        ) : null}
         {lifecycle.phase === 'accepted' ? (
           <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
             Open accepted Staging site
           </a>
+        ) : null}
+        {snapshot?.approval?.decision === 'approved' &&
+        snapshot?.job?.publicationProtocol === 2 &&
+        snapshot.approval?.tuple ? (
+          <button className="button" type="button" disabled={busy} onClick={() => void revoke()}>
+            {busy ? 'Revoking…' : 'Revoke Staging acceptance'}
+          </button>
         ) : null}
       </section>
 
@@ -379,13 +585,21 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         <p>{lifecycle.guidance}</p>
         {lifecycle.phase === 'waiting' && snapshot?.availability.state === 'busy' ? (
           <p>
-            Another publication is currently{' '}
-            {snapshot.availability.phase === 'queued' ? 'preparing' : 'publishing'}. If it does not
-            finish, Builder can safely recover the slot after{' '}
-            <time dateTime={snapshot.availability.retryAt}>
-              {new Date(snapshot.availability.retryAt).toLocaleString()}
-            </time>
-            .
+            {snapshot.availability.retryAt ? (
+              <>
+                Another publication is currently{' '}
+                {snapshot.availability.phase === 'queued' ? 'preparing' : 'publishing'}. Builder can
+                check recovery after{' '}
+                <time dateTime={snapshot.availability.retryAt}>
+                  {new Date(snapshot.availability.retryAt).toLocaleString()}
+                </time>
+                .
+              </>
+            ) : snapshot.availability.phase === 'review' ? (
+              'Staging is reserved for review of the captured version.'
+            ) : (
+              'Staging stays reserved until the captured publication is finished or safely reconciled.'
+            )}
           </p>
         ) : null}
       </div>
@@ -437,6 +651,12 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
           </div>
           {snapshot?.job ? (
             <>
+              {snapshot.job.publicationProtocol === 2 ? (
+                <div>
+                  <dt>Captured revision ID</dt>
+                  <dd>{snapshot.job.revisionId}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Publish job</dt>
                 <dd>{snapshot.job.id}</dd>
@@ -458,6 +678,11 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
               Commit evidence
             </a>
           ) : null}
+          {snapshot?.job?.dispatch?.workflowUrl ? (
+            <a href={snapshot.job.dispatch.workflowUrl} target="_blank" rel="noreferrer">
+              Cloud publication progress
+            </a>
+          ) : null}
           {snapshot?.job?.evidence.workflowUrl ? (
             <a href={snapshot.job.evidence.workflowUrl} target="_blank" rel="noreferrer">
               Quality evidence
@@ -471,18 +696,29 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
         </div>
       </details>
 
-      <aside className="production-lock">
-        <strong>Production remains unchanged</strong>
-        <p>
-          {role === 'administrator'
-            ? 'Production publishing is not enabled in Builder yet. There is no Production button until the separate protected setup and approval are complete.'
-            : 'Your Publisher role ends at accepted Staging. An Administrator can continue only after the separate protected Production workflow is enabled.'}
-        </p>
-        <p className="production-role-note">
-          A GitHub organization owner must also have an active Builder Administrator role and the
-          required live repository permission before any Production action can appear.
-        </p>
-      </aside>
+      {role === 'administrator' ? (
+        <ProductionPublish
+          key={draft.id}
+          draftId={draft.id}
+          approval={
+            snapshot?.job?.id === snapshot?.approval?.publishJobId
+              ? (snapshot?.approval ?? null)
+              : null
+          }
+        />
+      ) : (
+        <aside className="production-lock">
+          <strong>Production requires an Administrator</strong>
+          <p>
+            Your Publisher role ends at accepted Staging. An Administrator can continue only after
+            the separate protected Production workflow is enabled.
+          </p>
+          <p className="production-role-note">
+            A GitHub organization owner must also have an active Builder Administrator role and the
+            required live repository permission before any Production action can appear.
+          </p>
+        </aside>
+      )}
     </section>
   );
 }

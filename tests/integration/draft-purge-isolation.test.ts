@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
@@ -34,6 +36,12 @@ async function d1Fixture() {
         .trim(),
     );
   }
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,role,active,created_at,updated_at,updated_by) VALUES (?,'editor',1,'fixture','fixture','fixture')",
+    )
+    .bind(actor)
+    .run();
   return { database, repository: new D1DraftRepository(database) };
 }
 
@@ -48,10 +56,18 @@ async function draftFixture(repository: DraftRepository) {
   const draft = await repository.createDraft(createInput);
   const document = structuredClone(draft.document);
   document.site.shortName = 'Private edited contents';
+  const saveCheckout = await repository.acquireCheckout({
+    draftId: draft.id,
+    actor,
+    clientId: 'purge-fixture-0001',
+    requestId: 'checkout',
+  });
   const saveInput = {
     draftId: draft.id,
     document,
     expectedChecksum: draft.revision.checksum,
+    expectedRevisionId: draft.revision.id,
+    checkoutToken: saveCheckout.token,
     actor,
     idempotencyKey: 'purge-save-draft-00001',
     requestId: 'purge-save',
@@ -64,6 +80,7 @@ async function draftFixture(repository: DraftRepository) {
     'Private revision label',
     actor,
     'label',
+    await acquireDraftProof(repository, draft.id, actor),
   );
   const other = await repository.createDraft({
     ...createInput,
@@ -94,17 +111,36 @@ describe.each(['D1', 'memory'] as const)('%s draft purge isolation', (kind) => {
       requestId: 'checkout',
     });
     const history = await repository.listRevisions(draft.id);
-    await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
     expect(await repository.ownedCheckout(actor)).toBeNull();
     await expect(repository.assertCheckout(draft.id, actor, checkout.token)).rejects.toBeInstanceOf(
       ConflictError,
     );
     await expect(repository.saveDraft(saveInput)).rejects.toBeInstanceOf(ConflictError);
     await expect(
-      repository.renameDraft(draft.id, 'Changed', actor, 'rename'),
+      repository.renameDraft(
+        draft.id,
+        'Changed',
+        actor,
+        'rename',
+        await acquireDraftProof(repository, draft.id, actor),
+      ),
     ).rejects.toBeInstanceOf(ConflictError);
     await expect(
-      repository.labelRevision(draft.id, saved.revision.id, 'Changed', actor, 'label'),
+      repository.labelRevision(
+        draft.id,
+        saved.revision.id,
+        'Changed',
+        actor,
+        'label',
+        await acquireDraftProof(repository, draft.id, actor),
+      ),
     ).rejects.toBeInstanceOf(ConflictError);
     expect(await repository.listRevisions(draft.id)).toEqual(history);
     expect((await repository.getDraft(draft.id)).document).toEqual(saved.document);
@@ -116,11 +152,22 @@ describe.each(['D1', 'memory'] as const)('%s draft purge isolation', (kind) => {
     const otherHistory = await repository.listRevisions(other.id);
     const history = await repository.listRevisions(draft.id);
 
-    await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
     expect((await repository.getDraft(draft.id)).document).toEqual(saved.document);
     expect(await repository.listRevisions(draft.id)).toEqual(history);
 
-    const deleted = await repository.purgeDraft(draft.id, actor, 'purge');
+    const deleted = await repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
     expect('document' in (deleted ?? {})).toBe(false);
     expect('revision' in (deleted ?? {})).toBe(false);
     await expect(repository.getDraft(draft.id)).rejects.toBeInstanceOf(NotFoundError);
@@ -135,8 +182,19 @@ describe.each(['D1', 'memory'] as const)('%s draft purge isolation', (kind) => {
   it('cannot return deleted contents through cached create or save responses', async () => {
     const repository = await repositoryFixture();
     const { draft, other, createInput, saveInput } = await draftFixture(repository);
-    await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
-    await repository.purgeDraft(draft.id, actor, 'purge');
+    await repository.setDraftStatus(
+      draft.id,
+      'archived',
+      actor,
+      'archive',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
+    await repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge',
+      await acquireDraftProof(repository, draft.id, actor),
+    );
 
     expect(
       await repository.saveDraft(saveInput).then(
@@ -189,23 +247,56 @@ it('blocks purge during publication, then preserves completed publication receip
       new Date().toISOString(),
     )
     .run();
-  await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
-  await expect(repository.purgeDraft(draft.id, actor, 'purge-busy')).rejects.toBeInstanceOf(
-    ConflictError,
+  await repository.setDraftStatus(
+    draft.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, draft.id, actor),
   );
+  await expect(
+    repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge-busy',
+      await acquireDraftProof(repository, draft.id, actor),
+    ),
+  ).rejects.toBeInstanceOf(ConflictError);
   expect((await repository.getDraft(draft.id)).status).toBe('archived');
-  await repository.setDraftStatus(draft.id, 'active', actor, 'recover');
-  await jobs.markRunning(job.id, actor, 'running');
-  await repository.setDraftStatus(draft.id, 'archived', actor, 'rearchive');
-  await expect(repository.purgeDraft(draft.id, actor, 'purge-running')).rejects.toBeInstanceOf(
-    ConflictError,
+  await repository.setDraftStatus(
+    draft.id,
+    'active',
+    actor,
+    'recover',
+    await acquireDraftProof(repository, draft.id, actor),
   );
+  await jobs.markRunning(job.id, actor, 'running');
+  await repository.setDraftStatus(
+    draft.id,
+    'archived',
+    actor,
+    'rearchive',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
+  await expect(
+    repository.purgeDraft(
+      draft.id,
+      actor,
+      'purge-running',
+      await acquireDraftProof(repository, draft.id, actor),
+    ),
+  ).rejects.toBeInstanceOf(ConflictError);
   await jobs.succeed(job.id, actor, 'published', {
     sha: 'd'.repeat(40),
     url: 'https://staging.example.test',
   });
   const receipt = await jobs.getById(job.id);
-  await repository.purgeDraft(draft.id, actor, 'purge');
+  await repository.purgeDraft(
+    draft.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
   expect(await jobs.getById(job.id)).toEqual(receipt);
   expect(
     await database
@@ -253,8 +344,19 @@ it('physically purges D1 contents, labels, editor state, and cached responses fo
       updatedAt: new Date().toISOString(),
     },
   );
-  await repository.setDraftStatus(draft.id, 'archived', actor, 'archive');
-  await repository.purgeDraft(draft.id, actor, 'purge');
+  await repository.setDraftStatus(
+    draft.id,
+    'archived',
+    actor,
+    'archive',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
+  await repository.purgeDraft(
+    draft.id,
+    actor,
+    'purge',
+    await acquireDraftProof(repository, draft.id, actor),
+  );
 
   const count = async (sql: string, id: string) =>
     database.prepare(sql).bind(id).first<number>('count');

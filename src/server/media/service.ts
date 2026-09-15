@@ -341,7 +341,7 @@ export class D1PrivateBucket implements PrivateBucket {
       this.database.prepare('DELETE FROM media_object_chunks WHERE object_key=?').bind(key),
     ];
     for (let offset = 0, index = 0; offset < bytes.byteLength; offset += D1_CHUNK_BYTES, index++) {
-      const chunk = bytes.slice(offset, offset + D1_CHUNK_BYTES);
+      const chunk = Uint8Array.from(bytes.subarray(offset, offset + D1_CHUNK_BYTES));
       statements.push(
         this.database
           .prepare(

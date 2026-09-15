@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
+    "postinstall": "node scripts/patch-puck-history.mjs",
     "pointview:setup": "tsx scripts/pointview-setup.ts",
     "dev": "vite",
     "build": "vite build",
+    "build:native": "node scripts/build-native.mjs",
+    "start": "node dist/server/index.js",
+    "dev:native": "npm run build:native && node scripts/serve-native-qa.mjs",
     "preview": "vite preview",
     "cloudflare:verify-account": "tsx scripts/verify-cloudflare-account.ts",
     "deploy": "npm run cloudflare:verify-account && npm run build && wrangler deploy",
@@ -25,15 +29,20 @@
     "skills:check": "node --test .agents/skills/pointsite-builder-maintain-skills/scripts/pipeline-scripts.test.mjs scripts/pipeliner-contracts.test.mjs && node .agents/skills/pointsite-builder-maintain-skills/scripts/audit-alignment.mjs && node scripts/validate-repository.mjs",
     "pipeline:health": "node .agents/skills/pointsite-builder-pipeline-health/scripts/audit-pipeline.mjs",
     "verify:live": "node .agents/skills/pointsite-builder-release-production/scripts/verify-live.mjs",
-    "check": "npm run skills:check && npm run format:check && npm run typecheck && npm run lint -- --max-warnings=0 && npm run contract:lint && npm run verify:runbooks && npm run test:coverage && npm run build",
+    "check": "npm run skills:check && npm run format:check && npm run typecheck && npm run lint -- --max-warnings=0 && npm run contract:lint && npm run verify:runbooks && npm run test:release && npm run test:coverage && npm run build && npm run build:native",
     "db:migrate:local": "wrangler d1 migrations apply pointsite-builder --local",
     "db:migrate:remote": "npm run cloudflare:verify-account && wrangler d1 migrations apply pointsite-builder --remote",
     "maintenance": "node scripts/maintenance.mjs",
     "verify:runbooks": "node scripts/verify-runbooks.mjs",
     "contract:lint": "redocly lint specs/001-pointsite-builder/contracts/openapi.yaml",
-    "test:performance": "npm run build && tsx tests/performance/api-load.mjs && node scripts/verify-budgets.mjs"
+    "test:performance": "npm run build && tsx tests/performance/api-load.mjs && node scripts/verify-budgets.mjs",
+    "release:build": "node scripts/release-native.mjs build",
+    "release:canary": "node scripts/release-native.mjs canary",
+    "release:production": "node scripts/release-native.mjs production",
+    "test:release": "node --test scripts/release-native.test.mjs"
   },
   "dependencies": {
+    "@hono/node-server": "2.1.1",
     "@jsquash/webp": "1.5.0",
     "@phosphor-icons/react": "2.1.10",
     "@puckeditor/core": "0.23.0",

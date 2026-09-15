@@ -136,12 +136,177 @@ const renderPublish = (role: Extract<Role, 'publisher' | 'administrator'> = 'pub
     </EditorProvider>,
   );
 
+const queuedCloud: StagingWorkflowSnapshot = {
+  ...ready,
+  availability: { state: 'busy', phase: 'running' },
+  job: {
+    ...job,
+    publicationProtocol: 2,
+    status: 'queued',
+    completedAt: null,
+    stagingCommitSha: null,
+    commitUrl: null,
+    dispatch: {
+      attempts: 6,
+      retryAt: '2026-09-07T12:00:00Z',
+      needsAttention: true,
+      reserved: false,
+    },
+  },
+};
+
 describe('guided Staging publishing', () => {
-  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  it('reuses a recovery receipt after a lost response and refreshes durable status', async () => {
+    const load = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(queuedCloud);
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValue({ recovered: true });
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry queued publication' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Retry queued publication' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry queued publication' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(recover).toHaveBeenCalledTimes(2);
+    expect(recover.mock.calls[0]).toEqual([job.id, 'retry', 6, expect.any(String)]);
+    expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
+  });
+
+  it('retries the selected capture with a stable receipt instead of publishing the latest editor revision', async () => {
+    const cancelled: StagingWorkflowSnapshot = {
+      ...ready,
+      job: {
+        ...queuedCloud.job!,
+        status: 'cancelled',
+        revisionId: '20000000-0000-4000-8000-000000000002',
+        dispatch: { ...queuedCloud.job!.dispatch!, canRetryCaptured: true },
+      },
+    };
+    const load = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(cancelled);
+    const publish = vi.spyOn(api, 'publishStaging');
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockRejectedValueOnce(new Error('lost response'))
+      .mockResolvedValue({ recovered: true, jobId: '30000000-0000-4000-8000-000000000002' });
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry captured candidate' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Retry captured candidate' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry captured candidate' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(recover.mock.calls[0]).toEqual([job.id, 'retry-captured', 6, expect.any(String)]);
+    expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('verifies a reported deployment and restores focus without publishing again', async () => {
+    const reported: StagingWorkflowSnapshot = {
+      ...queuedCloud,
+      job: {
+        ...queuedCloud.job!,
+        status: 'running',
+        dispatch: { ...queuedCloud.job!.dispatch!, reserved: true, canVerifyCompleted: true },
+      },
+    };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(reported)
+      .mockResolvedValue(reviewReady);
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockResolvedValue({ recovered: true });
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify completed deployment' }));
+    await waitFor(() =>
+      expect(recover).toHaveBeenCalledWith(job.id, 'verify-completed', 6, expect.any(String)),
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Review Staging, then accept this version' }),
+    ).toHaveFocus();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('offers an explicit native recovery check without claiming the cloud run stopped', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
+      ...queuedCloud,
+      job: {
+        ...queuedCloud.job!,
+        status: 'running',
+        dispatch: { ...queuedCloud.job!.dispatch!, reserved: true, canReconcileStopped: true },
+      },
+    });
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockRejectedValue(
+        new ClientApiError(
+          409,
+          'PUBLICATION_RUN_NOT_TERMINAL',
+          'Native execution not terminal',
+          'fixture',
+        ),
+      );
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Recover stopped publication' }));
+    await waitFor(() =>
+      expect(recover).toHaveBeenCalledWith(job.id, 'reconcile', 6, expect.any(String)),
+    );
+    expect(await screen.findByText('Cloud execution has not been confirmed stopped')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Cancel queued publication' })).toBeNull();
+  });
+
+  it('cancels the queued job and can publish the same saved revision again', async () => {
+    const cancelled: StagingWorkflowSnapshot = {
+      ...ready,
+      job: { ...queuedCloud.job!, status: 'cancelled' },
+    };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(ready)
+      .mockResolvedValueOnce(queuedCloud)
+      .mockResolvedValueOnce(cancelled)
+      .mockResolvedValue(queuedCloud);
+    const publish = vi.spyOn(api, 'publishStaging').mockResolvedValue(published);
+    const recover = vi
+      .spyOn(api, 'recoverQueuedPublication')
+      .mockResolvedValue({ recovered: true });
+    renderPublish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish revision 3 to Staging' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel queued publication' }));
+    await waitFor(() =>
+      expect(recover).toHaveBeenCalledWith(job.id, 'cancel', 6, expect.any(String)),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Try publishing again' }));
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
+    expect(publish.mock.calls[1].slice(0, 4)).toEqual(publish.mock.calls[0].slice(0, 4));
+    expect(publish.mock.calls[1][4]).not.toBe(publish.mock.calls[0][4]);
+  });
+
+  it.each([true, undefined])(
+    'hides queued recovery when native reservation is %s',
+    async (reserved) => {
+      vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
+        ...queuedCloud,
+        job: { ...queuedCloud.job!, dispatch: { ...queuedCloud.job!.dispatch!, reserved } },
+      });
+      renderPublish();
+      await screen.findByText('What this means:');
+      expect(screen.queryByRole('button', { name: 'Retry queued publication' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Cancel queued publication' })).toBeNull();
+    },
+  );
 
   it('resumes an uploading job after reload through explicit POST continuation', async () => {
     const uploading: StagingWorkflowSnapshot = {
@@ -166,7 +331,7 @@ describe('guided Staging publishing', () => {
     const continuation = vi.spyOn(api, 'continueStagingPublication').mockResolvedValue(published);
     const publish = vi.spyOn(api, 'publishStaging');
     renderPublish();
-    expect(await screen.findByText('Publishing to protected Staging')).toBeVisible();
+    expect(await screen.findByText('Publishing to public Staging')).toBeVisible();
     expect(continuation).not.toHaveBeenCalled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
@@ -174,6 +339,98 @@ describe('guided Staging publishing', () => {
     expect(continuation).toHaveBeenCalledWith(job.id);
     expect(publish).not.toHaveBeenCalled();
     expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
+  });
+
+  it('polls a captured cloud job with GET only after reload and later edits', async () => {
+    const cloud: StagingWorkflowSnapshot = {
+      ...ready,
+      availability: { state: 'busy', phase: 'running' },
+      job: {
+        ...job,
+        publicationProtocol: 2,
+        status: 'running',
+        revisionId: 'different-captured-revision',
+        requestedAt: new Date().toISOString(),
+        completedAt: null,
+        stagingCommitSha: null,
+        commitUrl: null,
+      },
+    };
+    const load = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(cloud);
+    const continueJob = vi.spyOn(api, 'continueStagingPublication');
+    const verifyJob = vi.spyOn(api, 'refreshStagingVerification');
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    expect(await screen.findByText(/Your newer saved edits are separate/)).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Check now' }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(continueJob).not.toHaveBeenCalled();
+    expect(verifyJob).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('accepts the original captured tuple after recovery advances main, then revokes it', async () => {
+    const tuple = {
+      siteId: 'pointsite' as const,
+      revisionId: '20000000-0000-4000-8000-000000000099',
+      revisionChecksum: job.revisionChecksum,
+      schemaVersion: job.schemaVersion,
+      rendererVersion: job.rendererVersion,
+      candidateChecksum: job.candidateChecksum,
+      stagingBaseSha: job.stagingBaseSha,
+      stagingCommitSha: job.stagingCommitSha,
+      productionBaseSha: 'e'.repeat(40),
+      publicationProtocol: 2 as const,
+      workflowRevision: 'f'.repeat(40),
+      artifactDigest: '1'.repeat(64),
+    };
+    const cloud = {
+      ...reviewReady,
+      currentStagingSha: '9'.repeat(40),
+      availability: { state: 'busy' as const, phase: 'review' as const },
+      job: {
+        ...reviewReady.job!,
+        revisionId: tuple.revisionId,
+        publicationProtocol: 2 as const,
+        workflowRevision: tuple.workflowRevision,
+        evidence: {
+          verificationStatus: 'passed' as const,
+          artifactDigest: tuple.artifactDigest,
+          verification: { dispatchRevision: '9'.repeat(40) },
+        },
+      },
+    };
+    const acceptedCloud = { ...cloud, approval: { ...accepted.approval!, tuple } };
+    vi.spyOn(api, 'getStagingWorkflow')
+      .mockResolvedValueOnce(cloud)
+      .mockResolvedValueOnce(acceptedCloud)
+      .mockResolvedValue(cloud);
+    vi.spyOn(api, 'productionBase').mockResolvedValue({ sha: tuple.productionBaseSha });
+    const approve = vi
+      .spyOn(api, 'acceptStaging')
+      .mockResolvedValue({ id: acceptedCloud.approval.id, decision: 'approved', tuple });
+    const revoke = vi
+      .spyOn(api, 'revokeStaging')
+      .mockResolvedValue({ id: crypto.randomUUID(), decision: 'revoked', tuple });
+    renderPublish();
+    expect(await screen.findByText('Newer edits are not included.')).toBeVisible();
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept this Staging version' }));
+    await waitFor(() =>
+      expect(approve).toHaveBeenCalledWith(
+        job.id,
+        tuple,
+        'Protected Staging reviewed in Builder',
+        null,
+      ),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke Staging acceptance' }));
+    await waitFor(() =>
+      expect(revoke).toHaveBeenCalledWith(job.id, tuple, acceptedCloud.approval.id),
+    );
   });
 
   it('runs private preflight and publication from one intentional action', async () => {
@@ -196,6 +453,7 @@ describe('guided Staging publishing', () => {
       draft.revision.id,
       draft.revision.checksum,
       ready.currentStagingSha,
+      expect.any(String),
     );
     expect(load).toHaveBeenCalledTimes(3);
     expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
@@ -214,7 +472,7 @@ describe('guided Staging publishing', () => {
     expect(screen.getByRole('button', { name: 'Check availability' })).toBeEnabled();
     expect(screen.getByText(/selected draft and private preflight remain safe/i)).toBeVisible();
     expect(screen.getByText(/another publication is currently publishing/i)).toBeVisible();
-    expect(screen.getByText(/safely recover the slot after/i)).toBeVisible();
+    expect(screen.getByText(/check recovery after/i)).toBeVisible();
 
     await act(() => vi.advanceTimersByTimeAsync(10_000));
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
@@ -266,6 +524,7 @@ describe('guided Staging publishing', () => {
         draft.revision.id,
         draft.revision.checksum,
         ready.currentStagingSha,
+        expect.any(String),
       ),
     );
     expect(await screen.findByText('Verifying the exact Staging candidate')).toBeVisible();
@@ -280,7 +539,7 @@ describe('guided Staging publishing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Accept this Staging version' }));
     expect(await screen.findByText('Official Staging candidate accepted')).toBeVisible();
-    expect(screen.getByText(/public website has not changed/i)).toBeVisible();
+    expect(screen.getByText(/Production has its own publication status/i)).toBeVisible();
     expect(load).toHaveBeenCalledTimes(4);
   });
 
@@ -292,7 +551,7 @@ describe('guided Staging publishing', () => {
     expect(screen.queryByRole('button', { name: /publish this revision/i })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
     expect(screen.getByText(/No more publishing action is required from you/i)).toBeVisible();
-    expect(screen.getByText(/Production remains unchanged/i)).toBeVisible();
+    expect(screen.getByText(/Production requires an Administrator/i)).toBeVisible();
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -317,7 +576,7 @@ describe('guided Staging publishing', () => {
 
     expect(await screen.findByText('Your next step · Administrator')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-    expect(screen.getByText(/No Production action is available here yet/i)).toBeVisible();
+    expect(screen.getByText(/Check the Production section below/i)).toBeVisible();
     expect(screen.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /publish.*production/i })).toBeNull();
   });
