@@ -315,15 +315,26 @@ textarea {
   display: grid;
   min-width: 0;
 }
+.draft-name {
+  min-width: 0;
+}
 .draft-name__heading {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 .draft-name .editor-title {
-  overflow-wrap: anywhere;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draft-name__rename {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.75rem;
+  padding: 0;
+  border-color: transparent;
 }
 .draft-name__form {
   display: grid;

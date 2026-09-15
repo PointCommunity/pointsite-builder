@@ -1,3 +1,4 @@
+import { PencilSimple } from '@phosphor-icons/react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 export function DraftName({
@@ -126,12 +127,19 @@ export function DraftName({
         </form>
       ) : (
         <div className="draft-name__heading">
-          <h1 className="editor-title" onDoubleClick={editable ? begin : undefined}>
+          <h1 className="editor-title" title={name} onDoubleClick={editable ? begin : undefined}>
             {name}
           </h1>
           {editable ? (
-            <button ref={focusButton} className="button" type="button" onClick={begin}>
-              Rename draft
+            <button
+              ref={focusButton}
+              className="button draft-name__rename"
+              type="button"
+              aria-label="Rename draft"
+              title="Rename draft"
+              onClick={begin}
+            >
+              <PencilSimple size={18} aria-hidden="true" />
             </button>
           ) : null}
         </div>
