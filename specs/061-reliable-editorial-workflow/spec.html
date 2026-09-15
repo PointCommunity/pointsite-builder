@@ -638,6 +638,16 @@
       website publication.
     </p>
     <p>
+      Runtime-read correction: support reference 03d33830-5781-4e0b-a4eb-c5e172fb1442 identified a
+      GitHub 404 before dispatch. The immutable shared runtime commit exists in pointsite-staging,
+      not the independent Canary destination history. Preflight, capture and captured retry must
+      check destination callers at the destination base and renderer files at the canonical runtime
+      revision. Issue repository-scoped read-only tokens for these checks; only the existing
+      authorized dispatch/runner path receives destination write permission. Reproduce with disjoint
+      repository histories, then rerun sequential QA and deploy a corrected Canary image before
+      resuming the live publication test.
+    </p>
+    <p>
       Qualify the immutable runtime from its reviewed feature commit in the new Canary repository
       before merging anything into existing Staging. Production promotion must coordinate the
       approved Builder image with the reviewed Staging callers after checking for active or

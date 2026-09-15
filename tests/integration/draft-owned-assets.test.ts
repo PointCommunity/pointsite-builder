@@ -1333,109 +1333,128 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
   }
 }, 30_000);
 
-it('captures cloud inputs without reading image bytes and polls only metadata after later edits', async () => {
-  const { database, repository, createInput } = await fixture();
-  await database.prepare("UPDATE user_roles SET role='publisher' WHERE email=?").bind(actor).run();
-  const draft = await repository.createDraft(createInput);
-  const jobs = new D1PublishJobStore(database),
-    preflights = new D1PublishPreflightStore(database);
-  const client = {
-    currentMainSha: vi.fn(() => Promise.resolve('b'.repeat(40))),
-    assertRendererCompatible: vi.fn(async () => {}),
-    assertPublicationCaller: vi.fn(async () => {}),
-    advanceCommit: vi.fn(),
-    verificationForCommit: vi.fn(),
-  };
-  const publisher = new StagingPublisher(
-    repository,
-    {
-      appId: '123',
-      installationId: '456',
-      privateKey: 'unused',
-      workflowRevision: PUBLICATION_WORKFLOW_REVISION,
-    },
-    undefined,
-    jobs,
-    preflights,
-    () => Promise.resolve(client),
-  );
-  const input = {
-    draftId: draft.id,
-    expectedRevisionId: draft.revision.id,
-    expectedRevisionChecksum: draft.revision.checksum,
-    actor,
-    idempotencyKey: 'cloud-preflight-fixture',
-    requestId: 'cloud-fixture',
-  };
-  const reads = vi.spyOn(database, 'prepare');
-  const passed = await publisher.preflight(input);
-  expect(passed.state).toBe('passed');
-  expect(client.assertPublicationCaller).toHaveBeenCalledWith(
-    'b'.repeat(40),
-    PUBLICATION_CALLER_BLOB,
-  );
-  expect(client.assertRendererCompatible).toHaveBeenCalledWith(
-    PUBLICATION_WORKFLOW_REVISION,
-    expect.any(Object),
-  );
-  const capture = {
-    ...input,
-    expectedBaseSha: 'b'.repeat(40),
-    idempotencyKey: 'cloud-capture-fixture',
-  };
-  const job = await publisher.publish(capture);
-  expect(job).toMatchObject({
-    status: 'queued',
-    publicationProtocol: 2,
-    candidateChecksum: passed.candidateChecksum,
-  });
-  const externalCalls = client.currentMainSha.mock.calls.length;
-  expect(await publisher.publish(capture)).toEqual(job);
-  expect(client.currentMainSha.mock.calls).toHaveLength(externalCalls);
-  expect(client.advanceCommit).not.toHaveBeenCalled();
-  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(/draft_asset_chunks/);
-  const document = structuredClone(draft.document);
-  document.media[0].alt = 'Later edit';
-  await repository.saveDraft({
-    draftId: draft.id,
-    ...(await acquireDraftProof(repository, draft.id, actor)),
-    document,
-    actor,
-    idempotencyKey: 'cloud-captured-later-edit',
-    requestId: 'later-edit',
-    action: { category: 'control-change', context: 'library-attachment' },
-  });
-  const fullRead = vi.spyOn(repository, 'getDraft');
-  fullRead.mockClear();
-  reads.mockClear();
-  const status = await publisher.workflowForDraft(draft.id);
-  expect(status).toMatchObject({
-    preflight: { state: 'required', reason: 'revision-changed' },
-    availability: { state: 'busy', phase: 'queued' },
-    job: {
-      id: job.jobId,
-      revisionId: draft.revision.id,
+it.each(['https://builder.eaglepass.io', 'https://builder-canary.eaglepass.io'])(
+  'checks canonical runtime independently of %s destination while capturing and polling metadata',
+  async (builderOrigin) => {
+    const { database, repository, createInput } = await fixture();
+    await database
+      .prepare("UPDATE user_roles SET role='publisher' WHERE email=?")
+      .bind(actor)
+      .run();
+    const draft = await repository.createDraft(createInput);
+    const jobs = new D1PublishJobStore(database, builderOrigin),
+      preflights = new D1PublishPreflightStore(database);
+    const client = {
+      currentMainSha: vi.fn(() => Promise.resolve('b'.repeat(40))),
+      assertRendererCompatible: vi.fn(async () => {}),
+      assertPublicationCaller: vi.fn(async () => {}),
+      advanceCommit: vi.fn(),
+      verificationForCommit: vi.fn(),
+    };
+    const clientFactory = vi.fn((name?: string) =>
+      Promise.resolve(
+        name === 'PointCommunity/pointsite-staging'
+          ? client
+          : {
+              ...client,
+              assertRendererCompatible: () =>
+                Promise.reject(new Error('GitHub staging operation failed (404)')),
+            },
+      ),
+    );
+    const publisher = new StagingPublisher(
+      repository,
+      {
+        appId: '123',
+        installationId: '456',
+        privateKey: 'unused',
+        workflowRevision: PUBLICATION_WORKFLOW_REVISION,
+        builderOrigin,
+      },
+      undefined,
+      jobs,
+      preflights,
+      clientFactory,
+    );
+    const input = {
+      draftId: draft.id,
+      expectedRevisionId: draft.revision.id,
+      expectedRevisionChecksum: draft.revision.checksum,
+      actor,
+      idempotencyKey: 'cloud-preflight-fixture',
+      requestId: 'cloud-fixture',
+    };
+    const reads = vi.spyOn(database, 'prepare');
+    const passed = await publisher.preflight(input);
+    expect(passed.state).toBe('passed');
+    expect(client.assertPublicationCaller).toHaveBeenCalledWith(
+      'b'.repeat(40),
+      PUBLICATION_CALLER_BLOB,
+    );
+    expect(client.assertRendererCompatible).toHaveBeenCalledWith(
+      PUBLICATION_WORKFLOW_REVISION,
+      expect.any(Object),
+    );
+    const capture = {
+      ...input,
+      expectedBaseSha: 'b'.repeat(40),
+      idempotencyKey: 'cloud-capture-fixture',
+    };
+    const job = await publisher.publish(capture);
+    expect(job).toMatchObject({
+      status: 'queued',
       publicationProtocol: 2,
-      dispatch: { attempts: 0, needsAttention: false },
-    },
-  });
-  expect(await publisher.publish(capture)).toEqual(job);
-  await expect(
-    publisher.publish({ ...capture, expectedRevisionChecksum: 'f'.repeat(64) }),
-  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
-  await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
-  await expect(publisher.publish(capture)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
-  await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
-  expect(fullRead).not.toHaveBeenCalled();
-  reads.mockClear();
-  await publisher.workflowForDraft(draft.id);
-  expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(
-    /INSERT|UPDATE|DELETE|document_json|draft_asset_chunks/,
-  );
-  await expect(publisher.continuePublication(job.jobId!, actor, 'old-tab')).rejects.toThrow(
-    'PUBLISH_JOB_NOT_CLAIMABLE',
-  );
-}, 30_000);
+      candidateChecksum: passed.candidateChecksum,
+    });
+    const externalCalls = client.currentMainSha.mock.calls.length;
+    expect(await publisher.publish(capture)).toEqual(job);
+    expect(client.currentMainSha.mock.calls).toHaveLength(externalCalls);
+    expect(client.advanceCommit).not.toHaveBeenCalled();
+    expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(/draft_asset_chunks/);
+    const document = structuredClone(draft.document);
+    document.media[0].alt = 'Later edit';
+    await repository.saveDraft({
+      draftId: draft.id,
+      ...(await acquireDraftProof(repository, draft.id, actor)),
+      document,
+      actor,
+      idempotencyKey: 'cloud-captured-later-edit',
+      requestId: 'later-edit',
+      action: { category: 'control-change', context: 'library-attachment' },
+    });
+    const fullRead = vi.spyOn(repository, 'getDraft');
+    fullRead.mockClear();
+    reads.mockClear();
+    const status = await publisher.workflowForDraft(draft.id);
+    expect(status).toMatchObject({
+      preflight: { state: 'required', reason: 'revision-changed' },
+      availability: { state: 'busy', phase: 'queued' },
+      job: {
+        id: job.jobId,
+        revisionId: draft.revision.id,
+        publicationProtocol: 2,
+        dispatch: { attempts: 0, needsAttention: false },
+      },
+    });
+    expect(await publisher.publish(capture)).toEqual(job);
+    await expect(
+      publisher.publish({ ...capture, expectedRevisionChecksum: 'f'.repeat(64) }),
+    ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+    await database.prepare('UPDATE user_roles SET active=0 WHERE email=?').bind(actor).run();
+    await expect(publisher.publish(capture)).rejects.toThrow('PUBLISH_AUTHORITY_CHANGED');
+    await database.prepare('UPDATE user_roles SET active=1 WHERE email=?').bind(actor).run();
+    expect(fullRead).not.toHaveBeenCalled();
+    reads.mockClear();
+    await publisher.workflowForDraft(draft.id);
+    expect(reads.mock.calls.map(([sql]) => sql).join('\n')).not.toMatch(
+      /INSERT|UPDATE|DELETE|document_json|draft_asset_chunks/,
+    );
+    await expect(publisher.continuePublication(job.jobId!, actor, 'old-tab')).rejects.toThrow(
+      'PUBLISH_JOB_NOT_CLAIMABLE',
+    );
+  },
+  30_000,
+);
 
 it('rechecks cloud preflight authority atomically and rejects changed preflight at capture', async () => {
   const { database, repository, createInput } = await fixture();

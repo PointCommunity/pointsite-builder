@@ -64,7 +64,7 @@ export class StagingPublisher {
     private readonly media?: MediaService,
     private readonly jobs?: D1PublishJobStore,
     private readonly preflights?: D1PublishPreflightStore,
-    private readonly clientFactory?: () => Promise<StagingClient>,
+    private readonly clientFactory?: (repository: StagingRepository) => Promise<StagingClient>,
   ) {}
 
   async currentBaseSha(): Promise<string> {
@@ -84,8 +84,7 @@ export class StagingPublisher {
         const client = await this.client();
         if ((await client.currentMainSha()) !== baseSha || !client.assertPublicationCaller)
           throw new Error('PUBLICATION_RECOVERY_CHANGED');
-        await client.assertPublicationCaller(baseSha, PUBLICATION_CALLER_BLOB);
-        await client.assertRendererCompatible(baseSha, STAGING_RENDERER_CONTRACT);
+        await this.assertCloudRuntime(client, baseSha);
       });
     }
     return this.jobs.recoverQueued(input);
@@ -250,7 +249,12 @@ export class StagingPublisher {
   private async assertCloudRuntime(client: StagingClient, baseSha: string) {
     if (!client.assertPublicationCaller) throw new Error('PUBLICATION_RUNTIME_UNAVAILABLE');
     await client.assertPublicationCaller(baseSha, PUBLICATION_CALLER_BLOB);
-    await client.assertRendererCompatible(this.config.workflowRevision!, STAGING_RENDERER_CONTRACT);
+    // Executable source belongs to the canonical runtime, not the destination's Git history.
+    const runtime = await this.client('PointCommunity/pointsite-staging');
+    await runtime.assertRendererCompatible(
+      this.config.workflowRevision!,
+      STAGING_RENDERER_CONTRACT,
+    );
   }
 
   private async captureCloud(input: PublishInput) {
@@ -619,20 +623,25 @@ export class StagingPublisher {
     };
   }
 
-  private async client(): Promise<StagingClient> {
-    if (this.clientFactory) return this.clientFactory();
+  private async client(
+    repository = `PointCommunity/${publicationDestination('staging', this.config.builderOrigin).repository}` as StagingRepository,
+  ): Promise<StagingClient> {
+    if (this.clientFactory) return this.clientFactory(repository);
     const token = await createInstallationToken({
       appId: this.config.appId,
       installationId: this.config.installationId,
       privateKey: this.config.privateKey,
       ...(this.config.workflowRevision
-        ? { repository: publicationDestination('staging', this.config.builderOrigin).repository }
+        ? {
+            repository:
+              repository === 'PointCommunity/pointsite-staging-canary'
+                ? ('pointsite-staging-canary' as const)
+                : ('pointsite-staging' as const),
+            readOnly: true,
+          }
         : {}),
     });
-    return new GitHubStagingClient(
-      `PointCommunity/${publicationDestination('staging', this.config.builderOrigin).repository}` as StagingRepository,
-      token,
-    );
+    return new GitHubStagingClient(repository, token);
   }
 
   private rendererContractChecksum(): Promise<string> {
