@@ -847,6 +847,10 @@ export function BlockInspector({
             ]}
             onChange={(variant) => onChange({ ...block, variant })}
           />
+          <p className="inspector-hint">
+            Images use 16:9 frames and fit fully without cropping. Missing images reserve the same
+            space when other cards have images. Text-only collections have no image frames.
+          </p>
           {block.variant !== 'splitEditorial' && block.variant !== 'splitEditorialTone' ? (
             <>
               <Text
@@ -1000,8 +1004,9 @@ export function BlockInspector({
             label="Layout style"
             value={block.variant ?? 'standard'}
             options={[
-              { label: 'Standard people', value: 'standard' },
-              { label: 'Point leadership grid', value: 'leadership' },
+              { label: 'Standard People', value: 'standard' },
+              { label: 'Vertical Grid', value: 'leadership' },
+              { label: 'Horizontal Grid', value: 'horizontal' },
             ]}
             onChange={(variant) => onChange({ ...block, variant })}
           />
@@ -1019,6 +1024,13 @@ export function BlockInspector({
             ]}
             onChange={(layout) => onChange({ ...block, layout })}
           />
+          <p className="inspector-hint">
+            {block.variant === 'horizontal'
+              ? '16:9 landscape frames. Photos fill the frame with cropping, without distortion.'
+              : block.variant === 'leadership'
+                ? '4:5 portrait frames. Photos fill the frame with cropping, without distortion.'
+                : '4:5 portrait frames. Whole photos fit without cropping, with background around unused space.'}
+          </p>
           <fieldset className="inspector-group">
             <legend>People to show</legend>
             {document.collections.people.map((person) => (

@@ -12,6 +12,26 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
+  it('offers all People styles while keeping legacy leadership selections', () => {
+    const initial = allBlocks.find((block) => block.type === 'people')!;
+    render(<ControlledInspector initial={{ ...initial, variant: 'leadership' }} />);
+    const style = screen.getByLabelText('Layout style');
+    expect(style).toHaveValue('leadership');
+    for (const name of ['Standard People', 'Vertical Grid', 'Horizontal Grid']) {
+      expect(screen.getByRole('option', { name })).toBeInTheDocument();
+    }
+    const selected = screen
+      .getAllByRole('checkbox')
+      .map((input) => (input as HTMLInputElement).checked);
+    fireEvent.change(style, { target: { value: 'horizontal' } });
+    expect(style).toHaveValue('horizontal');
+    expect(screen.getByText(/16:9 landscape frames/)).toBeVisible();
+    expect(
+      screen.getAllByRole('checkbox').map((input) => (input as HTMLInputElement).checked),
+    ).toEqual(selected);
+    fireEvent.change(style, { target: { value: 'standard' } });
+    expect(screen.getByText(/Whole photos fit without cropping/)).toBeVisible();
+  });
   it('edits a hero through human-readable fields', () => {
     const document = structuredClone(defaultSiteDocument);
     const block = document.pages[0].blocks

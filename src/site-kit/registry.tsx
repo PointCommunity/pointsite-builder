@@ -170,13 +170,26 @@ function HeroTextBox({
 
 type CardItem = Extract<SiteElement, { type: 'cards' }>['items'][number];
 
-function CardMedia({ item, document }: { item: CardItem; document: SiteDocument }) {
+function CardMedia({
+  item,
+  document,
+  reserve,
+}: {
+  item: CardItem;
+  document: SiteDocument;
+  reserve: boolean;
+}) {
   return item.mediaId ? (
     <img
+      className="point-card-media"
       src={mediaRecord(document, item.mediaId).sourcePath}
       alt={item.mediaAlt ?? ''}
       loading="lazy"
+      width={1600}
+      height={900}
     />
+  ) : reserve ? (
+    <span className="point-card-media" aria-hidden="true" />
   ) : null;
 }
 
@@ -733,15 +746,17 @@ export function renderBlock(
         </section>
       );
     case 'cards': {
+      const reserveMedia = block.items.some((item) => Boolean(item.mediaId));
+      const mediaClass = reserveMedia ? ' point-cards-with-media' : '';
       if (block.variant === 'splitEditorial' || block.variant === 'splitEditorialTone')
         return (
           <section
-            className={`content-section split-section point-cards--${block.columns}${block.variant === 'splitEditorialTone' ? ' tone-section' : ''}`}
+            className={`content-section split-section point-cards--${block.columns}${block.variant === 'splitEditorialTone' ? ' tone-section' : ''}${mediaClass}`}
           >
             {block.items.map((item, index) => (
               <div key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
-                <CardMedia item={item} document={document} />
+                <CardMedia item={item} document={document} reserve={reserveMedia} />
                 <h2>{item.title}</h2>
                 <TextLines text={item.body} />
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
@@ -755,11 +770,11 @@ export function renderBlock(
           <section className={`content-section tone-section point-cards--${block.columns}`}>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <h2>{block.heading}</h2>
-            <div className={`three-column point-cards--${block.columns}`}>
+            <div className={`three-column point-cards--${block.columns}${mediaClass}`}>
               {block.items.map((item, index) => (
                 <p key={index}>
                   {item.eyebrow ? <span className="eyebrow">{item.eyebrow}</span> : null}
-                  <CardMedia item={item} document={document} />
+                  <CardMedia item={item} document={document} reserve={reserveMedia} />
                   <strong>{item.title}</strong>
                   <br />
                   {item.body}
@@ -785,13 +800,13 @@ export function renderBlock(
           <section className={`content-section point-cards--${block.columns}`}>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
-            <div className="belief-list">
+            <div className={`belief-list${mediaClass}`}>
               {block.items.map((item, index) => (
                 <article key={index}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <div>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
-                    <CardMedia item={item} document={document} />
+                    <CardMedia item={item} document={document} reserve={reserveMedia} />
                     <h2>{item.title}</h2>
                     <p>{item.body}</p>
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
@@ -804,75 +819,73 @@ export function renderBlock(
         );
       if (block.variant === 'groups')
         return (
-          <section
-            className="content-section group-grid"
-            style={{ '--point-card-columns': block.columns } as CSSProperties}
-          >
+          <section className="content-section">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
-            {block.items.map((item, index) => {
-              const [schedule = '', location = '', leaders = ''] = item.body.split('\n');
-              return (
-                <article key={index}>
-                  {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
-                  <CardMedia item={item} document={document} />
-                  <h2>{item.title}</h2>
-                  <p className="group-time">{schedule}</p>
-                  <p>{location}</p>
-                  <p>
-                    <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
-                  </p>
-                  {item.supportingText ? <small>{item.supportingText}</small> : null}
-                  <CardLink item={item} />
-                </article>
-              );
-            })}
+            <div
+              className={`group-grid${mediaClass}`}
+              style={{ '--point-card-columns': block.columns } as CSSProperties}
+            >
+              {block.items.map((item, index) => {
+                const [schedule = '', location = '', leaders = ''] = item.body.split('\n');
+                return (
+                  <article key={index}>
+                    {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                    <CardMedia item={item} document={document} reserve={reserveMedia} />
+                    <h2>{item.title}</h2>
+                    <p className="group-time">{schedule}</p>
+                    <p>{location}</p>
+                    <p>
+                      <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
+                    </p>
+                    {item.supportingText ? <small>{item.supportingText}</small> : null}
+                    <CardLink item={item} />
+                  </article>
+                );
+              })}
+            </div>
           </section>
         );
       if (block.variant === 'giving')
         return (
-          <section
-            className="content-section giving-options"
-            style={{ '--point-card-columns': block.columns } as CSSProperties}
-          >
+          <section className="content-section">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
-            {block.items.map((item, index) => (
-              <article key={index}>
-                <span>{String(index + 1).padStart(2, '0')}</span>
-                {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
-                <CardMedia item={item} document={document} />
-                <h2>{item.title}</h2>
-                <p>{item.body}</p>
-                {item.supportingText ? <small>{item.supportingText}</small> : null}
-                {item.href ? (
-                  <a
-                    className="button button--dark"
-                    href={item.href}
-                    {...linkAttributes(item.href)}
-                  >
-                    Open secure giving
-                  </a>
-                ) : null}
-              </article>
-            ))}
+            <div
+              className={`giving-options${mediaClass}`}
+              style={{ '--point-card-columns': block.columns } as CSSProperties}
+            >
+              {block.items.map((item, index) => (
+                <article key={index}>
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
+                  <CardMedia item={item} document={document} reserve={reserveMedia} />
+                  <h2>{item.title}</h2>
+                  <p>{item.body}</p>
+                  {item.supportingText ? <small>{item.supportingText}</small> : null}
+                  {item.href ? (
+                    <a
+                      className="button button--dark"
+                      href={item.href}
+                      {...linkAttributes(item.href)}
+                    >
+                      Open secure giving
+                    </a>
+                  ) : null}
+                </article>
+              ))}
+            </div>
           </section>
         );
       return (
         <section className="content-section point-card-section">
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
-          <div className={`point-cards point-cards--${block.columns}`}>
+          <div className={`point-cards point-cards--${block.columns}${mediaClass}`}>
             {block.items.map((item, index) => (
               <article className="point-card" key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
-                {item.mediaId ? (
-                  <img
-                    src={mediaRecord(document, item.mediaId).sourcePath}
-                    alt={item.mediaAlt ?? ''}
-                    loading="lazy"
-                  />
-                ) : null}
+                <CardMedia item={item} document={document} reserve={reserveMedia} />
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
@@ -887,16 +900,15 @@ export function renderBlock(
         </section>
       );
     }
-    case 'people':
+    case 'people': {
+      const grid = block.variant === 'leadership' || block.variant === 'horizontal';
       return (
-        <section
-          className={`content-section ${block.variant === 'leadership' ? '' : 'point-people'}`}
-        >
+        <section className={`content-section ${grid ? '' : 'point-people'}`}>
           {block.heading ? <h2>{block.heading}</h2> : null}
           <div
             className={
-              block.variant === 'leadership'
-                ? `people-grid people-grid--${block.layout}`
+              grid
+                ? `people-grid people-grid--${block.layout}${block.variant === 'horizontal' ? ' people-grid--horizontal' : ''}`
                 : `point-people__grid point-people__grid--${block.layout}`
             }
           >
@@ -904,13 +916,13 @@ export function renderBlock(
               const person = document.collections.people.find((candidate) => candidate.id === id);
               if (!person) throw new Error(`Missing person ${id}`);
               return (
-                <article className={block.variant === 'leadership' ? 'person-card' : ''} key={id}>
+                <article className={grid ? 'person-card' : ''} key={id}>
                   {person.mediaId ? (
                     <img
                       src={mediaRecord(document, person.mediaId).sourcePath}
                       alt={person.mediaAlt ?? person.name}
-                      width={block.variant === 'leadership' ? 500 : undefined}
-                      height={block.variant === 'leadership' ? 625 : undefined}
+                      width={block.variant === 'horizontal' ? 1600 : 500}
+                      height={block.variant === 'horizontal' ? 900 : 625}
                       loading="lazy"
                     />
                   ) : (
@@ -920,13 +932,14 @@ export function renderBlock(
                   )}
                   <h2>{person.name}</h2>
                   <p>{person.role}</p>
-                  {block.variant === 'leadership' ? null : <p>{person.bio}</p>}
+                  {grid ? null : <p>{person.bio}</p>}
                 </article>
               );
             })}
           </div>
         </section>
       );
+    }
     case 'faq':
       return (
         <section

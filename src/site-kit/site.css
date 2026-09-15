@@ -1362,6 +1362,50 @@ body:has(.point-site) {
   border: 1px solid var(--point-border);
   background: var(--point-surface);
 }
+.point-site .point-card-media {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--soft);
+}
+.point-site .people-grid,
+.point-site .point-people__grid,
+.point-site .point-cards-with-media {
+  grid-auto-rows: 1fr;
+}
+.point-site .belief-list.point-cards-with-media {
+  display: grid;
+}
+.point-site .people-grid > *,
+.point-site .point-people__grid > *,
+.point-site .point-cards-with-media > *,
+.point-site .point-cards-with-media article > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.point-site .three-column.point-cards--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.point-site .person-card > img,
+.point-site .point-people article > img,
+.point-site .person-placeholder {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+}
+.point-site .point-people article > img,
+.point-site .point-people .person-placeholder {
+  object-fit: contain;
+  background: var(--soft);
+  color: var(--green);
+}
+.point-site .people-grid--horizontal .person-card > img,
+.point-site .people-grid--horizontal .person-placeholder {
+  aspect-ratio: 16 / 9;
+}
 .point-site .point-map iframe {
   width: 100%;
   min-height: 26rem;
@@ -1967,6 +2011,7 @@ body:has(.point-site) {
   .point-site .point-cards,
   .point-site .point-cards--3,
   .point-site .point-cards--4,
+  .point-site .three-column.point-cards--2,
   .point-site .point-people__grid {
     grid-template-columns: 1fr;
   }

@@ -181,7 +181,7 @@ const PeopleBlockSchema = z.strictObject({
   heading: z.string().trim().max(180).optional(),
   personIds: z.array(uuid).min(1).max(24),
   layout: z.enum(['grid', 'featured']),
-  variant: z.enum(['standard', 'leadership']).optional(),
+  variant: z.enum(['standard', 'leadership', 'horizontal']).optional(),
 });
 
 const FaqBlockSchema = z.strictObject({
