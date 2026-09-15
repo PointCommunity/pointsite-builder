@@ -7,6 +7,14 @@ function setup(rename = vi.fn().mockResolvedValue(undefined), editable = true) {
 }
 
 describe('DraftName', () => {
+  it('exposes an icon-only rename button with an accessible name and tooltip', () => {
+    setup();
+    const button = screen.getByRole('button', { name: 'Rename draft' });
+    expect(button).toHaveAttribute('title', 'Rename draft');
+    expect(button.textContent).toBe('');
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('selects the name on double click, trims a save, and restores focus', async () => {
     const rename = setup();
     fireEvent.doubleClick(screen.getByRole('heading', { name: 'Sunday' }));

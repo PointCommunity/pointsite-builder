@@ -888,6 +888,43 @@ test('renames inline with keyboard and pointer while keeping publishing, history
   await expect(page.locator('.draft-card h2')).toHaveText('Renamed Sunday');
 });
 
+test('rename pencil stays beside short and long titles without growing the header', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor', exact: true }).click();
+  const pencil = page.getByRole('button', { name: 'Rename draft' });
+  const title = page.locator('.draft-name .editor-title');
+  await expect(pencil).toHaveAttribute('title', 'Rename draft');
+  await expect(pencil).toHaveText('');
+  for (const width of [1440, 1280, 920, 768, 721]) {
+    await page.setViewportSize({ width, height: 900 });
+    let headerHeight = 0;
+    for (const name of ['Sunday', 'LongUnbrokenDraftName'.repeat(5).slice(0, 100)]) {
+      await pencil.click();
+      await page.getByLabel('Draft name', { exact: true }).fill(name);
+      await page.getByRole('button', { name: 'Save name' }).click();
+      await expect(title).toHaveText(name);
+      await expect(pencil).toBeFocused();
+      const buttonBox = (await pencil.boundingBox())!;
+      const titleBox = (await title.boundingBox())!;
+      expect(Math.round(buttonBox.width)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(buttonBox.height)).toBeGreaterThanOrEqual(44);
+      expect(buttonBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
+      expect(buttonBox.x - titleBox.x - titleBox.width).toBeLessThanOrEqual(8);
+      expect(buttonBox.y + buttonBox.height / 2).toBeCloseTo(titleBox.y + titleBox.height / 2, 0);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(width);
+      const height = (await page.locator('.editor-header').boundingBox())!.height;
+      if (headerHeight) expect(height).toBe(headerHeight);
+      headerHeight = height;
+    }
+  }
+  await pencil.press('Space');
+  await expect(page.getByLabel('Draft name', { exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(pencil).toBeFocused();
+});
+
 test('rename failure can retry without changing autosave and fits supported narrow and enlarged-text layouts', async ({
   page,
 }) => {
