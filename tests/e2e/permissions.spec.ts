@@ -151,20 +151,22 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
           role: 'publisher',
           repositoryPermission: 'read',
         }
-      : path.endsWith('/drafts') && request.method() === 'GET'
-        ? { items: [draft], nextCursor: null }
-        : path.endsWith('/revisions')
-          ? { items: [draft.revision], nextCursor: null }
-          : path.endsWith('/library')
-            ? {
-                draftId: draft.id,
-                revisionId: draft.latestRevisionId,
-                revisionChecksum: draft.revision.checksum,
-                items: [],
-                activeCount: 0,
-                archivedCount: 0,
-              }
-            : draft;
+      : path.endsWith('/draft-sources/staging')
+        ? { sourceCommit: 'a'.repeat(40), deploymentId: '123', artifactDigest: 'b'.repeat(64) }
+        : path.endsWith('/drafts') && request.method() === 'GET'
+          ? { items: [draft], nextCursor: null }
+          : path.endsWith('/revisions')
+            ? { items: [draft.revision], nextCursor: null }
+            : path.endsWith('/library')
+              ? {
+                  draftId: draft.id,
+                  revisionId: draft.latestRevisionId,
+                  revisionChecksum: draft.revision.checksum,
+                  items: [],
+                  activeCount: 0,
+                  archivedCount: 0,
+                }
+              : draft;
     await route.fulfill({
       status: path.endsWith('/drafts') && request.method() === 'POST' ? 201 : 200,
       contentType: 'application/json',
@@ -175,6 +177,9 @@ test('read-only GitHub collaborator can create and edit drafts but cannot publis
   await page.goto('/');
   await page.getByLabel('New draft name').fill('Another draft');
   await page.getByRole('button', { name: 'Create draft' }).click();
+  await page.getByLabel('Copy published site from').selectOption('staging');
+  await expect(page.getByText(/Staging publication verified/)).toBeVisible();
+  await page.getByRole('button', { name: 'Create independent draft' }).click();
   await expect(page.getByLabel('Visual canvas for Home')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Publish', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'New', exact: true }).click();

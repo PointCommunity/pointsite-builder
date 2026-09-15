@@ -4,6 +4,7 @@ import type {
   DraftCheckoutAvailability,
   DraftRecord,
   DraftSummary,
+  PublicationSourceIdentity,
 } from '../server/repositories/contracts';
 import { api, ClientApiError, type ActorResponse } from './api';
 import { DraftList } from './drafts/DraftList';
@@ -361,8 +362,8 @@ export function App() {
               else throw error;
             }
           }}
-          onCreate={async (name) => {
-            const draft = await api.createDraft(name);
+          onCreate={async (name, sourceTarget, expectedSource: PublicationSourceIdentity) => {
+            const draft = await api.createDraft(name, undefined, sourceTarget, expectedSource);
             setDrafts((current) => [draft, ...current]);
             setCheckout(await api.acquireCheckout(draft.id, clientId));
             setSelected(draft);

@@ -27,12 +27,14 @@ import type {
   RevisionRecord,
   SaveDraftInput,
   ProductionDraftSource,
+  DraftPublicationStatus,
 } from './contracts';
 import { ConflictError, NotFoundError } from './memory';
 import { createRequestHash, saveRequestHash } from './request-hash';
 import { AuthorizationError } from '../auth/roles';
 import type { D1DeletionReceipts } from '../maintenance/deletion-receipts';
 import { draftDeletionStatements } from '../maintenance/draft-deletion';
+import { ApiError } from '../http/errors';
 
 interface DraftRow {
   id: string;
@@ -56,6 +58,10 @@ interface DraftRow {
   revision_created_at: string;
   action_category: RevisionRow['action_category'];
   action_context: RevisionRow['action_context'];
+  publication_source_target: DraftPublicationStatus['sourceTarget'] | null;
+  baseline_release_id: string | null;
+  baseline_sequence: number | null;
+  current_release_id: string | null;
 }
 
 interface RevisionRow {
@@ -80,9 +86,12 @@ const DRAFT_FIELDS = `d.id, d.site_id, d.name, d.status, d.latest_revision_id,
     COALESCE((SELECT rl.label FROM revision_labels rl WHERE rl.revision_id = r.id ORDER BY rl.created_at DESC, rl.id DESC LIMIT 1), r.label) AS label,
     r.schema_version, r.renderer_version,
     r.created_by AS revision_created_by, r.created_at AS revision_created_at,
-    r.action_category, r.action_context`;
+    r.action_category, r.action_context,
+    b.source_target AS publication_source_target,b.baseline_release_id,b.baseline_sequence,
+    (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id`;
 const DRAFT_FROM = ` FROM drafts d
   JOIN revisions r ON r.id = d.latest_revision_id
+  LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id
 `;
 const DRAFT_SELECT = `SELECT ${DRAFT_FIELDS},r.document_json ${DRAFT_FROM}`;
 
@@ -132,6 +141,29 @@ function draftSummary(row: Omit<DraftRow, 'document_json'>): DraftSummary {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+    publication: publicationStatus(row),
+  };
+}
+
+function publicationStatus(
+  row: Pick<
+    DraftRow,
+    | 'publication_source_target'
+    | 'baseline_release_id'
+    | 'baseline_sequence'
+    | 'current_release_id'
+    | 'sequence'
+  >,
+): DraftPublicationStatus {
+  return {
+    sourceTarget: row.publication_source_target ?? 'unknown',
+    state:
+      row.baseline_release_id && row.current_release_id
+        ? row.baseline_release_id === row.current_release_id
+          ? 'published'
+          : 'behind'
+        : 'unknown',
+    displayCount: Math.max(0, row.sequence - (row.baseline_sequence ?? 1)),
   };
 }
 
@@ -152,7 +184,10 @@ export class D1DraftRepository implements DraftRepository {
     private readonly assets?: D1DraftAssets,
     private readonly storageFormat: 'legacy' | 'compact-v1' = 'legacy',
     private readonly deletionReceipts?: D1DeletionReceipts,
-    private readonly productionSource?: () => Promise<ProductionDraftSource>,
+    private readonly productionSource?: (
+      target: 'staging' | 'production',
+    ) => Promise<ProductionDraftSource>,
+    private readonly defaultPublicationSource = true,
   ) {}
 
   private async assertEditor(actor: string): Promise<void> {
@@ -215,6 +250,30 @@ export class D1DraftRepository implements DraftRepository {
     return parseDraft(this.database, row);
   }
 
+  async getPublicationStatus(id: string): Promise<DraftPublicationStatus> {
+    const row = await this.database
+      .prepare(
+        `SELECT r.sequence,b.source_target AS publication_source_target,
+      b.baseline_release_id,b.baseline_sequence,
+      (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
+      FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id
+      LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id WHERE d.id=?`,
+      )
+      .bind(id)
+      .first<
+        Pick<
+          DraftRow,
+          | 'sequence'
+          | 'publication_source_target'
+          | 'baseline_release_id'
+          | 'baseline_sequence'
+          | 'current_release_id'
+        >
+      >();
+    if (!row) throw new NotFoundError(`Draft ${id} was not found`);
+    return publicationStatus(row);
+  }
+
   async getRevision(id: string): Promise<RevisionRecord> {
     const row = await this.database
       .prepare(
@@ -230,15 +289,37 @@ export class D1DraftRepository implements DraftRepository {
   }
 
   async createDraft(input: CreateDraftInput): Promise<DraftRecord> {
-    const importProduction = this.productionSource && !input.sourceDraftId;
+    if (input.sourceTarget && !this.productionSource)
+      throw new ApiError(
+        503,
+        'PUBLICATION_SOURCE_UNAVAILABLE',
+        'Selected publication is unavailable. No draft was created.',
+      );
+    const importProduction =
+      this.productionSource &&
+      !input.sourceDraftId &&
+      (Boolean(input.sourceTarget) || this.defaultPublicationSource);
+    const target = input.sourceTarget ?? 'production';
     const requestHash = importProduction
-      ? await checksumDocument({ name: input.name, source: 'current-production' })
+      ? await checksumDocument({ name: input.name, source: target })
       : await createRequestHash(input);
     const prior = await this.readIdempotent('draft.create', input, requestHash);
     if (prior) return prior;
 
     await this.assertEditor(input.actor);
-    const source = importProduction ? await this.productionSource() : undefined;
+    const source = importProduction ? await this.productionSource(target) : undefined;
+    if (
+      input.expectedSource &&
+      (!source ||
+        Object.entries(input.expectedSource).some(
+          ([key, value]) => source.provenance[key as keyof typeof input.expectedSource] !== value,
+        ))
+    )
+      throw new ApiError(
+        409,
+        'PUBLICATION_SOURCE_CHANGED',
+        'Selected publication changed. No draft was created; refresh the source and try again.',
+      );
 
     const now = new Date().toISOString();
     const draftId = crypto.randomUUID();
@@ -312,6 +393,33 @@ export class D1DraftRepository implements DraftRepository {
                   'INSERT INTO draft_production_sources(draft_id,provenance_json) VALUES (?,?)',
                 )
                 .bind(draftId, JSON.stringify(source.provenance)),
+              this.database
+                .prepare(
+                  `INSERT INTO draft_publication_baselines
+                  (draft_id,source_target,baseline_release_id,baseline_sequence)
+                  VALUES (?,?,(
+                    SELECT id FROM publication_releases p
+                    WHERE ((
+                      ?='production' AND p.id=(SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1)
+                      AND COALESCE(json_extract(p.source_json,'$.commitSha'),json_extract(p.source_json,'$.sourceRevision'))=?
+                      AND json_extract(p.evidence_json,'$.deploymentId')=?
+                    ) OR (
+                      ?='staging' AND p.kind IN ('publication','rollback')
+                      AND json_extract(p.source_json,'$.candidateChecksum')=?
+                    )) AND p.artifact_digest=?
+                    ORDER BY p.sequence DESC LIMIT 1
+                  ),1)`,
+                )
+                .bind(
+                  draftId,
+                  source.provenance.target ?? target,
+                  target,
+                  source.provenance.sourceCommit,
+                  source.provenance.deploymentId,
+                  target,
+                  source.provenance.candidateChecksum ?? '',
+                  source.provenance.artifactDigest,
+                ),
             ]
           : []),
         this.database
@@ -351,7 +459,7 @@ export class D1DraftRepository implements DraftRepository {
           now,
         ),
       ]);
-      return record;
+      return this.getDraft(draftId);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -507,7 +615,7 @@ export class D1DraftRepository implements DraftRepository {
         await this.assertCheckout(input.draftId, input.actor, input.checkoutToken);
         throw new ConflictError('The draft has a newer revision');
       }
-      return record;
+      return this.getDraft(input.draftId);
     } catch (error) {
       const replay = await this.replayAfterSaveRace(error, input, requestHash);
       if (replay) return replay;
@@ -1155,9 +1263,30 @@ export class D1DraftRepository implements DraftRepository {
         this.database,
         source,
       )) as DraftRecord['document'];
-      return { ...record, document, revision: { ...record.revision, document } };
+      return {
+        ...record,
+        document,
+        revision: { ...record.revision, document },
+        publication: await this.publicationFor(record.id, record.revision.sequence),
+      };
     }
-    return record;
+    return {
+      ...record,
+      publication: await this.publicationFor(record.id, record.revision.sequence),
+    };
+  }
+
+  private async publicationFor(draftId: string, sequence: number): Promise<DraftPublicationStatus> {
+    const row = await this.database
+      .prepare(
+        `SELECT b.source_target AS publication_source_target,b.baseline_release_id,b.baseline_sequence,
+      (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
+      FROM drafts d LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id WHERE d.id=?`,
+      )
+      .bind(draftId)
+      .first<Omit<DraftRow, 'id'>>();
+    if (!row) throw new NotFoundError(`Draft ${draftId} was not found`);
+    return publicationStatus({ ...row, sequence });
   }
 
   private idempotencyStatement(

@@ -1,5 +1,5 @@
-import { lstat, mkdir } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { lstat, mkdir, readFile } from 'node:fs/promises';
+import { dirname, isAbsolute, resolve, join } from 'node:path';
 import { SqliteDatabase } from './sqlite';
 import { migrateDatabase } from './migrations';
 import { createBuilderRuntime } from '../src/server/application';
@@ -8,7 +8,9 @@ import { openRecoveryDatabase } from '../src/server/maintenance/recovery-control
 import type { RuntimeConfig } from '../src/server/config';
 import type { AppDependencies } from '../src/server';
 import { bindInstance, bootstrapAdministrator } from './identity';
-import { captureProductionSource } from './production-source';
+import { capturePublicationSource } from './production-source';
+import { defaultSiteDocument } from '../src/site-kit/default-site';
+import { checksumDocument } from '../src/site-kit/canonicalize';
 import { createBackups } from './backups';
 import { ROLLBACK_PRODUCTION_CALLER_BLOB } from '../src/server/publish/renderer-contract';
 import { FeedbackService, type FeedbackConfig } from '../src/server/feedback/service';
@@ -75,9 +77,43 @@ export async function openNativeWorkspace(options: {
         : {}),
       rollbackCallerBlob: ROLLBACK_PRODUCTION_CALLER_BLOB,
       assets: createPublicAssets(options.publicRoot),
-      ...(options.config.environment !== 'local'
-        ? { productionSource: captureProductionSource }
-        : {}),
+      productionSource:
+        options.config.environment !== 'local'
+          ? (target: 'staging' | 'production') =>
+              capturePublicationSource(target, options.config.builderOrigin)
+          : async (target: 'staging' | 'production') => {
+              const document = structuredClone(defaultSiteDocument);
+              const assets = new Map(
+                await Promise.all(
+                  document.media.map(async ({ sourcePath }) => {
+                    const bytes = await readFile(join(options.publicRoot, sourcePath.slice(1)));
+                    const contentType = sourcePath.endsWith('.png')
+                      ? 'image/png'
+                      : sourcePath.endsWith('.webp')
+                        ? 'image/webp'
+                        : 'image/jpeg';
+                    return [
+                      sourcePath,
+                      { bytes, filename: sourcePath.split('/').at(-1)!, contentType },
+                    ] as const;
+                  }),
+                ),
+              );
+              const documentChecksum = await checksumDocument(document);
+              return {
+                document,
+                assets,
+                provenance: {
+                  target,
+                  sourceCommit: '0'.repeat(40),
+                  deploymentId: '1',
+                  artifactDigest: documentChecksum,
+                  documentChecksum,
+                  fixture: true,
+                  capturedAt: new Date().toISOString(),
+                },
+              };
+            },
       nativeStorage: backups
         ? () => backups.status()
         : () =>

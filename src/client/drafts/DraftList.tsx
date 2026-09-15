@@ -5,6 +5,152 @@ import type {
   Role,
 } from '../../server/repositories/contracts';
 import { DELETE_DRAFT_CONFIRMATION } from '../../shared/draft-lifecycle';
+import { api, ClientApiError } from '../api';
+import type { PublicationSourceIdentity } from '../../server/repositories/contracts';
+import { publicationExplanation, publicationLabel } from './publication-status';
+
+function CreateDraftDialog({
+  name,
+  onCancel,
+  onCreate,
+}: {
+  name: string;
+  onCancel: () => void;
+  onCreate: (target: 'staging' | 'production', source: PublicationSourceIdentity) => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [target, setTarget] = useState<'' | 'staging' | 'production'>('');
+  const [refresh, setRefresh] = useState(0);
+  const [source, setSource] = useState<PublicationSourceIdentity | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  useEffect(() => {
+    if (!target) return;
+    let active = true;
+    void api
+      .previewDraftSource(target)
+      .then((identity) => {
+        if (active) setSource(identity);
+      })
+      .catch((failure: unknown) => {
+        if (active)
+          setError(
+            failure instanceof ClientApiError
+              ? failure.message
+              : 'Selected publication could not be confirmed. Retry or choose another source.',
+          );
+      })
+      .finally(() => {
+        if (active) setChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [target, refresh]);
+  return (
+    <dialog
+      ref={dialog}
+      className="confirmation-dialog source-dialog"
+      aria-labelledby="create-source-title"
+      aria-describedby="create-source-description"
+      onCancel={(event) => {
+        if (busy) event.preventDefault();
+        else onCancel();
+      }}
+    >
+      <h2 id="create-source-title">Create {name}</h2>
+      <p id="create-source-description">
+        Choose current published source. Builder copies it into an independent draft. Later edits do
+        not change the published site.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!target || !source || busy) return;
+          setBusy(true);
+          setError('');
+          void onCreate(target, source).catch((failure: unknown) => {
+            setError(
+              failure instanceof ClientApiError
+                ? failure.message
+                : 'Creation could not be confirmed. Refresh source before retrying.',
+            );
+            setSource(null);
+            setBusy(false);
+          });
+        }}
+      >
+        <label>
+          Copy published site from
+          <select
+            autoFocus
+            required
+            value={target}
+            disabled={busy}
+            onChange={(event) => {
+              const selected = event.target.value as typeof target;
+              setTarget(selected);
+              setSource(null);
+              setError('');
+              setChecking(Boolean(selected));
+            }}
+          >
+            <option value="">Choose source</option>
+            <option value="staging">Staging</option>
+            <option value="production">Production</option>
+          </select>
+        </label>
+        {checking ? <p role="status">Checking selected publication…</p> : null}
+        {source ? (
+          <p role="status">
+            {source.fixture
+              ? 'Local fixture ready'
+              : `${target === 'staging' ? 'Staging' : 'Production'} publication verified`}
+            . Source commit {source.sourceCommit.slice(0, 8)}. A new draft keeps its own history.
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="dialog-error">
+            {error}
+          </p>
+        ) : null}
+        <div className="button-row confirmation-dialog__actions">
+          <button className="button" type="button" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+          {error && target ? (
+            <button
+              className="button"
+              type="button"
+              disabled={busy || checking}
+              onClick={() => {
+                setSource(null);
+                setError('');
+                setChecking(true);
+                setRefresh((value) => value + 1);
+              }}
+            >
+              Refresh source
+            </button>
+          ) : null}
+          <button
+            className="button button--primary"
+            type="submit"
+            disabled={!source || !target || checking || busy}
+          >
+            {busy ? 'Creating…' : 'Create independent draft'}
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
 
 function DeleteDraftDialog({
   draft,
@@ -136,7 +282,11 @@ export function DraftList({
   drafts: DraftSummary[];
   role: Role;
   onOpen: (draft: DraftSummary, trigger?: HTMLButtonElement) => void | Promise<void>;
-  onCreate: (name: string) => Promise<void>;
+  onCreate: (
+    name: string,
+    target: 'staging' | 'production',
+    source: PublicationSourceIdentity,
+  ) => Promise<void>;
   onDuplicate: (draft: DraftSummary) => Promise<void>;
   onArchive: (draft: DraftSummary) => Promise<void>;
   onUnarchive: (draft: DraftSummary) => Promise<void>;
@@ -144,6 +294,8 @@ export function DraftList({
   checkouts?: DraftCheckoutAvailability[];
 }) {
   const [name, setName] = useState('');
+  const [createName, setCreateName] = useState<string | null>(null);
+  const createTrigger = useRef<HTMLButtonElement>(null);
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const actionPending = useRef(false);
@@ -184,11 +336,7 @@ export function DraftList({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (name.trim())
-                void runAction(async () => {
-                  await onCreate(name.trim());
-                  setName('');
-                });
+              if (name.trim()) setCreateName(name.trim());
             }}
             className="create-draft"
           >
@@ -201,12 +349,31 @@ export function DraftList({
                 required
               />
             </label>
-            <button className="button button--primary" type="submit" disabled={busy}>
+            <button
+              ref={createTrigger}
+              className="button button--primary"
+              type="submit"
+              disabled={busy}
+            >
               Create draft
             </button>
           </form>
         ) : null}
       </div>
+      {createName ? (
+        <CreateDraftDialog
+          name={createName}
+          onCancel={() => {
+            setCreateName(null);
+            window.requestAnimationFrame(() => createTrigger.current?.focus());
+          }}
+          onCreate={async (target, source) => {
+            await onCreate(createName, target, source);
+            setCreateName(null);
+            setName('');
+          }}
+        />
+      ) : null}
       {actionError ? <p role="alert">{actionError}</p> : null}
       {drafts.length === 0 ? (
         <div className="empty-state">
@@ -227,10 +394,13 @@ export function DraftList({
                 <div className="draft-card__details">
                   <p className="status-badge">{draft.status}</p>
                   <h2>{draft.name}</h2>
-                  <p>
-                    Revision {draft.revision.sequence} ·{' '}
+                  <p title={publicationExplanation(draft.publication)}>
+                    {publicationLabel(draft.publication, draft.revision.sequence)} ·{' '}
                     {new Date(draft.updatedAt).toLocaleString()}
                   </p>
+                  {draft.publication?.sourceTarget === 'staging' ? (
+                    <p>Copied from Staging; draft content is not necessarily live on Production.</p>
+                  ) : null}
                   {unavailable ? (
                     <p id={descriptionId}>
                       {checkout.ownerLogin

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Plan 057: Publication-source drafts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f0c;
+        color: #edf3ea;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      h2 {
+        color: #cde8c4;
+        margin-top: 2.5rem;
+      }
+      code {
+        background: #202a21;
+        color: #d8f4ca;
+        padding: 0.1rem 0.35rem;
+      }
+      a {
+        color: #b4dfa5;
+      }
+    </style>
+  </head>
+  <body>
+    <p>PointSite Builder · Issue #57 · implementation plan</p>
+    <h1>Verified source first, baseline status second</h1>
+    <h2>Research readback</h2>
+    <p>
+      Current D1 creation already imports verified Production and owns copied images through
+      <code>server/production-source.ts</code>, <code>D1DraftRepository.createDraft</code>, and
+      migration 0036. The UI still offers no source choice. The Production baseline is a captured
+      legacy deployment in migration 0029; verified Builder Production jobs append durable releases
+      in <code>verifiedReleaseStatement</code>. Staging and Staging Canary currently expose format-2
+      live release markers plus content manifests. Staging selection must use the runtime's fixed
+      destination, never a browser-selected repository URL. Live GitHub deployment readback shows
+      Staging and Canary use the <code>staging</code> environment and null GitHub App attribution;
+      their linked, successful candidate Actions run/job and exact deployment SHA must be checked
+      instead. Both public sources passed bounded capture of referenced media on September 15.
+    </p>
+    <h2>Decisions</h2>
+    <ol>
+      <li>
+        Extend existing bounded immutable-public-source capture to fixed Staging destinations.
+        Retain legacy Production baseline handling. Source preview pins commit, deployment, and
+        artifact identity; creation recaptures and compares it. Server accepts source enum and never
+        falls back to default content in configured native deployments. Isolated local QA uses
+        explicit fixtures; older local API fixture creation remains unchanged.
+      </li>
+      <li>
+        Add an additive draft-baseline record. Match captured Production provenance to the current
+        verified release; inherit Staging lineage only with exact verified Production
+        candidate/artifact evidence. Existing uncertain drafts remain unknown. Never infer lineage
+        from visual content similarity.
+      </li>
+      <li>
+        Compute displayed count from immutable revision sequence minus baseline sequence. A
+        verified-release insertion alone changes a publishing draft's baseline using its pinned
+        exact publication input. Other drafts become Behind by comparing release IDs, without
+        updates to their histories.
+      </li>
+      <li>
+        Return server-calculated status in draft list and detail. Client renders compact status in
+        the current editor line and concise explanation. Keep source identity visible in create
+        flow.
+      </li>
+    </ol>
+    <h2>Risks and recovery</h2>
+    <p>
+      Staging provenance might not link to a verified Production candidate, especially after
+      metadata retention or across Canary/Production; show unknown. A public release outside Builder
+      can make local release records stale; reconcile live drift before claiming full release
+      verification. Additive migration and old image compatibility: old code ignores the new table.
+      Never delete immutable revisions or existing production-source rows. Revert application image
+      through GitOps if needed; data restoration requires separate approval. See
+      <a href="data-model.html">data model and upgrade contract</a>.
+    </p>
+    <h2>Sequence and checkpoints</h2>
+    <p>
+      Tasks in <a href="tasks.html">ordered task list</a> move from source capture and safe
+      creation, to persisted baseline/counter, to verified publishing reset, to accessible
+      UI/browser checks. Every logic slice starts with a failing test and ends with focused checks.
+      Full QA runs sequentially before PR review, exact-head Quality, and Canary.
+    </p>
+  </body>
+</html>

@@ -91,6 +91,17 @@ export class InMemoryRepository implements DraftRepository {
     return clone(draft);
   }
 
+  async getPublicationStatus(id: string) {
+    const draft = await this.getDraft(id);
+    return (
+      draft.publication ?? {
+        sourceTarget: 'unknown' as const,
+        state: 'unknown' as const,
+        displayCount: Math.max(0, draft.revision.sequence - 1),
+      }
+    );
+  }
+
   async getRevision(id: string): Promise<RevisionRecord> {
     for (const revisions of this.#revisions.values()) {
       const revision = revisions.find((candidate) => candidate.id === id);
