@@ -15,9 +15,9 @@ import { publicationMediaPaths } from '../../src/site-kit/publication-media';
 import { publicationClaims } from '../fixtures/publication-runner';
 import { publicationGitHubFixture } from '../fixtures/publication-github';
 
-test('independent native Builders cannot overwrite a shared Staging winner or exchange runner tokens', async () => {
+test('independent native Builders publish to separate repositories and cannot exchange runner tokens', async () => {
   const databases: SqliteDatabase[] = [];
-  let sharedMain = 'b'.repeat(40);
+  const baseSha = 'b'.repeat(40);
   const keys = await generateKeyPair('RS256', { extractable: true });
   const actor = 'github:12345';
   try {
@@ -52,12 +52,12 @@ test('independent native Builders cannot overwrite a shared Staging winner or ex
         idempotencyKey: crypto.randomUUID(),
         requestId: crypto.randomUUID(),
       });
-      const store = new D1PublishJobStore(database);
+      const store = new D1PublishJobStore(database, builderOrigin);
       const job = await store.captureStaging({
         draft,
         actor,
         workflowRevision: 'a'.repeat(40),
-        baseSha: sharedMain,
+        baseSha,
         idempotencyKey: crypto.randomUUID(),
         requestId: crypto.randomUUID(),
       });
@@ -71,7 +71,7 @@ test('independent native Builders cannot overwrite a shared Staging winner or ex
         jobId: job.id,
         nonce: nonce!,
         workflowRevision: 'a'.repeat(40),
-        dispatchRevision: sharedMain,
+        dispatchRevision: baseSha,
       });
       const sign = (checkRunId: string) =>
         new SignJWT({ ...claims, check_run_id: checkRunId })
@@ -81,14 +81,9 @@ test('independent native Builders cannot overwrite a shared Staging winner or ex
         job.id,
         job.candidateChecksum,
         publicationMediaPaths(draft.document),
+        builderOrigin === 'https://builder-canary.eaglepass.io' ? 'canary' : 'staging',
       );
       provider.build.commitSha = (candidates.length ? '9' : 'c').repeat(40);
-      Object.defineProperty(provider.state, 'main', {
-        get: () => sharedMain,
-        set: (value: string) => {
-          sharedMain = value;
-        },
-      });
       const runner = new D1PublicationRunner(
         database,
         () => Promise.resolve(keys.publicKey),
@@ -116,24 +111,25 @@ test('independent native Builders cannot overwrite a shared Staging winner or ex
       await runner.authorizeBuild(job.id, token, provider.build);
       candidates.push({ runner, job, token, provider, store, database });
     }
-    const [winner, stale] = candidates;
-    await expect(stale.runner.commitBuild(stale.job.id, winner.token)).rejects.toThrow(
+    const [winner, production] = candidates;
+    await expect(production.runner.commitBuild(production.job.id, winner.token)).rejects.toThrow(
       'PUBLISH_RUNNER_UNAUTHORIZED',
     );
     await winner.runner.commitBuild(winner.job.id, winner.token);
-    expect(sharedMain).toBe(winner.provider.build.commitSha);
-    await expect(stale.runner.commitBuild(stale.job.id, stale.token)).rejects.toThrow(
-      'PUBLICATION_COMMIT_UNCONFIRMED',
-    );
-    expect(sharedMain).toBe(winner.provider.build.commitSha);
-    expect(stale.provider.state.mutations).toBe(0);
-    expect((await stale.store.getById(stale.job.id))?.resultSha).toBeNull();
+    expect(winner.provider.state.main).toBe(winner.provider.build.commitSha);
+    expect(production.provider.state.main).toBe(baseSha);
+    expect(production.provider.state.mutations).toBe(0);
+    expect((await production.store.getById(production.job.id))?.resultSha).toBeNull();
+    await production.runner.commitBuild(production.job.id, production.token);
+    expect(production.provider.state.main).toBe(production.provider.build.commitSha);
+    expect(winner.provider.state.main).toBe(winner.provider.build.commitSha);
+    expect(production.provider.state.mutations).toBe(1);
     await winner.runner.commitBuild(winner.job.id, winner.token);
     expect(winner.provider.state.mutations).toBe(1);
     expect(
       await winner.database
         .prepare('SELECT 1 FROM publish_jobs WHERE id=?')
-        .bind(stale.job.id)
+        .bind(production.job.id)
         .first(),
     ).toBeNull();
   } finally {

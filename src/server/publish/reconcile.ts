@@ -10,6 +10,7 @@ export async function reconcileCompletedPublication(
   database: D1Database,
   value: QueuedRecoveryInput,
   fetcher: typeof fetch = fetch,
+  builderOrigin?: string,
 ) {
   const input = QueuedRecoverySchema.parse(value);
   if (input.action !== 'verify-completed') throw new Error('PUBLICATION_RECOVERY_CHANGED');
@@ -85,6 +86,8 @@ export async function reconcileCompletedPublication(
       workflow_revision: source.workflow_revision,
     },
     fetcher,
+    undefined,
+    builderOrigin,
   );
   const evidence = {
     ...(await verifyDeploymentProof(
@@ -100,6 +103,8 @@ export async function reconcileCompletedPublication(
         artifactDigest: build.artifactDigest,
       },
       fetcher,
+      undefined,
+      builderOrigin,
     )),
     verificationStatus: 'passed',
   };

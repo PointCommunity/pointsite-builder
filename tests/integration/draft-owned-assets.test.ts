@@ -959,6 +959,133 @@ it.each(['reserved', 'claimed', 'committed', 'authorization-race'] as const)(
   },
 );
 
+it.each([
+  [
+    'https://builder-canary.eaglepass.io',
+    'pointsite-staging-canary',
+    'https://builder.eaglepass.io',
+  ],
+  ['https://builder.eaglepass.io', 'pointsite-staging', 'https://builder-canary.eaglepass.io'],
+])(
+  'binds capture, dispatch, recovery and signed runner access to %s',
+  async (origin, name, otherOrigin) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database, origin);
+    const otherStore = new D1PublishJobStore(database, otherOrigin);
+    const job = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'isolated-capture-fixture',
+      requestId: 'capture',
+    });
+    expect(
+      await database
+        .prepare('SELECT repository FROM publish_jobs WHERE id=?')
+        .bind(job.id)
+        .first('repository'),
+    ).toBe(`PointCommunity/${name}`);
+    expect(await otherStore.getById(job.id)).toBeNull();
+    const keys = await generateKeyPair('RS256', { extractable: true });
+    const config = {
+      builderOrigin: origin,
+      appId: '123',
+      installationId: '456',
+      privateKey: await exportPKCS8(keys.privateKey),
+    };
+    const calls: string[] = [];
+    const fetcher: typeof fetch = (url, init) => {
+      const value = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      calls.push(value);
+      if (value.endsWith('/access_tokens')) {
+        expect(body).toEqual({
+          repositories: [name],
+          permissions: { contents: 'write', checks: 'read', metadata: 'read' },
+        });
+        return Promise.resolve(
+          Response.json({ token: 'fixture-installation-token', expires_at: 'fixture' }),
+        );
+      }
+      expect(value).toContain(`/repos/PointCommunity/${name}/`);
+      if (value.endsWith('/permission'))
+        return Promise.resolve(Response.json({ permission: 'write', user: { id: 12345 } }));
+      if (value.endsWith('/git/ref/heads/main'))
+        return Promise.resolve(Response.json({ object: { sha: 'b'.repeat(40) } }));
+      if (value.endsWith('/dispatches')) {
+        expect(body).toMatchObject({
+          client_payload: { builderOrigin: origin, jobId: job.id },
+        });
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      throw new Error('Unexpected URL');
+    };
+    await expect(
+      dispatchPublication(database, { ...config, builderOrigin: otherOrigin }, job.id, fetcher),
+    ).rejects.toThrow('PUBLISH_DESTINATION_REJECTED');
+    expect(calls).toHaveLength(0);
+    await expect(
+      otherStore.recoverQueued({
+        jobId: job.id,
+        action: 'cancel',
+        expectedAttempts: 0,
+        actor: subject,
+        idempotencyKey: 'isolated-cancel-fixture',
+        requestId: 'cancel',
+      }),
+    ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    expect((await store.getById(job.id))?.status).toBe('queued');
+    await dispatchPublication(database, config, job.id, fetcher);
+    expect(calls).toHaveLength(4);
+    const nonce = await database
+      .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+      .bind(job.id)
+      .first<string>('nonce');
+    const signed = (builderOrigin: string) =>
+      new SignJWT(
+        publicationClaims({
+          builderOrigin,
+          target: 'staging',
+          jobId: job.id,
+          nonce: nonce!,
+          workflowRevision: 'a'.repeat(40),
+          dispatchRevision: 'b'.repeat(40),
+        }),
+      )
+        .setProtectedHeader({ alg: 'RS256' })
+        .sign(keys.privateKey);
+    const runner = new D1PublicationRunner(
+      database,
+      () => Promise.resolve(keys.publicKey),
+      config,
+      fetcher,
+    );
+    await expect(runner.reserve(job.id, await signed(otherOrigin))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    const otherRunner = new D1PublicationRunner(
+      database,
+      () => Promise.resolve(keys.publicKey),
+      { ...config, builderOrigin: otherOrigin },
+      fetcher,
+    );
+    await expect(otherRunner.reserve(job.id, await signed(otherOrigin))).rejects.toThrow(
+      'PUBLISH_RUNNER_UNAUTHORIZED',
+    );
+    await expect(runner.reserve(job.id, await signed(origin))).resolves.toEqual({ reserved: true });
+  },
+);
+
 it('dispatches one captured job with scoped credentials, fresh permission, bounded retries and no browser session', async () => {
   const { database, repository, createInput } = await fixture();
   const subject = 'github:12345';

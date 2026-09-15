@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PublicationEvidenceSchema, verifyDeploymentProof } from '../publish/deployment-proof';
+import { publicationDestination } from '../publish/destinations';
 import { PublicationBuildSchema, publicationJson } from '../publish/build-proof';
 import { createPublisherToken } from '../github/app-auth';
 import type { PublisherConfig } from '../publish/service';
@@ -324,7 +325,8 @@ export class D1ApprovalService {
         `SELECT j.id,j.status,j.candidate_json,j.candidate_checksum,j.base_sha,j.result_sha,j.evidence_json,
       pr.build_json,pr.run_id,pr.check_run_id,pr.dispatch_revision,pi.workflow_revision
       FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id JOIN publication_runs pr ON pr.job_id=j.id
-      WHERE j.id=? AND j.environment='staging'`,
+      WHERE j.id=? AND j.environment='staging'
+        AND j.repository='PointCommunity/${publicationDestination('staging', this.config?.builderOrigin).repository}'`,
       )
       .bind(input.publishJobId)
       .first<
@@ -383,7 +385,7 @@ export class D1ApprovalService {
       this.fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
     const token = await createPublisherToken({
       ...this.config,
-      repository: 'pointsite-staging',
+      repository: publicationDestination('staging', this.config.builderOrigin).repository,
       subject: input.actor,
       login: account.github_login,
       fetcher: request,
@@ -404,6 +406,7 @@ export class D1ApprovalService {
         },
         request,
         token,
+        this.config.builderOrigin,
       );
       if (
         live.deploymentId !== proof.data.deploymentId ||

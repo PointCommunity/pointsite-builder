@@ -6,7 +6,7 @@ export async function publicationGitHubFixture(
   jobId: string,
   candidateChecksum: string,
   assetPaths: string[] = [],
-  target: 'staging' | 'production' = 'staging',
+  target: 'staging' | 'canary' | 'production' = 'staging',
   baseSha = 'b'.repeat(40),
 ) {
   const files = [{ path: 'index.html', sha256: 'f'.repeat(64), bytes: 123 }];
@@ -25,7 +25,12 @@ export async function publicationGitHubFixture(
     totalBytes: 123,
   };
   const baseTree = 'e'.repeat(40);
-  const name = target === 'staging' ? 'pointsite-staging' : 'pointsite';
+  const name =
+    target === 'canary'
+      ? 'pointsite-staging-canary'
+      : target === 'staging'
+        ? 'pointsite-staging'
+        : 'pointsite';
   const api = `https://api.github.com/repos/PointCommunity/${name}`;
   const untouched = { path: 'README.md', type: 'blob', mode: '100644', sha: '1'.repeat(40) };
   const state = {
@@ -113,7 +118,14 @@ export async function publicationGitHubFixture(
     if (path === api)
       return Response.json({
         node_id: 'fixture-repository-node',
-        id: state.failure === 'repository' ? 1 : target === 'staging' ? 1357847426 : 1348084954,
+        id:
+          state.failure === 'repository'
+            ? 1
+            : target === 'canary'
+              ? 1370792530
+              : target === 'staging'
+                ? 1357847426
+                : 1348084954,
         full_name: `PointCommunity/${name}`,
       });
     if (path === `${api}/git/ref/heads/main`) return Response.json({ object: { sha: state.main } });

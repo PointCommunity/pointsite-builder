@@ -1,4 +1,5 @@
 import { createInstallationToken } from '../github/app-auth';
+import { publicationDestination, type StagingRepository } from './destinations';
 import { GitHubStagingClient } from '../github/client';
 import type {
   StagingUploadInput,
@@ -122,7 +123,7 @@ export class StagingPublisher {
     return {
       currentStagingSha,
       ...(this.config.workflowRevision ? { publicationProtocol: 2 as const } : {}),
-      reviewUrl: 'https://staging.pointatx.org',
+      reviewUrl: publicationDestination('staging', this.config.builderOrigin).origin,
       preflight,
       availability,
       job: job
@@ -624,9 +625,14 @@ export class StagingPublisher {
       appId: this.config.appId,
       installationId: this.config.installationId,
       privateKey: this.config.privateKey,
-      ...(this.config.workflowRevision ? { repository: 'pointsite-staging' } : {}),
+      ...(this.config.workflowRevision
+        ? { repository: publicationDestination('staging', this.config.builderOrigin).repository }
+        : {}),
     });
-    return new GitHubStagingClient('PointCommunity/pointsite-staging', token);
+    return new GitHubStagingClient(
+      `PointCommunity/${publicationDestination('staging', this.config.builderOrigin).repository}` as StagingRepository,
+      token,
+    );
   }
 
   private rendererContractChecksum(): Promise<string> {

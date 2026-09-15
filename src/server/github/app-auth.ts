@@ -1,5 +1,6 @@
 import { importPKCS8, SignJWT } from 'jose';
 import { z } from 'zod';
+import type { PublicationRepository } from '../publish/destinations';
 
 const TokenResponse = z.object({ token: z.string().min(20), expires_at: z.string() });
 
@@ -12,7 +13,7 @@ export async function createInstallationToken(input: {
   installationId: string;
   privateKey: string;
   fetcher?: typeof fetch;
-  repository?: 'pointsite-staging' | 'pointsite';
+  repository?: PublicationRepository;
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1_000);
   const key = await importPKCS8(input.privateKey.replaceAll('\\n', '\n'), 'RS256');
@@ -55,7 +56,7 @@ export async function createPublisherToken(input: {
   appId: string;
   installationId: string;
   privateKey: string;
-  repository: 'pointsite-staging' | 'pointsite';
+  repository: PublicationRepository;
   subject: string;
   login: string;
   fetcher?: typeof fetch;

@@ -687,6 +687,39 @@
     <article id="h25">
       <h3>H25 — Execute the Pages cutover</h3>
       <p>
+        September 15 remediation: Production run 34921303137 built and uploaded its candidate, then
+        received HTTP 409 from Builder's commit endpoint. Retry 34922450458 verified the same
+        candidate and output digest. The precise rejected check was not retained; do not label DNS,
+        origin routing or GitHub propagation as the proven cause.
+      </p>
+      <ol>
+        <li>
+          Reproduce transient Git reads and lost commit acknowledgements. Add bounded retry with
+          fresh authority, immutable build identity and atomic expected-base protection. Record
+          fixed diagnostic stages/codes without credentials or provider bodies.
+        </li>
+        <li>
+          Create a separate PointCommunity/pointsite-staging-canary Pages destination at
+          staging-canary.pointatx.org. Route only builder-canary.eaglepass.io there; keep
+          builder.eaglepass.io paired with staging.pointatx.org and public Production.
+        </li>
+        <li>
+          Use one reviewed publication/verification runtime for both pairs. Bind repository IDs,
+          origins, OIDC subjects, credentials, job records, acceptance and recovery to the correct
+          pair. Reject old Canary jobs targeting higher environments.
+        </li>
+        <li>
+          Prove failures, retries, revocation, drift and cross-environment rejection locally. Run
+          full sequential QA and exact-head checks. Deploy the reviewed image to Canary; exercise
+          its isolated publication through verification and acceptance.
+        </li>
+        <li>
+          Present exact Canary source/tree/digest and GitOps state for approval. Promote the same
+          image only after approval; verify builder to staging while preserving public Production
+          and both workspaces. Clean only task-created testing resources.
+        </li>
+      </ol>
+      <p>
         A successful recovery at a newer verifier-only branch revision must resume Review, including
         when the draft has newer edits. Compare current Staging main with the passed recovery's
         recorded dispatch revision for captured cloud jobs; preserve the original published commit

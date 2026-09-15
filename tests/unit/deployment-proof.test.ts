@@ -54,11 +54,15 @@ const expectation: DeploymentExpectation = {
   artifactDigest: 'e'.repeat(64),
   workerVersionId: '10000000-0000-4000-8000-000000000001',
 };
-function fixture(input = expectation, change = '', token?: string) {
+function fixture(input = expectation, change = '', token?: string, canary = false) {
   const staging = input.target === 'staging';
-  const repository = `PointCommunity/${staging ? 'pointsite-staging' : 'pointsite'}`;
+  const repository = `PointCommunity/${canary ? 'pointsite-staging-canary' : staging ? 'pointsite-staging' : 'pointsite'}`;
   const environment = staging ? 'staging' : 'github-pages';
-  const origin = staging ? 'https://staging.pointatx.org' : 'https://pointatx.org';
+  const origin = canary
+    ? 'https://staging-canary.pointatx.org'
+    : staging
+      ? 'https://staging.pointatx.org'
+      : 'https://pointatx.org';
   const api = `https://api.github.com/repos/${repository}`;
   const jobUrl = `https://github.com/${repository}/actions/runs/${input.runId}/job/${input.checkRunId}`;
   const app = { id: change === 'app' ? 999 : 15368, slug: 'github-actions' };
@@ -180,6 +184,27 @@ it('sends the repository token only to fixed GitHub proof endpoints, never to th
   const fetcher = fixture(expectation, '', 'fixture-token');
   await verifyDeploymentProof(expectation, fetcher, 'fixture-token');
   expect(fetcher).toHaveBeenCalledTimes(6);
+});
+
+it('verifies isolated Canary Pages through the same proof and rejects higher-environment evidence', async () => {
+  const input = { ...expectation, workerVersionId: undefined };
+  const origin = 'https://builder-canary.eaglepass.io';
+  const fetcher = fixture(input, '', 'canary-scoped-token', true);
+  expect(await verifyDeploymentProof(input, fetcher, 'canary-scoped-token', origin)).toMatchObject({
+    deploymentUrl: 'https://staging-canary.pointatx.org',
+    artifactDigest: input.artifactDigest,
+  });
+  await expect(verifyDeploymentProof(input, fixture(input), undefined, origin)).rejects.toThrow(
+    'PUBLICATION_VERIFICATION_UNCONFIRMED',
+  );
+  await expect(verifyDeploymentProof(input, fixture(input, '', undefined, true))).rejects.toThrow(
+    'PUBLICATION_VERIFICATION_UNCONFIRMED',
+  );
+  const unused = vi.fn<typeof fetch>();
+  await expect(
+    verifyDeploymentProof({ ...input, target: 'production' }, unused, undefined, origin),
+  ).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
+  expect(unused).not.toHaveBeenCalled();
 });
 
 it('requires current full native Worker traffic and exact retained version annotations', async () => {

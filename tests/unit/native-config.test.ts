@@ -6,7 +6,7 @@ const fixture = {
   ENVIRONMENT: 'canary',
   APP_VERSION: 'fixture',
   BUILDER_ORIGIN: 'https://builder-canary.eaglepass.io',
-  STAGING_REPOSITORY: 'PointCommunity/pointsite-staging',
+  STAGING_REPOSITORY: 'PointCommunity/pointsite-staging-canary',
   PRODUCTION_ENABLED: 'false',
   GITHUB_APP_ID: '1',
   GITHUB_STAGING_INSTALLATION_ID: '2',
@@ -17,6 +17,9 @@ const fixture = {
 };
 test('native Canary requires its own origin, real sign-in and disabled public Production publishing', () => {
   expect(parseConfig(fixture).runtime).toBe('node');
+  expect(() =>
+    parseConfig({ ...fixture, STAGING_REPOSITORY: 'PointCommunity/pointsite-staging' }),
+  ).toThrow();
   expect(() => parseConfig({ ...fixture, PRODUCTION_ENABLED: 'true' })).toThrow();
   expect(() =>
     parseConfig({ ...fixture, BUILDER_ORIGIN: 'https://builder.eaglepass.io' }),
@@ -26,6 +29,7 @@ test('native Canary requires its own origin, real sign-in and disabled public Pr
   const production = {
     ...fixture,
     ENVIRONMENT: 'production',
+    STAGING_REPOSITORY: 'PointCommunity/pointsite-staging',
     BUILDER_ORIGIN: 'https://builder.eaglepass.io',
     PRODUCTION_ENABLED: 'true',
   };

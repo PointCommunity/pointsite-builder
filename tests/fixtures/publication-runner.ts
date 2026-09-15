@@ -8,8 +8,9 @@ const issuer = 'https://token.actions.githubusercontent.com';
 
 export function publicationClaims(expected: PublicationRunnerScope): JWTPayload {
   const staging = expected.target === 'staging';
-  const name = staging ? 'pointsite-staging' : 'pointsite';
-  const id = staging ? '1357847426' : '1348084954';
+  const canary = staging && expected.builderOrigin === 'https://builder-canary.eaglepass.io';
+  const name = canary ? 'pointsite-staging-canary' : staging ? 'pointsite-staging' : 'pointsite';
+  const id = canary ? '1370792530' : staging ? '1357847426' : '1348084954';
   const environment = staging ? 'staging' : 'github-pages';
   const now = Math.floor(Date.now() / 1000);
   return {

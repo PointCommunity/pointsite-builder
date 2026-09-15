@@ -60,6 +60,14 @@
   <body>
     <h1>Issue #61: Homelab Builder implementation plan</h1>
     <p class="status">
+      September 15 remediation order: specify and reproduce commit-confirmation failures; implement
+      bounded, authorized retries and safe diagnostics; isolate Canary's Pages destination while
+      preserving shared runtime parity; verify cross-environment denial and complete local QA;
+      deploy and exercise Canary; obtain exact-candidate approval before Production promotion. H25
+      records the ordered tasks and original failure evidence. Retry success is not proof of the
+      original failure's precise cause.
+    </p>
+    <p class="status">
       Plan established before homelab implementation, September 14, 2026. Implementation and Canary
       deployment are authorized. Production promotion remains gated on Chris's exact-candidate
       approval. Task completion requires evidence, not a checkbox.

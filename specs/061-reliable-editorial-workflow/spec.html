@@ -611,6 +611,43 @@
       identity. They prove different facts and must never be relabeled as one SHA.
     </p>
     <p>
+      September 15 reliability contract: transient transport failures, GitHub 5xx responses and
+      temporary absence of just-uploaded candidate objects receive at most three commit attempts
+      with bounded backoff. Every attempt rechecks authority and the complete immutable build; an
+      acknowledged or lost-response update must never create a second content commit or move a
+      changed destination. Permanent validation, authorization and concurrent-base failures stop
+      immediately. Respect provider retry delays; delays outside the request budget require explicit
+      recovery. Logs expose only fixed operation stages, status codes and public job IDs, never
+      provider bodies, credentials, selected content or SQL. Exhaustion retains safe recovery.
+      Follow
+      <a
+        href="https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api"
+        >GitHub's bounded retry guidance</a
+      >.
+    </p>
+    <p>
+      September 15 environment contract: builder-canary.eaglepass.io publishes exclusively to
+      PointCommunity/pointsite-staging-canary at staging-canary.pointatx.org. Production Builder
+      publishes to PointCommunity/pointsite-staging at staging.pointatx.org and, after explicit
+      acceptance and authorization, PointCommunity/pointsite. Both pairs execute the same reviewed
+      runtime, identical caller blobs and verification rules; only bound destination identity and
+      scoped installation tokens differ. The existing GitHub App installation is shared, with each
+      publishing token restricted to the resolved repository. Canary publication, recovery,
+      acceptance and legacy jobs must never mutate higher environments. A passing isolated Canary
+      workflow qualifies the same code for Production promotion; it does not authorize public
+      website publication.
+    </p>
+    <p>
+      Qualify the immutable runtime from its reviewed feature commit in the new Canary repository
+      before merging anything into existing Staging. Production promotion must coordinate the
+      approved Builder image with the reviewed Staging callers after checking for active or
+      uncertain publication runs. Existing jobs retain their captured runtime identity. A
+      caller/base mismatch fails preflight closed during cutover; never allow an arbitrary caller or
+      rewrite captured jobs for compatibility. Updating Staging main requires fresh preflight and
+      acceptance of its next candidate. Prepare public Production caller changes in its existing
+      draft PR; public website deployment remains separately authorized.
+    </p>
+    <p>
       Capture the saved revision and a complete, sorted manifest of immutable owned media IDs,
       paths, byte counts and SHA-256 digests. Pin those rows for the job and bind the renderer/build
       source and expected destination base. Transfer each object once; compute file encodings and

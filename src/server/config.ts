@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicationDestination, type StagingRepository } from './publish/destinations';
 
 const RuntimeConfigSchema = z
   .object({
@@ -8,7 +9,10 @@ const RuntimeConfigSchema = z
     BUILDER_ORIGIN: z.url().refine((value) => new URL(value).pathname === '/', {
       message: 'Builder origin must not include a path',
     }),
-    STAGING_REPOSITORY: z.literal('PointCommunity/pointsite-staging'),
+    STAGING_REPOSITORY: z.enum([
+      'PointCommunity/pointsite-staging',
+      'PointCommunity/pointsite-staging-canary',
+    ]),
     DEV_AUTH_EMAIL: z.email().optional(),
     GITHUB_APP_ID: z.string().min(1).optional(),
     GITHUB_STAGING_INSTALLATION_ID: z.string().min(1).optional(),
@@ -22,6 +26,16 @@ const RuntimeConfigSchema = z
     CLOUDFLARE_WORKER_READ_TOKEN: z.string().min(20).optional(),
   })
   .superRefine((value, context) => {
+    if (
+      value.STAGING_REPOSITORY !==
+      `PointCommunity/${publicationDestination('staging', value.BUILDER_ORIGIN.replace(/\/$/, '')).repository}`
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['STAGING_REPOSITORY'],
+        message: 'Staging repository must match the Builder environment',
+      });
+    }
     if (value.ENVIRONMENT === 'canary' && value.PRODUCTION_ENABLED === 'true') {
       context.addIssue({
         code: 'custom',
@@ -101,7 +115,7 @@ export interface RuntimeConfig {
     clientId: string;
     clientSecret: string;
     sessionSecret: string;
-    repository: 'PointCommunity/pointsite-staging';
+    repository: StagingRepository;
     builderOrigin: string;
   };
 }

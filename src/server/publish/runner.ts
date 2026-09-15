@@ -1,5 +1,6 @@
 import type { JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
+import { publicationDestination } from './destinations';
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { publicationMediaPaths } from '../../site-kit/publication-media';
 import { SiteDocumentSchema } from '../../site-kit/schema';
@@ -32,6 +33,7 @@ const authorizedFrom = `FROM publication_runs pr
         AND ${currentPromotion}))`;
 
 type RunnerRow = {
+  repository: string;
   nonce: string;
   dispatch_revision: string;
   workflow_revision: string;
@@ -62,7 +64,7 @@ export class D1PublicationRunner {
     if (!z.uuid().safeParse(jobId).success) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const row = await this.database
       .prepare(
-        `SELECT pr.nonce,pr.dispatch_revision,
+        `SELECT j.repository,pr.nonce,pr.dispatch_revision,
       pi.workflow_revision,ps.target,COALESCE(pr.run_id,pr.reserved_run_id) AS run_id,
       COALESCE(pr.run_attempt,pr.reserved_run_attempt) AS run_attempt,pr.check_run_id,
       j.requested_by,u.github_login,j.base_sha,j.candidate_checksum,pr.build_json,
@@ -72,6 +74,11 @@ export class D1PublicationRunner {
       .bind(jobId)
       .first<RunnerRow>();
     if (!row) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
+    if (
+      row.repository !==
+      `PointCommunity/${publicationDestination(row.target, this.config?.builderOrigin).repository}`
+    )
+      throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const scope: PublicationRunnerScope = {
       builderOrigin: this.config?.builderOrigin,
       jobId,
@@ -173,17 +180,22 @@ export class D1PublicationRunner {
 
   private request: typeof fetch = (url, init) => {
     const fetcher = this.fetcher;
-    return fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
+    const timeout = AbortSignal.timeout(10_000);
+    return fetcher(url, {
+      ...init,
+      redirect: 'error',
+      signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+    });
   };
 
-  private async publisher(row: RunnerRow) {
+  private async publisher(row: RunnerRow, signal?: AbortSignal) {
     if (!this.config) throw new Error('PUBLISH_RUNNER_NOT_CONFIGURED');
     return createPublisherToken({
       ...this.config,
-      repository: row.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+      repository: publicationDestination(row.target, this.config?.builderOrigin).repository,
       subject: row.requested_by,
       login: row.github_login,
-      fetcher: this.request,
+      fetcher: signal ? (url, init) => this.request(url, { ...init, signal }) : this.request,
     });
   }
 
@@ -215,22 +227,25 @@ export class D1PublicationRunner {
   }
 
   async commitBuild(jobId: string, token: string) {
+    const budget = AbortSignal.timeout(20_000);
     const { scope, identity, row } = await this.authenticate(jobId, token);
     const build = PublicationBuildSchema.parse(JSON.parse(row.build_json ?? 'null'));
     await this.guard(scope, identity).first();
-    const installation = await this.publisher(row);
+    const installation = await this.publisher(row, budget);
     const assets = await this.database
       .prepare('SELECT source_path FROM publication_asset_pins WHERE job_id=? ORDER BY source_path')
       .bind(jobId)
       .all<{ source_path: string }>();
     await commitPublicationBuild({
-      repository: row.target === 'staging' ? 'pointsite-staging' : 'pointsite',
+      repository: publicationDestination(row.target, this.config?.builderOrigin).repository,
       jobId,
       baseSha: row.base_sha,
       build,
       assetPaths: assets.results.map((asset) => asset.source_path),
       token: installation,
-      guard: async () => {
+      signal: budget,
+      guard: async (signal) => {
+        await this.publisher(row, signal);
         await this.guard(scope, identity).first();
       },
       fetcher: this.request,
@@ -244,7 +259,7 @@ export class D1PublicationRunner {
       )
       .bind(
         build.commitSha,
-        `https://github.com/PointCommunity/${row.target === 'staging' ? 'pointsite-staging' : 'pointsite'}/commit/${build.commitSha}`,
+        `https://github.com/PointCommunity/${publicationDestination(row.target, this.config?.builderOrigin).repository}/commit/${build.commitSha}`,
         jobId,
         jobId,
         JSON.stringify(build),
@@ -262,7 +277,7 @@ export class D1PublicationRunner {
     z.object({ object: z.object({ sha: z.literal(build.commitSha) }) }).parse(
       await publicationJson(
         await this.request(
-          `https://api.github.com/repos/PointCommunity/${row.target === 'staging' ? 'pointsite-staging' : 'pointsite'}/git/ref/heads/main`,
+          `https://api.github.com/repos/PointCommunity/${publicationDestination(row.target, this.config?.builderOrigin).repository}/git/ref/heads/main`,
           { headers: githubHeaders(installation) },
         ),
         16_384,
@@ -325,6 +340,7 @@ export class D1PublicationRunner {
           },
           this.request,
           githubToken,
+          this.config?.builderOrigin,
         )),
         verificationStatus: 'passed',
       };

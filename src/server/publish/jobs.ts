@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicationDestination } from './destinations';
 import type { DraftRecord } from '../repositories/contracts';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
@@ -69,13 +70,20 @@ const activeCandidate = `COALESCE(json_extract(candidate_json,'$.publicationProt
 )`;
 
 export class D1PublishJobStore {
-  constructor(private readonly database: D1Database) {}
+  constructor(
+    private readonly database: D1Database,
+    private readonly builderOrigin?: string,
+  ) {}
+
+  private get stagingRepository() {
+    return `PointCommunity/${publicationDestination('staging', this.builderOrigin).repository}`;
+  }
 
   async recoverQueued(input: QueuedRecoveryInput) {
     if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
     if (input.action === 'verify-completed')
-      return reconcileCompletedPublication(this.database, input);
-    return recoverQueuedPublication(this.database, input);
+      return reconcileCompletedPublication(this.database, input, undefined, this.builderOrigin);
+    return recoverQueuedPublication(this.database, input, undefined, this.builderOrigin);
   }
 
   retryCaptured(
@@ -83,7 +91,10 @@ export class D1PublishJobStore {
     workflowRevision: string,
     verifyBase: (sha: string) => Promise<void>,
   ) {
-    return retryCapturedPublication(this.database, input, workflowRevision, verifyBase);
+    return retryCapturedPublication(this.database, input, workflowRevision, async (sha) => {
+      if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+      await verifyBase(sha);
+    });
   }
 
   /** Capture once. Browser closure and later edits cannot substitute these inputs. */
@@ -171,7 +182,7 @@ export class D1PublishJobStore {
           .prepare(
             `INSERT INTO publish_jobs
         (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
-        VALUES (?,?,'staging','queued',?,?,'PointCommunity/pointsite-staging',?,?,?)`,
+        VALUES (?,?,'staging','queued',?,?,'${this.stagingRepository}',?,?,?)`,
           )
           .bind(
             id,
@@ -329,7 +340,7 @@ export class D1PublishJobStore {
       ...(row.dispatch_error ? { failureCode: row.dispatch_error } : {}),
       ...(row.run_id && /^[1-9][0-9]*$/.test(row.run_id)
         ? {
-            workflowUrl: `https://github.com/PointCommunity/${row.environment === 'staging' ? 'pointsite-staging' : 'pointsite'}/actions/runs/${row.run_id}`,
+            workflowUrl: `https://github.com/PointCommunity/${publicationDestination(row.environment === 'staging' ? 'staging' : 'production', this.builderOrigin).repository}/actions/runs/${row.run_id}`,
           }
         : {}),
     };
@@ -338,7 +349,7 @@ export class D1PublishJobStore {
   async getByKey(key: string): Promise<PublishJobRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_jobs WHERE idempotency_key=? AND environment='staging'`,
+        `SELECT ${selection} FROM publish_jobs WHERE idempotency_key=? AND environment='staging' AND repository='${this.stagingRepository}'`,
       )
       .bind(key)
       .first<JobRow>();
@@ -355,7 +366,9 @@ export class D1PublishJobStore {
 
   async getById(id: string): Promise<PublishJobRecord | null> {
     const row = await this.database
-      .prepare(`SELECT ${selection} FROM publish_jobs WHERE id=? AND environment='staging'`)
+      .prepare(
+        `SELECT ${selection} FROM publish_jobs WHERE id=? AND environment='staging' AND repository='${this.stagingRepository}'`,
+      )
       .bind(id)
       .first<JobRow>();
     return row ? fromRow(row) : null;
@@ -364,7 +377,7 @@ export class D1PublishJobStore {
   async getLatestForDraft(draftId: string): Promise<PublishJobRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND json_extract(candidate_json,'$.draftId')=? ORDER BY requested_at DESC,id DESC LIMIT 1`,
+        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND repository='${this.stagingRepository}' AND json_extract(candidate_json,'$.draftId')=? ORDER BY requested_at DESC,id DESC LIMIT 1`,
       )
       .bind(draftId)
       .first<JobRow>();
@@ -377,7 +390,7 @@ export class D1PublishJobStore {
   ): Promise<PublishJobRecord | null> {
     const row = await this.database
       .prepare(
-        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND candidate_checksum=? AND base_sha=? ORDER BY requested_at DESC,id DESC LIMIT 1`,
+        `SELECT ${selection} FROM publish_jobs WHERE environment='staging' AND repository='${this.stagingRepository}' AND candidate_checksum=? AND base_sha=? ORDER BY requested_at DESC,id DESC LIMIT 1`,
       )
       .bind(candidateChecksum, baseSha)
       .first<JobRow>();
@@ -399,7 +412,7 @@ export class D1PublishJobStore {
       this.database
         .prepare(
           `INSERT INTO publish_jobs (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at,lease_expires_at)
-           SELECT ?,?,'staging','queued',candidate_json,?,'PointCommunity/pointsite-staging',?,?,?,?
+           SELECT ?,?,'staging','queued',candidate_json,?,'${this.stagingRepository}',?,?,?,?
            FROM (SELECT ? AS candidate_json) WHERE ${activeCandidate}`,
         )
         .bind(

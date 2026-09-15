@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
 import { currentPromotion } from './promotion';
+import { publicationDestination } from './destinations';
 
 const DispatchSchema = z.object({
+  repository: z.string(),
   job_id: z.uuid(),
   nonce: z.string().regex(/^[a-f0-9]{64}$/),
   dispatch_revision: z.string().regex(/^[a-f0-9]{40}$/),
@@ -32,7 +34,7 @@ export async function dispatchPublication(
   const row = DispatchSchema.safeParse(
     await database
       .prepare(
-        `SELECT pr.job_id,pr.nonce,
+        `SELECT j.repository,pr.job_id,pr.nonce,
     pr.dispatch_revision,j.requested_by,u.github_login,ps.target ${eligible}`,
       )
       .bind(jobId)
@@ -40,6 +42,11 @@ export async function dispatchPublication(
   );
   if (!row.success) throw new Error('PUBLISH_DISPATCH_UNAVAILABLE');
   const input = row.data;
+  if (
+    input.repository !==
+    `PointCommunity/${publicationDestination(input.target, config.builderOrigin).repository}`
+  )
+    throw new Error('PUBLISH_DESTINATION_REJECTED');
   // Durable throttle prevents multiple browsers or uncertain POST acknowledgments
   // from creating an unbounded number of workflow runs.
   const reserved = await database
@@ -59,7 +66,7 @@ export async function dispatchPublication(
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       });
-    const name = input.target === 'staging' ? 'pointsite-staging' : 'pointsite';
+    const name = publicationDestination(input.target, config.builderOrigin).repository;
     const token = await createPublisherToken({
       ...config,
       repository: name,
