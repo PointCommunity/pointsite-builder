@@ -165,10 +165,14 @@ test.each([
     expect(source.provenance.candidateChecksum).toBe(input.release.candidateChecksum);
     expect(source.assets.size).toBe(input.objects.size);
     expect(
-      input.fetcher.mock.calls.filter(([url]) => String(url).endsWith('/actions/runs/123')),
+      input.fetcher.mock.calls.filter(
+        ([url]) => typeof url === 'string' && url.endsWith('/actions/runs/123'),
+      ),
     ).toHaveLength(1);
     expect(
-      input.fetcher.mock.calls.filter(([url]) => String(url).endsWith('/actions/jobs/456')),
+      input.fetcher.mock.calls.filter(
+        ([url]) => typeof url === 'string' && url.endsWith('/actions/jobs/456'),
+      ),
     ).toHaveLength(1);
   },
 );
