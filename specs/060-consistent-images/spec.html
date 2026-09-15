@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 60: Consistent People and Cards images</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem;
+        background: #111827;
+        color: #e5e7eb;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      a {
+        color: #93c5fd;
+      }
+      code {
+        color: #c4b5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 60: Consistent People and Cards images</h1>
+    <h2>Approved requirements</h2>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/60">Issue 60</a> defines
+      the approved scope. Standard People uses 4:5 contain frames. Vertical Grid retains the
+      leadership value, spacing, name and role presentation, with 4:5 cover frames. Horizontal Grid
+      adds a horizontal variant with 16:9 cover frames and the same grid treatment. Featured retains
+      its intentional first-card span. No existing people selection or biography is removed from
+      saved data.
+    </p>
+    <p>
+      All seven Cards styles use 16:9 contain frames with a consistent background. Mixed collections
+      reserve matching frames for missing images; entirely text-only collections have no frames.
+      Preserve headings, text, links, alternative text, layout names, colors, spacing and responsive
+      structure. Cards grow for long text, without clipping or overlap; ordinary siblings have equal
+      widths and heights. Images never set grid track widths. Preserve authoring, undo/redo, reload,
+      preview and compatible publication.
+    </p>
+    <h2>Research and reproduction</h2>
+    <p>
+      Baseline source: 11f1b2e8fd7dd202f91109b8babac19c65962029. The shared CardMedia helper and
+      Standard Cards have separate unframed image paths. Standard People has unframed images;
+      leadership has 4:5 CSS and 500 by 625 HTML dimensions but lacks responsive height
+      normalization. Missing Cards images emit no element. Chromium regression at 1280px fails
+      because Standard People computes object-fit: fill instead of contain.
+    </p>
+    <p>
+      <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/aspect-ratio"
+        >CSS aspect-ratio</a
+      >
+      reserves responsive geometry independently of intrinsic image dimensions.
+      <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/object-fit"
+        >object-fit</a
+      >
+      supplies contain or cover without distortion.
+      <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/grid-auto-rows"
+        >Fractional automatic rows</a
+      >
+      equalize cards while accommodating the largest text content. Use existing React, Zod and CSS;
+      add no dependency or measurement code to the product.
+    </p>
+    <h2>Implementation plan</h2>
+    <ol>
+      <li>
+        Extend the existing optional People variant enum with horizontal. Keep leadership unchanged;
+        no destructive migration, schema version bump or reauthoring. Exact site-kit blob
+        compatibility prevents publishing new variants to an old renderer.
+      </li>
+      <li>
+        Route all Cards images through CardMedia with a collection-level reserve flag. Use an inline
+        span placeholder so the existing identity paragraph remains valid HTML. Apply common image
+        and collection classes without replacing layout structures.
+      </li>
+      <li>
+        Use fixed CSS aspect ratios, explicit width and auto height, contain/cover, and minimum
+        track widths. Equalize image-bearing Cards rows and People rows. Preserve text-only Cards
+        rules and responsive column behavior.
+      </li>
+      <li>
+        Rename the People option and add Horizontal Grid. Explain frame ratios and cropping in
+        existing authoring guidance.
+      </li>
+      <li>
+        Verify source, rendering, browser geometry and authoring persistence. Synchronize changed
+        site-kit files using an isolated Staging worktree and its reviewed PR workflow before
+        updating exact contract hashes; preserve its dirty checkout and public Production content.
+      </li>
+    </ol>
+    <h2>Tasks and acceptance evidence</h2>
+    <ul>
+      <li>Reproduce the original failure before product edits: tests/e2e/image-layouts.spec.ts.</li>
+      <li>
+        Cover three People styles in Grid/Featured and seven Cards styles at 2/3/4 columns,
+        1280/768/360 CSS pixels, mixed aspect ratios, missing images, loading, long text and
+        text-only collections.
+      </li>
+      <li>
+        Cover legacy/default variants, labels, links and alternative text with existing unit test
+        tools. Verify save/reload, undo/redo, switching and canvas/preview geometry in authoring
+        browser fixtures.
+      </li>
+      <li>
+        Run focused tests, then sequential npm run check, npm run test:performance, npm run
+        test:e2e, npm audit --audit-level=high and git diff --check. Vitest uses four workers;
+        Playwright uses two.
+      </li>
+      <li>
+        Review and push a PR with Refs #60. Verify exact-head Quality, deploy immutable Canary,
+        verify live, clean task-created test outputs and processes, then present the exact candidate
+        for PM approval.
+      </li>
+    </ul>
+    <h2>Code and workflow boundaries</h2>
+    <p>
+      Focused evidence: 80 renderer/inspector tests pass. The geometry matrix passes Chromium,
+      Firefox, WebKit and mobile Chromium with loaded mixed-aspect images, loading held until
+      initial measurement, missing frames, long text, text-only Cards and keyboard links. People
+      undo/redo, save/reload, layout switching and equal-width canvas/preview pass all three desktop
+      engines. Staging renderer coordination merged as
+      <a href="https://github.com/PointCommunity/pointsite-staging/pull/29">PR 29</a>, commit
+      4334038ab1e3ce425dfba81ed43a6aff65ad0d1c, after its local build, 52 tests and 45 browser
+      checks (three existing skips). The published content was unchanged.
+    </p>
+    <p>
+      Use src/site-kit/schema.ts, registry.tsx and site.css for the shared contract and rendering;
+      src/client/editor/BlockInspector.tsx for controls; existing tests/unit and tests/e2e for
+      verification. Follow typed React components and the existing formatting, for example
+      <code>onChange={(variant) =&gt; onChange({ ...block, variant })}</code>. Always preserve
+      semantic content, authorization, media references and unrelated work. Ask before changing
+      approved scope or promoting Canary to Production. Never rewrite source images, restrict
+      uploads, publish public Production, invent PM approval or close the Issue before final
+      acceptance.
+    </p>
+  </body>
+</html>

@@ -8,6 +8,67 @@ import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
 
 describe('controlled public renderer', () => {
+  it.each([
+    'standard',
+    'splitEditorial',
+    'splitEditorialTone',
+    'identity',
+    'beliefs',
+    'groups',
+    'giving',
+  ] as const)('reserves sibling image frames and preserves text-only %s cards', (variant) => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const block = SiteElementSchema.parse({
+      ...source,
+      variant,
+      items: [
+        {
+          title: 'With image',
+          body: 'Body',
+          mediaId: allBlocksDocument.media[0].id,
+          mediaAlt: 'Meaningful alternative',
+          href: '/details',
+        },
+        { title: 'Without image', body: 'Long body. '.repeat(50) },
+      ],
+    });
+    const { container, rerender } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+    expect(container.querySelectorAll('.point-card-media')).toHaveLength(2);
+    expect(container.querySelector('img')).toHaveAttribute('alt', 'Meaningful alternative');
+    expect(container.querySelector('img')).toHaveAttribute('width', '1600');
+    expect(container.querySelector('img')).toHaveAttribute('height', '900');
+    expect(container.querySelector('span.point-card-media')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelector('a')).toHaveAttribute('href', '/details');
+    if (block.type !== 'cards') throw new Error('Expected Cards');
+    rerender(
+      <>
+        {renderBlock(
+          { ...block, items: block.items.map((item) => ({ ...item, mediaId: undefined })) },
+          allBlocksDocument,
+        )}
+      </>,
+    );
+    expect(container.querySelector('.point-card-media')).toBeNull();
+    expect(container.querySelector('.point-cards-with-media')).toBeNull();
+    expect(container.textContent).toContain('Long body.');
+  });
+
+  it.each([undefined, 'standard', 'leadership', 'horizontal'] as const)(
+    'round trips %s People without changing people selections or biographies',
+    (variant) => {
+      const source = allBlocks.find((block) => block.type === 'people')!;
+      const block = SiteElementSchema.parse({ ...source, variant, layout: 'featured' });
+      expect(SiteElementSchema.parse(JSON.parse(JSON.stringify(block)))).toEqual(block);
+      const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+      expect(container.querySelectorAll('article')).toHaveLength(source.personIds.length);
+      if (variant === 'horizontal')
+        expect(container.querySelector('.people-grid--horizontal')).not.toBeNull();
+      for (const image of container.querySelectorAll('img')) {
+        expect(image).toHaveAttribute('width', variant === 'horizontal' ? '1600' : '500');
+        expect(image).toHaveAttribute('height', variant === 'horizontal' ? '900' : '625');
+      }
+    },
+  );
   it('renders the Point Classic production chrome and homepage structure', () => {
     const { container } = render(<SiteRenderer document={defaultSiteDocument} route="/" />);
 

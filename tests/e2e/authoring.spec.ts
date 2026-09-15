@@ -492,6 +492,58 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
+test('preserves People image layouts through undo, redo, reload and preview', async ({ page }) => {
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption({ label: 'Leadership' });
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.locator('.person-card h2').first().click();
+  const style = page.getByLabel('Layout style').filter({ visible: true });
+  await expect(style).toHaveValue('leadership');
+  await style.selectOption({ label: 'Horizontal Grid' });
+  await expect(canvas.locator('.people-grid--horizontal')).toBeVisible();
+  await expect.poll(() => controls.saveRequests.length).toBeGreaterThan(0);
+  const savedPeople = () =>
+    controls.saveRequests
+      .at(-1)!
+      .document.pages.find((item) => item.title === 'Leadership')!
+      .blocks.flatMap((section) => section.items)
+      .map((item) => item.element)
+      .find((item) => item.type === 'people')!;
+  const selections = savedPeople().personIds;
+  await page.getByRole('button', { name: 'undo', exact: true }).click();
+  await expect(canvas.locator('.people-grid--horizontal')).toHaveCount(0);
+  await page.getByRole('button', { name: 'redo', exact: true }).click();
+  await expect(canvas.locator('.people-grid--horizontal')).toBeVisible();
+  await expect.poll(() => savedPeople().variant).toBe('horizontal');
+  await page.reload();
+  await page.getByLabel('Choose page').selectOption({ label: 'Leadership' });
+  await expect(canvas.locator('.people-grid--horizontal')).toBeVisible();
+  expect(savedPeople().personIds).toEqual(selections);
+  await canvas.locator('.person-card h2').first().click();
+  await style.selectOption({ label: 'Standard People' });
+  await expect(canvas.locator('.point-people__grid')).toBeVisible();
+  await style.selectOption({ label: 'Horizontal Grid' });
+  await expect(canvas.locator('.people-grid--horizontal')).toBeVisible();
+  const geometry = (frame: FrameLocator) =>
+    frame.locator('.person-card > img, .person-placeholder').evaluateAll((items) =>
+      items.map((item) => {
+        const rect = item.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+    );
+  const authored = await geometry(canvas);
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await page
+    .getByRole('combobox', { name: 'Page', exact: true })
+    .selectOption({ label: 'Leadership' });
+  await page.getByRole('button', { name: 'Preview at desktop width' }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  await expect(preview.locator('.people-grid--horizontal')).toBeVisible();
+  expect(await geometry(preview)).toEqual(authored);
+});
+
 async function readPending(page: Page): Promise<PendingJournalState | null> {
   return page.evaluate(
     () =>
