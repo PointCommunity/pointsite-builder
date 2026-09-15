@@ -147,6 +147,8 @@ paths:
               properties:
                 name: { type: string, minLength: 1, maxLength: 100 }
                 fromRevisionId: { type: string, format: uuid }
+                sourceTarget: { type: string, enum: [staging, production] }
+                expectedSource: { $ref: '#/components/schemas/PublicationSourceExpectation' }
       responses:
         '201':
           description: Created draft
@@ -155,6 +157,25 @@ paths:
               schema: { $ref: '#/components/schemas/Draft' }
         '400': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /draft-sources/{target}:
+    parameters:
+      - name: target
+        in: path
+        required: true
+        schema: { type: string, enum: [staging, production] }
+    get:
+      operationId: previewDraftPublicationSource
+      description: Verify the current fixed publication and referenced public media before creation.
+      responses:
+        '200':
+          description: Public source identity to pin on the create request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicationSourceIdentity' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /drafts/{draftId}:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -272,6 +293,19 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '428': { $ref: '#/components/responses/Error' }
 
+  /drafts/{draftId}/publication:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    get:
+      operationId: getDraftPublicationStatus
+      description: Current server-recorded Production baseline and display count, without the draft document.
+      responses:
+        '200':
+          description: Production-relative status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftPublicationStatus' }
+        '404': { $ref: '#/components/responses/Error' }
   /drafts/{draftId}/revisions:
     parameters:
       - $ref: '#/components/parameters/DraftId'
@@ -1347,6 +1381,34 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         deletedAt: { type: [string, 'null'], format: date-time }
+        publication: { $ref: '#/components/schemas/DraftPublicationStatus' }
+    DraftPublicationStatus:
+      type: object
+      additionalProperties: false
+      required: [sourceTarget, state, displayCount]
+      properties:
+        sourceTarget: { type: string, enum: [staging, production, unknown] }
+        state: { type: string, enum: [published, behind, unknown] }
+        displayCount: { type: integer, minimum: 0 }
+    PublicationSourceExpectation:
+      type: object
+      additionalProperties: false
+      required: [sourceCommit, deploymentId, artifactDigest]
+      properties:
+        sourceCommit: { type: string, pattern: '^[a-f0-9]{40}$' }
+        deploymentId: { type: string, pattern: '^[1-9][0-9]*$' }
+        artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+    PublicationSourceIdentity:
+      type: object
+      additionalProperties: false
+      required: [sourceCommit, deploymentId, artifactDigest]
+      properties:
+        sourceCommit: { type: string, pattern: '^[a-f0-9]{40}$' }
+        deploymentId: { type: string, pattern: '^[1-9][0-9]*$' }
+        artifactDigest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        candidateChecksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        fixture: { type: boolean, description: Only present in isolated local QA. }
     DraftList:
       type: object
       additionalProperties: false

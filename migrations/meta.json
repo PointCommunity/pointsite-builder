@@ -217,6 +217,12 @@
       "appliedBy": "native SQLite startup migration runner",
       "rollback": null,
       "rollout": "../tasks/plan.html"
+    },
+    {
+      "id": "0037_draft_publication_baselines",
+      "appliedBy": "native SQLite startup migration runner",
+      "rollback": null,
+      "rollout": "../specs/057-publication-source-drafts/plan.html"
     }
   ]
 }

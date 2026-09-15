@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { AuthenticationError, type GitHubAuthenticator } from './auth/github';
-import type { Actor } from './auth/roles';
+import { z } from 'zod';
+import { requireRole, type Actor } from './auth/roles';
 import { AuthorizationError } from './auth/roles';
 import { ApiError, errorResponse } from './http/errors';
 import { applySecurityHeaders, SlidingWindowRateLimiter } from './http/security';
-import type { DraftRepository } from './repositories/contracts';
+import type { DraftRepository, PublicationSourceIdentity } from './repositories/contracts';
 import { ConflictError, NotFoundError } from './repositories/memory';
 import { createDraftRoutes, type ApiVariables } from './routes/drafts';
 import { createRevisionRoutes } from './routes/revisions';
@@ -62,6 +63,9 @@ export interface AppDependencies {
   publicationVerifier?: D1PublicationVerifier;
   production?: D1ProductionPublisher;
   rollback?: D1CloudRollback;
+  publicationSourcePreview?: (
+    target: 'staging' | 'production',
+  ) => Promise<PublicationSourceIdentity>;
 }
 
 const mutationLimiter = new SlidingWindowRateLimiter(60, 60_000);
@@ -103,6 +107,28 @@ export function createApp(dependencies: AppDependencies) {
     });
   });
   app.get('/api/me', (context) => context.json(context.get('actor')));
+  app.get('/api/draft-sources/:target', async (context) => {
+    requireRole(context.get('actor'), 'editor');
+    const target = z.enum(['staging', 'production']).safeParse(context.req.param('target'));
+    if (!target.success)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Choose Staging or Production');
+    if (!dependencies.publicationSourcePreview)
+      throw new ApiError(
+        503,
+        'PUBLICATION_SOURCE_UNAVAILABLE',
+        'Selected publication is unavailable',
+      );
+    context.header('Cache-Control', 'private, no-store');
+    const { sourceCommit, deploymentId, artifactDigest, candidateChecksum, fixture } =
+      await dependencies.publicationSourcePreview(target.data);
+    return context.json({
+      sourceCommit,
+      deploymentId,
+      artifactDigest,
+      ...(candidateChecksum ? { candidateChecksum } : {}),
+      ...(fixture ? { fixture: true } : {}),
+    });
+  });
   app.get('/api/ready', async (context) => {
     context.header('Cache-Control', 'no-store');
     try {

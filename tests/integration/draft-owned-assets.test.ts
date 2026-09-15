@@ -1528,6 +1528,25 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       idempotencyKey: 'execution-owned-fixture',
       requestId: 'capture',
     });
+    const seasonalDrafts: Awaited<ReturnType<typeof repository.createDraft>>[] = [];
+    if (productionOutcome === 'verified') {
+      for (const name of ['Spring', 'Summer', 'Winter']) {
+        const season = await repository.createDraft({
+          ...createInput,
+          name,
+          actor: subject,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        await database
+          .prepare(
+            "INSERT INTO draft_publication_baselines(draft_id,source_target,baseline_release_id,baseline_sequence) VALUES (?,'production','public-baseline-2026-09-13',1)",
+          )
+          .bind(season.id)
+          .run();
+        seasonalDrafts.push(season);
+      }
+      expect(new Set([draft.id, ...seasonalDrafts.map((season) => season.id)]).size).toBe(4);
+    }
     const nonce = await database
       .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
       .bind(job.id)
@@ -2468,6 +2487,11 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
       await expect(executor.finalize(promoted.id, productionFinalizer)).rejects.toThrow(
         'PUBLICATION_VERIFICATION_UNCONFIRMED',
       );
+      const newerDraft = await repository.getDraft(draft.id);
+      expect(newerDraft.publication).toMatchObject({
+        state: 'unknown',
+        displayCount: newerDraft.revision.sequence - 1,
+      });
       productionCompleted = true;
       await Promise.all([
         executor.finalize(promoted.id, productionFinalizer),
@@ -2501,6 +2525,21 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
         previous_release_id: baseline.id,
         artifact_digest: github.build.artifactDigest,
       });
+      expect((await repository.getDraft(draft.id)).publication).toMatchObject({
+        state: 'published',
+        displayCount: newerDraft.revision.sequence - draft.revision.sequence,
+      });
+      for (const season of seasonalDrafts) {
+        const unchanged = await repository.getDraft(season.id);
+        expect(unchanged).toMatchObject({
+          name: season.name,
+          latestRevisionId: season.latestRevisionId,
+          publication: { state: 'behind', displayCount: 0 },
+        });
+        expect((await repository.listRevisions(season.id)).map((revision) => revision.id)).toEqual([
+          season.latestRevisionId,
+        ]);
+      }
       expect(JSON.parse(String(released.source_json))).toMatchObject({
         repository: 'PointCommunity/pointsite',
         commitSha: github.build.commitSha,
@@ -3491,6 +3530,18 @@ it('retains the last two releases and recent evidence while retiring one old rel
         ),
     ]);
   }
+  expect((await repository.getDraft(draft.id)).publication).toMatchObject({
+    state: 'published',
+    displayCount: 0,
+  });
+  expect(
+    await database
+      .prepare(
+        'SELECT baseline_release_id,baseline_sequence FROM draft_publication_baselines WHERE draft_id=?',
+      )
+      .bind(draft.id)
+      .first(),
+  ).toMatchObject({ baseline_release_id: ids[3], baseline_sequence: draft.revision.sequence });
   expect(await retirePublicationMetadata(database)).toEqual({ jobs: 1, releases: 1 });
   expect(
     await database.prepare('SELECT 1 FROM publish_jobs WHERE id=?').bind(ids[0]).first(),

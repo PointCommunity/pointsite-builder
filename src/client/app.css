@@ -351,6 +351,17 @@ textarea {
   color: var(--muted);
   font-size: 0.8rem;
 }
+.publication-explanation {
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.publication-explanation summary {
+  cursor: pointer;
+}
+.publication-explanation p {
+  margin: 0.25rem 0;
+}
 .save-cluster {
   display: flex !important;
   align-items: center;
@@ -1344,6 +1355,12 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 45%);
+}
+.source-dialog::backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+.source-dialog select {
+  width: 100%;
 }
 .confirmation-dialog h2 {
   margin: 0.35rem 0 0.75rem;

@@ -44,20 +44,25 @@
       legacy deployment in migration 0029; verified Builder Production jobs append durable releases
       in <code>verifiedReleaseStatement</code>. Staging and Staging Canary currently expose format-2
       live release markers plus content manifests. Staging selection must use the runtime's fixed
-      destination, never a browser-selected repository URL.
+      destination, never a browser-selected repository URL. Live GitHub deployment readback shows
+      Staging and Canary use the <code>staging</code> environment and null GitHub App attribution;
+      their linked, successful candidate Actions run/job and exact deployment SHA must be checked
+      instead. Both public sources passed bounded capture of referenced media on September 15.
     </p>
     <h2>Decisions</h2>
     <ol>
       <li>
         Extend existing bounded immutable-public-source capture to fixed Staging destinations.
-        Retain legacy Production baseline handling. Server accepts source enum and never falls back
-        to default content in configured native deployments.
+        Retain legacy Production baseline handling. Source preview pins commit, deployment, and
+        artifact identity; creation recaptures and compares it. Server accepts source enum and never
+        falls back to default content in configured native deployments. Isolated local QA uses
+        explicit fixtures; older local API fixture creation remains unchanged.
       </li>
       <li>
         Add an additive draft-baseline record. Match captured Production provenance to the current
-        verified release; inherit Staging lineage only with exact local candidate/identity evidence.
-        Existing uncertain drafts remain unknown. Never infer lineage from visual content
-        similarity.
+        verified release; inherit Staging lineage only with exact verified Production
+        candidate/artifact evidence. Existing uncertain drafts remain unknown. Never infer lineage
+        from visual content similarity.
       </li>
       <li>
         Compute displayed count from immutable revision sequence minus baseline sequence. A
@@ -73,12 +78,13 @@
     </ol>
     <h2>Risks and recovery</h2>
     <p>
-      Staging provenance might not link to a local candidate, especially after metadata retention or
-      across Canary/Production; show unknown. A public release outside the Builder can make local
-      release records stale; fail closed on uncertain current identity. Additive migration and old
-      image compatibility: old code ignores the new table. Never delete immutable revisions or
-      existing production-source rows. Revert application image through GitOps if needed; data
-      restoration requires separate approval.
+      Staging provenance might not link to a verified Production candidate, especially after
+      metadata retention or across Canary/Production; show unknown. A public release outside Builder
+      can make local release records stale; reconcile live drift before claiming full release
+      verification. Additive migration and old image compatibility: old code ignores the new table.
+      Never delete immutable revisions or existing production-source rows. Revert application image
+      through GitOps if needed; data restoration requires separate approval. See
+      <a href="data-model.html">data model and upgrade contract</a>.
     </p>
     <h2>Sequence and checkpoints</h2>
     <p>

@@ -88,7 +88,8 @@ async function fixture(target: 'production' | 'staging' | 'canary' = 'production
           id: deployment,
           sha: 'e'.repeat(40),
           environment,
-          performed_via_github_app: { id: 15368, slug: 'github-actions' },
+          performed_via_github_app:
+            target === 'production' ? { id: 15368, slug: 'github-actions' } : null,
         },
       ]);
     if (value.includes('/statuses?'))
@@ -100,6 +101,24 @@ async function fixture(target: 'production' | 'staging' | 'canary' = 'production
           log_url: 'https://github.com/PointCommunity/' + repository + '/actions/runs/123/job/456',
         },
       ]);
+    if (value.endsWith('/actions/runs/123'))
+      return Response.json({
+        id: 123,
+        status: 'completed',
+        conclusion: 'success',
+        head_sha: 'e'.repeat(40),
+        head_branch: 'main',
+        event: 'repository_dispatch',
+        path: '.github/workflows/publish-candidate.yml',
+      });
+    if (value.endsWith('/actions/jobs/456'))
+      return Response.json({
+        id: 456,
+        run_id: 123,
+        status: 'completed',
+        conclusion: 'success',
+        head_sha: 'e'.repeat(40),
+      });
     if (value.endsWith('/__pointsite_release.json')) return Response.json(release);
     if (
       value.startsWith(
@@ -136,13 +155,42 @@ test.each([
   async (target, builderOrigin) => {
     const input = await fixture(target);
     const source = await capturePublicationSource('staging', builderOrigin, input.fetcher);
+    expect(input.fetcher).toHaveBeenCalledWith(
+      expect.stringContaining('deployments?environment=staging'),
+      expect.anything(),
+    );
     expect(source.document.site.name).toBe(input.document.site.name);
     expect(source.provenance.sourceCommit).toBe(input.release.sourceCommit);
     expect(source.provenance.artifactDigest).toBe(input.output.artifactDigest);
     expect(source.provenance.candidateChecksum).toBe(input.release.candidateChecksum);
     expect(source.assets.size).toBe(input.objects.size);
+    expect(
+      input.fetcher.mock.calls.filter(([url]) => String(url).endsWith('/actions/runs/123')),
+    ).toHaveLength(1);
+    expect(
+      input.fetcher.mock.calls.filter(([url]) => String(url).endsWith('/actions/jobs/456')),
+    ).toHaveLength(1);
   },
 );
+
+test.each([
+  ['run commit', '/actions/runs/123', { head_sha: 'f'.repeat(40) }],
+  ['job owner', '/actions/jobs/456', { run_id: 999 }],
+  ['workflow', '/actions/runs/123', { path: '.github/workflows/unrelated.yml' }],
+] as const)('rejects Staging deployment with mismatched %s', async (_, urlSuffix, override) => {
+  const input = await fixture('staging');
+  const altered: typeof fetch = async (url, options) => {
+    const response = await input.fetcher(url, options);
+    if (!(url instanceof Request ? url.url : String(url)).endsWith(urlSuffix)) return response;
+    const action: unknown = await response.json();
+    if (!action || typeof action !== 'object' || Array.isArray(action))
+      throw new Error('Bad action fixture');
+    return Response.json({ ...action, ...override });
+  };
+  await expect(
+    capturePublicationSource('staging', 'https://builder.eaglepass.io', altered),
+  ).rejects.toMatchObject({ code: 'STAGING_IMPORT_UNCONFIRMED' });
+});
 
 test('capture uses deployed rollback content, verifies media, and rejects altered or changing source', async () => {
   const input = await fixture();
@@ -268,7 +316,29 @@ test('native creation selects verified Staging source and does not use Productio
       .prepare('SELECT provenance_json FROM draft_production_sources WHERE draft_id=?')
       .bind(draft.id)
       .first<string>('provenance_json');
-    expect(JSON.parse(stored!).target).toBe('staging');
+    expect((JSON.parse(stored!) as { target: string }).target).toBe('staging');
+    expect((await repository.getDraft(draft.id)).publication).toMatchObject({
+      sourceTarget: 'staging',
+      state: 'unknown',
+      displayCount: 0,
+    });
+    await expect(
+      repository.createDraft({
+        name: 'Changed Staging',
+        document: defaultSiteDocument,
+        sourceTarget: 'staging',
+        expectedSource: {
+          sourceCommit: '0'.repeat(40),
+          deploymentId: source.provenance.deploymentId,
+          artifactDigest: source.provenance.artifactDigest,
+          candidateChecksum: source.provenance.candidateChecksum,
+        },
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'PUBLICATION_SOURCE_CHANGED' });
+    expect((await repository.listDrafts()).length).toBe(1);
     await expect(
       new D1DraftRepository(db, assets).createDraft({
         name: 'Unavailable source',

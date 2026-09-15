@@ -6,6 +6,8 @@ import type {
   DraftCheckoutAvailability,
   DraftRecord,
   DraftSummary,
+  DraftPublicationStatus,
+  PublicationSourceIdentity,
   EditorViewState,
   RevisionRecord,
   Role,
@@ -190,11 +192,35 @@ export const api = {
   me: () => request<ActorResponse>('/me'),
   listDrafts: async () => (await request<{ items: DraftSummary[] }>('/drafts?view=summary')).items,
   getDraft: (id: string) => request<DraftRecord>(`/drafts/${id}`),
-  createDraft: (name: string, fromRevisionId?: string) =>
+  getDraftPublication: (id: string) => request<DraftPublicationStatus>(`/drafts/${id}/publication`),
+  previewDraftSource: (target: 'staging' | 'production') =>
+    request<PublicationSourceIdentity>(`/draft-sources/${target}`),
+  createDraft: (
+    name: string,
+    fromRevisionId?: string,
+    sourceTarget?: 'staging' | 'production',
+    expectedSource?: PublicationSourceIdentity,
+  ) =>
     request<DraftRecord>('/drafts', {
       method: 'POST',
       headers: mutationHeaders(crypto.randomUUID()),
-      body: JSON.stringify({ name, ...(fromRevisionId ? { fromRevisionId } : {}) }),
+      body: JSON.stringify({
+        name,
+        ...(fromRevisionId ? { fromRevisionId } : {}),
+        ...(sourceTarget ? { sourceTarget } : {}),
+        ...(expectedSource
+          ? {
+              expectedSource: {
+                sourceCommit: expectedSource.sourceCommit,
+                deploymentId: expectedSource.deploymentId,
+                artifactDigest: expectedSource.artifactDigest,
+                ...(expectedSource.candidateChecksum
+                  ? { candidateChecksum: expectedSource.candidateChecksum }
+                  : {}),
+              },
+            }
+          : {}),
+      }),
     }),
   saveDraft: (
     id: string,

@@ -98,21 +98,24 @@ export async function capturePublicationSource(
       });
     const json = async (url: string, maximum = 500_000) =>
       publicationJson(await read(url), maximum);
-    const current = async () => {
+    const current = async (verifyAction = true) => {
       const [deployment] = z
         .array(
           z.object({
             id: z.number().int().positive(),
             sha,
             environment: z.literal(environment),
-            performed_via_github_app: z.object({
-              id: z.literal(15368),
-              slug: z.literal('github-actions'),
-            }),
+            performed_via_github_app: z
+              .object({ id: z.literal(15368), slug: z.literal('github-actions') })
+              .nullable(),
           }),
         )
         .length(1)
-        .parse(await json(`${api}/deployments?environment=github-pages&per_page=1`));
+        .parse(
+          await json(
+            `${api}/deployments?environment=${encodeURIComponent(environment)}&per_page=1`,
+          ),
+        );
       const [status] = z
         .array(
           z.object({
@@ -146,6 +149,38 @@ export async function capturePublicationSource(
         )
         .length(1)
         .parse(await json(`${api}/deployments/${deployment.id}/statuses?per_page=1`));
+      if (!deployment.performed_via_github_app && verifyAction) {
+        const [, runId, jobId] = status.log_url.match(/\/actions\/runs\/([0-9]+)\/job\/([0-9]+)$/)!;
+        const run = z
+          .object({
+            id: z.number().int().positive(),
+            status: z.literal('completed'),
+            conclusion: z.literal('success'),
+            head_sha: sha,
+            path: z.enum([
+              '.github/workflows/publish-candidate.yml',
+              '.github/workflows/rollback-production.yml',
+            ]),
+          })
+          .parse(await json(`${api}/actions/runs/${runId}`));
+        const job = z
+          .object({
+            id: z.number().int().positive(),
+            run_id: z.number().int().positive(),
+            status: z.literal('completed'),
+            conclusion: z.literal('success'),
+            head_sha: sha,
+          })
+          .parse(await json(`${api}/actions/jobs/${jobId}`));
+        if (
+          run.id !== Number(runId) ||
+          job.id !== Number(jobId) ||
+          job.run_id !== run.id ||
+          run.head_sha !== deployment.sha ||
+          job.head_sha !== deployment.sha
+        )
+          throw new Error('SOURCE_DEPLOYMENT_ACTION_CHANGED');
+      }
       return { ...deployment, ...status };
     };
     const before = await current();
@@ -245,7 +280,7 @@ export async function capturePublicationSource(
         throw new Error('SOURCE_ASSET_CHANGED');
       assets.set(path, { bytes: content, contentType, filename: path.split('/').at(-1)! });
     }
-    const after = await current();
+    const after = await current(false);
     const finalRelease = await read(`${origin}/__pointsite_release.json`);
     if (JSON.stringify(before) !== JSON.stringify(after)) {
       await finalRelease.body?.cancel();

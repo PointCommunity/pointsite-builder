@@ -22,9 +22,23 @@ const CreateDraftSchema = z
     name: z.string().trim().min(1).max(100),
     fromRevisionId: z.uuid().optional(),
     sourceTarget: z.enum(['staging', 'production']).optional(),
+    expectedSource: z
+      .strictObject({
+        sourceCommit: z.string().regex(/^[a-f0-9]{40}$/),
+        deploymentId: z.string().regex(/^[1-9][0-9]*$/),
+        artifactDigest: z.string().regex(/^[a-f0-9]{64}$/),
+        candidateChecksum: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+      })
+      .optional(),
   })
-  .refine((value) => !value.fromRevisionId || !value.sourceTarget, {
+  .refine((value) => !value.fromRevisionId || (!value.sourceTarget && !value.expectedSource), {
     message: 'Choose a publication or a draft revision, not both',
+  })
+  .refine((value) => !value.expectedSource || Boolean(value.sourceTarget), {
+    message: 'Choose the source of this publication',
   });
 
 const SaveDraftSchema = z.strictObject({
@@ -210,6 +224,7 @@ export function createDraftRoutes(
       document,
       sourceDraftId: source?.draftId,
       sourceTarget: parsed.data.sourceTarget,
+      expectedSource: parsed.data.expectedSource,
       actor: actor.email,
       idempotencyKey: context.req.header('idempotency-key') ?? '',
       requestId: context.get('requestId'),
@@ -220,6 +235,12 @@ export function createDraftRoutes(
   routes.get('/:draftId', async (context) => {
     requireRole(context.get('actor'), 'viewer');
     return context.json(await repository.getDraft(context.req.param('draftId')));
+  });
+
+  routes.get('/:draftId/publication', async (context) => {
+    requireRole(context.get('actor'), 'viewer');
+    context.header('Cache-Control', 'private, no-store');
+    return context.json(await repository.getPublicationStatus(context.req.param('draftId')));
   });
 
   routes.get('/:draftId/assets', async (context) => {

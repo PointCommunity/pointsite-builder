@@ -131,6 +131,7 @@ export function createBuilderRuntime(options: RuntimeOptions) {
         config.draftStorageFormat,
         deletionReceipts,
         options.productionSource,
+        config.environment !== 'local',
       );
       const media = new MediaService(
         new D1MediaRepository(database),
@@ -190,6 +191,12 @@ export function createBuilderRuntime(options: RuntimeOptions) {
         productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
         retention: new RetentionService(database, deletionReceipts),
         ownershipMigration: new D1OwnershipMigration(database, assets),
+        ...(options.productionSource
+          ? {
+              publicationSourcePreview: async (target: 'staging' | 'production') =>
+                (await options.productionSource!(target)).provenance,
+            }
+          : {}),
         publicationRunner: new D1PublicationRunner(database, undefined, config.github),
       });
       const owner = /^\/assets\/builder\/([a-f0-9-]{36})\//.exec(url.pathname)?.[1];

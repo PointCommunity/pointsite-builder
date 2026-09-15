@@ -47,6 +47,56 @@ async function checkout(
 }
 
 describe('draft API', () => {
+  it('previews an exact source for editors without allowing viewers or invalid targets', async () => {
+    const repository = new InMemoryRepository();
+    let role: Actor['role'] = 'editor';
+    const preview = vi.fn().mockResolvedValue({
+      sourceCommit: 'a'.repeat(40),
+      deploymentId: '123',
+      artifactDigest: 'b'.repeat(64),
+      candidateChecksum: 'c'.repeat(64),
+      capturedAt: 'fixture',
+      documentChecksum: 'd'.repeat(64),
+    });
+    const app = createApp({
+      repository,
+      authenticate: () => Promise.resolve({ email: 'github:12345', role }),
+      environment: 'test',
+      version: 'test',
+      publicationSourcePreview: preview,
+    });
+    const source = await app.request(`${origin}/api/draft-sources/staging`);
+    expect(source.status).toBe(200);
+    expect(await source.json()).toEqual({
+      sourceCommit: 'a'.repeat(40),
+      deploymentId: '123',
+      artifactDigest: 'b'.repeat(64),
+      candidateChecksum: 'c'.repeat(64),
+    });
+    expect(preview).toHaveBeenCalledWith('staging');
+    expect((await app.request(`${origin}/api/draft-sources/unknown`)).status).toBe(422);
+    role = 'viewer';
+    expect((await app.request(`${origin}/api/draft-sources/production`)).status).toBe(403);
+    expect(preview).toHaveBeenCalledTimes(1);
+  });
+  it('reads lightweight persisted publication status without granting mutation authority', async () => {
+    const { repository, app } = appFor({ email: 'github:12345', role: 'viewer' });
+    const draft = await repository.createDraft({
+      name: 'Old season',
+      document: defaultSiteDocument,
+      actor: 'github:12345',
+      idempotencyKey: crypto.randomUUID(),
+      requestId: crypto.randomUUID(),
+    });
+    const response = await app.request(`${origin}/api/drafts/${draft.id}/publication`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(await response.json()).toEqual({
+      sourceTarget: 'unknown',
+      state: 'unknown',
+      displayCount: 0,
+    });
+  });
   it('identifies the checkout owner to another authenticated collaborator without exposing owned identity', async () => {
     const owner: Actor = { email: 'github:99', githubLogin: 'actual-editor', role: 'editor' };
     const viewer: Actor = { email: 'github:22', githubLogin: 'other-viewer', role: 'editor' };

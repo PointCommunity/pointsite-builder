@@ -147,6 +147,19 @@ async function installApi(
     let body: unknown = {};
     let status = 200;
     if (path.endsWith('/me')) body = { email: `${role}@pointatx.org`, role, repositoryPermission };
+    else if (/^\/api\/draft-sources\/(staging|production)$/.test(path))
+      body = {
+        sourceCommit: '0'.repeat(40),
+        deploymentId: '1',
+        artifactDigest: 'a'.repeat(64),
+        fixture: true,
+      };
+    else if (/^\/api\/drafts\/[^/]+\/publication$/.test(path))
+      body = {
+        sourceTarget: 'unknown',
+        state: 'unknown',
+        displayCount: Math.max(0, draft.revision.sequence - 1),
+      };
     else if (path === '/api/drafts/checkouts')
       body = {
         items: drafts.map(({ id }) => ({ draftId: id, state: 'available', expiresAt: null })),
@@ -876,7 +889,9 @@ test('renames inline with keyboard and pointer while keeping publishing, history
   await expect(page.getByRole('heading', { name: 'Renamed Sunday', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rename draft' })).toBeFocused();
   await expect(page.locator('.save-state')).toHaveText('All changes saved');
-  await expect(page.locator('.editor-header')).toContainText('Revision 2');
+  await expect(page.locator('.editor-header')).toContainText(
+    'Unknown Production baseline - Revision 1',
+  );
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(
     page.getByRole('dialog').locator('strong').filter({ hasText: 'Renamed Sunday' }),
@@ -1038,7 +1053,15 @@ test('creates, duplicates, archives, unarchives, and safely deletes drafts witho
   await page.goto('/');
   await page.getByLabel('New draft name').fill('Fall launch');
   await page.getByRole('button', { name: 'Create draft' }).click();
-  await expect(page.getByText('Fall launch')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Create Fall launch' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog', { name: 'Create Fall launch' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeFocused();
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await page.getByLabel('Copy published site from').selectOption('production');
+  await expect(page.getByText('Local fixture ready')).toBeVisible();
+  await page.getByRole('button', { name: 'Create independent draft' }).click();
+  await expect(page.getByRole('heading', { name: 'Fall launch', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '← All drafts' }).click();
   const originalCard = page.getByRole('listitem').filter({ hasText: 'Sunday update' });
   await originalCard.getByRole('button', { name: 'Duplicate' }).click();

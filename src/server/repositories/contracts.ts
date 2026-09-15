@@ -85,6 +85,13 @@ export interface DraftRecord {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  publication?: DraftPublicationStatus;
+}
+
+export interface DraftPublicationStatus {
+  sourceTarget: 'staging' | 'production' | 'unknown';
+  state: 'published' | 'behind' | 'unknown';
+  displayCount: number;
 }
 
 export type RevisionSummary = Omit<RevisionRecord, 'document'>;
@@ -113,11 +120,20 @@ export interface AuditEventRecord {
 export interface CreateDraftInput {
   sourceDraftId?: string;
   sourceTarget?: 'staging' | 'production';
+  expectedSource?: PublicationSourceIdentity;
   name: string;
   document: SiteDocument;
   actor: string;
   idempotencyKey: string;
   requestId: string;
+}
+
+export interface PublicationSourceIdentity {
+  sourceCommit: string;
+  deploymentId: string;
+  artifactDigest: string;
+  candidateChecksum?: string;
+  fixture?: boolean;
 }
 
 export interface ProductionDraftSource {
@@ -129,6 +145,7 @@ export interface ProductionDraftSource {
     deploymentId: string;
     artifactDigest: string;
     candidateChecksum?: string;
+    fixture?: boolean;
     documentChecksum: string;
     capturedAt: string;
   };
@@ -168,6 +185,7 @@ export interface DraftRepository {
   listDrafts(status?: DraftStatus): Promise<DraftRecord[]>;
   listDraftSummaries(status?: DraftStatus): Promise<DraftSummary[]>;
   getDraft(id: string): Promise<DraftRecord>;
+  getPublicationStatus(id: string): Promise<DraftPublicationStatus>;
   getRevision(id: string): Promise<RevisionRecord>;
   createDraft(input: CreateDraftInput): Promise<DraftRecord>;
   saveDraft(input: SaveDraftInput): Promise<DraftRecord>;

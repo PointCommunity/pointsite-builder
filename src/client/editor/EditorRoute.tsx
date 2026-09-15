@@ -13,6 +13,7 @@ import {
 import type {
   DraftCheckout,
   DraftRecord,
+  DraftPublicationStatus,
   EditorPanel,
   EditorViewState,
   Role,
@@ -34,6 +35,7 @@ import { mutationForContext } from './action-attribution';
 import { FeedbackButton } from '../feedback/FeedbackButton';
 import { saveFeedbackWorkspace } from '../feedback/workspace';
 import { DraftName } from './DraftName';
+import { publicationExplanation, publicationLabel } from '../drafts/publication-status';
 
 const VisualEditor = lazy(() =>
   import('./VisualEditor').then((module) => ({ default: module.VisualEditor })),
@@ -82,6 +84,49 @@ function Workspace({
     renameDraft,
     runLibraryMutation,
   } = useEditor();
+  const [publication, setPublication] = useState<{
+    draftId: string;
+    sequence: number;
+    status: DraftPublicationStatus;
+  } | null>(null);
+  const publicationView =
+    publication?.draftId === draft.id && publication.sequence === draft.revision.sequence
+      ? publication.status
+      : draft.publication;
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (globalThis.document.visibilityState !== 'visible') return;
+      void api
+        .getDraftPublication(draft.id)
+        .then((status) => {
+          if (active)
+            setPublication({ draftId: draft.id, sequence: draft.revision.sequence, status });
+        })
+        .catch(() => {
+          if (active)
+            setPublication({
+              draftId: draft.id,
+              sequence: draft.revision.sequence,
+              status: {
+                ...(draft.publication ?? {
+                  sourceTarget: 'unknown',
+                  displayCount: Math.max(0, draft.revision.sequence - 1),
+                }),
+                state: 'unknown',
+              },
+            });
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    globalThis.document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      globalThis.document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [draft.id, draft.revision.sequence, draft.publication]);
   const displayDocument = useMemo(
     () => draftDisplayDocument(document, draft.id),
     [document, draft.id],
@@ -315,7 +360,11 @@ function Workspace({
         </button>
         <div>
           <DraftName name={draft.name} editable={editable} onRename={renameDraft} />
-          <span>Revision {draft.revision.sequence}</span>
+          <span>{publicationLabel(publicationView, draft.revision.sequence)}</span>
+          <details className="publication-explanation">
+            <summary>About this status</summary>
+            <p>{publicationExplanation(publicationView)}</p>
+          </details>
         </div>
         <div className="save-cluster">
           {themeToggle}
