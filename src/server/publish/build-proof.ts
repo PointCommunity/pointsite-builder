@@ -60,6 +60,9 @@ export async function commitPublicationBuild(input: {
     let stage = 'authority';
     let retryable = false;
     let status: number | undefined;
+    let requestId: string | undefined;
+    let providerErrors: string[] | undefined;
+    let rateLimited = false;
     try {
       budget.throwIfAborted();
       await input.guard(budget);
@@ -71,6 +74,7 @@ export async function commitPublicationBuild(input: {
         if (Date.now() >= deadline) throw new Error('Budget exhausted');
         let response: Response;
         status = undefined;
+        requestId = undefined;
         try {
           response = await input.fetcher(url, {
             ...init,
@@ -84,6 +88,9 @@ export async function commitPublicationBuild(input: {
           throw new Error('Transport unavailable');
         }
         status = response.status;
+        rateLimited = response.headers.get('x-ratelimit-remaining') === '0';
+        const identifier = response.headers.get('x-github-request-id') ?? '';
+        if (/^[a-f0-9]{4}(?::[a-f0-9]{1,16}){4}$/i.test(identifier)) requestId = identifier;
         retryable = response.status >= 500 || (candidateObject && response.status === 404);
         const header = response.headers.get('retry-after');
         retryAfter =
@@ -92,7 +99,7 @@ export async function commitPublicationBuild(input: {
             : /^\d+$/.test(header)
               ? Number(header) * 1000
               : Math.max(0, Date.parse(header) - Date.now());
-        if (!Number.isFinite(retryAfter)) retryable = false;
+        if (!Number.isFinite(retryAfter) || rateLimited) retryable = false;
         return response;
       };
       const read = async (path: string, operation: string, candidateObject = false) => {
@@ -256,42 +263,87 @@ export async function commitPublicationBuild(input: {
       // Native CAS closes the race between reading main and writing it, including resets.
       // https://docs.github.com/en/graphql/reference/git#updaterefs
       stage = 'update-main';
-      await publicationJson(
-        await request('https://api.github.com/graphql', {
-          method: 'POST',
-          headers: { ...githubHeaders(input.token), 'content-type': 'application/json' },
-          redirect: 'error',
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            query: 'mutation($input:UpdateRefsInput!){updateRefs(input:$input){clientMutationId}}',
-            variables: {
-              input: {
-                repositoryId: repository.node_id,
-                clientMutationId: input.jobId,
-                refUpdates: [
-                  {
-                    name: 'refs/heads/main',
-                    beforeOid: input.baseSha,
-                    afterOid: build.commitSha,
-                    force: false,
-                  },
-                ],
-              },
+      const response = await request('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: { ...githubHeaders(input.token), 'content-type': 'application/json' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({
+          query: 'mutation($input:UpdateRefsInput!){updateRefs(input:$input){clientMutationId}}',
+          variables: {
+            input: {
+              repositoryId: repository.node_id,
+              clientMutationId: input.jobId,
+              refUpdates: [
+                {
+                  name: 'refs/heads/main',
+                  beforeOid: input.baseSha,
+                  afterOid: build.commitSha,
+                  force: false,
+                },
+              ],
             },
-          }),
+          },
         }),
-        16_384,
-      ).then((result) =>
-        z
-          .object({
-            errors: z.never().optional(),
-            data: z.object({ updateRefs: z.object({ clientMutationId: z.literal(input.jobId) }) }),
-          })
-          .parse(result),
-      );
-      z.object({ object: z.object({ sha: z.literal(build.commitSha) }) }).parse(
-        await read('/git/ref/heads/main', 'confirm-main'),
-      );
+      });
+      // GraphQL can report failure with HTTP 200 or lose an acknowledgement after committing.
+      // Re-enter the guarded expected-base path; never replace CAS with an unconditional update.
+      if (response.ok && Number.isFinite(retryAfter) && !rateLimited) retryable = true;
+      const result = await publicationJson(response, 16_384);
+      const rejected = z
+        .object({
+          errors: z
+            .array(
+              z.object({
+                type: z.string().optional(),
+                message: z.string().optional(),
+                extensions: z.object({ code: z.string().optional() }).optional(),
+              }),
+            )
+            .min(1)
+            .max(10),
+        })
+        .safeParse(result);
+      if (rejected.success) {
+        const terminal = [
+          'FORBIDDEN',
+          'UNAUTHORIZED',
+          'NOT_FOUND',
+          'UNPROCESSABLE',
+          'RATE_LIMITED',
+          'GRAPHQL_VALIDATION_FAILED',
+          'GRAPHQL_PARSE_FAILED',
+          'INVALID',
+          'MAX_NODE_LIMIT_EXCEEDED',
+        ];
+        const known = [
+          ...terminal,
+          'INTERNAL',
+          'INTERNAL_SERVER_ERROR',
+          'SERVICE_UNAVAILABLE',
+          'TIMEOUT',
+        ];
+        providerErrors = rejected.data.errors.map((error) => {
+          if (rateLimited || /rate limit|abuse detection/i.test(error.message ?? ''))
+            return 'RATE_LIMITED';
+          const code = error.type ?? error.extensions?.code ?? '';
+          return known.includes(code) ? code : 'UNCLASSIFIED';
+        });
+        retryable =
+          response.ok &&
+          Number.isFinite(retryAfter) &&
+          !rateLimited &&
+          !providerErrors.some((code) => terminal.includes(code));
+        throw new Error('GraphQL mutation unconfirmed');
+      }
+      z.object({
+        errors: z.array(z.never()).optional(),
+        data: z.object({ updateRefs: z.object({ clientMutationId: z.literal(input.jobId) }) }),
+      }).parse(result);
+      const confirmed = await read('/git/ref/heads/main', 'confirm-main');
+      // A stale acknowledgement is also ambiguous; the next attempt rechecks the exact main ref.
+      retryable = Number.isFinite(retryAfter) && !rateLimited;
+      z.object({ object: z.object({ sha: z.literal(build.commitSha) }) }).parse(confirmed);
       return;
     } catch {
       console.warn(
@@ -300,6 +352,8 @@ export async function commitPublicationBuild(input: {
           jobId: z.uuid().safeParse(input.jobId).success ? input.jobId : undefined,
           stage,
           status,
+          requestId,
+          providerErrors,
           attempt: attempt + 1,
           retryable,
         }),
