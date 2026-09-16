@@ -6,6 +6,7 @@ import { EditorProvider, useEditor } from '../../src/client/editor/EditorProvide
 import { availableRoute, PageManager } from '../../src/client/editor/PageManager';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
+import type { SiteDocument } from '../../src/site-kit/types';
 
 function draft(): DraftRecord {
   const document = structuredClone(defaultSiteDocument);
@@ -72,27 +73,19 @@ describe('page management', () => {
     expect(screen.queryByLabelText('Page hero image')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
-    const page = JSON.parse(screen.getByTestId('selected-page').textContent ?? '{}') as {
-      blocks: Array<{
-        name: string;
-        items: Array<{ element: { type: string; variant?: string } }>;
-      }>;
-    };
+    const page = JSON.parse(
+      screen.getByTestId('selected-page').textContent ?? '{}',
+    ) as SiteDocument['pages'][number];
 
     expect(page.blocks[0]).toMatchObject({
       name: 'Page hero',
       items: [{ element: { type: 'hero', variant: 'pageHero' } }],
     });
-    expect(page.blocks[1]).toMatchObject({
-      name: 'Site header',
-      items: expect.arrayContaining([
-        expect.objectContaining({
-          element: expect.objectContaining({
-            type: 'navigation',
-            navigationDesignId: initialDraft.document.navigationDesigns?.[0]?.id,
-          }),
-        }),
-      ]),
+    expect(page.blocks[1]).toMatchObject({ name: 'Site header' });
+    expect(
+      page.blocks[1].items.find(({ element }) => element.type === 'navigation')?.element,
+    ).toMatchObject({
+      navigationDesignId: initialDraft.document.navigationDesigns?.[0]?.id,
     });
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     save.mockRestore();
