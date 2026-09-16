@@ -339,6 +339,7 @@ test('changes the design and creates a page without code', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Design', exact: true }).click();
   await page.getByRole('button', { name: /Evening Bold/ }).click();
   await expect(page.getByRole('button', { name: /Evening Bold/ })).toHaveAttribute(
     'aria-pressed',

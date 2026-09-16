@@ -29,8 +29,6 @@ import { MediaLibrary } from '../media/MediaLibrary';
 import { draftDisplayDocument } from '../media/draft-display-document';
 import { AdminRoute } from '../admin/AdminRoute';
 import { EditorProvider, useEditor } from './EditorProvider';
-import { PageManager } from './PageManager';
-import { StructurePanel } from './StructurePanel';
 import { mutationForContext } from './action-attribution';
 import { FeedbackButton } from '../feedback/FeedbackButton';
 import { saveFeedbackWorkspace } from '../feedback/workspace';
@@ -149,6 +147,12 @@ function Workspace({
   const [leaseNow, setLeaseNow] = useState(0);
   const [leaseLost, setLeaseLost] = useState(false);
   const [structureRevision, setStructureRevision] = useState(0);
+  const handleStructureChange = useCallback(
+    () => setStructureRevision((current) => current + 1),
+    [],
+  );
+  const [layoutToolbar, setLayoutToolbar] = useState<HTMLDivElement | null>(null);
+  const [settingsCategory, setSettingsCategory] = useState<'Identity' | 'Footer'>('Identity');
   const [recoveryCopied, setRecoveryCopied] = useState(false);
   const [recoveryStatus, setRecoveryStatus] = useState('');
   const leaseExpired = Boolean(
@@ -334,6 +338,7 @@ function Workspace({
     );
   };
   const openFooterSettings = useCallback(() => {
+    setSettingsCategory('Footer');
     setPanel('settings');
     globalThis.setTimeout(() => {
       const target = globalThis.document.getElementById('footer-settings');
@@ -341,6 +346,15 @@ function Workspace({
       target?.focus();
     });
   }, []);
+  const availablePanels: Panel[] = [
+    'layout',
+    'forms',
+    'library',
+    'preview',
+    'history',
+    'settings',
+    ...(role === 'administrator' ? ['admin' as const] : []),
+  ];
   return (
     <div className="editor-workspace">
       <a className="skip-link" href="#main-content">
@@ -358,12 +372,20 @@ function Workspace({
         <button className="button" type="button" onClick={requestClose}>
           ← All drafts
         </button>
-        <div>
+        <div className="draft-identity">
           <DraftName name={draft.name} editable={editable} onRename={renameDraft} />
-          <span>{publicationLabel(publicationView, draft.revision.sequence)}</span>
           <details className="publication-explanation">
-            <summary>About this status</summary>
-            <p>{publicationExplanation(publicationView)}</p>
+            <summary aria-label="About this status">
+              <span className="publication-label">
+                {publicationLabel(publicationView, draft.revision.sequence)}
+              </span>
+              <span className="publication-short">Draft status</span>
+            </summary>
+            <p>
+              <strong>{publicationLabel(publicationView, draft.revision.sequence)}</strong>
+              <br />
+              {publicationExplanation(publicationView)}
+            </p>
           </details>
         </div>
         <div className="save-cluster">
@@ -377,9 +399,28 @@ function Workspace({
               saveFeedbackWorkspace(`editor.${panel}`, draft.id);
             }}
           />
-          <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">
-            {autosave.message}
-          </span>
+          <div className="save-messages">
+            <span
+              className={`save-state save-state--${saveState}`}
+              role="status"
+              aria-live="polite"
+            >
+              {autosave.message}
+            </span>
+            <p className="pending-journal-status" aria-live="off">
+              {autosave.recovery === 'protected'
+                ? 'Pending changes protected on this browser.'
+                : autosave.recovery === 'writing'
+                  ? autosave.pendingCount
+                    ? 'Protecting pending changes…'
+                    : 'Clearing recovery copy…'
+                  : autosave.recovery === 'unavailable'
+                    ? 'Refresh recovery unavailable.'
+                    : autosave.recovery === 'blocked'
+                      ? 'Pending recovery needs attention.'
+                      : null}
+            </p>
+          </div>
           {saveState === 'error' || saveState === 'validation' ? (
             <button className="button" type="button" onClick={retryAutosave}>
               Retry autosave
@@ -398,19 +439,6 @@ function Workspace({
         </div>
       </header>
       <div className="autosave-recovery-slot">
-        <p className="pending-journal-status" aria-live="off">
-          {autosave.recovery === 'protected'
-            ? 'Pending changes protected on this browser.'
-            : autosave.recovery === 'writing'
-              ? autosave.pendingCount
-                ? 'Protecting pending changes…'
-                : 'Clearing recovery copy…'
-              : autosave.recovery === 'unavailable'
-                ? 'Refresh recovery unavailable.'
-                : autosave.recovery === 'blocked'
-                  ? 'Pending recovery needs attention.'
-                  : '\u00a0'}
-        </p>
         {leaseExpiresAt &&
         checkoutPhase(leaseExpiresAt, leaseNow) === 'warning' &&
         !checkoutUnavailable ? (
@@ -474,36 +502,40 @@ function Workspace({
         ) : null}
       </div>
       <nav className="editor-tabs" aria-label="Editor sections">
-        {(
-          [
-            'layout',
-            'forms',
-            'library',
-            'preview',
-            'history',
-            'settings',
-            ...(role === 'administrator' ? ['admin' as const] : []),
-          ] as Panel[]
-        ).map((item) => (
-          <button
-            key={item}
-            type="button"
-            aria-current={panel === item ? 'page' : undefined}
-            onClick={() => setPanel(item)}
-          >
-            {panelLabels[item]}
-          </button>
-        ))}
+        <select
+          className="editor-section-picker"
+          aria-label="Editor section"
+          value={panel}
+          onChange={(event) => {
+            setSettingsCategory('Identity');
+            setPanel(event.target.value as Panel);
+          }}
+        >
+          {availablePanels.map((item) => (
+            <option key={item} value={item}>
+              {panelLabels[item]}
+            </option>
+          ))}
+        </select>
+        <div className="editor-section-links">
+          {availablePanels.map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-current={panel === item ? 'page' : undefined}
+              onClick={() => {
+                setSettingsCategory('Identity');
+                setPanel(item);
+              }}
+            >
+              {panelLabels[item]}
+            </button>
+          ))}
+        </div>
+        <div ref={setLayoutToolbar} />
       </nav>
       {panel === 'layout' ? (
         <main id="main-content" className="content-workspace">
-          <aside>
-            <PageManager pageId={pageId} onPageIdChange={setPageId} />
-            <StructurePanel
-              pageId={pageId}
-              onStructureChange={() => setStructureRevision((current) => current + 1)}
-            />
-          </aside>
           <section className="canvas-shell">
             {editable ? (
               <Suspense fallback={<p>Loading visual editor…</p>}>
@@ -512,6 +544,9 @@ function Workspace({
                   pageId={pageId}
                   structureRevision={structureRevision}
                   onEditFooter={openFooterSettings}
+                  onPageIdChange={setPageId}
+                  onStructureChange={handleStructureChange}
+                  toolbar={layoutToolbar}
                 />
               </Suspense>
             ) : (
@@ -547,7 +582,11 @@ function Workspace({
       ) : null}
       {panel === 'settings' ? (
         <main id="main-content" className="single-panel">
-          {editable ? <SiteSettings /> : <p>Viewer access is read only.</p>}
+          {editable ? (
+            <SiteSettings initialCategory={settingsCategory} />
+          ) : (
+            <p>Viewer access is read only.</p>
+          )}
         </main>
       ) : null}
       {panel === 'preview' ? (

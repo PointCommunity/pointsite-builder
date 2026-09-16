@@ -21,3 +21,40 @@
     transition: none !important;
   }
 }
+
+@media (pointer: coarse) {
+  .point-hero-text-resize,
+  .point-section-grid-resize,
+  .point-grid-resize--south-east {
+    width: var(--point-touch-target, 44px);
+    height: var(--point-touch-target, 44px);
+    min-height: var(--point-touch-target, 44px);
+    font-size: var(--point-touch-font, 14px);
+  }
+
+  /* One corner grip keeps touch targets separate; Properties retains every grid axis. */
+  .point-grid-resize:not(.point-grid-resize--south-east) {
+    display: none;
+  }
+
+  .point-grid-move-surface {
+    inset: auto auto 100% 0;
+    width: var(--point-touch-target, 44px);
+    height: var(--point-touch-target, 44px);
+  }
+
+  .point-grid-move-surface > span {
+    inset: 0;
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding: 0;
+    transform: none;
+    font-size: var(--point-touch-font, 14px);
+  }
+
+  .point-grid-resize--south-east {
+    right: 0;
+    bottom: calc(-1 * var(--point-touch-target, 44px));
+  }
+}

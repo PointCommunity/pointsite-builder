@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { SiteBlock } from '../../site-kit/types';
 import { useEditor } from './EditorProvider';
 import { mutationForContext } from './action-attribution';
@@ -6,12 +6,25 @@ import { mutationForContext } from './action-attribution';
 export function StructurePanel({
   pageId,
   onStructureChange,
+  setStatus,
+  focus,
 }: {
   pageId: string;
   onStructureChange: () => void;
+  setStatus: (status: string) => void;
+  focus: string;
 }) {
   const { document, updateDocument } = useEditor();
-  const [status, setStatus] = useState('');
+  const root = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!focus) return;
+    const controls = Array.from(
+      root.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [],
+    );
+    (
+      controls.find((button) => button.getAttribute('aria-label') === focus) ?? controls[0]
+    )?.focus();
+  }, [focus]);
   const page = document.pages.find((candidate) => candidate.id === pageId);
   if (!page) return null;
   const move = (index: number, delta: number) => {
@@ -69,12 +82,9 @@ export function StructurePanel({
     if (source) setStatus(`${source.name} duplicated.`);
   };
   return (
-    <section className="structure-panel" aria-labelledby="structure-title">
+    <section ref={root} className="structure-panel" aria-labelledby="structure-title">
       <h2 id="structure-title">Page structure</h2>
       <p>Every drag action has a button equivalent.</p>
-      <p className="visually-hidden" role="status" aria-live="polite">
-        {status}
-      </p>
       <ol>
         {page.blocks.map((block: SiteBlock, index) => (
           <li key={block.id}>
