@@ -879,7 +879,7 @@ function VisualEditorImpl({
   onStructureChange: () => void;
   toolbar: HTMLElement | null;
 }) {
-  const { document, updateDocument, stageDocument, completeDocument } = useEditorDocument();
+  const { document, stageDocument, completeDocument } = useEditorDocument();
   const displayDocument = useMemo(
     () => draftDisplayDocument(document, draftId),
     [document, draftId],

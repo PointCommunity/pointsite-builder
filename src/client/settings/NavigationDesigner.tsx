@@ -32,7 +32,7 @@ export function NavigationDesigner({
       { item, parentId: null as string | null, index },
       ...item.children.map((child, childIndex) => ({
         item: child,
-        parentId: item.id as string | null,
+        parentId: item.id,
         index: childIndex,
       })),
     ]) ?? [];

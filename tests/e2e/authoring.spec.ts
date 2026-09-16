@@ -599,7 +599,8 @@ test('Navigation Designer creates, shares and protects designs across pages', as
     (request) => request.method() === 'PATCH' && request.url().endsWith('/checkout'),
   );
   await page.getByRole('button', { name: '← All drafts', exact: true }).click();
-  expect((await closingCheckout).postDataJSON().viewState.panel).toBe('settings');
+  const checkoutBody = (await closingCheckout).postDataJSON() as { viewState: { panel: string } };
+  expect(checkoutBody.viewState.panel).toBe('settings');
   await expect(page.getByRole('heading', { name: 'Website drafts' })).toBeVisible();
 });
 
