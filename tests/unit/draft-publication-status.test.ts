@@ -12,9 +12,9 @@ it('keeps baseline and display count separate from immutable sequence', () => {
   ).toBe('Published - Revision 2');
   expect(
     publicationLabel({ sourceTarget: 'production', state: 'behind', displayCount: 2 }, 8),
-  ).toBe('Behind Production - Revision 2');
+  ).toBe('Behind public site - Revision 2');
   expect(publicationLabel({ sourceTarget: 'staging', state: 'unknown', displayCount: 0 }, 1)).toBe(
-    'Unknown Production baseline - Revision 0',
+    'Unknown public site baseline - Revision 0',
   );
 });
 
@@ -32,5 +32,5 @@ it('names the Staging source without claiming its content is live on Production'
       state: 'published',
       displayCount: 3,
     }),
-  ).toContain('not necessarily live on Production');
+  ).toContain('not necessarily live on the public site');
 });

@@ -188,7 +188,8 @@ export function createBuilderRuntime(options: RuntimeOptions) {
         library: new D1LibraryService(database, repository, draftAssets, deletionReceipts),
         admin: new D1AdminService(database, undefined, options.nativeStorage),
         approvals: new D1ApprovalService(database, config.github),
-        productionBaseSha: () => new GitHubProductionReader().currentMainSha(),
+        productionBaseSha: () =>
+          new GitHubProductionReader(fetch, config.builderOrigin).currentMainSha(),
         retention: new RetentionService(database, deletionReceipts),
         ownershipMigration: new D1OwnershipMigration(database, assets),
         ...(options.productionSource

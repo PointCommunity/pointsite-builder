@@ -34,7 +34,7 @@ it('requires an explicit release choice and retains the exact request after a lo
   fireEvent.change(screen.getByLabelText('Verified release'), { target: { value: 'baseline' } });
   fireEvent.click(screen.getByRole('button', { name: 'Prepare selected restore' }));
   const button = await screen.findByRole('button', {
-    name: 'Restore selected release to Production',
+    name: 'Restore selected release to Site Production',
   });
   await waitFor(() => expect(button).toBeEnabled());
   expect(restore).not.toHaveBeenCalled();

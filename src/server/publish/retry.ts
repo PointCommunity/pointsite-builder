@@ -1,6 +1,7 @@
 import { checksumDocument } from '../../site-kit/canonicalize';
 import { QueuedRecoverySchema, type QueuedRecoveryInput } from './recovery';
 import { currentPromotion } from './promotion';
+import { publicationDestination } from './destinations';
 
 /** A new job copies immutable pins; it never reads the editor's current revision. */
 export async function retryCapturedPublication(
@@ -9,6 +10,7 @@ export async function retryCapturedPublication(
   workflowRevision: string,
   verifyBase: (baseSha: string) => Promise<void>,
   target: 'staging' | 'production' = 'staging',
+  builderOrigin?: string,
 ) {
   const input = QueuedRecoverySchema.parse(value);
   if (input.action !== 'retry-captured') throw new Error('PUBLICATION_RECOVERY_CHANGED');
@@ -25,7 +27,8 @@ export async function retryCapturedPublication(
   const authority = database
     .prepare(
       `SELECT 1 FROM user_roles u JOIN publish_jobs j ON j.id=?
-    WHERE u.email=? AND u.active=1 AND ${role} AND j.environment=?`,
+    WHERE u.email=? AND u.active=1 AND ${role} AND j.environment=?
+      AND j.repository='PointCommunity/${publicationDestination(target, builderOrigin).repository}'`,
     )
     .bind(input.jobId, input.actor, environment);
   if (!(await authority.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');

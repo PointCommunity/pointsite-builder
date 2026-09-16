@@ -93,6 +93,7 @@ export type ProductionWorkflowSnapshot =
   | { enabled: false }
   | {
       enabled: true;
+      destination: { repository: 'pointsite' | 'pointsite-canary'; origin: string };
       busy: boolean;
       job:
         | (Pick<
@@ -366,7 +367,7 @@ export function deriveStagingWorkflow(input: {
       'accepted',
       5,
       'Official Staging candidate accepted',
-      'This exact revision is accepted on Staging. Production has its own publication status.',
+      'This exact revision is accepted on Staging. The public site has its own publication status.',
       { canRefresh: true },
     );
 

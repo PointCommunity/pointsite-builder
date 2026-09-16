@@ -40,7 +40,7 @@ it('accepts only the exact signed staging or production execution identity', asy
   }
 });
 
-it('binds native runner tokens to their Builder and refuses Canary authority over Production', async () => {
+it('binds native runner tokens to their Builder and public destination', async () => {
   const origins = ['https://builder-canary.eaglepass.io', 'https://builder.eaglepass.io'];
   for (const builderOrigin of origins) {
     const expected = { ...scope, builderOrigin };
@@ -59,10 +59,29 @@ it('binds native runner tokens to their Builder and refuses Canary authority ove
       'PUBLISH_RUNNER_UNAUTHORIZED',
     );
   }
-  const forbidden = { ...scope, target: 'production' as const, builderOrigin: origins[0] };
-  await expect(
-    verifyPublicationRunner(await sign(claims(forbidden)), forbidden, resolver),
-  ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+  const canary = { ...scope, target: 'production' as const, builderOrigin: origins[0] };
+  const production = { ...canary, builderOrigin: origins[1] };
+  for (const purpose of [undefined, 'verification', 'rollback'] as const) {
+    const expected = { ...canary, purpose };
+    const payload = {
+      ...claims({ ...production, purpose }),
+      aud: publicationRunnerAudience(scope.jobId, scope.nonce, purpose, origins[0]),
+      sub: 'repo:PointCommunity@323764526/pointsite-canary@1373215793:environment:github-pages',
+      repository: 'PointCommunity/pointsite-canary',
+      repository_id: '1373215793',
+      workflow_ref: `PointCommunity/pointsite-canary/.github/workflows/${purpose === 'verification' ? 'verify-publication' : purpose === 'rollback' ? 'rollback-production' : 'publish-candidate'}.yml@refs/heads/main`,
+      job_workflow_ref: `PointCommunity/pointsite-staging/.github/workflows/${purpose === 'verification' ? 'verify-runtime' : purpose === 'rollback' ? 'rollback-runtime' : 'publish-production-runtime'}.yml@${scope.workflowRevision}`,
+    };
+    expect(await verifyPublicationRunner(await sign(payload), expected, resolver)).toMatchObject({
+      runId: '12345',
+    });
+    await expect(
+      verifyPublicationRunner(await sign(claims({ ...production, purpose })), expected, resolver),
+    ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+    await expect(
+      verifyPublicationRunner(await sign(payload), { ...production, purpose }, resolver),
+    ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+  }
   expect(() =>
     publicationRunnerAudience(scope.jobId, scope.nonce, undefined, 'https://attacker.example'),
   ).toThrow();

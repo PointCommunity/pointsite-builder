@@ -56,10 +56,12 @@ const expectation: DeploymentExpectation = {
 };
 function fixture(input = expectation, change = '', token?: string, canary = false) {
   const staging = input.target === 'staging';
-  const repository = `PointCommunity/${canary ? 'pointsite-staging-canary' : staging ? 'pointsite-staging' : 'pointsite'}`;
+  const repository = `PointCommunity/${staging ? (canary ? 'pointsite-staging-canary' : 'pointsite-staging') : canary ? 'pointsite-canary' : 'pointsite'}`;
   const environment = staging ? 'staging' : 'github-pages';
   const origin = canary
-    ? 'https://staging-canary.pointatx.org'
+    ? staging
+      ? 'https://staging-canary.pointatx.org'
+      : 'https://canary.pointatx.org'
     : staging
       ? 'https://staging.pointatx.org'
       : 'https://pointatx.org';
@@ -200,11 +202,21 @@ it('verifies isolated Canary Pages through the same proof and rejects higher-env
   await expect(verifyDeploymentProof(input, fixture(input, '', undefined, true))).rejects.toThrow(
     'PUBLICATION_VERIFICATION_UNCONFIRMED',
   );
-  const unused = vi.fn<typeof fetch>();
+  const publicInput = { ...input, target: 'production' as const };
+  expect(
+    await verifyDeploymentProof(
+      publicInput,
+      fixture(publicInput, '', undefined, true),
+      undefined,
+      origin,
+    ),
+  ).toMatchObject({
+    deploymentUrl: 'https://canary.pointatx.org',
+    artifactDigest: input.artifactDigest,
+  });
   await expect(
-    verifyDeploymentProof({ ...input, target: 'production' }, unused, undefined, origin),
+    verifyDeploymentProof(publicInput, fixture(publicInput), undefined, origin),
   ).rejects.toThrow('PUBLICATION_VERIFICATION_UNCONFIRMED');
-  expect(unused).not.toHaveBeenCalled();
 });
 
 it('requires current full native Worker traffic and exact retained version annotations', async () => {

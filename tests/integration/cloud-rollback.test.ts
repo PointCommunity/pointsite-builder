@@ -302,7 +302,7 @@ it('never releases a running rollback on elapsed time, and fences delayed runner
   expect(await service.recover(id, input.actor, 'cancel')).toEqual({ recovered: true });
   await expect(service.inputs(id, await signed(id))).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
   expect(
-    await database.prepare('SELECT count(*) FROM publication_releases').first('count(*)'),
+    await database.prepare('SELECT count(*) FROM current_publication_releases').first('count(*)'),
   ).toBe(1);
 });
 

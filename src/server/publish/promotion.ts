@@ -13,6 +13,7 @@ import {
 } from './recovery';
 import { reconcileCompletedPublication } from './reconcile';
 import { D1PublishJobStore, type PublishJobStatus } from './jobs';
+import { publicationDestination } from './destinations';
 
 /** Shared by dispatch and every signed runner boundary; aliases belong to their job queries. */
 export const currentPromotion = `EXISTS (
@@ -48,6 +49,10 @@ export class D1ProductionPublisher {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  private get repository() {
+    return publicationDestination('production', this.config.builderOrigin).repository;
+  }
+
   async workflowForDraft(draftId: string, actor: string) {
     z.uuid().parse(draftId);
     ProductionCaptureSchema.shape.actor.parse(actor);
@@ -62,7 +67,7 @@ export class D1ProductionPublisher {
       p.staging_job_id,p.approval_id,p.artifact_digest
       FROM publication_inputs pi JOIN publish_jobs j ON j.id=pi.job_id
       JOIN publication_promotions p ON p.job_id=j.id
-      WHERE pi.draft_id=? AND j.environment='production-merge'
+      WHERE pi.draft_id=? AND j.environment='production-merge' AND j.repository='PointCommunity/${this.repository}'
       ORDER BY j.requested_at DESC,j.rowid DESC LIMIT 1`,
       )
       .bind(draftId)
@@ -99,24 +104,38 @@ export class D1ProductionPublisher {
           requestedAt: row.requested_at,
           completedAt: row.completed_at,
           evidence: JSON.parse(row.evidence_json) as Record<string, unknown>,
-          dispatch: await new D1PublishJobStore(this.database).dispatchStatus(row.id),
+          dispatch: await new D1PublishJobStore(
+            this.database,
+            this.config.builderOrigin,
+          ).dispatchStatus(row.id),
         }
       : null;
     if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
-    return { job, busy: Boolean(occupied) };
+    return {
+      job,
+      busy: Boolean(occupied),
+      destination: publicationDestination('production', this.config.builderOrigin),
+    };
   }
 
   async recoverQueued(value: QueuedRecoveryInput): Promise<{ recovered: true; jobId?: string }> {
     const input = QueuedRecoverySchema.parse(value);
     const source = await this.database
-      .prepare("SELECT 1 FROM publish_jobs WHERE id=? AND environment='production-merge'")
-      .bind(input.jobId)
+      .prepare(
+        "SELECT 1 FROM publish_jobs WHERE id=? AND environment='production-merge' AND repository=?",
+      )
+      .bind(input.jobId, `PointCommunity/${this.repository}`)
       .first();
     if (!source) throw new Error('PUBLICATION_RECOVERY_CHANGED');
     if (input.action === 'retry-captured') return this.retryCaptured(input);
     if (input.action === 'verify-completed')
-      return reconcileCompletedPublication(this.database, input, this.fetcher);
-    return recoverQueuedPublication(this.database, input, this.fetcher);
+      return reconcileCompletedPublication(
+        this.database,
+        input,
+        this.fetcher,
+        this.config.builderOrigin,
+      );
+    return recoverQueuedPublication(this.database, input, this.fetcher, this.config.builderOrigin);
   }
 
   async retryCaptured(value: QueuedRecoveryInput) {
@@ -157,11 +176,14 @@ export class D1ProductionPublisher {
             ...(evidence.verification ? { verification: evidence.verification } : {}),
           },
           request,
+          undefined,
+          this.config.builderOrigin,
         );
         if (live.deploymentId !== evidence.deploymentId)
           throw new Error('PRODUCTION_ACCEPTANCE_CHANGED');
       },
       'production',
+      this.config.builderOrigin,
     );
   }
 
@@ -176,12 +198,12 @@ export class D1ProductionPublisher {
       .parse(this.callerBlob);
     const token = await createPublisherToken({
       ...this.config,
-      repository: 'pointsite',
+      repository: this.repository,
       subject,
       login,
       fetcher: request,
     });
-    const api = 'https://api.github.com/repos/PointCommunity/pointsite';
+    const api = `https://api.github.com/repos/PointCommunity/${this.repository}`;
     const headers = githubHeaders(token);
     z.object({ object: z.object({ sha: z.literal(baseSha) }) }).parse(
       await publicationJson(await request(`${api}/git/ref/heads/main`, { headers }), 8192),
@@ -217,11 +239,11 @@ export class D1ProductionPublisher {
     const receipt = async () => {
       const row = await this.database
         .prepare(
-          `SELECT j.id,j.status,p.request_hash
+          `SELECT j.id,j.status,j.repository,p.request_hash
         FROM publish_jobs j LEFT JOIN publication_promotions p ON p.job_id=j.id WHERE j.idempotency_key=?`,
         )
         .bind(input.idempotencyKey)
-        .first<{ id: string; status: string; request_hash: string | null }>();
+        .first<{ id: string; status: string; repository: string; request_hash: string | null }>();
       if (!row) {
         if (
           await this.database
@@ -232,7 +254,11 @@ export class D1ProductionPublisher {
           throw new Error('IDEMPOTENCY_CONFLICT');
         return null;
       }
-      if (row.request_hash !== requestHash) throw new Error('IDEMPOTENCY_CONFLICT');
+      if (
+        row.repository !== `PointCommunity/${this.repository}` ||
+        row.request_hash !== requestHash
+      )
+        throw new Error('IDEMPOTENCY_CONFLICT');
       if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
       return { id: row.id, status: row.status };
     };
@@ -258,6 +284,7 @@ export class D1ProductionPublisher {
       FROM publish_jobs j JOIN publication_inputs pi ON pi.job_id=j.id
       JOIN publication_runs pr ON pr.job_id=j.id JOIN drafts d ON d.id=pi.draft_id
       WHERE j.id=? AND j.environment='staging' AND j.status='succeeded' AND d.status='active'
+        AND j.repository='PointCommunity/${publicationDestination('staging', this.config.builderOrigin).repository}'
         AND j.result_sha=? AND j.candidate_checksum=? AND pi.revision_id=?`,
       )
       .bind(
@@ -319,6 +346,8 @@ export class D1ProductionPublisher {
         ...(evidence.verification ? { verification: evidence.verification } : {}),
       },
       request,
+      undefined,
+      this.config.builderOrigin,
     );
     if (live.deploymentId !== evidence.deploymentId)
       throw new Error('PRODUCTION_ACCEPTANCE_CHANGED');
@@ -354,7 +383,7 @@ export class D1ProductionPublisher {
           .prepare(
             `INSERT INTO publish_jobs
           (id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
-          SELECT ?,?,'production-merge','queued',candidate_json,candidate_checksum,'PointCommunity/pointsite',?,?,
+          SELECT ?,?,'production-merge','queued',candidate_json,candidate_checksum,'PointCommunity/${this.repository}',?,?,
             strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM publish_jobs WHERE id=?`,
           )
           .bind(

@@ -12,6 +12,7 @@ import { verifyTerminalRun } from './recovery';
 import { rollbackSource, type RollbackSource } from './rollback-source';
 import { verifyPublicationRunner } from './runner-auth';
 import type { PublisherConfig } from './service';
+import { publicationDestination } from './destinations';
 
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const identifier = z.string().regex(/^[1-9][0-9]{0,19}$/);
@@ -49,7 +50,6 @@ type RollbackRow = {
   dispatch_count: number;
 };
 type Identity = Awaited<ReturnType<typeof verifyPublicationRunner>>;
-const api = 'https://api.github.com/repos/PointCommunity/pointsite';
 
 /** One global Production operation; source bytes are restored without rewriting Git history. */
 export class D1CloudRollback {
@@ -60,6 +60,18 @@ export class D1CloudRollback {
     private readonly fetcher: typeof fetch = fetch,
     private readonly keys?: JWTVerifyGetKey,
   ) {}
+
+  private get repository() {
+    return `PointCommunity/${publicationDestination('production', this.config.builderOrigin).repository}`;
+  }
+
+  private get api() {
+    return `https://api.github.com/repos/${this.repository}`;
+  }
+
+  private get lane() {
+    return `COALESCE(json_extract(source_json,'$.repository'),'PointCommunity/pointsite')='${this.repository}'`;
+  }
 
   private request: typeof fetch = (url, init) => {
     const fetcher = this.fetcher;
@@ -78,7 +90,7 @@ export class D1CloudRollback {
   private async publisher(actor: string, login: string) {
     return createPublisherToken({
       ...this.config,
-      repository: 'pointsite',
+      repository: publicationDestination('production', this.config.builderOrigin).repository,
       subject: actor,
       login,
       fetcher: this.request,
@@ -95,7 +107,7 @@ export class D1CloudRollback {
       sha.parse(this.callerBlob);
       const read = async (path: string) =>
         publicationJson(
-          await this.request(`${api}${path}`, { headers: githubHeaders(token) }),
+          await this.request(`${this.api}${path}`, { headers: githubHeaders(token) }),
           32768,
         );
       const base = z.object({ object: z.object({ sha }) }).parse(await read('/git/ref/heads/main'))
@@ -127,13 +139,12 @@ export class D1CloudRollback {
         )
         .length(1)
         .parse(await read(`/deployments/${latest.id}/statuses?per_page=1`));
-      const linkedJob =
-        /^https:\/\/github\.com\/PointCommunity\/pointsite\/actions\/runs\/([1-9][0-9]*)\/job\/([1-9][0-9]*)$/.exec(
-          status.log_url,
-        );
+      const linkedJob = new RegExp(
+        `^https://github\\.com/${this.repository}/actions/runs/([1-9][0-9]*)/job/([1-9][0-9]*)$`,
+      ).exec(status.log_url);
       if (!linkedJob) throw new Error('Unconfirmed deployment job');
       verifyDeploymentCheck(await read(`/check-runs/${linkedJob[2]}`), {
-        repository: 'PointCommunity/pointsite',
+        repository: this.repository,
         runId: linkedJob[1],
         checkRunId: linkedJob[2],
         dispatchRevision: latest.sha,
@@ -144,7 +155,7 @@ export class D1CloudRollback {
           latest.sha !== base ||
           !['queued', 'pending', 'in_progress'].includes(status.state) ||
           status.log_url !==
-            `https://github.com/PointCommunity/pointsite/actions/runs/${execution.runId}/job/${execution.checkRunId}`
+            `https://github.com/${this.repository}/actions/runs/${execution.runId}/job/${execution.checkRunId}`
         )
           throw new Error('Changed execution');
       } else if (!['success', 'failure', 'error', 'inactive'].includes(status.state))
@@ -164,7 +175,9 @@ export class D1CloudRollback {
     if (!account) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
     const receipt = async () => {
       const row = await this.database
-        .prepare('SELECT id,status,request_hash FROM publication_rollbacks WHERE idempotency_key=?')
+        .prepare(
+          `SELECT id,status,request_hash FROM publication_rollbacks WHERE idempotency_key=? AND ${this.lane}`,
+        )
         .bind(idempotencyKey)
         .first<{ id: string; status: string; request_hash: string }>();
       if (row && row.request_hash !== requestHash) throw new Error('IDEMPOTENCY_CONFLICT');
@@ -182,7 +195,9 @@ export class D1CloudRollback {
     const previous = await receipt();
     if (previous) return previous;
     const release = await this.database
-      .prepare('SELECT kind,artifact_digest,source_json FROM publication_releases WHERE id=?')
+      .prepare(
+        `SELECT kind,artifact_digest,source_json FROM publication_releases WHERE id=? AND ${this.lane}`,
+      )
       .bind(input.sourceReleaseId)
       .first<{ kind: string; artifact_digest: string; source_json: string }>();
     if (!release) throw new Error('ROLLBACK_SOURCE_UNAVAILABLE');
@@ -199,14 +214,20 @@ export class D1CloudRollback {
       pr.reserved_run_attempt AS run_attempt,pr.dispatch_revision,pi.workflow_revision
       FROM publication_slots ps JOIN publish_jobs j ON j.id=ps.job_id JOIN publication_runs pr ON pr.job_id=j.id
       JOIN publication_inputs pi ON pi.job_id=j.id WHERE j.id=? AND ps.target='production'
-      AND j.environment='production-merge' AND j.status IN ('queued','running','failed')
+      AND j.environment='production-merge' AND j.repository='${this.repository}' AND j.status IN ('queued','running','failed')
       AND pr.reserved_run_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM publication_verifications WHERE job_id=j.id)`,
           )
           .bind(input.replaceJobId)
           .first()
       : null;
     if (input.replaceJobId && !replace) throw new Error('ROLLBACK_CAPTURE_CHANGED');
-    if (replace) await verifyTerminalRun({ ...replace, target: 'production' }, this.request);
+    if (replace)
+      await verifyTerminalRun(
+        { ...replace, target: 'production' },
+        this.request,
+        undefined,
+        this.config.builderOrigin,
+      );
     const id = crypto.randomUUID();
     const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
       byte.toString(16).padStart(2, '0'),
@@ -292,7 +313,7 @@ export class D1CloudRollback {
     const releases = await this.database
       .prepare(
         `SELECT id,kind,verified_at AS verifiedAt,artifact_digest AS artifactDigest
-      FROM publication_releases ORDER BY sequence DESC LIMIT 20`,
+      FROM publication_releases WHERE ${this.lane} ORDER BY sequence DESC LIMIT 20`,
       )
       .all<{
         id: string;
@@ -304,7 +325,7 @@ export class D1CloudRollback {
       .prepare(
         `SELECT id,status,source_release_id AS sourceReleaseId,requested_at AS requestedAt,
       dispatch_count AS attempts,reserved_run_id AS runId,reported_at AS reportedAt,evidence_json AS evidenceJson
-      FROM publication_rollbacks ORDER BY rowid DESC LIMIT 1`,
+      FROM publication_rollbacks WHERE ${this.lane} ORDER BY rowid DESC LIMIT 1`,
       )
       .first<{
         id: string;
@@ -332,7 +353,7 @@ export class D1CloudRollback {
             attempts: job.attempts,
             canVerify: Boolean(job.reportedAt),
             workflowUrl: job.runId
-              ? `https://github.com/PointCommunity/pointsite/actions/runs/${job.runId}`
+              ? `https://github.com/${this.repository}/actions/runs/${job.runId}`
               : null,
           }
         : null,
@@ -361,7 +382,7 @@ export class D1CloudRollback {
     const account = await authority.first<{ github_login: string }>();
     if (!account) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
     const row = await this.database
-      .prepare('SELECT * FROM publication_rollbacks WHERE id=?')
+      .prepare(`SELECT * FROM publication_rollbacks WHERE id=? AND ${this.lane}`)
       .bind(jobId)
       .first<RollbackRow>();
     if (!row) throw new Error('ROLLBACK_RECOVERY_CHANGED');
@@ -384,6 +405,7 @@ export class D1CloudRollback {
         },
         this.request,
         token,
+        this.config.builderOrigin,
       );
     const guard = this.database
       .prepare(
@@ -439,7 +461,7 @@ export class D1CloudRollback {
         `SELECT r.*,u.github_login FROM publication_rollbacks r
       JOIN user_roles u ON u.email=r.requested_by WHERE r.status='queued' AND r.reserved_run_id IS NULL
       AND r.dispatch_count<6 AND r.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-      AND u.active=1 AND u.role='administrator' LIMIT 1`,
+      AND u.active=1 AND u.role='administrator' AND ${this.lane} LIMIT 1`,
       )
       .first<RollbackRow>();
     if (!row) return;
@@ -465,7 +487,7 @@ export class D1CloudRollback {
         .first())
     )
       throw new Error('ROLLBACK_DISPATCH_CHANGED');
-    const response = await this.request(`${api}/dispatches`, {
+    const response = await this.request(`${this.api}/dispatches`, {
       method: 'POST',
       headers: { ...githubHeaders(token), 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -485,7 +507,7 @@ export class D1CloudRollback {
     const row = await this.database
       .prepare(
         `SELECT r.*,u.github_login ${authorized}
-      AND r.status IN (${completed ? "'running','succeeded'" : "'queued','running'"})`,
+      AND r.status IN (${completed ? "'running','succeeded'" : "'queued','running'"}) AND ${this.lane}`,
       )
       .bind(jobId)
       .first<RollbackRow>();
@@ -520,7 +542,7 @@ export class D1CloudRollback {
       AND r.status IN (${mode === 'claim' ? "'queued','running'" : "'running'"})
       AND r.reserved_run_id=? AND r.reserved_run_attempt=? AND r.reserved_check_run_id!=?
       AND (${mode === 'claim' ? 'r.check_run_id IS NULL OR ' : ''}r.check_run_id${mode === 'finalize' ? '!=' : '='}?)
-      AND u.github_login=? AND r.previous_release_id IS (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1)
+      AND u.github_login=? AND r.previous_release_id IS (SELECT id FROM publication_releases WHERE ${this.lane} ORDER BY sequence DESC LIMIT 1)
       ) THEN 'true' ELSE 'rollback authority changed' END)`,
       )
       .bind(
@@ -640,6 +662,7 @@ export class D1CloudRollback {
         },
         this.request,
         await this.publisher(row.requested_by, row.github_login),
+        this.config.builderOrigin,
       )),
       verificationStatus: 'passed',
     });
@@ -648,7 +671,7 @@ export class D1CloudRollback {
       this.database
         .prepare(
           `SELECT json(CASE WHEN EXISTS(SELECT 1 ${authorized} AND u.github_login=?
-        AND r.previous_release_id IS (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1))
+        AND r.previous_release_id IS (SELECT id FROM publication_releases WHERE ${this.lane} ORDER BY sequence DESC LIMIT 1))
         THEN 'true' ELSE 'rollback completion changed' END)`,
         )
         .bind(row.id, row.github_login),

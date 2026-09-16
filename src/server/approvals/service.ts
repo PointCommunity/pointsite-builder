@@ -415,7 +415,7 @@ export class D1ApprovalService {
       )
         throw new Error('STAGING_CANDIDATE_DRIFT');
       const production = await request(
-        'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main',
+        `https://api.github.com/repos/PointCommunity/${publicationDestination('production', this.config.builderOrigin).repository}/git/ref/heads/main`,
         { headers: { 'user-agent': 'PointSite-Builder', accept: 'application/vnd.github+json' } },
       );
       if (!production.ok) throw new Error('PRODUCTION_BASE_UNAVAILABLE');

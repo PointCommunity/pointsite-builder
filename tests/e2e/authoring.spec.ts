@@ -1349,7 +1349,7 @@ test('renames inline with keyboard and pointer while keeping publishing, history
   await expect(page.getByRole('button', { name: 'Rename draft' })).toBeFocused();
   await expect(page.locator('.save-state')).toHaveText('All changes saved');
   await expect(page.locator('.editor-header')).toContainText(
-    'Unknown Production baseline - Revision 1',
+    'Unknown public site baseline - Revision 1',
   );
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(

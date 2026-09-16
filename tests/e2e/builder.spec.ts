@@ -257,7 +257,7 @@ test.beforeEach(async ({ page }) => {
 test('loads an accessible private draft workspace', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Website drafts' })).toBeVisible();
-  await expect(page.getByText(/Production publishing requires an Administrator/)).toBeVisible();
+  await expect(page.getByText(/Public site publishing requires an Administrator/)).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
   expect(
     results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
@@ -531,11 +531,13 @@ test('publishes and accepts only exact verified staging while production stays l
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Close publishing window' })).toBeFocused();
-  await expect(page.getByText('Loading Production status…')).toBeVisible();
+  await expect(page.getByText('Loading public site status…')).toBeVisible();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByText('Technical evidence', { exact: true })).toBeFocused();
   releaseProductionStatus();
-  await expect(page.getByText(/Production publishing is not enabled in Builder yet/)).toBeVisible();
+  await expect(
+    page.getByText(/Public site publishing is not enabled in Builder yet/),
+  ).toBeVisible();
   await expect(
     page
       .getByRole('dialog', { name: 'Publish and accept on Staging' })
@@ -565,11 +567,13 @@ test('publishes and accepts only exact verified staging while production stays l
   await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
   await expect(
     page.getByText(
-      'This exact revision is accepted on Staging. Production has its own publication status.',
+      'This exact revision is accepted on Staging. The public site has its own publication status.',
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByText(/Production publishing is not enabled in Builder yet/)).toBeVisible();
+  await expect(
+    page.getByText(/Public site publishing is not enabled in Builder yet/),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await page.reload();

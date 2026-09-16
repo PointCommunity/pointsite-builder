@@ -27,8 +27,10 @@ const approval: StagingAcceptanceSummary = {
     artifactDigest: 'a'.repeat(64),
   },
 };
+const destination = { repository: 'pointsite' as const, origin: 'https://pointatx.org' };
 const queued: ProductionWorkflowSnapshot = {
   enabled: true,
+  destination,
   busy: true,
   job: {
     id: 'production',
@@ -57,6 +59,31 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('names the public Canary destination on both publish and rollback controls', async () => {
+  vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({
+    enabled: true,
+    busy: false,
+    job: null,
+    destination: { repository: 'pointsite-canary', origin: 'https://canary.pointatx.org' },
+  });
+  vi.spyOn(api, 'getRollback').mockResolvedValue({
+    enabled: true,
+    job: null,
+    releases: [],
+    publicationJobId: null,
+  });
+  render(<ProductionPublish draftId="draft" approval={approval} />);
+  expect(
+    await screen.findByRole('button', { name: 'Publish accepted version to Site Canary' }),
+  ).toBeVisible();
+  expect(screen.getByRole('link', { name: 'https://canary.pointatx.org' })).toHaveAttribute(
+    'href',
+    'https://canary.pointatx.org',
+  );
+  expect(screen.getByRole('heading', { name: 'Restore a Site Canary release' })).toBeVisible();
+  expect(screen.queryByText(/Site Production/)).toBeNull();
+});
+
 it('requires matching artifact evidence before describing a completed publication as verified', async () => {
   const completed = structuredClone(queued);
   if (!completed.enabled || !completed.job) throw new Error('fixture');
@@ -72,58 +99,64 @@ it('requires matching artifact evidence before describing a completed publicatio
   const publish = vi.spyOn(api, 'publishProduction');
   render(<ProductionPublish draftId="draft" approval={approval} />);
   expect(
-    await screen.findByText('Production publication needs reconciliation before another attempt.'),
+    await screen.findByText(
+      'Site Production publication needs reconciliation before another attempt.',
+    ),
   ).toBeVisible();
-  expect(screen.queryByText('This Production publication was verified.')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Check Production status' }));
-  expect(await screen.findByText('This Production publication was verified.')).toBeVisible();
+  expect(screen.queryByText('This Site Production publication was verified.')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
+  expect(await screen.findByText('This Site Production publication was verified.')).toBeVisible();
   expect(publish).not.toHaveBeenCalled();
 });
 
 it('fails closed for disabled, unreadable and occupied Production state', async () => {
   const read = vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
   const view = render(<ProductionPublish draftId="draft" approval={approval} />);
-  expect(await screen.findByText(/Production publishing is not enabled/)).toBeVisible();
+  expect(await screen.findByText(/Public site publishing is not enabled/)).toBeVisible();
   expect(
-    screen.queryByRole('button', { name: 'Publish accepted version to Production' }),
+    screen.queryByRole('button', { name: 'Publish accepted version to Site Production' }),
   ).toBeNull();
   view.unmount();
   read.mockRejectedValueOnce(new Error('private provider detail'));
   render(<ProductionPublish draftId="draft" approval={approval} />);
   expect(
     await screen.findByText(
-      'Production status is unavailable. Check status before taking another action.',
+      'Public site status is unavailable. Check status before taking another action.',
     ),
   ).toBeVisible();
   expect(screen.queryByText(/private provider detail/)).toBeNull();
-  read.mockResolvedValue({ enabled: true, busy: true, job: null });
-  fireEvent.click(screen.getByRole('button', { name: 'Check Production status' }));
-  expect(await screen.findByText(/Another Production publication needs to finish/)).toBeVisible();
+  read.mockResolvedValue({ enabled: true, destination, busy: true, job: null });
+  fireEvent.click(screen.getByRole('button', { name: 'Check Public site status' }));
   expect(
-    screen.queryByRole('button', { name: 'Publish accepted version to Production' }),
+    await screen.findByText(/Another Site Production publication needs to finish/),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: 'Publish accepted version to Site Production' }),
   ).toBeNull();
 });
 
 it('keeps exact acceptance and request identity after an uncertain capture reply', async () => {
   const read = vi
     .spyOn(api, 'getProductionWorkflow')
-    .mockResolvedValue({ enabled: true, busy: false, job: null });
+    .mockResolvedValue({ enabled: true, destination, busy: false, job: null });
   const publish = vi
     .spyOn(api, 'publishProduction')
     .mockRejectedValueOnce(new Error('lost reply'))
     .mockResolvedValueOnce({ id: 'production', status: 'queued' });
   render(<ProductionPublish draftId="draft" approval={approval} />);
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Publish accepted version to Production' }),
+    await screen.findByRole('button', { name: 'Publish accepted version to Site Production' }),
   );
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Publish accepted version to Production' }),
+      screen.getByRole('button', { name: 'Publish accepted version to Site Production' }),
     ).toBeEnabled(),
   );
   read.mockResolvedValue(queued);
-  fireEvent.click(screen.getByRole('button', { name: 'Publish accepted version to Production' }));
-  await screen.findByText('Production publication needs attention');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Publish accepted version to Site Production' }),
+  );
+  await screen.findByText('Site Production publication needs attention');
   expect(publish).toHaveBeenCalledTimes(2);
   expect(publish.mock.calls[0]).toEqual([
     'staging',
@@ -141,11 +174,11 @@ it('reopens saved progress and preserves recovery identity across lost replies',
     .mockRejectedValueOnce(new Error('lost reply'))
     .mockResolvedValueOnce({ recovered: true });
   render(<ProductionPublish draftId="draft" approval={null} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Retry Production dispatch' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry Site Production dispatch' }));
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Retry Production dispatch' })).toBeEnabled(),
+    expect(screen.getByRole('button', { name: 'Retry Site Production dispatch' })).toBeEnabled(),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Retry Production dispatch' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry Site Production dispatch' }));
   await waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
   expect(recover.mock.calls[0]).toEqual(['production', 'retry', 3, expect.any(String)]);
   expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
@@ -174,7 +207,7 @@ it('bounds polling and allows a manual read after monitoring pauses', async () =
   });
   expect(read).toHaveBeenCalledTimes(calls);
   expect(screen.getByText(/Automatic monitoring paused/)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Check Production status' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
   await act(async () => {
     await Promise.resolve();
   });

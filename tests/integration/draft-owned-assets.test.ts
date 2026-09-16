@@ -2004,7 +2004,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
         idempotencyKey: 'staging-must-not-cancel-production',
       }),
     ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
-    expect(await production.workflowForDraft(crypto.randomUUID(), subject)).toEqual({
+    expect(await production.workflowForDraft(crypto.randomUUID(), subject)).toMatchObject({
       job: null,
       busy: true,
     });
@@ -2509,7 +2509,7 @@ it.each(['revoked', 'verified', 'retry-base', 'retry-commit', 'retry-revocation'
           .first('status'),
       ).toBe('succeeded');
       const releases = await database
-        .prepare('SELECT * FROM publication_releases ORDER BY sequence')
+        .prepare('SELECT * FROM current_publication_releases ORDER BY sequence')
         .all();
       expect(releases.results).toHaveLength(2);
       const [baseline, released] = releases.results;
@@ -3517,7 +3517,7 @@ it('retains the last two releases and recent evidence while retiring one old rel
       database
         .prepare(
           `INSERT INTO publication_releases(id,kind,job_id,previous_release_id,artifact_digest,source_json,evidence_json,verified_at,recorded_at)
-        VALUES (?,'publication',?,(SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1),?,?,?,?,?)`,
+        VALUES (?,'publication',?,(SELECT id FROM current_publication_releases ORDER BY sequence DESC LIMIT 1),?,?,?,?,?)`,
         )
         .bind(
           id,

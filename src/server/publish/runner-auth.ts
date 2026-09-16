@@ -51,11 +51,6 @@ export async function verifyPublicationRunner(
   if (!scope.success) throw new Error('PUBLISH_RUNNER_NOT_CONFIGURED');
   try {
     if (!token || token.length > 16_384) throw new Error('Invalid token size');
-    if (
-      scope.data.builderOrigin === 'https://builder-canary.eaglepass.io' &&
-      scope.data.target === 'production'
-    )
-      throw new Error('Canary cannot authorize Production');
     const destination = publicationDestination(scope.data.target, scope.data.builderOrigin);
     const repository = `PointCommunity/${destination.repository}`;
     const audience = publicationRunnerAudience(

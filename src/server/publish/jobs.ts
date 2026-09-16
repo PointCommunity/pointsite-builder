@@ -91,10 +91,17 @@ export class D1PublishJobStore {
     workflowRevision: string,
     verifyBase: (sha: string) => Promise<void>,
   ) {
-    return retryCapturedPublication(this.database, input, workflowRevision, async (sha) => {
-      if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
-      await verifyBase(sha);
-    });
+    return retryCapturedPublication(
+      this.database,
+      input,
+      workflowRevision,
+      async (sha) => {
+        if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
+        await verifyBase(sha);
+      },
+      'staging',
+      this.builderOrigin,
+    );
   }
 
   /** Capture once. Browser closure and later edits cannot substitute these inputs. */

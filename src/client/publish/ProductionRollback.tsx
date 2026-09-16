@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { RollbackSelection, RollbackSnapshot } from './workflow';
 
-export function ProductionRollback({ onRefresh }: { onRefresh: () => Promise<void> }) {
+export function ProductionRollback({
+  onRefresh,
+  label = 'Site Production',
+}: {
+  onRefresh: () => Promise<void>;
+  label?: string;
+}) {
   const [snapshot, setSnapshot] = useState<RollbackSnapshot | null>();
   const [selected, setSelected] = useState('');
   const [prepared, setPrepared] = useState<{ selection: RollbackSelection; key: string } | null>(
@@ -75,7 +81,7 @@ export function ProductionRollback({ onRefresh }: { onRefresh: () => Promise<voi
   return (
     <section aria-labelledby="production-rollback-heading">
       <h3 id="production-rollback-heading" tabIndex={-1} ref={heading}>
-        Restore a Production release
+        Restore a {label} release
       </h3>
       {snapshot === undefined ? (
         <p role="status">Loading retained releases…</p>
@@ -146,8 +152,8 @@ export function ProductionRollback({ onRefresh }: { onRefresh: () => Promise<voi
               </select>
               {snapshot.publicationJobId ? (
                 <p>
-                  A Production publication holds the lock. Restore can proceed only after its cloud
-                  run has stopped.
+                  A {label} publication holds the lock. Restore can proceed only after its cloud run
+                  has stopped.
                 </p>
               ) : null}
               {prepared ? (
@@ -162,7 +168,7 @@ export function ProductionRollback({ onRefresh }: { onRefresh: () => Promise<voi
                     disabled={busy}
                     onClick={() => void act('restore')}
                   >
-                    Restore selected release to Production
+                    Restore selected release to {label}
                   </button>
                   <button
                     className="button"

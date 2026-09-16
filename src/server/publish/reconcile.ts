@@ -4,6 +4,7 @@ import { PublicationBuildSchema } from './build-proof';
 import { verifyDeploymentProof } from './deployment-proof';
 import { QueuedRecoverySchema, verifyTerminalRun, type QueuedRecoveryInput } from './recovery';
 import { verifiedReleaseStatement } from './releases';
+import { publicationDestination } from './destinations';
 
 /** Record an already completed deployment. This path never authorizes or performs publication. */
 export async function reconcileCompletedPublication(
@@ -20,8 +21,10 @@ export async function reconcileCompletedPublication(
     expectedAttempts: input.expectedAttempts,
     actor: input.actor,
   });
-  const role = `u.active=1 AND ((j.environment='staging' AND u.role IN ('publisher','administrator'))
-    OR (j.environment='production-merge' AND u.role='administrator'))`;
+  const role = `u.active=1 AND ((j.environment='staging' AND u.role IN ('publisher','administrator')
+      AND j.repository='PointCommunity/${publicationDestination('staging', builderOrigin).repository}')
+    OR (j.environment='production-merge' AND u.role='administrator'
+      AND j.repository='PointCommunity/${publicationDestination('production', builderOrigin).repository}'))`;
   const authority = database
     .prepare(`SELECT 1 FROM user_roles u JOIN publish_jobs j ON j.id=? WHERE u.email=? AND ${role}`)
     .bind(input.jobId, input.actor);

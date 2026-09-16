@@ -103,7 +103,7 @@ function CreateDraftDialog({
           >
             <option value="">Choose source</option>
             <option value="staging">Staging</option>
-            <option value="production">Production</option>
+            <option value="production">Public site</option>
           </select>
         </label>
         {checking ? <p role="status">Checking selected publication…</p> : null}
@@ -111,7 +111,7 @@ function CreateDraftDialog({
           <p role="status">
             {source.fixture
               ? 'Local fixture ready'
-              : `${target === 'staging' ? 'Staging' : 'Production'} publication verified`}
+              : `${target === 'staging' ? 'Staging' : 'Public site'} publication verified`}
             . Source commit {source.sourceCommit.slice(0, 8)}. A new draft keeps its own history.
           </p>
         ) : null}
@@ -329,7 +329,7 @@ export function DraftList({
           <p className="eyebrow">Workspace</p>
           <h1 id="drafts-title">Website drafts</h1>
           <p className="safety-note">
-            Review and accept on public Staging. Production publishing requires an Administrator.
+            Review and accept on public Staging. Public site publishing requires an Administrator.
           </p>
         </div>
         {canEdit ? (
@@ -399,7 +399,9 @@ export function DraftList({
                     {new Date(draft.updatedAt).toLocaleString()}
                   </p>
                   {draft.publication?.sourceTarget === 'staging' ? (
-                    <p>Copied from Staging; draft content is not necessarily live on Production.</p>
+                    <p>
+                      Copied from Staging; draft content is not necessarily live on the public site.
+                    </p>
                   ) : null}
                   {unavailable ? (
                     <p id={descriptionId}>

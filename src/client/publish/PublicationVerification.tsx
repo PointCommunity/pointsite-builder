@@ -8,12 +8,14 @@ export function PublicationVerification({
   dispatchAttempts,
   onRefresh,
   disabled = false,
+  label = target === 'staging' ? 'Staging' : 'Site Production',
 }: {
   target: 'staging' | 'production';
   jobId: string;
   dispatchAttempts: number;
   onRefresh: (focus?: boolean) => Promise<unknown>;
   disabled?: boolean;
+  label?: string;
 }) {
   const [verification, setVerification] = useState<PublicationVerificationState | null>();
   const [busy, setBusy] = useState(false);
@@ -117,7 +119,6 @@ export function PublicationVerification({
       if (!completed || action !== 'reconcile') heading.current?.focus();
     }
   };
-  const label = target === 'staging' ? 'Staging' : 'Production';
   const active = verification?.status === 'queued' || verification?.status === 'running';
   return (
     <section className="publish-next-action" aria-labelledby={`${target}-verification-heading`}>

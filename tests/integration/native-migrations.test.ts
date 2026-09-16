@@ -23,7 +23,7 @@ afterEach(async () => {
 
 test('every real workspace and recovery migration applies natively and repeats without changes', async () => {
   for (const [directory, expected] of [
-    ['migrations', 37],
+    ['migrations', 38],
     ['recovery-migrations', 7],
   ] as const) {
     const db = open();
@@ -102,7 +102,10 @@ test('upgrades existing drafts without guessing unproven lineage or changing his
       }),
     )
     .run();
-  expect(await migrateDatabase(db, 'migrations')).toEqual(['0037_draft_publication_baselines.sql']);
+  expect(await migrateDatabase(db, 'migrations')).toEqual([
+    '0037_draft_publication_baselines.sql',
+    '0038_publication_lanes.sql',
+  ]);
   const repository = new D1DraftRepository(db);
   expect((await repository.getDraft(ids[0])).publication).toMatchObject({
     sourceTarget: 'production',
@@ -255,4 +258,49 @@ test('proven current Production import starts at Published 0 and counts immutabl
   expect((await repository.listRevisions(draft.id)).map((revision) => revision.sequence)).toEqual([
     2, 1,
   ]);
+});
+
+test('upgrades publication lanes without changing the historical Production baseline', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'builder-70-upgrade-'));
+  directories.push(directory);
+  for (const name of (await readdir('migrations')).filter(
+    (value) => value.endsWith('.sql') && value < '0038',
+  ))
+    await copyFile(join('migrations', name), join(directory, name));
+  for (const origin of ['https://builder.eaglepass.io', 'https://builder-canary.eaglepass.io']) {
+    const db = open();
+    expect(await migrateDatabase(db, directory)).toHaveLength(37);
+    await db
+      .prepare('INSERT INTO builder_instance(id,origin,instance_id) VALUES (1,?,?)')
+      .bind(origin, crypto.randomUUID())
+      .run();
+    const baseline = await db
+      .prepare("SELECT * FROM publication_releases WHERE id='public-baseline-2026-09-13'")
+      .first();
+    expect(baseline).not.toBeNull();
+    expect(await migrateDatabase(db, 'migrations')).toEqual(['0038_publication_lanes.sql']);
+    expect(
+      await db
+        .prepare("SELECT * FROM publication_releases WHERE id='public-baseline-2026-09-13'")
+        .first(),
+    ).toEqual(baseline);
+    const repositories = (
+      await db
+        .prepare(
+          "SELECT DISTINCT json_extract(source_json,'$.repository') repository FROM current_publication_releases",
+        )
+        .all<{ repository: string }>()
+    ).results;
+    const expected = origin.includes('builder-canary')
+      ? 'PointCommunity/pointsite-canary'
+      : 'PointCommunity/pointsite';
+    expect(repositories.every(({ repository }) => repository === expected)).toBe(true);
+    expect(
+      await db
+        .prepare("SELECT 1 FROM current_publication_releases WHERE id='public-baseline-2026-09-13'")
+        .first(),
+    ).toEqual(origin.includes('builder-canary') ? null : { '1': 1 });
+    expect(await migrateDatabase(db, 'migrations')).toEqual([]);
+    expect((await db.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
+  }
 });

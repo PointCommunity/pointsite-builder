@@ -539,7 +539,7 @@ describe('guided Staging publishing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Accept this Staging version' }));
     expect(await screen.findByText('Official Staging candidate accepted')).toBeVisible();
-    expect(screen.getByText(/Production has its own publication status/i)).toBeVisible();
+    expect(screen.getByText(/The public site has its own publication status/i)).toBeVisible();
     expect(load).toHaveBeenCalledTimes(4);
   });
 
@@ -576,7 +576,7 @@ describe('guided Staging publishing', () => {
 
     expect(await screen.findByText('Your next step · Administrator')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-    expect(screen.getByText(/Check the Production section below/i)).toBeVisible();
+    expect(screen.getByText(/Check the public site section below/i)).toBeVisible();
     expect(screen.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /publish.*production/i })).toBeNull();
   });

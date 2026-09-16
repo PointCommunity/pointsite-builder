@@ -18,6 +18,12 @@ export const publicationDestinations = {
     environment: 'github-pages',
     origin: 'https://pointatx.org',
   },
+  publicCanary: {
+    repository: 'pointsite-canary',
+    id: '1373215793',
+    environment: 'github-pages',
+    origin: 'https://canary.pointatx.org',
+  },
 } as const;
 
 export type PublicationRepository =
@@ -27,8 +33,9 @@ export type StagingRepository =
 
 export function publicationDestination(target: 'staging' | 'production', builderOrigin?: string) {
   if (builderOrigin === 'https://builder-canary.eaglepass.io') {
-    if (target === 'production') throw new Error('PUBLISH_DESTINATION_REJECTED');
-    return publicationDestinations.canary;
+    return target === 'production'
+      ? publicationDestinations.publicCanary
+      : publicationDestinations.canary;
   }
   return publicationDestinations[target];
 }

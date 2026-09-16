@@ -4,7 +4,8 @@ export function verifiedReleaseStatement(database: D1Database, jobId: string) {
     .prepare(
       `INSERT INTO publication_releases
     (id,kind,job_id,previous_release_id,artifact_digest,source_json,evidence_json,verified_at)
-    SELECT j.id,'publication',j.id,(SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1),
+    SELECT j.id,'publication',j.id,(SELECT id FROM publication_releases
+      WHERE COALESCE(json_extract(source_json,'$.repository'),'PointCommunity/pointsite')=j.repository ORDER BY sequence DESC LIMIT 1),
       json_extract(pr.build_json,'$.artifactDigest'),
       json_object('repository',j.repository,'commitSha',j.result_sha,
         'treeSha',json_extract(pr.build_json,'$.treeSha'),
@@ -20,7 +21,10 @@ export function verifiedReleaseStatement(database: D1Database, jobId: string) {
 }
 
 const cutoff = "strftime('%Y-%m-%dT%H:%M:%fZ','now','-90 days')";
-const retainedReleases = 'SELECT job_id FROM publication_releases ORDER BY sequence DESC LIMIT 2';
+const retainedSequences = `SELECT p.sequence FROM publication_releases p WHERE p.sequence IN
+  (SELECT sequence FROM publication_releases WHERE COALESCE(json_extract(source_json,'$.repository'),'PointCommunity/pointsite')=
+    COALESCE(json_extract(p.source_json,'$.repository'),'PointCommunity/pointsite') ORDER BY sequence DESC LIMIT 2)`;
+const retainedReleases = `SELECT job_id FROM publication_releases WHERE sequence IN (${retainedSequences})`;
 const retirableJob = `j.environment IN ('staging','production-merge')
   AND j.status IN ('succeeded','failed','cancelled') AND j.completed_at<${cutoff}
   AND json_extract(j.candidate_json,'$.publicationProtocol')=2
@@ -35,7 +39,7 @@ const retirableJob = `j.environment IN ('staging','production-merge')
     AND json_extract(evidence_json,'$.verificationStatus')='passed'
     ORDER BY completed_at DESC,id DESC LIMIT 1)`;
 const retirableRelease = `recorded_at<${cutoff}
-  AND sequence NOT IN (SELECT sequence FROM publication_releases ORDER BY sequence DESC LIMIT 2)`;
+  AND sequence NOT IN (${retainedSequences})`;
 const retirableRollback = `r.status IN ('succeeded','cancelled') AND r.completed_at<${cutoff}
   AND NOT EXISTS(SELECT 1 FROM (${retainedReleases}) kept WHERE kept.job_id=r.id)
   AND NOT EXISTS(SELECT 1 FROM publication_releases WHERE job_id=r.id AND recorded_at>=${cutoff})`;

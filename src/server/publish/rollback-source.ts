@@ -3,6 +3,9 @@ import { z } from 'zod';
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const size = {
+  repository: z
+    .enum(['PointCommunity/pointsite', 'PointCommunity/pointsite-canary'])
+    .default('PointCommunity/pointsite'),
   artifactDigest: digest,
   fileCount: z.number().int().min(1).max(2000),
   totalBytes: z.number().int().min(1).max(100_000_000),
