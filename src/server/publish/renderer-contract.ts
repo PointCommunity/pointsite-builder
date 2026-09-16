@@ -10,31 +10,31 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'editable-page-hero.ts': '083f6dd3a9fc3321792579fc0da69b534c96dce5',
   'grid-layout.ts': 'f20b698d9803a60be65ba9d6bb954a3cc86d5bae',
   'linked-media.ts': 'edd07dd69ae91f4103b65cd565105701e5ce94cc',
-  'migrations.ts': 'a69f786b8e7533d19e6d19a170f96cd49a9f4a66',
+  'migrations.ts': 'f67602881ca31f628905b2eb78decd4cfc9a44f8',
   'presets.ts': '00f8bf6df9e55c2eac6a92bb5388a32dc21563ff',
-  'publication-media.ts': 'cf382d8b22fa57fbc2b9f44a381dfe0e7225c553',
-  'registry.tsx': 'bdfc5336072908e146b5ebd30af88929278ee536',
-  'schema.ts': 'acc61a503bfb3eed833637c1beadb3f84055d78a',
+  'publication-media.ts': '5ddefb7d934e45bc32606cf0699822c5ba4e48fc',
+  'registry.tsx': 'fcf40b3bbc6f2de92982042372e3c382aeccc7cc',
+  'schema.ts': '949499943fa4a7a83319adce709cb449e7d0e36f',
   'site.css': '4d5ae56f96899495feb7323a982882c466e3c63a',
   'tokens.ts': '8ff9fdad08fa333d3e192408fd4b4a228460df94',
   'types.ts': '32d9441a49bea07132287d8e32643f977b4bb13f',
   'url-policy.ts': 'd0f49d5513bd3790764d3dc804c49c314a63daea',
-  'version.ts': '7b7f7a1edb4e8d5bf27bd59f25c9b715fd41ea03',
+  'version.ts': '224173cba56b1f21cffb68bcf1740396688173a6',
 } satisfies Record<string, string>);
 
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = '33619a5d8413e748f90cb0b8a23b3d1e7a511bf0';
-export const PUBLICATION_CALLER_BLOB = '51a51f7a6991843e79b942b2788564fbae10db5f';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'af4bcccc978a776cc55feae6dffd38235cea5d30';
+export const PUBLICATION_WORKFLOW_REVISION = '8e0a568e21cf00518cc0e8754c7ce692e83b4461';
+export const PUBLICATION_CALLER_BLOB = 'f0a3672db712c4e760031474a7dfd5f521afc160';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'b87145b067100414413f7e197bb1fb65f6592535';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = '33619a5d8413e748f90cb0b8a23b3d1e7a511bf0';
+export const VERIFICATION_WORKFLOW_REVISION = '8e0a568e21cf00518cc0e8754c7ce692e83b4461';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: 'bc4c35667b170e3256f1a6a48d64e5ea20e62281',
-  production: '0520f8a73d360e2079e118537a9d2e046286a7a2',
+  staging: '8ba6ae27aae2cc726fe518273689bf97e66e9203',
+  production: '0cc1629a37e6355e5e259eee082f0ca619a1aeec',
 });
 
 /** Reviewed native Production rollback caller, scoped to the same reusable runtime. */
-export const ROLLBACK_PRODUCTION_CALLER_BLOB = 'cfbab4f165f4ca6647ad7e890e09073018cb231b';
+export const ROLLBACK_PRODUCTION_CALLER_BLOB = 'bbdafab6268b63e80bc9caf84232f3c120c02595';

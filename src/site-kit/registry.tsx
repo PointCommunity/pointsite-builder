@@ -61,6 +61,11 @@ function NavigationBlock({
 }) {
   const [open, setOpen] = useState(false);
   const navigationId = `point-navigation-${block.id}`;
+  const navigation =
+    document.schemaVersion === 9
+      ? document.navigation
+      : (document.navigationDesigns?.find((design) => design.id === block.navigationDesignId)
+          ?.items ?? []);
   return (
     <div
       className={`point-navigation point-navigation--${block.orientation} point-navigation--${block.align} point-navigation--${block.surface}`}
@@ -84,7 +89,7 @@ function NavigationBlock({
         aria-label={block.label}
         onClick={() => setOpen(false)}
       >
-        {document.navigation.map((item) => (
+        {navigation.map((item) => (
           <div className="point-navigation__item" key={item.id}>
             <a
               href={item.href}

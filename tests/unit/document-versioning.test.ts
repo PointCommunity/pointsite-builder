@@ -1,7 +1,11 @@
 import { validSiteDocument } from '../fixtures/site-documents';
 import { canonicalize, checksumDocument } from '../../src/site-kit/canonicalize';
 import { migrateDocument, UnsupportedSchemaVersionError } from '../../src/site-kit/migrations';
-import { RENDERER_VERSION, SCHEMA_VERSION } from '../../src/site-kit/version';
+import {
+  MAX_SUPPORTED_SCHEMA_VERSION,
+  RENDERER_VERSION,
+  SCHEMA_VERSION,
+} from '../../src/site-kit/version';
 
 describe('document versioning', () => {
   const versionSixDocument = () => {
@@ -358,7 +362,10 @@ describe('document versioning', () => {
   });
 
   it('fails closed for an unknown future schema version', () => {
-    const future = { ...structuredClone(validSiteDocument), schemaVersion: SCHEMA_VERSION + 1 };
+    const future = {
+      ...structuredClone(validSiteDocument),
+      schemaVersion: MAX_SUPPORTED_SCHEMA_VERSION + 1,
+    };
     expect(() => migrateDocument(future)).toThrow(UnsupportedSchemaVersionError);
   });
 });

@@ -1,7 +1,7 @@
 import { SiteDocumentSchema, SiteElementSchema } from './schema';
 import { independentGridArea, independentResponsiveValue, legacyGridAreas } from './grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
-import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
+import { MAX_SUPPORTED_SCHEMA_VERSION, RENDERER_VERSION, SCHEMA_VERSION } from './version';
 import { createEditableHeaderSection, derivedUuid } from './editable-header';
 import { createEditablePageHeroSection, type LegacyPageHero } from './editable-page-hero';
 
@@ -293,7 +293,7 @@ function migrateEightToNine(input: object): unknown {
 export function migrateDocument(input: unknown): MigrationResult {
   const version = readVersion(input);
 
-  if (version > SCHEMA_VERSION || version < 0) {
+  if (version > MAX_SUPPORTED_SCHEMA_VERSION || version < 0) {
     throw new UnsupportedSchemaVersionError(version);
   }
 
@@ -318,4 +318,41 @@ export function migrateDocument(input: unknown): MigrationResult {
   apply(9, migrateEightToNine);
 
   return { document: SiteDocumentSchema.parse(current), applied };
+}
+
+/** Explicit only until the compatibility release is retained as the rollback image. */
+export function upgradeNavigation(input: unknown): SiteDocument {
+  const document = migrateDocument(input).document;
+  if (document.schemaVersion === 10) return document;
+  const id = '00000000-0000-4000-8000-000000000036';
+  // Legacy documents did not require unique menu item IDs.
+  const items = structuredClone(document.navigation);
+  const used = new Set<string>();
+  for (const item of items.flatMap((entry) => [entry, ...entry.children])) {
+    const original = item.id;
+    let salt = 0;
+    while (used.has(item.id)) item.id = derivedUuid(original, ++salt);
+    used.add(item.id);
+  }
+  return SiteDocumentSchema.parse({
+    ...document,
+    schemaVersion: 10,
+    rendererVersion: '10.0.0',
+    navigation: [],
+    navigationDesigns: [{ id, name: 'Main navigation', items }],
+    pages: document.pages.map((page) => ({
+      ...page,
+      blocks: page.blocks.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.element.type === 'navigation'
+            ? {
+                ...item,
+                element: { ...item.element, navigationDesignId: id },
+              }
+            : item,
+        ),
+      })),
+    })),
+  });
 }

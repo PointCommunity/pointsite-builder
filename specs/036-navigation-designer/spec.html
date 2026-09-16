@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 36 — Navigation Designer specification and rollout decisions</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101418;
+        color: #e6edf3;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 1040px;
+        margin: auto;
+        padding: 32px 24px 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+        color: #f3f6fa;
+      }
+      h2 {
+        margin-top: 2.5rem;
+      }
+      a {
+        color: #9fcfff;
+      }
+      code {
+        color: #f5d393;
+        overflow-wrap: anywhere;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #3a424c;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .decision {
+        border-left: 4px solid #f5d393;
+        padding: 8px 20px;
+        background: #1a2027;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #36: reusable Navigation Designer</h1>
+    <p>
+      Implementation specification. Baseline source inspected at Builder commit
+      <code>3fa12eda385c29dc38bdc8ee14b2d39e4a18ded5</code>, tree
+      <code>e43489e75c295409b4f4c02f70d338f51f0c5a27</code>. Issue #36 is open, In Progress, P1 /
+      High / XL, assigned to brimdor, and the sole active Project card. The PM approved the
+      recommended compatibility-first approach and coordinated consumer work. Bridge implementation
+      is underway in isolated worktrees; no release has occurred.
+    </p>
+
+    <h2>Objective and acceptance</h2>
+    <p>
+      Editors maintain named Navigation designs within a draft and assign each Navigation element a
+      stable design reference. A design edit updates every consumer across pages, previews and the
+      published candidate. Layout position, responsive grid size, accessible label, alignment,
+      orientation and surface remain independent element properties.
+    </p>
+    <ul>
+      <li>Create, select, rename and safely delete designs; show consuming pages and elements.</li>
+      <li>Support ordered top-level links and exactly one level of ordered child links.</li>
+      <li>
+        Provide drag reordering plus ordinary buttons/selects for pointer and keyboard alternatives.
+      </li>
+      <li>
+        Use the existing validated destination control, action autosave and immutable revision
+        history.
+      </li>
+      <li>
+        Migrate existing navigation deterministically without changing links, styling or placement.
+      </li>
+      <li>
+        Reject missing references, duplicate identities, invalid destinations and deeper nesting.
+      </li>
+      <li>
+        Keep new Navigation elements immediately movable and resizable at every grid breakpoint.
+      </li>
+      <li>
+        Audit every specified Builder surface and remediate evidenced shared control-density
+        problems.
+      </li>
+      <li>
+        Use Navigation Designer, Layout Designer and Form Designer terminology; retain compact tab
+        names.
+      </li>
+    </ul>
+
+    <h2>Verified research</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Evidence</th>
+          <th>Finding and implication</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>src/site-kit/schema.ts:266,420,553</code></td>
+          <td>
+            Strict schema 9 has one navigation array. Child objects already reject grandchildren.
+            Navigation elements have no design reference. A new field cannot be saved under the
+            unchanged old contract.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>src/site-kit/migrations.ts:293</code>;
+            <code>src/server/repositories/d1.ts:115</code>
+          </td>
+          <td>
+            Every loaded revision passes through migration. Future schema versions throw. A rollback
+            to the current schema-9 reader after new-format revisions exist cannot be assumed safe.
+          </td>
+        </tr>
+        <tr>
+          <td>Executed schema probe against this checkout</td>
+          <td>
+            Adding navigationDesigns without a version change produced success=false. Version 10
+            produced “Unsupported SiteDocument schema version: 10”. This is a source-level
+            compatibility check, not a live rollback rehearsal.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>src/client/settings/NavigationEditor.tsx</code>;
+            <code>src/client/editor/BlockInspector.tsx:157,1397</code>
+          </td>
+          <td>
+            Menu editing exists in Settings and a stateful inspector wrapper. Replace both editing
+            entry points with the dedicated workspace; avoid duplicating shared state.
+          </td>
+        </tr>
+        <tr>
+          <td><code>src/client/editor/VisualEditor.tsx:386,940</code></td>
+          <td>
+            Element defaults and inspector integration both need design selection. Reuse existing
+            Puck placement, resize and action attribution.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>src/client/editor/EditorRoute.tsx</code>;
+            <code>src/server/routes/drafts.ts:56</code>; <code>src/shared/feedback.ts</code>
+          </td>
+          <td>
+            The Navigation tab also requires checkout view-state validation, feedback routing and
+            role/read-only handling.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>src/server/publish/renderer-contract.ts</code>;
+            <code>src/server/github/client.ts:110</code>
+          </td>
+          <td>
+            Publication validates exact Git blob identities for 17 canonical site-kit files.
+            Changing Builder alone leaves the protected consumer incompatible.
+          </td>
+        </tr>
+        <tr>
+          <td>Live GitHub reads</td>
+          <td>
+            Both Staging repositories declare schema 9 / renderer 9.0.0. Observed main commits:
+            pointsite-staging 4334038ab1e3ce425dfba81ed43a6aff65ad0d1c; pointsite-staging-canary
+            37c0ddf558a87f1e4d16aa79921aade30a239c6e. These identify source, not live deployment.
+          </td>
+        </tr>
+        <tr>
+          <td>Existing Staging checkout and synchronization script</td>
+          <td>
+            The checkout contains unrelated edits. Its synchronization script also overwrites
+            content and the manifest. Preserve that checkout; use isolated consumer worktrees and
+            explicit renderer-only copying if authorized.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Proposed document model</h2>
+    <p>
+      Version the changed contract explicitly. A Navigation design contains a UUID, trimmed display
+      name, and ordered items using the existing link shape and limits: 20 top-level links, 12
+      children per parent, 60-character labels. Propose at most 30 designs, matching the existing
+      form count limit, with 120-character names and at least one design. Validate duplicate design
+      IDs and duplicate item IDs within a design. All references must resolve before accepting a
+      document.
+    </p>
+    <p>
+      Add a required navigationDesignId to Navigation elements in the new version. Migration creates
+      a deterministic Main navigation design from the old array and assigns every old Navigation
+      element to it. Schema 10 requires the old array to be empty and all element references to
+      resolve. Schema 9 rejects design fields and references. Migration must be idempotent and must
+      not mutate old immutable revision bytes or checksums. Historical revisions migrate when read.
+    </p>
+    <p>
+      Deletion validates usage across all pages. Reject deletion while any element references a
+      design. Render unresolved references defensively without silently choosing an unrelated menu;
+      schema validation remains the save/publish boundary. Reuse ordinary revision persistence and
+      canonicalization; do not introduce a separate Navigation history or database table.
+    </p>
+
+    <h2>Proposed workspace</h2>
+    <p>
+      Add Navigation alongside Layout, Forms and Library. Use a design picker, name field, usage
+      list, selected menu-item editor and representative preview. Keep the menu outline readable;
+      edit one selected item rather than stacking every destination field on screen. Native buttons
+      move items earlier/later, a parent selector nests or promotes eligible items, and Remove has
+      an explicit accessible name. A parent with children cannot itself become a child. Dragging
+      uses the same validated move operation as the buttons and parent selector.
+    </p>
+    <p>
+      Announce completed moves and removals; restore focus by stable item ID. Keep invalid local
+      destination text visible with associated guidance. A design selection is UI state and creates
+      no revision. Completed edits use the existing navigation action context and autosave status.
+      Preview uses the actual site renderer, isolated from Builder controls, with navigation clicks
+      contained. The Layout inspector offers a design selector and an Edit design route;
+      presentation and grid controls remain local to the element.
+    </p>
+
+    <h2>Configuration audit inventory</h2>
+    <p>
+      Baseline authenticated inspection used the native local server and a synthetic draft. Layout,
+      Forms, Settings/Navigation, Library, Preview, History, Admin and publishing dialog were
+      inspected at 1280px in dark mode. The Required indicator measured 13 × 44px beside 14px text,
+      inside a 276.8 × 50px label. Settings Navigation showed nested panel, item, child and
+      destination borders. Existing density/200% tests passed at desktop/tablet fixtures. The
+      complete light/dark width matrix remains required before shared styling changes.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Inspection and current source finding</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Layout and inspectors</td>
+          <td>
+            Puck sidebars, grid placement, block properties, section properties, nested link
+            fieldsets and immediate Navigation resize handles. Link destination controls add a
+            border inside an inspector.
+          </td>
+        </tr>
+        <tr>
+          <td>Forms</td>
+          <td>
+            Details, question outline, selected question, choices and required checkbox. Global
+            input sizing also reaches checkbox/radio indicators; .checkbox-field only resets width.
+          </td>
+        </tr>
+        <tr>
+          <td>Navigation</td>
+          <td>
+            Existing shared editor uses section, stacked fieldset, child fieldset and destination
+            borders. Child links lack move controls. New outline must avoid reproducing these
+            layers.
+          </td>
+        </tr>
+        <tr>
+          <td>Library</td>
+          <td>
+            Active/archived views, filters, media selection, details and dialogs. Preserve existing
+            preview sizes and actions; inspect wrapping and focus.
+          </td>
+        </tr>
+        <tr>
+          <td>Preview</td>
+          <td>
+            Viewport controls and rendered responsive navigation, dropdowns, keyboard access and
+            containment.
+          </td>
+        </tr>
+        <tr>
+          <td>History</td>
+          <td>
+            Filters, revision list, restore/read-only states, long labels and navigation revision
+            attribution.
+          </td>
+        </tr>
+        <tr>
+          <td>Settings</td>
+          <td>
+            Identity, Footer, Social, Navigation, Collections and Design. Remove shared menu
+            editing; retain other workflows. Shared fieldsets and stacked cards create nested
+            borders.
+          </td>
+        </tr>
+        <tr>
+          <td>Admin</td>
+          <td>
+            Role controls, capacity, audit lists and tables; inspect keyboard reachability and
+            narrow layout.
+          </td>
+        </tr>
+        <tr>
+          <td>Editor chrome and publishing dialog</td>
+          <td>
+            Tabs/section picker, autosave messages, recovery and publishing states. Verify the
+            additional tab does not clip controls.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Shared corrections should distinguish text controls from checkbox/radio indicators, use
+      proportional indicator sizing and at least 44 by 44 CSS-pixel combined label targets, and use
+      headings, spacing and dividers for inner groups. Preserve visible focus and native semantics.
+      Change only patterns with source and browser evidence.
+    </p>
+    <p>
+      Width matrix: 1280, 1440, 1920 and 2560 desktop; tablet fixtures 744, 810, 820, 834, 1024 and
+      1032 with the heights and both orientations recorded in specs/059-compact-builder/spec.html.
+      Include the 721px authoring boundary and existing phone-sized unsupported-authoring notice.
+      Check workspace and individual container overflow, not only the document root.
+    </p>
+
+    <h2>Accepted rollout and release gates</h2>
+    <div class="decision">
+      <p>
+        <strong>Compatibility-first release:</strong> qualify and release a bridge reader that
+        understands the new format while continuing to write the old format for existing drafts.
+        Then activate migration and the Designer in a second candidate. Before activation, prove
+        that the retained bridge image can read, preserve, edit and publish new-format documents
+        without losing design references. The bridge must never silently downgrade a new-format
+        revision. Bind tests and the rollback digest to exact images.
+      </p>
+      <p>
+        Each candidate retains the existing Canary approval, same-digest Production promotion and
+        final acceptance gates. This adds a prerequisite release within Issue #36; it does not
+        authorize Production now. If the bridge cannot satisfy the rehearsal, stop activation and
+        revise the plan. Returning to schema-9-only code after new writes is not a valid rollback.
+      </p>
+      <p>
+        <strong>Consumer scope:</strong> include reviewed renderer-only updates in both Staging
+        repositories and refresh the Builder contract only after synchronization is proven.
+        Coordinate consumer deployment with Builder pins: installing new blobs first otherwise
+        blocks publication from the old Builder. Specify a bounded compatibility transition before
+        mutation; do not weaken the protected contract or overwrite content to obtain a passing
+        check. Public PointSite content publication remains outside this task and requires its
+        established authenticated Administrator workflow.
+      </p>
+    </div>
+    <p>
+      Bridge implementation retains automatic writes/migration at schema 9. An explicit, tested
+      upgrade function creates schema 10 for rehearsal; the full Designer will activate it later.
+      Existing Settings and Layout controls can select/edit a schema-10 design without downgrading
+      it. No new tab or styling remediation is claimed in this prerequisite release. Publishing and
+      verification runtimes also require exact immutable updates. Prepare reviewed runtime source
+      first, then Canary callers and Builder pins. Coordinate normal Staging and public-site
+      workflow reference updates with the approved Builder Production rollout; content files remain
+      unchanged. During the bounded caller/application transition, existing hash guards may refuse
+      publication rather than execute an unreviewed combination.
+    </p>
+
+    <h2>Dependency-ordered plan and tasks</h2>
+    <ol>
+      <li>
+        Done: PM accepted the recommended compatibility release and protected-consumer coordination.
+      </li>
+      <li>
+        Complete fresh baseline browser audit; record concrete findings here before UI changes.
+      </li>
+      <li>
+        Specify the bridge read/write contract, rollout ordering and exact rollback rehearsal; add
+        failing compatibility tests.
+      </li>
+      <li>
+        Implement the bridge with existing schema, migration, renderer and persistence patterns;
+        validate old and new fixture round trips.
+      </li>
+      <li>
+        Complete sequential QA, protected consumer verification, PR and Canary handoff for the
+        bridge; obtain exact release approvals.
+      </li>
+      <li>
+        Add deterministic migration, design-reference integrity, canonicalization and revision
+        round-trip tests; implement the activated model.
+      </li>
+      <li>
+        Add tested item movement operations and the Designer with drag, keyboard and single-pointer
+        parity.
+      </li>
+      <li>
+        Integrate tab/view-state/feedback routing, Layout selection, immediate placement and
+        independent resizing.
+      </li>
+      <li>
+        Apply evidenced shared control/container corrections; verify every inventoried surface,
+        theme and text size.
+      </li>
+      <li>
+        Test multi-page assignments, rename, shared edits, deletion, nesting, links, autosave,
+        reload, history, preview and publication output.
+      </li>
+      <li>
+        Run complete gates sequentially, review exact source/tree and protected consumer hashes;
+        build and deploy the feature Canary.
+      </li>
+      <li>
+        Present change-specific Canary tests and exact identity. Promote only after approval. Keep
+        Issue open until Production Showcase acceptance.
+      </li>
+    </ol>
+    <p>
+      Bridge validation passes: complete Builder check (751 tests before the final media
+      regression), performance (1000 requests, p95 0.89ms; 469115 compressed JavaScript bytes
+      against 500000), complete browser suite, and 54 consumer tests. Native browser editing saved
+      and reopened a two-design schema-10 draft; the original design remained unchanged and
+      immutable revisions survived. Layout selection rendered the selected design, with no root
+      overflow at 1280px; both light and dark themes were inspected. A static export rendered
+      separate designs on two pages, then restored original source content byte-for-byte. Both
+      consumers match all 17 canonical file hashes. Final publication review added design traversal
+      to media selection, preserving existing destination restrictions and rejecting missing design
+      references. Focused publication, rollback and verification checks pass. Exact-image rehearsal
+      and releases remain pending. The full Designer and shared-style remediation remain subsequent
+      Issue #36 work.
+    </p>
+    <p>
+      Reviewed runtime source: 8e0a568e21cf00518cc0e8754c7ce692e83b4461. Consumer changes:
+      PointCommunity/pointsite-staging PR #30; pointsite-staging-canary PR #1; public PointSite
+      workflow references only, PR #2. Normal Staging and public caller merges wait for exact bridge
+      Canary approval. Before each environment transition, ensure no publication, verification or
+      rollback job is in flight. Preserve the prior source/runtime/caller tuple together for
+      rollback; changing only the image would leave caller hashes mismatched.
+    </p>
+
+    <h2>Implementation conventions and verification</h2>
+    <p>
+      Use strict TypeScript, existing function components, stable UUID keys and native controls.
+      Example existing mutation pattern:
+      <code
+        >updateDocument((next) =&gt; ({ ...next, navigation }),
+        mutationForContext('navigation'))</code
+      >. Replace the payload with the selected design update while preserving attribution and action
+      completion boundaries. Reuse LinkDestinationField, EditorProvider, SiteRenderer and grid
+      operations. No new dependency is planned.
+    </p>
+    <p>
+      Core files: src/site-kit; workspace and controls: src/client/editor and src/client/settings;
+      shared styles: src/client/app.css; checkout contract: src/server/routes/drafts.ts and
+      src/server/repositories/contracts.ts; feedback: src/shared/feedback.ts; publication pins:
+      src/server/publish/renderer-contract.ts. Unit/component tests belong in tests/unit, storage
+      checks in tests/integration, and flows in tests/e2e using existing fixtures.
+    </p>
+    <p>
+      Focused checks use <code>npx vitest run tests/unit/navigation-designer.test.tsx</code> and
+      <code>npx playwright test --grep "Navigation Designer" --workers=2</code> once those tests
+      exist. Complete gates, sequentially: <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, <code>npm run pipeline:health</code>,
+      <code>git diff --check</code>. Bound coverage to four workers and browser suites to two.
+      Include hands-on local browser checks and safe fixture rollback tests; automated tests do not
+      substitute for PM acceptance. Consumer validation must preserve existing content bytes.
+    </p>
+    <p>
+      Always preserve unrelated work, validation, authorization, accessible controls and immutable
+      revision evidence. Ask before consequential scope changes and exact Production promotion.
+      Never publish public content from chat, copy Canary data into Production, downgrade stored
+      documents destructively, or claim a rollback from a successful migration alone. Use
+      <code>node scripts/local-qa.mjs prepare</code> before setup and
+      <code>node scripts/local-qa.mjs cleanup</code> after stopping task-owned processes.
+    </p>
+    <h2>Primary accessibility references</h2>
+    <ul>
+      <li>
+        <a
+          href="https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/examples/disclosure-navigation/"
+          >W3C disclosure navigation example</a
+        >: preserve ordinary navigation semantics.
+      </li>
+      <li>
+        <a href="https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements"
+          >W3C dragging movements</a
+        >: provide single-pointer alternatives as well as keyboard access.
+      </li>
+      <li>
+        <a href="https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html">W3C resize text</a>:
+        retain content and functionality at 200% text size.
+      </li>
+    </ul>
+  </body>
+</html>

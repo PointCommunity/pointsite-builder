@@ -185,7 +185,7 @@ export function BlockInspector({
   block: SiteElement;
   document: SiteDocument;
   onChange: (block: SiteElement) => void;
-  onNavigationChange?: (navigation: NavigationEntry[]) => void;
+  onNavigationChange?: (navigation: NavigationEntry[], designId?: string) => void;
 }) {
   switch (block.type) {
     case 'hero':
@@ -1359,6 +1359,17 @@ export function BlockInspector({
     case 'navigation':
       return (
         <div className="block-inspector inspector-grid">
+          {document.schemaVersion === 10 ? (
+            <Select
+              label="Navigation design"
+              value={block.navigationDesignId ?? ''}
+              options={(document.navigationDesigns ?? []).map((design) => ({
+                label: design.name,
+                value: design.id,
+              }))}
+              onChange={(navigationDesignId) => onChange({ ...block, navigationDesignId })}
+            />
+          ) : null}
           <Text
             label="Navigation label"
             value={block.label}
@@ -1396,9 +1407,20 @@ export function BlockInspector({
           />
           {onNavigationChange ? (
             <StatefulNavigationEditor
-              navigation={document.navigation}
+              key={block.navigationDesignId ?? 'legacy'}
+              navigation={
+                document.schemaVersion === 9
+                  ? document.navigation
+                  : (document.navigationDesigns?.find(
+                      (design) => design.id === block.navigationDesignId,
+                    )?.items ?? [])
+              }
               pages={document.pages}
-              onChange={onNavigationChange}
+              onChange={(navigation) =>
+                block.navigationDesignId
+                  ? onNavigationChange(navigation, block.navigationDesignId)
+                  : onNavigationChange(navigation)
+              }
             />
           ) : null}
         </div>

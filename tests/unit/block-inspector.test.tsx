@@ -5,6 +5,7 @@ import { BlockInspector } from '../../src/client/editor/BlockInspector';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { SiteElement } from '../../src/site-kit/types';
 import { allBlocks } from '../fixtures/block-data';
+import { upgradeNavigation } from '../../src/site-kit/migrations';
 
 function ControlledInspector({ initial }: { initial: SiteElement }) {
   const [block, setBlock] = useState(initial);
@@ -12,6 +13,45 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
+  it('selects a named design and routes edits to its stable identity in the compatibility editor', () => {
+    const document = upgradeNavigation(defaultSiteDocument);
+    const first = document.navigationDesigns![0];
+    const second = { ...structuredClone(first), id: crypto.randomUUID(), name: 'Secondary' };
+    second.items = [{ id: crypto.randomUUID(), label: 'Secondary link', href: '/', children: [] }];
+    document.navigationDesigns!.push(second);
+    const block = document.pages[0].blocks[0].items.find(
+      (item) => item.element.type === 'navigation',
+    )!.element;
+    const onChange = vi.fn();
+    const onNavigationChange = vi.fn();
+    const { rerender } = render(
+      <BlockInspector
+        block={block}
+        document={document}
+        onChange={onChange}
+        onNavigationChange={onNavigationChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Navigation design'), { target: { value: second.id } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, navigationDesignId: second.id });
+    rerender(
+      <BlockInspector
+        block={{ ...block, navigationDesignId: second.id } as typeof block}
+        document={document}
+        onChange={onChange}
+        onNavigationChange={onNavigationChange}
+      />,
+    );
+    const label = within(screen.getByRole('group', { name: 'Secondary link' })).getByLabelText(
+      'Label',
+    );
+    fireEvent.change(label, { target: { value: 'Shared edit' } });
+    expect(onNavigationChange).toHaveBeenCalledWith(
+      [expect.objectContaining({ label: 'Shared edit' })],
+      second.id,
+    );
+    expect(screen.queryByRole('group', { name: 'About' })).not.toBeInTheDocument();
+  });
   it('offers all People styles while keeping legacy leadership selections', () => {
     const initial = allBlocks.find((block) => block.type === 'people')!;
     render(<ControlledInspector initial={{ ...initial, variant: 'leadership' }} />);
