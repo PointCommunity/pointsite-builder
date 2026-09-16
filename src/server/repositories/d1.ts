@@ -117,8 +117,6 @@ async function parseRevision(database: D1Database, row: RevisionRow): Promise<Re
   return {
     ...revisionSummary(row),
     document,
-    schemaVersion: document.schemaVersion,
-    rendererVersion: document.rendererVersion,
   };
 }
 

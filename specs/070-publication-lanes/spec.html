@@ -387,6 +387,43 @@ const repository = `PointCommunity/${destination.repository}`;</pre>
       stay unchanged until Canary qualification and exact approval.
     </p>
 
+    <h2>Canary review finding: saved schema upgrade</h2>
+    <p>
+      Support reference 498dd22e-5799-41f3-990b-0d845be67336 resolves to
+      <code>PUBLICATION_REVISION_MISMATCH</code> before job capture. Read-only inspection confirmed
+      valid stored checksums for two schema-9 revisions, but their schema-10 editor representations
+      had different checksums after the Navigation migration. The repository incorrectly reported
+      the loaded schema version as the saved revision version, hiding the pending upgrade.
+    </p>
+    <p>
+      Preserve saved revision schema/renderer metadata. Once an active editor owns its checkout and
+      browser recovery has finished, use the existing autosave path to save the upgraded document as
+      a new revision. Pending user edits take precedence. Keep historical bytes, expected-revision
+      guards, checkout checks and publication checksum validation unchanged. No server-side bulk
+      rewrite or agent-initiated editorial publication is part of this repair.
+    </p>
+    <p>
+      Regression checks cover both legacy and compact storage, unchanged-draft autosave, duplicate
+      React activation, missing checkout, pending-edit recovery and publication using the newly
+      saved revision. Re-run complete local gates, exact-head Quality and Canary deployment before
+      presenting a replacement candidate. Previous candidate approval cannot carry forward.
+    </p>
+
+    <p>
+      Full QA also exposed an approval retry race: a matching request can commit between the first
+      receipt lookup and the approval state check. Reuse the existing verified receipt before
+      rejecting changed state. A deterministic regression forces this ordering; different request
+      keys, conflicting payloads and revoked authority remain rejected.
+    </p>
+    <p>
+      Remediation validation: full check passed (104 files, 772 tests); performance p95 was 0.88 ms
+      across 1,000 requests at concurrency 25, with 472,333 JavaScript gzip bytes. Browser QA passed
+      291 tests with 20 existing skips. The unchanged-draft publication regression passed in
+      Chromium, Firefox and WebKit. Hands-on local checks confirmed publication is disabled during
+      the upgrade save, then enabled for the new revision at desktop and tablet widths; phone-width
+      editing remains blocked. Dependency audit reported zero vulnerabilities.
+    </p>
+
     <h2>Commands and testing strategy</h2>
     <p>
       Use repository-native Vitest/integration/browser tests with bounded workers. Run full suites

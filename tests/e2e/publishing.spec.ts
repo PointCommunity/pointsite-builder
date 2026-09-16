@@ -211,6 +211,72 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
 
+test('saves an in-memory schema upgrade before publishing without requiring an edit', async ({
+  page,
+}) => {
+  const selected = structuredClone(draft);
+  selected.revision.schemaVersion = 9;
+  selected.revision.rendererVersion = '9.0.0';
+  await mockPublishing(page, 'stale', 'administrator', selected);
+  let saves = 0;
+  await page.route(`**/api/drafts/${selected.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    saves++;
+    expect(route.request().headers()['if-match']).toBe(`"${draft.revision.checksum}"`);
+    expect(route.request().headers()['x-draft-checkout']).toBeTruthy();
+    expect(route.request().postDataJSON()).toMatchObject({ document: draft.document });
+    selected.latestRevisionId = '20000000-0000-4000-8000-000000000070';
+    selected.revision = {
+      ...selected.revision,
+      id: selected.latestRevisionId,
+      sequence: 8,
+      checksum: 'f'.repeat(64),
+      schemaVersion: 10,
+      rendererVersion: '10.0.0',
+    };
+    await route.fulfill({ json: selected });
+  });
+  const published: unknown[] = [];
+  await page.route('**/api/publish/staging/preflight', async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      expectedRevisionId: selected.latestRevisionId,
+      expectedRevisionChecksum: 'f'.repeat(64),
+    });
+    await route.fulfill({
+      json: {
+        state: 'passed',
+        revisionId: selected.latestRevisionId,
+        revisionChecksum: 'f'.repeat(64),
+        candidateChecksum: 'b'.repeat(64),
+        validatedAt: new Date().toISOString(),
+      },
+    });
+  });
+  await page.route('**/api/publish/staging', async (route) => {
+    published.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 202,
+      json: {
+        jobId: '30000000-0000-4000-8000-000000000070',
+        status: 'queued',
+        publicationProtocol: 2,
+      },
+    });
+  });
+  await openPublishing(page);
+  await page.getByRole('button', { name: 'Publish current revision 8' }).click();
+  await expect.poll(() => published.length).toBe(1);
+  expect(published[0]).toMatchObject({
+    expectedRevisionId: selected.latestRevisionId,
+    expectedRevisionChecksum: 'f'.repeat(64),
+  });
+  expect(saves).toBe(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  expect(saves).toBe(1);
+});
+
 test('Production restore requires a separate confirmation and keeps the captured choice', async ({
   page,
 }) => {

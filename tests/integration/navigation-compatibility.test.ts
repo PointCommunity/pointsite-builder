@@ -81,6 +81,21 @@ test.each(['legacy', 'compact-v1'] as const)(
       const migrated = await repository.getDraft(old.id);
       expect(migrated.document).toEqual(defaultSiteDocument);
       expect(migrated.revision.checksum).toBe(legacyChecksum);
+      expect(migrated.revision.schemaVersion).toBe(9);
+      expect(migrated.revision.rendererVersion).toBe('9.0.0');
+      const upgraded = await repository.saveDraft({
+        draftId: old.id,
+        ...(await acquireDraftProof(repository, old.id, actor)),
+        document: migrated.document,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'fixture',
+        action: { category: 'control-change', context: 'draft' },
+      });
+      expect(upgraded.revision.id).not.toBe(legacyId);
+      expect(upgraded.revision.checksum).toBe(await checksumDocument(upgraded.document));
+      expect(upgraded.revision.schemaVersion).toBe(10);
+      expect(await storedLegacy()).toEqual(immutableBefore);
       const changedLegacy = structuredClone(migrated.document);
       changedLegacy.navigationDesigns![0].items[0].label = 'Migrated menu';
       await repository.saveDraft({

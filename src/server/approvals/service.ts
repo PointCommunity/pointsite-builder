@@ -377,8 +377,11 @@ export class D1ApprovalService {
     )
       throw new Error('APPROVAL_EVIDENCE_INCOMPLETE');
     const latest = await this.getLatestForJob(row.id);
-    if ((latest?.id ?? null) !== input.expectedApprovalId)
+    if ((latest?.id ?? null) !== input.expectedApprovalId) {
+      const committed = await receipt();
+      if (committed) return committed;
       throw new Error('APPROVAL_STATE_CHANGED');
+    }
     if (input.decision === 'revoked' && latest && !sameTuple(latest.tuple, expected))
       throw new Error('APPROVAL_TUPLE_MISMATCH');
     const request: typeof fetch = (url, init) =>
