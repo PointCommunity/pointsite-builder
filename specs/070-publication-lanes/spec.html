@@ -452,6 +452,32 @@ const repository = `PointCommunity/${destination.repository}`;</pre>
       with three existing skips, dependency audit and exact-head Quality.
     </p>
 
+    <h2>Production review finding: unconfirmed provider mutation</h2>
+    <p>
+      Production Staging run 35144484029 passed build and browser verification, then stopped at
+      confirm-commit. Builder recorded update-main, HTTP 200, attempt 1, retryable false; main
+      stayed at its captured base and deployment was never authorized. A disposable reference
+      advanced successfully with the same App permissions and exact candidate, then was deleted. The
+      original GraphQL error was not retained, so its precise provider cause is unknown.
+    </p>
+    <p>
+      Repair the shared commit boundary: distinguish HTTP success from GraphQL success; reconcile
+      ambiguous acknowledgements and retry transient or unclassified responses within the existing
+      deadline. Revalidate authority, immutable inputs and expected base on every attempt. Explicit
+      permission, validation and rate-limit errors remain terminal. Never fall back to a force
+      update. Record only allowlisted error categories and validated provider request IDs, never
+      provider messages or credentials. Cover all four destinations, lost acknowledgements,
+      persistent failure, revocation during backoff and concurrent base changes with regressions.
+    </p>
+    <p>
+      Verification: 789 tests passed across 104 files; performance p95 was 0.91 ms; 294 browser
+      tests passed with 20 existing skips; dependency audit found zero vulnerabilities. The repaired
+      verifier recovered from an injected HTTP 200 INTERNAL response against GitHub using the failed
+      candidate on a disposable reference: two attempts, one atomic mutation, unchanged Staging
+      main. The reference was deleted and its temporary token revoked. This proves the recovery
+      path, not the unknown original provider cause.
+    </p>
+
     <h2>Commands and testing strategy</h2>
     <p>
       Use repository-native Vitest/integration/browser tests with bounded workers. Run full suites

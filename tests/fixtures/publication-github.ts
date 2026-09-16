@@ -6,7 +6,7 @@ export async function publicationGitHubFixture(
   jobId: string,
   candidateChecksum: string,
   assetPaths: string[] = [],
-  target: 'staging' | 'canary' | 'production' = 'staging',
+  target: 'staging' | 'canary' | 'production' | 'publicCanary' = 'staging',
   baseSha = 'b'.repeat(40),
 ) {
   const files = [{ path: 'index.html', sha256: 'f'.repeat(64), bytes: 123 }];
@@ -30,7 +30,9 @@ export async function publicationGitHubFixture(
       ? 'pointsite-staging-canary'
       : target === 'staging'
         ? 'pointsite-staging'
-        : 'pointsite';
+        : target === 'publicCanary'
+          ? 'pointsite-canary'
+          : 'pointsite';
   const api = `https://api.github.com/repos/PointCommunity/${name}`;
   const untouched = { path: 'README.md', type: 'blob', mode: '100644', sha: '1'.repeat(40) };
   const state = {
@@ -125,7 +127,9 @@ export async function publicationGitHubFixture(
               ? 1370792530
               : target === 'staging'
                 ? 1357847426
-                : 1348084954,
+                : target === 'publicCanary'
+                  ? 1373215793
+                  : 1348084954,
         full_name: `PointCommunity/${name}`,
       });
     if (path === `${api}/git/ref/heads/main`) return Response.json({ object: { sha: state.main } });
@@ -153,7 +157,9 @@ export async function publicationGitHubFixture(
         update.force !== false ||
         state.failure === 'provider'
       )
-        return Response.json({ errors: [{ message: 'private provider error' }] });
+        return Response.json({
+          errors: [{ type: 'UNPROCESSABLE', message: 'private provider error' }],
+        });
       state.mutations++;
       state.main = build.commitSha;
       if (state.failure === 'lost-response') throw new Error('private connection error');
