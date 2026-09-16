@@ -33,7 +33,7 @@ export function NavigationEditor({
         <div>
           <h3 id="navigation-title">Navigation</h3>
           <p>
-            These shared links appear in every Navigation element. Optional child links form each
+            Navigation elements using this menu share these links. Optional child links form each
             menu.
           </p>
         </div>

@@ -266,6 +266,7 @@ const ButtonBlockSchema = z.strictObject({
 const NavigationBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('navigation'),
+  navigationDesignId: uuid.optional(),
   label: z.string().trim().min(1).max(80),
   orientation: z.enum(['responsive', 'horizontal', 'vertical']),
   align: z.enum(['left', 'center', 'right']),
@@ -432,6 +433,32 @@ const NavigationEntrySchema = z.strictObject({
     .max(12),
 });
 
+const NavigationDesignSchema = z
+  .strictObject({
+    id: uuid,
+    name: shortText,
+    items: z.array(NavigationEntrySchema).max(20),
+  })
+  .superRefine((design, context) => {
+    const identities = new Set<string>();
+    design.items.forEach((item, index) => {
+      for (const [entry, path] of [
+        [item, ['items', index, 'id']],
+        ...item.children.map(
+          (child, childIndex) => [child, ['items', index, 'children', childIndex, 'id']] as const,
+        ),
+      ] as const) {
+        if (identities.has(entry.id))
+          context.addIssue({
+            code: 'custom',
+            path: [...path],
+            message: 'Menu item IDs must be unique within a design',
+          });
+        identities.add(entry.id);
+      }
+    });
+  });
+
 const FormSchema = z.strictObject({
   id: uuid,
   name: shortText,
@@ -552,7 +579,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.literal(9),
+    schemaVersion: z.union([z.literal(9), z.literal(10)]),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,
@@ -580,6 +607,7 @@ export const SiteDocumentSchema = z
     }),
     theme: ThemeSchema,
     navigation: z.array(NavigationEntrySchema).max(20),
+    navigationDesigns: z.array(NavigationDesignSchema).min(1).max(30).optional(),
     pages: z.array(PageSchema).min(1).max(100),
     forms: z.array(FormSchema).max(30),
     media: z
@@ -633,6 +661,75 @@ export const SiteDocumentSchema = z
     collections: CollectionsSchema,
   })
   .superRefine((document, context) => {
+    const designs = document.navigationDesigns;
+    if (document.schemaVersion === 9 && designs !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['navigationDesigns'],
+        message: 'Navigation designs require schema version 10',
+      });
+    }
+    if (document.schemaVersion === 10) {
+      if (!designs)
+        context.addIssue({
+          code: 'custom',
+          path: ['navigationDesigns'],
+          message: 'Navigation designs are required',
+        });
+      if (document.navigation.length)
+        context.addIssue({
+          code: 'custom',
+          path: ['navigation'],
+          message: 'Version 10 stores menu items only in Navigation designs',
+        });
+      if (document.rendererVersion !== '10.0.0')
+        context.addIssue({
+          code: 'custom',
+          path: ['rendererVersion'],
+          message: 'Navigation designs require renderer 10.0.0',
+        });
+    }
+    const designIds = new Set<string>();
+    designs?.forEach((design, index) => {
+      if (designIds.has(design.id))
+        context.addIssue({
+          code: 'custom',
+          path: ['navigationDesigns', index, 'id'],
+          message: 'Navigation design IDs must be unique',
+        });
+      designIds.add(design.id);
+    });
+    document.pages.forEach((page, pageIndex) =>
+      page.blocks.forEach((section, sectionIndex) =>
+        section.items.forEach((item, itemIndex) => {
+          if (item.element.type !== 'navigation') return;
+          const reference = item.element.navigationDesignId;
+          if (
+            document.schemaVersion === 9
+              ? reference !== undefined
+              : !reference || !designIds.has(reference)
+          ) {
+            context.addIssue({
+              code: 'custom',
+              path: [
+                'pages',
+                pageIndex,
+                'blocks',
+                sectionIndex,
+                'items',
+                itemIndex,
+                'element',
+                'navigationDesignId',
+              ],
+              message:
+                document.schemaVersion === 9
+                  ? 'Navigation design references require schema version 10'
+                  : 'Select an existing Navigation design',
+            });
+          }
+        }),
+      ),
+    );
     const routeOwners = new Map<string, number>();
     document.pages.forEach((page, index) => {
       const owner = routeOwners.get(page.route);

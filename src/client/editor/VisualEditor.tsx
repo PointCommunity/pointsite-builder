@@ -38,6 +38,7 @@ import { SiteFrame } from '../../site-kit/SiteRenderer';
 import siteCss from '../../site-kit/site.css?inline';
 import editorCanvasCss from './editor-canvas.css?inline';
 import { BlockInspector } from './BlockInspector';
+import { replaceNavigationItems } from '../settings/navigation-document';
 import { GridOverlay } from './GridOverlay';
 import { getGridBreakpoint, setGridBreakpoint, useGridBreakpoint } from './GridBreakpointContext';
 import { breakpointForWidth } from './grid-breakpoint';
@@ -386,6 +387,9 @@ function defaultElement<T extends SiteElement['type']>(
     navigation: {
       id,
       type: 'navigation',
+      ...(document.schemaVersion === 10
+        ? { navigationDesignId: document.navigationDesigns?.[0]?.id }
+        : {}),
       label: 'Church navigation',
       orientation: 'responsive',
       align: 'right',
@@ -941,11 +945,11 @@ function VisualEditorImpl({
             block={value}
             document={document}
             onChange={onChange}
-            onNavigationChange={(navigation) =>
-              updateDocument((next) => {
-                next.navigation = navigation;
-                return next;
-              }, mutationForContext('navigation'))
+            onNavigationChange={(navigation, designId) =>
+              updateDocument(
+                (next) => replaceNavigationItems(next, navigation, designId),
+                mutationForContext('navigation'),
+              )
             }
           />
         ),

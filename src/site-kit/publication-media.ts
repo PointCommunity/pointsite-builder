@@ -9,6 +9,11 @@ export function publicationMediaPaths(document: SiteDocument): string[] {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
       if (typeof child === 'string') {
+        if (key === 'navigationDesignId') {
+          const design = document.navigationDesigns?.find((item) => item.id === child);
+          if (!design) throw new Error('CANDIDATE_NAVIGATION_REFERENCE_INVALID');
+          visit(design);
+        }
         if (['mediaId', 'backgroundMediaId', 'ogImageMediaId'].includes(key)) ids.add(child);
         if (['href', 'linkHref'].includes(key) && child.startsWith('/assets/')) {
           paths.add(decodeURI(child.split(/[?#]/, 1)[0]));

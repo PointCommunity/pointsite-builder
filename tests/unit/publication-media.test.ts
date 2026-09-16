@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { publicationMediaPaths } from '../../src/site-kit/publication-media';
+import { upgradeNavigation } from '../../src/site-kit/migrations';
 
 it('retains every rendered image, metadata image and asset link without mutating the draft', () => {
   const document = structuredClone(defaultSiteDocument);
@@ -42,4 +43,21 @@ it('rejects missing referenced media instead of silently publishing a broken ima
   const document = structuredClone(defaultSiteDocument);
   document.pages[0].metadata.ogImageMediaId = crypto.randomUUID();
   expect(() => publicationMediaPaths(document)).toThrow('CANDIDATE_MEDIA_REFERENCE_INVALID');
+});
+
+it('retains asset links from referenced designs and excludes unused designs', () => {
+  const document = upgradeNavigation(defaultSiteDocument);
+  const design = document.navigationDesigns![0];
+  design.items[0].href = '/assets/menu-download';
+  document.navigationDesigns!.push({
+    ...structuredClone(design),
+    id: crypto.randomUUID(),
+    items: [
+      { id: crypto.randomUUID(), label: 'Unused', href: '/assets/unused-menu', children: [] },
+    ],
+  });
+  expect(publicationMediaPaths(document)).toContain('/assets/menu-download');
+  expect(publicationMediaPaths(document)).not.toContain('/assets/unused-menu');
+  document.navigationDesigns = [];
+  expect(() => publicationMediaPaths(document)).toThrow('CANDIDATE_NAVIGATION_REFERENCE_INVALID');
 });

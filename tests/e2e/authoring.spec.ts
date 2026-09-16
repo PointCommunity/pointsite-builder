@@ -1,6 +1,7 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { upgradeNavigation } from '../../src/site-kit/migrations';
 import type { PendingJournalState } from '../../src/client/editor/pending-journal';
 import type * as JournalModule from '../../src/client/editor/pending-journal';
 import type { DraftRecord, RevisionRecord, Role } from '../../src/server/repositories/contracts';
@@ -531,6 +532,54 @@ async function installApi(
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
+
+test('compatibility bridge edits and reloads selected designs without downgrading a draft', async ({
+  page,
+}) => {
+  const document = upgradeNavigation(defaultSiteDocument);
+  const secondary = {
+    id: '00000000-0000-4000-8000-000000000037',
+    name: 'Secondary navigation',
+    items: [{ id: crypto.randomUUID(), label: 'Secondary link', href: '/give', children: [] }],
+  };
+  document.navigationDesigns!.push(secondary);
+  await installApi(page, 'administrator', 'admin', (target) => Object.assign(target, document));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings categories' })
+    .getByRole('button', { name: 'Navigation', exact: true })
+    .click();
+  await page
+    .getByRole('combobox', { name: 'Navigation design', exact: true })
+    .selectOption(secondary.id);
+  await page
+    .getByRole('group', { name: 'Secondary link', exact: true })
+    .getByLabel('Label', { exact: true })
+    .fill('Updated secondary');
+  await page.getByRole('heading', { name: 'Navigation', exact: true }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await page
+    .getByRole('combobox', { name: 'Navigation design', exact: true })
+    .selectOption(document.navigationDesigns![0].id);
+  await expect(page.getByRole('group', { name: 'About', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Layout', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Navigation design', exact: true })
+    .selectOption(secondary.id);
+  await expect(canvas.getByRole('link', { name: 'Updated secondary', exact: true })).toBeVisible();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(canvas.getByRole('link', { name: 'Updated secondary', exact: true })).toBeVisible();
+  await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Navigation design', exact: true })).toHaveValue(
+    secondary.id,
+  );
+  await expect(canvas.getByRole('button', { name: 'Resize navigation from east' })).toBeVisible();
+});
 
 test('compact categories and questions preserve edits without navigation revisions', async ({
   page,
