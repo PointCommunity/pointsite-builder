@@ -83,7 +83,17 @@ describe('page management', () => {
       name: 'Page hero',
       items: [{ element: { type: 'hero', variant: 'pageHero' } }],
     });
-    expect(page.blocks[1]).toMatchObject({ name: 'Site header' });
+    expect(page.blocks[1]).toMatchObject({
+      name: 'Site header',
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          element: expect.objectContaining({
+            type: 'navigation',
+            navigationDesignId: initialDraft.document.navigationDesigns?.[0]?.id,
+          }),
+        }),
+      ]),
+    });
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     save.mockRestore();
   });
