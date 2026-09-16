@@ -45,6 +45,13 @@ export function ProductionPublish({
     };
   }, [load]);
   const job = snapshot?.enabled ? snapshot.job : null;
+  const destination = snapshot?.enabled ? snapshot.destination : undefined;
+  const label =
+    destination?.repository === 'pointsite-canary'
+      ? 'Site Canary'
+      : destination
+        ? 'Site Production'
+        : 'Public site';
   const dispatch = job?.dispatch;
   const active = job?.status === 'queued' || job?.status === 'running';
   useEffect(() => {
@@ -86,7 +93,7 @@ export function ProductionPublish({
       request.current = null;
     } catch (failure) {
       setError(
-        `The action could not be confirmed. Check Production status before trying again.${
+        `The action could not be confirmed. Check ${label} status before trying again.${
           failure instanceof ClientApiError && failure.requestId
             ? ` Support reference: ${failure.requestId}.`
             : ''
@@ -113,43 +120,48 @@ export function ProductionPublish({
   return (
     <aside className="production-lock" aria-labelledby="production-heading">
       <h2 id="production-heading" tabIndex={-1} ref={heading}>
-        Production
+        {label}
       </h2>
       {snapshot === undefined ? (
-        <p role="status">Loading Production status…</p>
+        <p role="status">Loading public site status…</p>
       ) : snapshot === null ? (
         <p role="status">
-          Production status is unavailable. Check status before taking another action.
+          Public site status is unavailable. Check status before taking another action.
         </p>
       ) : !snapshot.enabled ? (
         <p>
-          Production publishing is not enabled in Builder yet. Its protected setup and recovery
+          Public site publishing is not enabled in Builder yet. Its protected setup and recovery
           checks must finish first.
         </p>
       ) : (
         <>
+          <p>
+            Destination:{' '}
+            <a href={destination?.origin} target="_blank" rel="noreferrer">
+              {destination?.origin}
+            </a>
+            . This website is public.
+          </p>
           <p role="status">
             {!job
-              ? 'No Production publication is recorded for this draft.'
+              ? `No ${label} publication is recorded for this draft.`
               : dispatch?.needsAttention
-                ? 'Production publication needs attention'
+                ? `${label} publication needs attention`
                 : active
-                  ? 'The captured Production version continues in the cloud, even after you close Builder.'
+                  ? `The captured ${label} version continues in the cloud, even after you close Builder.`
                   : job.status === 'succeeded' &&
                       job.evidence.verificationStatus === 'passed' &&
                       job.evidence.artifactDigest === job.artifactDigest
-                    ? 'This Production publication was verified.'
+                    ? `This ${label} publication was verified.`
                     : job.status === 'cancelled'
-                      ? 'This Production publication was cancelled.'
-                      : 'Production publication needs reconciliation before another attempt.'}
+                      ? `This ${label} publication was cancelled.`
+                      : `${label} publication needs reconciliation before another attempt.`}
           </p>
           {active && paused ? (
-            <p>Automatic monitoring paused. Check Production status to read the latest progress.</p>
+            <p>Automatic monitoring paused. Check {label} status to read the latest progress.</p>
           ) : null}
           {snapshot.busy && !active ? (
-            <p>
-              Another Production publication needs to finish or be reconciled before publishing.
-            </p>
+            <p>Another {label} publication needs to finish or be reconciled before publishing.</p>
           ) : null}
           {canPromote ? (
             <>
@@ -174,7 +186,7 @@ export function ProductionPublish({
                 disabled={busy}
                 onClick={() => void act('promote')}
               >
-                Publish accepted version to Production
+                Publish accepted version to {label}
               </button>
             </>
           ) : null}
@@ -187,7 +199,7 @@ export function ProductionPublish({
                   disabled={busy || !(Date.parse(dispatch.retryAt) <= Date.now())}
                   onClick={() => void act('retry')}
                 >
-                  Retry Production dispatch
+                  Retry {label} dispatch
                 </button>
               ) : null}
               <button
@@ -196,7 +208,7 @@ export function ProductionPublish({
                 disabled={busy}
                 onClick={() => void act('cancel')}
               >
-                Cancel queued Production publication
+                Cancel queued {label} publication
               </button>
             </>
           ) : null}
@@ -207,7 +219,7 @@ export function ProductionPublish({
               disabled={busy}
               onClick={() => void act('reconcile')}
             >
-              Reconcile stopped Production run
+              Reconcile stopped {label} run
             </button>
           ) : null}
           {dispatch?.canRetryCaptured ? (
@@ -217,7 +229,7 @@ export function ProductionPublish({
               disabled={busy || snapshot.busy}
               onClick={() => void act('retry-captured')}
             >
-              Retry captured Production version
+              Retry captured {label} version
             </button>
           ) : null}
           {dispatch?.canVerifyCompleted && !dispatch.canVerifyOutput ? (
@@ -229,7 +241,7 @@ export function ProductionPublish({
                 disabled={busy}
                 onClick={() => void act('verify-completed')}
               >
-                Verify completed Production publication
+                Verify completed {label} publication
               </button>
             </>
           ) : null}
@@ -237,6 +249,7 @@ export function ProductionPublish({
             <PublicationVerification
               key={job.id}
               target="production"
+              label={label}
               jobId={job.id}
               dispatchAttempts={dispatch.attempts}
               disabled={busy}
@@ -245,7 +258,7 @@ export function ProductionPublish({
           ) : null}
           {job ? (
             <details>
-              <summary>Production publication details</summary>
+              <summary>{label} publication details</summary>
               <dl>
                 <dt>Captured revision</dt>
                 <dd>{job.revisionId}</dd>
@@ -260,12 +273,12 @@ export function ProductionPublish({
               </dl>
               {dispatch?.workflowUrl ? (
                 <a href={dispatch.workflowUrl} target="_blank" rel="noreferrer">
-                  Production cloud progress
+                  {label} cloud progress
                 </a>
               ) : null}
               {job.evidence.deploymentUrl ? (
                 <a href={job.evidence.deploymentUrl} target="_blank" rel="noreferrer">
-                  Production deployment evidence
+                  {label} deployment evidence
                 </a>
               ) : null}
             </details>
@@ -280,14 +293,14 @@ export function ProductionPublish({
           disabled={busy || snapshot === undefined}
           onClick={() => void load()}
         >
-          Check Production status
+          Check {label} status
         </button>
       ) : null}
       <p className="production-role-note">
         A GitHub organization owner must also have an active Builder Administrator role and the
-        required live repository permission to authorize a Production publication.
+        required live repository permission to authorize a public site publication.
       </p>
-      {snapshot?.enabled ? <ProductionRollback onRefresh={load} /> : null}
+      {snapshot?.enabled ? <ProductionRollback onRefresh={load} label={label} /> : null}
     </aside>
   );
 }

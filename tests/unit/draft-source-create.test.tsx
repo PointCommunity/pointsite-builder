@@ -54,7 +54,7 @@ it('previews selected publication, cancels without a draft, and confirms the exa
   fireEvent.change(screen.getByLabelText('Copy published site from'), {
     target: { value: 'production' },
   });
-  await screen.findByText(/Production publication verified/);
+  await screen.findByText(/Public site publication verified/);
   fireEvent.click(screen.getByRole('button', { name: 'Create independent draft' }));
   await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Spring', 'production', source));
 });

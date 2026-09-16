@@ -88,7 +88,7 @@ const DRAFT_FIELDS = `d.id, d.site_id, d.name, d.status, d.latest_revision_id,
     r.created_by AS revision_created_by, r.created_at AS revision_created_at,
     r.action_category, r.action_context,
     b.source_target AS publication_source_target,b.baseline_release_id,b.baseline_sequence,
-    (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id`;
+    (SELECT id FROM current_publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id`;
 const DRAFT_FROM = ` FROM drafts d
   JOIN revisions r ON r.id = d.latest_revision_id
   LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id
@@ -117,8 +117,6 @@ async function parseRevision(database: D1Database, row: RevisionRow): Promise<Re
   return {
     ...revisionSummary(row),
     document,
-    schemaVersion: document.schemaVersion,
-    rendererVersion: document.rendererVersion,
   };
 }
 
@@ -255,7 +253,7 @@ export class D1DraftRepository implements DraftRepository {
       .prepare(
         `SELECT r.sequence,b.source_target AS publication_source_target,
       b.baseline_release_id,b.baseline_sequence,
-      (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
+      (SELECT id FROM current_publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
       FROM drafts d JOIN revisions r ON r.id=d.latest_revision_id
       LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id WHERE d.id=?`,
       )
@@ -398,9 +396,9 @@ export class D1DraftRepository implements DraftRepository {
                   `INSERT INTO draft_publication_baselines
                   (draft_id,source_target,baseline_release_id,baseline_sequence)
                   VALUES (?,?,(
-                    SELECT id FROM publication_releases p
+                    SELECT id FROM current_publication_releases p
                     WHERE ((
-                      ?='production' AND p.id=(SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1)
+                      ?='production' AND p.id=(SELECT id FROM current_publication_releases ORDER BY sequence DESC LIMIT 1)
                       AND COALESCE(json_extract(p.source_json,'$.commitSha'),json_extract(p.source_json,'$.sourceRevision'))=?
                       AND json_extract(p.evidence_json,'$.deploymentId')=?
                     ) OR (
@@ -1280,7 +1278,7 @@ export class D1DraftRepository implements DraftRepository {
     const row = await this.database
       .prepare(
         `SELECT b.source_target AS publication_source_target,b.baseline_release_id,b.baseline_sequence,
-      (SELECT id FROM publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
+      (SELECT id FROM current_publication_releases ORDER BY sequence DESC LIMIT 1) AS current_release_id
       FROM drafts d LEFT JOIN draft_publication_baselines b ON b.draft_id=d.id WHERE d.id=?`,
       )
       .bind(draftId)

@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue 70: PointSite publication lanes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101419;
+        color: #e7edf4;
+      }
+      body {
+        max-width: 980px;
+        margin: auto;
+        padding: 32px 24px 72px;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+        color: #fff;
+      }
+      h2 {
+        margin-top: 36px;
+      }
+      a {
+        color: #92c9ff;
+      }
+      code,
+      pre {
+        color: #c6e1fb;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        white-space: pre-wrap;
+        padding: 16px;
+        background: #1b242d;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        border: 1px solid #465365;
+        padding: 12px;
+        overflow-wrap: anywhere;
+      }
+      .decision {
+        padding: 18px;
+        border: 1px solid #c1a770;
+        background: #29251e;
+      }
+      small {
+        color: #bac6d4;
+      }
+      @media (max-width: 650px) {
+        table {
+          display: block;
+          overflow-x: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PointSite publication lanes</h1>
+    <p>
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/70">Issue #70</a> ·
+      Specification, research, implementation plan, and ordered tasks · 16 September 2026
+    </p>
+    <p>
+      <strong>Approved specification.</strong> Chris approved this specification and hosting plan
+      with “yes” on 16 September 2026. Issue #70 remains In Progress. Implementation and local
+      verification are underway; live editorial qualification and Production approval remain
+      pending.
+    </p>
+
+    <section class="decision">
+      <h2>Approved hosting</h2>
+      <p>
+        Approved <strong>https://canary.pointatx.org</strong> for the public, read-only site Canary.
+        Use GitHub Pages with workflow publishing, a main-only
+        <code>github-pages</code> environment, immutable repository OIDC identity, and enforced
+        HTTPS. Repository, Pages and DNS are configured. HTTPS certificate issuance remains pending
+        at the last check.
+      </p>
+      <p>
+        After approval, create the public <code>PointCommunity/pointsite-canary</code> repository,
+        record its actual repository ID, review its static bootstrap and workflow callers, verify
+        domain ownership, configure Pages, then add only the exact DNS record below. Inspect
+        existing DNS first and stop on ownership or record conflicts. Follow certificate issuance
+        with HTTPS enforcement and readback.
+      </p>
+      <p>DNS type:</p>
+      <pre>CNAME</pre>
+      <p>DNS name:</p>
+      <pre>canary.pointatx.org</pre>
+      <p>DNS target:</p>
+      <pre>pointcommunity.github.io</pre>
+      <p>
+        Propose DNS-only routing initially, without an Access login boundary or a wildcard record.
+        Preserve all existing site and Staging DNS/Pages settings. Both Staging repositories and the
+        new Canary repository are public; explicitly published content is publicly readable. Private
+        drafts and credentials must never enter repository history or static output.
+      </p>
+      <p>
+        Rationale: a root-host deployment matches the existing Staging/public layout. The source
+        supports a Next.js base path, but shared renderer code also includes a root-relative home
+        link. The default project URL would require a separate path-parity audit and could change
+        exact-output reproduction. A dedicated host avoids introducing that extra variable.
+      </p>
+      <p>
+        GitHub documents configuring the custom domain before DNS and targeting the organization’s
+        <code>github.io</code> domain:
+        <a
+          href="https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site"
+          >Manage a GitHub Pages custom domain</a
+        >. Local DNS lookup returned no answer for the proposed host; that alone does not establish
+        authoritative availability.
+      </p>
+    </section>
+
+    <h2>Objective and approved scope</h2>
+    <p>
+      Deliver two isolated editorial release lanes. A Publisher or Administrator stages and accepts
+      an exact candidate. An Administrator deliberately publishes or rolls back the public
+      destination inside authenticated Builder. Cloud execution and durable status continue after
+      the initiating browser closes. Qualify the entire Canary lane before enabling changed
+      Production publication behavior.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Builder runtime</th>
+          <th>Staging content</th>
+          <th>Public destination</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>builder-canary.eaglepass.io</td>
+          <td>pointsite-staging-canary<br />staging-canary.pointatx.org</td>
+          <td>pointsite-canary<br />canary.pointatx.org</td>
+        </tr>
+        <tr>
+          <td>builder.eaglepass.io</td>
+          <td>pointsite-staging<br />staging.pointatx.org</td>
+          <td>pointsite<br />pointatx.org</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Builder image promotion is separate. It never transfers drafts, roles, sessions, approval
+      records, or publication history. “Work Issue #70” authorizes implementation and Builder Canary
+      deployment; it does not authorize replacing public Production content.
+    </p>
+
+    <h2>Research evidence</h2>
+    <p>
+      These are observations from this task, not guarantees about future state. Refresh identities
+      before mutation or release.
+    </p>
+    <ul>
+      <li>
+        Builder source:
+        <a
+          href="https://github.com/PointCommunity/pointsite-builder/tree/29938afacb98fb9702a56893edfc0f2790783194"
+          >29938afacb98fb9702a56893edfc0f2790783194</a
+        >. Fresh isolated branch: <code>issue/70-publication-lanes</code>.
+      </li>
+      <li>
+        Initial GitHub API returned 404 for <code>pointsite-canary</code>; the approved public
+        repository now exists with ID <code>1373215793</code>. Both Staging repositories and
+        pointsite report public visibility. Pages reports workflow publishing and HTTPS enforcement
+        for the existing three content hosts.
+      </li>
+      <li>
+        Observed Staging main: <code>4b6b4088deb5883299af34663a4bf35c084a393c</code>. Canary Staging
+        main: <code>e086dc8739547390ee42e31882fe3e02a9dd53a1</code>. Public Production main:
+        <code>170e10fb58580eaad46dbf400f48dc69ec37ae6d</code>. No open PRs were returned for Staging
+        or pointsite.
+      </li>
+      <li>
+        Both live Builder health endpoints return <code>ok: true</code>, source
+        <code>1bdf5ba938f83d4c28767a9e28952092fcd6c16d</code>, tree
+        <code>df12daf380d106e420c4e70f8a64aec20396dc4d</code>, and the expected environment. This
+        proves the reported runtime identity and health response only; authenticated publication and
+        Argo/image identity need further verification.
+      </li>
+      <li>
+        <a
+          href="https://github.com/PointCommunity/pointsite-builder/blob/29938afacb98fb9702a56893edfc0f2790783194/src/server/publish/destinations.ts"
+          >Destination selection</a
+        >
+        rejects Canary promotion. <code>config.ts</code> and
+        <code>runner-auth.ts</code> independently prohibit it. Promotion and rollback contain
+        pointsite-specific API, token, persisted repository, and run-URL assumptions.
+      </li>
+      <li>
+        <a
+          href="https://github.com/PointCommunity/pointsite-builder/blob/29938afacb98fb9702a56893edfc0f2790783194/src/server/publish/renderer-contract.ts"
+          >Builder workflow pins</a
+        >
+        reference runtime <code>3789751c8725f023945b9348d7b3b43737976f81</code>. Current Staging and
+        Canary Staging caller blobs match; all three pointsite publication/verification/rollback
+        caller blobs match Builder’s current pins.
+      </li>
+      <li>
+        <a
+          href="https://github.com/PointCommunity/pointsite-staging/blob/4b6b4088deb5883299af34663a4bf35c084a393c/.github/workflows/publish-production-runtime.yml"
+          >Public publication runtime</a
+        >
+        hard-codes pointsite, Production Builder, and pointatx.org. Updating Builder’s destination
+        map alone cannot implement this Issue.
+      </li>
+      <li>
+        <a
+          href="https://github.com/PointCommunity/pointsite-staging/blob/4b6b4088deb5883299af34663a4bf35c084a393c/AGENTS.md"
+          >Staging rules</a
+        >
+        separate maintainer workflow changes from accepted candidate content. The public-site
+        AGENTS.md API lookup returns 404; check inherited/local instructions before editing its
+        checkout.
+      </li>
+      <li>
+        <a href="https://github.com/PointCommunity/pointsite-builder/pull/66">PR #66</a> is merged.
+        Its closeout explicitly records that public Production publication and rollback were not
+        exercised live. Issue #61 is Done; its live public-content gap remains a qualification task
+        here.
+      </li>
+    </ul>
+
+    <h2>Implementation contract</h2>
+    <ol>
+      <li>
+        <strong>Server-selected lane.</strong> Reuse the existing fixed destination table and select
+        from trusted Builder environment/origin. Unknown configurations fail closed. Browser
+        payloads, content files, and dispatch inputs cannot select arbitrary repositories or hosts.
+      </li>
+      <li>
+        <strong>Complete identity binding.</strong> Bind tokens, OIDC subject/repository ID, runner
+        audience, reusable runtime SHA, caller blob, main ref, expected base, accepted Staging job,
+        output manifest, deployment origin, release record, recovery, and rollback to the same lane.
+        Never accept historical Canary records pointing at non-Canary destinations.
+      </li>
+      <li>
+        <strong>Exact acceptance.</strong> Recheck the latest unrevoked acceptance, active
+        Administrator, draft/revision, source commit, candidate checksum, media/output digest,
+        workflow identity, and fresh destination base before capture and every consequential runner
+        action. Cross-lane, stale, changed, failed, and unverified candidates are rejected.
+      </li>
+      <li>
+        <strong>Durable execution.</strong> Reuse existing publication inputs, promotion lineage,
+        slots, run nonce, idempotency receipts, reconciliation, and release storage. Audit every
+        query for implicit destination assumptions. Introduce a migration only if existing persisted
+        identity cannot support isolation; then specify upgrade and rollback compatibility before
+        editing schema.
+      </li>
+      <li>
+        <strong>Clear UI.</strong> Display “Site Canary” or “Site Production,” its destination link,
+        accepted candidate, and truthful progress. Keep Administrator-only public publish/rollback
+        controls. Do not broaden permissions or expose release controls merely because an
+        environment flag changed.
+      </li>
+      <li>
+        <strong>Repository bootstrap.</strong> Seed the new destination only with reviewed static
+        files already public in a verified baseline, its manifest, and reviewed maintainer callers.
+        Record exact source and file hashes; exclude live drafts, private media, credentials,
+        inherited Production DNS, and automatic push-trigger publication. Establish a verifiable
+        initial deployment before candidate promotion.
+      </li>
+      <li>
+        <strong>Workflow rollout.</strong> Keep reusable implementation in the existing canonical
+        Staging repository. Add fixed repository-to-origin mappings and destination-specific
+        callers. Qualify the new immutable runtime in Canary while existing Production callers
+        remain pinned. After Canary proof and required approval, coordinate Production callers and
+        Builder pins with no active or uncertain jobs; refresh acceptance if the base advances.
+      </li>
+      <li>
+        <strong>Recovery.</strong> Capture each destination’s previous verified static release,
+        manifest, commit, deployment, and workflow identity. Retry the same captured candidate only
+        after reconciliation. Rollback must target that same destination and recheck current
+        authority and base. Unknown completion remains uncertain until live proof resolves it.
+      </li>
+    </ol>
+
+    <h2>Source layout and style</h2>
+    <p>
+      Builder TypeScript/Zod implementation lives in <code>src/server/publish/</code>,
+      <code>src/server/github/</code>, config/application/routes, and
+      <code>src/client/publish/</code>. Use existing unit, integration, component, and browser
+      suites. Runtime changes live in Staging’s <code>scripts/</code> and
+      <code>.github/workflows/</code>; each content repository owns its thin caller and hosting
+      identity. Homelab changes belong only in affected Builder charts through canonical Gitea
+      GitOps.
+    </p>
+    <p>
+      Keep strict TypeScript, existing single quotes and named functions, existing Zod validation,
+      and Prettier formatting. Prefer extending the shared destination helper over a new routing
+      framework. Example of the existing style to retain:
+    </p>
+    <pre>
+const destination = publicationDestination(scope.data.target, scope.data.builderOrigin);
+const repository = `PointCommunity/${destination.repository}`;</pre>
+    <p>
+      No new dependency is planned. Preserve internal database target names if they remain safe;
+      user-facing destination language must still be unambiguous.
+    </p>
+
+    <h2>Ordered tasks and verification checkpoints</h2>
+    <ol>
+      <li>
+        <strong>Review this specification and hosting plan.</strong> Resolve the proposed hostname
+        before repository/Pages/DNS implementation. Refresh live Issue, source, workflow, runtime,
+        and public baseline identities. Acceptance: one reviewed lane topology, hosting destination,
+        and recovery sequence.
+      </li>
+      <li>
+        <strong>Trace and test the complete boundary.</strong> Read all callers of destination
+        selection, capture, proof, retry, rollback, token issuance, and runtime entrypoints. Add
+        failing fixtures for cross-lane promotion, exchanged OIDC claims, revoked approval, stale
+        base, duplicate dispatch, and legacy Canary records. Acceptance: each regression fails for
+        the intended reason.
+      </li>
+      <li>
+        <strong>Prepare the Canary repository and fixed identity.</strong> Create the authorized
+        public repository, review bootstrap files and caller execution, record actual immutable ID,
+        configure main-only environment/OIDC and approved hosting, and verify baseline output.
+        Acceptance: independent static deployment; no pointsite changes or private content.
+      </li>
+      <li>
+        <strong>Implement shared lane routing.</strong> Update configuration, tokens, promotion
+        capture/proofs, dispatch, runner claims, retry/reconciliation, release history, and rollback
+        in small checked slices. Acceptance: complete matrix passes with destination-specific
+        records and fail-closed legacy behavior.
+      </li>
+      <li>
+        <strong>Implement Canary runtime and UI.</strong> Pin reviewed reusable workflows, add fixed
+        caller mapping, expose Site Canary progress and Administrator controls, reconcile policy,
+        and test keyboard/mobile behavior. Acceptance: local end-to-end publishing and recovery
+        fixtures pass without browser-driven continuation.
+      </li>
+      <li>
+        <strong>Run complete local review.</strong> Execute sequential Builder suites and changed
+        site repository checks; verify runtime contracts, shell/workflow lint, privacy, and diff
+        scope. Create supporting PRs referencing Issue #70 without auto-close keywords. Require
+        exact-head lightweight CI. Acceptance: recorded commands, exit codes, source/tree and no
+        unresolved findings.
+      </li>
+      <li>
+        <strong>Deploy Builder Canary and qualify site Canary.</strong> Build clean pushed source
+        locally for linux/amd64, publish one immutable image, deploy by GitOps, and verify exact
+        runtime. Have the Administrator select and authorize the exact public candidate inside
+        Builder. Prove publication, all live file hashes, release records, browser-close
+        continuation, interrupted-job recovery, duplicate dispatch prevention, and scoped rollback.
+        Acceptance: real end-to-end evidence and unchanged pointsite baseline.
+      </li>
+      <li>
+        <strong>Promote the proven implementation.</strong> Present exact Canary
+        source/tree/image/GitOps and obtain required Production approval. Coordinate reviewed
+        callers and promote the same Builder image without rebuilding or copying data. Acceptance:
+        exact merge-tree/CI/GitOps/live proof; new acceptance follows any base or workflow change.
+      </li>
+      <li>
+        <strong>Qualify Production content and complete.</strong> Run equivalent Production checks;
+        public candidate selection and publication/rollback authority come only from authenticated
+        Administrator actions in Builder. Verify all output and records, preserve the previous
+        release, clean task resources, and present Production Showcase. Acceptance: exact PM
+        completion approval before Done/closure.
+      </li>
+    </ol>
+    <p>
+      Runtime tests (57), lint, build and audit passed at
+      <code>5fc43bf6909a042841f3d6d6ebea0136f70b2f54</code>. Native lane, migration and retention
+      regressions passed. Full Builder check passed: 104 files, 769 tests; performance p95 1.13 ms
+      against a 100 ms budget; JavaScript gzip 472,255 bytes against 500,000. Browser QA passed: 288
+      tests with 20 existing skips. Local hands-on review verified both destination labels, captured
+      publication recovery after reload, separate rollback confirmation, desktop/tablet fit and the
+      existing phone-width boundary. Dependency audit found zero vulnerabilities. These local
+      fixtures do not satisfy live editorial qualification. Existing Production runtime and callers
+      stay unchanged until Canary qualification and exact approval.
+    </p>
+
+    <h2>Canary review finding: saved schema upgrade</h2>
+    <p>
+      Support reference 498dd22e-5799-41f3-990b-0d845be67336 resolves to
+      <code>PUBLICATION_REVISION_MISMATCH</code> before job capture. Read-only inspection confirmed
+      valid stored checksums for two schema-9 revisions, but their schema-10 editor representations
+      had different checksums after the Navigation migration. The repository incorrectly reported
+      the loaded schema version as the saved revision version, hiding the pending upgrade.
+    </p>
+    <p>
+      Preserve saved revision schema/renderer metadata. Once an active editor owns its checkout and
+      browser recovery has finished, use the existing autosave path to save the upgraded document as
+      a new revision. Pending user edits take precedence. Keep historical bytes, expected-revision
+      guards, checkout checks and publication checksum validation unchanged. No server-side bulk
+      rewrite or agent-initiated editorial publication is part of this repair.
+    </p>
+    <p>
+      Regression checks cover both legacy and compact storage, unchanged-draft autosave, duplicate
+      React activation, missing checkout, pending-edit recovery and publication using the newly
+      saved revision. Re-run complete local gates, exact-head Quality and Canary deployment before
+      presenting a replacement candidate. Previous candidate approval cannot carry forward.
+    </p>
+
+    <p>
+      Full QA also exposed an approval retry race: a matching request can commit between the first
+      receipt lookup and the approval state check. Reuse the existing verified receipt before
+      rejecting changed state. A deterministic regression forces this ordering; different request
+      keys, conflicting payloads and revoked authority remain rejected.
+    </p>
+    <p>
+      Remediation validation: full check passed (104 files, 772 tests); performance p95 was 0.88 ms
+      across 1,000 requests at concurrency 25, with 472,333 JavaScript gzip bytes. Browser QA passed
+      291 tests with 20 existing skips. The unchanged-draft publication regression passed in
+      Chromium, Firefox and WebKit. Hands-on local checks confirmed publication is disabled during
+      the upgrade save, then enabled for the new revision at desktop and tablet widths; phone-width
+      editing remains blocked. Dependency audit reported zero vulnerabilities.
+    </p>
+
+    <h2>Canary review finding: navigation dropdown overflow</h2>
+    <p>
+      Staging run 35127566253 reached browser verification but stopped before candidate commit or
+      deployment. A private local rebuild of its exact captured schema-10 inputs reproduced the
+      failure: a right-aligned Navigation dropdown extended 28 pixels beyond the 1280-pixel
+      viewport. Its left-anchored, 13-rem panel contributed page overflow even while transparent.
+      Align these panels to their parent's right edge in the shared renderer, synchronize the
+      reviewed runtime, and keep the strict publication browser gate unchanged. Verify closed,
+      hovered and focused states plus the captured candidate at all publication widths before
+      updating Canary pins.
+    </p>
+
+    <p>
+      The new regression fails on the original CSS and passes in Chromium, Firefox and WebKit after
+      the four-line fix. Rebuilding the captured candidate with the fixed CSS passes all 33 checks
+      (11 pages at 360, 768 and 1280 pixels), with no retained layout or accessibility exceptions.
+      The strict publication verifier is unchanged. Only new publication runtime pins advance;
+      verification and rollback runtime pins retain their previously reviewed identities.
+    </p>
+    <p>
+      Final repair gates passed: 772 tests, performance p95 0.95 ms, 472,333 JavaScript gzip bytes,
+      294 browser passes and 20 existing skips, and zero dependency vulnerabilities. Hands-on review
+      of the captured output confirmed closed, hovered and keyboard-focused dropdown containment;
+      page widths remained 1280, 768 and 360 pixels respectively, with no console errors or
+      warnings. The runtime separately passed 57 tests, lint/build/TypeScript, 45 browser checks
+      with three existing skips, dependency audit and exact-head Quality.
+    </p>
+
+    <h2>Commands and testing strategy</h2>
+    <p>
+      Use repository-native Vitest/integration/browser tests with bounded workers. Run full suites
+      sequentially. Prepare a fresh task worktree before installing dependencies. Application builds
+      and QA remain local; existing cloud editorial publication jobs remain the separate
+      browser-only product workflow.
+    </p>
+    <p>Prepare:</p>
+    <pre>rtk proxy node scripts/local-qa.mjs prepare</pre>
+    <p>Install:</p>
+    <pre>rtk proxy npm ci</pre>
+    <p>Browser setup:</p>
+    <pre>rtk proxy npx playwright install chromium firefox webkit</pre>
+    <p>Full quality:</p>
+    <pre>rtk proxy npm run check</pre>
+    <p>Performance, after quality completes:</p>
+    <pre>rtk proxy npm run test:performance</pre>
+    <p>Browsers, after performance completes:</p>
+    <pre>rtk proxy npm run test:e2e</pre>
+    <p>Dependency audit:</p>
+    <pre>rtk proxy npm audit --audit-level=high</pre>
+    <p>Whitespace:</p>
+    <pre>rtk proxy git diff --check</pre>
+    <p>Policy alignment:</p>
+    <pre>rtk proxy npm run skills:check</pre>
+    <p>Cleanup, after task test servers have stopped:</p>
+    <pre>rtk proxy node scripts/local-qa.mjs cleanup</pre>
+    <p>
+      Refresh each changed site repository’s native commands before running them. Include
+      valid-claim and malicious-claim tests; stale/revoked acceptance; source/media drift;
+      expected-base races; lost commit response; failed deployment; retry after browser closure;
+      duplicate dispatch; wrong-lane verification and rollback; and least-privilege token scope.
+      Local mocks cannot satisfy real Pages/runner/recovery qualification.
+    </p>
+
+    <h2>Migration and recovery</h2>
+    <p>
+      Migration 0038 keeps historical Production rows unchanged, adds an instance-filtered release
+      view, scopes previous-release and retention constraints to the stored repository, and records
+      the independently deployed Canary bootstrap. Native upgrade tests preserve existing data and
+      verify each lane retains its latest two releases and their input pins. No schema or data is
+      removed.
+    </p>
+    <p>
+      The native migration runner commits each migration atomically after foreign-key checks and
+      checks integrity before serving requests. A failed migration remains uncommitted. Once 0038
+      succeeds, older images reject the unknown migration receipt; a raw previous-image rollback is
+      therefore not compatible. Recovery after that point is forward repair using the complete
+      reviewed migration set, with public publication disabled through GitOps while diagnosing.
+      Preserve workspace/recovery volumes, backups and migration receipts. Never remove receipts or
+      restore a database to make an older image start. Restoring a pre-upgrade backup is destructive
+      to newer edits and requires separate explicit approval.
+    </p>
+    <p>
+      Canary pre-upgrade backup succeeded at 2026-09-16T15:48:18.075Z, ID
+      <code>064b4ee6-88b6-4c7c-b62c-c8d2424d9548</code>, through the existing native off-volume
+      backup operator. Native backup and deletion-safe restore tests passed in the complete check.
+      Workspace, recovery and backup PVC identities were recorded before deployment; preserve them.
+    </p>
+    <p>
+      Bootstrap deployment
+      <a href="https://github.com/PointCommunity/pointsite-canary/actions/runs/35114402268"
+        >35114402268</a
+      >, deployment ID 6484225086, source <code>1161eb9eceaa40b1b66b841c705cbaedcd0c4b2c</code>. All
+      97 files (2,792,441 bytes) matched digest
+      <code>45562c9e111136f631c901892d2f1058e45050e93fa8d507f5beb0858eb68894</code> over HTTP at
+      15:28:27 UTC. This is a historical file capture; HTTPS readiness was subsequently verified at
+      15:36:51 UTC: all 97 file hashes passed with certificate validation and HTTPS enforcement. The
+      one-time bootstrap workflow was removed at ac8787e55a8f092f1ce36275df5484d6ceebe1f3.
+      Subsequent public publication and rollback require authenticated Builder authority.
+    </p>
+    <p>
+      The archival bootstrap has no current editable manifest. Until the first verified Canary
+      publication supplies one, create a draft from the verified Canary Staging source;
+      public-source import fails closed. Do not describe the current default template as an exact
+      conversion of the historical static archive.
+    </p>
+    <h2>Boundaries and remaining decisions</h2>
+    <ul>
+      <li>
+        <strong>Always:</strong> preserve unrelated work; use reviewed exact identities; validate
+        all publication boundaries; preserve access control and accessibility; stop owned processes
+        and remove only inventoried generated outputs.
+      </li>
+      <li>
+        <strong>Approval recorded:</strong> this specification and hosting plan were approved in
+        this task before implementation.
+      </li>
+      <li>
+        <strong>Approval required later:</strong> exact healthy Builder Canary before
+        merge/Production promotion; public candidate publication and rollback inside authenticated
+        Builder; exact Production Showcase completion. Any destructive data recovery needs its own
+        scoped approval.
+      </li>
+      <li>
+        <strong>Never:</strong> infer public content authorization from chat, an Issue, healthy
+        application deployment, or passing tests; copy Canary authority/data into Production; let a
+        caller choose an arbitrary destination; publish private drafts; rewrite shared history;
+        alter unrelated applications.
+      </li>
+      <li>
+        <strong>Verified preparation:</strong> repository ID 1373215793; GitHub App installation
+        159344641 includes all organization repositories; the authoritative Canary DNS record and
+        Pages certificate are ready with HTTPS enforcement. Canary has no active publication slots.
+        Before activation, recheck idle jobs and exact image/configuration. Real GitHub App token
+        access and the Administrator-selected content candidate still require live in-app
+        qualification. Do not invent these values or request credentials.
+      </li>
+    </ul>
+  </body>
+</html>

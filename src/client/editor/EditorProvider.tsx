@@ -198,6 +198,21 @@ export function EditorProvider({
   }, [controller]);
 
   useEffect(() => {
+    const current = controller.snapshot;
+    if (
+      checkout &&
+      current.draft.status === 'active' &&
+      current.state === 'saved' &&
+      current.canLeave &&
+      (current.draft.document.schemaVersion !== current.draft.revision.schemaVersion ||
+        current.draft.document.rendererVersion !== current.draft.revision.rendererVersion)
+    ) {
+      // Wait for pending recovery first; save the upgrade as a new checkout-protected revision.
+      controller.complete(current.document, { category: 'control-change', context: 'draft' });
+    }
+  }, [autosave, checkout, controller]);
+
+  useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (!controller.snapshot.canLeave) event.preventDefault();
     };

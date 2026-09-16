@@ -15,7 +15,7 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'publication-media.ts': '5ddefb7d934e45bc32606cf0699822c5ba4e48fc',
   'registry.tsx': 'fcf40b3bbc6f2de92982042372e3c382aeccc7cc',
   'schema.ts': '949499943fa4a7a83319adce709cb449e7d0e36f',
-  'site.css': '4d5ae56f96899495feb7323a982882c466e3c63a',
+  'site.css': 'db7e1d854345e12662426a0040f9bcc1718af09d',
   'tokens.ts': '8ff9fdad08fa333d3e192408fd4b4a228460df94',
   'types.ts': '32d9441a49bea07132287d8e32643f977b4bb13f',
   'url-policy.ts': 'd0f49d5513bd3790764d3dc804c49c314a63daea',
@@ -25,16 +25,16 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = '3789751c8725f023945b9348d7b3b43737976f81';
-export const PUBLICATION_CALLER_BLOB = 'c67e5a1d6ee26becfeb1ebf1fa72513e88f6dde3';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'cac91d1cb3dfe127c68db7087e7e4ce6f1ef30db';
+export const PUBLICATION_WORKFLOW_REVISION = 'e9b411b6a9d7603321f921704c4f6d17ecb60fb7';
+export const PUBLICATION_CALLER_BLOB = 'd908bdb9e35a2b51cb1884a247dabe1432cb15f4';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = '133973458949447c0e9f4988571bbef4b5e4d316';
 
 /** Verification advances independently from the original deployment runtime. */
-export const VERIFICATION_WORKFLOW_REVISION = '3789751c8725f023945b9348d7b3b43737976f81';
+export const VERIFICATION_WORKFLOW_REVISION = '5fc43bf6909a042841f3d6d6ebea0136f70b2f54';
 export const VERIFICATION_CALLER_BLOBS = Object.freeze({
-  staging: '3d59661903a5d3ba063b6ac181948a5450d5fe5d',
-  production: '72b69b4ef8165b8a6faf901ef0f6b03991b9a4b8',
+  staging: '6d2961c1cdb4cec121ea785cb091f51f88b5781b',
+  production: '20213ee02dca8af159408bc37656dbcf8669f320',
 });
 
 /** Reviewed native Production rollback caller, scoped to the same reusable runtime. */
-export const ROLLBACK_PRODUCTION_CALLER_BLOB = '0e3e508b499bc38147f631b98cc34901b4ffb5bd';
+export const ROLLBACK_PRODUCTION_CALLER_BLOB = 'b062f365ee973c30e50bbd625bdae4e4dab98029';

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { StagingRepository } from '../publish/destinations';
+import { publicationDestination, type StagingRepository } from '../publish/destinations';
 import { githubHeaders, unboundFetch } from './app-auth';
 import type { CandidateFile } from '../publish/candidate';
 import { candidateImagePath } from '../publish/candidate';
@@ -70,13 +70,16 @@ export interface StagingVerificationEvidence {
 export class GitHubProductionReader {
   private readonly fetcher: typeof fetch;
 
-  constructor(fetcher: typeof fetch = fetch) {
+  constructor(
+    fetcher: typeof fetch = fetch,
+    private readonly builderOrigin?: string,
+  ) {
     this.fetcher = unboundFetch(fetcher);
   }
 
   async currentMainSha(): Promise<string> {
     const response = await this.fetcher(
-      'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main',
+      `https://api.github.com/repos/PointCommunity/${publicationDestination('production', this.builderOrigin).repository}/git/ref/heads/main`,
       {
         method: 'GET',
         headers: {

@@ -98,6 +98,17 @@ export class D1PublicationVerifier {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  private get lane() {
+    return `j.repository=CASE WHEN j.environment='staging' THEN 'PointCommunity/${publicationDestination('staging', this.config.builderOrigin).repository}' ELSE 'PointCommunity/${publicationDestination('production', this.config.builderOrigin).repository}' END`;
+  }
+
+  private get authority() {
+    return `${authority} AND ${this.lane}`;
+  }
+  private get verificationFrom() {
+    return `${verificationFrom} AND ${this.lane}`;
+  }
+
   private request: typeof fetch = (url, init) => {
     const fetcher = this.fetcher;
     return fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
@@ -108,7 +119,7 @@ export class D1PublicationVerifier {
     targetSchema.parse(target);
     const allowed = this.database
       .prepare(
-        `SELECT 1 FROM publish_jobs j JOIN user_roles u ON u.email=? WHERE j.id=? AND ${authority}`,
+        `SELECT 1 FROM publish_jobs j JOIN user_roles u ON u.email=? WHERE j.id=? AND ${this.authority}`,
       )
       .bind(actor, jobId, target, target);
     if (!(await allowed.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
@@ -156,7 +167,7 @@ export class D1PublicationVerifier {
   /** Durable retries reuse the same verification identity and never execute deployment. */
   async dispatch(id: string): Promise<void> {
     z.uuid().parse(id);
-    const eligible = `${verificationFrom} AND v.status='queued' AND v.reserved_run_id IS NULL`;
+    const eligible = `${this.verificationFrom} AND v.status='queued' AND v.reserved_run_id IS NULL`;
     const row = await this.database
       .prepare(`SELECT v.*,u.github_login ${eligible}`)
       .bind(id)
@@ -258,7 +269,7 @@ export class D1PublicationVerifier {
   private async authenticate(id: string, token: string) {
     if (!z.uuid().safeParse(id).success) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
     const row = await this.database
-      .prepare(`SELECT v.*,u.github_login ${verificationFrom}`)
+      .prepare(`SELECT v.*,u.github_login ${this.verificationFrom}`)
       .bind(id)
       .first<VerificationRow>();
     if (!row) throw new Error('PUBLISH_RUNNER_UNAUTHORIZED');
@@ -286,7 +297,7 @@ export class D1PublicationVerifier {
     const { row, scope, identity } = context;
     return this.database
       .prepare(
-        `SELECT json(CASE WHEN EXISTS(SELECT 1 ${verificationFrom}
+        `SELECT json(CASE WHEN EXISTS(SELECT 1 ${this.verificationFrom}
       AND v.nonce=? AND v.workflow_revision=? AND v.source_json=? AND v.reserved_run_id=? AND v.reserved_run_attempt=?
       AND v.reserved_check_run_id!=? AND (v.check_run_id${mode === 'finalize' ? '!=' : '='}? ${mode === 'claim' ? 'OR v.check_run_id IS NULL' : ''})
       ${mode === 'claim' ? '' : "AND v.status='running'"}
@@ -309,7 +320,7 @@ export class D1PublicationVerifier {
     await this.database.batch([
       this.database
         .prepare(
-          `SELECT json(CASE WHEN EXISTS(SELECT 1 ${verificationFrom}
+          `SELECT json(CASE WHEN EXISTS(SELECT 1 ${this.verificationFrom}
         AND v.nonce=? AND v.workflow_revision=? AND v.source_json=? AND v.status='queued'
         AND v.check_run_id IS NULL AND (v.reserved_run_id IS NULL OR
           (v.reserved_run_id=? AND v.reserved_run_attempt=? AND v.reserved_check_run_id=?))
@@ -535,7 +546,7 @@ export class D1PublicationVerifier {
     const allowed = this.database
       .prepare(
         `SELECT 1 FROM publication_verifications v JOIN publish_jobs j ON j.id=v.job_id
-      JOIN user_roles u ON u.email=? WHERE v.id=? AND v.job_id=? AND v.target=? AND ${authority}`,
+      JOIN user_roles u ON u.email=? WHERE v.id=? AND v.job_id=? AND v.target=? AND ${this.authority}`,
       )
       .bind(
         input.actor,
@@ -571,7 +582,7 @@ export class D1PublicationVerifier {
   async reconcile(value: z.infer<typeof VerificationRecoverySchema>) {
     const { input, hash, receipt } = await this.recoveryRequest(value, 'reconcile');
     if (await receipt()) return { recovered: true as const };
-    const eligible = verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
+    const eligible = this.verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
     const row = await this.database
       .prepare(
         `SELECT v.*,u.github_login ${eligible} AND v.target=? AND v.job_id=? AND v.dispatch_count=?`,
@@ -643,7 +654,7 @@ export class D1PublicationVerifier {
   async retry(value: z.infer<typeof VerificationRecoverySchema>) {
     const { input, hash, receipt } = await this.recoveryRequest(value, 'retry');
     if (await receipt()) return this.captureRetry(input);
-    const eligible = verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
+    const eligible = this.verificationFrom.replace('u.email=v.requested_by', 'u.email=?');
     const row = await this.database
       .prepare(
         `SELECT v.*,u.github_login ${eligible} AND v.target=? AND v.job_id=? AND v.dispatch_count=?`,
@@ -787,7 +798,7 @@ export class D1PublicationVerifier {
     sha.parse(this.callerBlobs[input.target]);
     const actor = this.database
       .prepare(
-        `SELECT u.github_login FROM user_roles u JOIN publish_jobs j ON j.id=? WHERE u.email=? AND ${authority}
+        `SELECT u.github_login FROM user_roles u JOIN publish_jobs j ON j.id=? WHERE u.email=? AND ${this.authority}
         AND j.repository='PointCommunity/${publicationDestination(input.target, this.config.builderOrigin).repository}'`,
       )
       .bind(input.jobId, input.actor, input.target, input.target);
@@ -939,7 +950,7 @@ export class D1PublicationVerifier {
             `SELECT json(CASE WHEN EXISTS(SELECT 1 FROM publish_jobs j
           JOIN publication_inputs pi ON pi.job_id=j.id JOIN publication_runs pr ON pr.job_id=j.id
           JOIN publication_slots ps ON ps.job_id=j.id JOIN user_roles u ON u.email=?
-          WHERE j.id=? AND ${authority} AND ${captured} AND u.github_login=?
+          WHERE j.id=? AND ${this.authority} AND ${captured} AND u.github_login=?
             AND pr.run_id=? AND pr.run_attempt=? AND pr.check_run_id=? AND pr.dispatch_revision=?
             AND pi.workflow_revision=? AND pr.build_json=? AND pr.deployment_json IS ? AND j.result_sha=?
             AND COALESCE((SELECT MAX(attempt) FROM publication_verifications WHERE job_id=j.id),0)=?

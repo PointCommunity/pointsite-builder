@@ -429,8 +429,11 @@
         authorized.
       </li>
       <li>
-        Canary public Production publication and rollback are disabled. Public-site Staging remains
-        separate and public under the approved Pages fallback.
+        Issue #70 enables Administrator-authorized publication and rollback from Builder Canary only
+        to pointsite-canary at https://canary.pointatx.org, through pointsite-staging-canary.
+        Builder Production uses pointsite-staging and pointsite at https://pointatx.org. Qualify the
+        Canary lane before changing Production callers. Public-site Staging remains separate and
+        public under the approved Pages fallback.
       </li>
       <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
       <li>Never deploy or publish the public PointSite from this pipeline.</li>

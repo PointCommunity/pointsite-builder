@@ -50,7 +50,7 @@ describe('PointSite Builder foundation', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Website drafts' })).toBeVisible();
-    expect(screen.getByText(/Production publishing requires an Administrator/i)).toBeVisible();
+    expect(screen.getByText(/Public site publishing requires an Administrator/i)).toBeVisible();
     expect(screen.getByText('viewer@pointatx.org')).toBeVisible();
   });
 

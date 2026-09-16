@@ -46,7 +46,7 @@ export function getPublishingNextStep(
             : 'This exact saved revision passed its private check and is ready for Staging.',
         effect:
           lifecycle.step === 1
-            ? 'The private check changes nothing. If it passes and Staging is free, Builder publishes one publicly readable candidate; Production remains unchanged.'
+            ? 'The private check changes nothing. If it passes and Staging is free, Builder publishes one publicly readable candidate; The public site remains unchanged.'
             : 'Publishing creates one Staging candidate. It does not change Production.',
         primaryAction:
           lifecycle.step === 1
@@ -90,7 +90,7 @@ export function getPublishingNextStep(
       return {
         title: 'Review Staging, then accept this version',
         guidance: 'Complete the two actions below in order.',
-        effect: 'Acceptance records this exact Staging version. Production remains unchanged.',
+        effect: 'Acceptance records this exact Staging version. The public site remains unchanged.',
         primaryAction: 'Open Staging for review',
       };
     case 'accepted':
@@ -98,11 +98,11 @@ export function getPublishingNextStep(
         title: 'Your Staging work is complete',
         guidance:
           role === 'administrator'
-            ? 'Check the Production section below for saved progress and available actions for this accepted version.'
+            ? 'Check the public site section below for saved progress and available actions for this accepted version.'
             : 'No more publishing action is required from you. This exact version is now the official Staging candidate.',
         effect:
           role === 'administrator'
-            ? 'Acceptance records the Staging decision. Production has its own publication status.'
+            ? 'Acceptance records the Staging decision. The public site has its own publication status.'
             : 'The accepted Staging version is recorded. The public site was not changed.',
         primaryAction: null,
       };
@@ -112,7 +112,7 @@ export function getPublishingNextStep(
             title: 'Try publishing this revision again',
             guidance: 'The earlier attempt stopped before the Staging candidate was completed.',
             effect:
-              'Retrying uses this exact saved revision. If it fails again, a site maintainer must investigate; Production remains unchanged.',
+              'Retrying uses this exact saved revision. If it fails again, a site maintainer must investigate; The public site remains unchanged.',
             primaryAction: 'Try publishing again',
           }
         : {

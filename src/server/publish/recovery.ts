@@ -119,8 +119,10 @@ export async function recoverQueuedPublication(
   const authority = database
     .prepare(
       `SELECT j.environment FROM publish_jobs j JOIN user_roles u ON u.email=?
-    WHERE j.id=? AND u.active=1 AND ((j.environment='staging' AND u.role IN ('publisher','administrator'))
-      OR (j.environment='production-merge' AND u.role='administrator'))`,
+    WHERE j.id=? AND u.active=1 AND ((j.environment='staging' AND u.role IN ('publisher','administrator')
+      AND j.repository='PointCommunity/${publicationDestination('staging', builderOrigin).repository}')
+      OR (j.environment='production-merge' AND u.role='administrator'
+      AND j.repository='PointCommunity/${publicationDestination('production', builderOrigin).repository}'))`,
     )
     .bind(input.actor, input.jobId);
   if (!(await authority.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');

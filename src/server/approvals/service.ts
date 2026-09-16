@@ -377,8 +377,11 @@ export class D1ApprovalService {
     )
       throw new Error('APPROVAL_EVIDENCE_INCOMPLETE');
     const latest = await this.getLatestForJob(row.id);
-    if ((latest?.id ?? null) !== input.expectedApprovalId)
+    if ((latest?.id ?? null) !== input.expectedApprovalId) {
+      const committed = await receipt();
+      if (committed) return committed;
       throw new Error('APPROVAL_STATE_CHANGED');
+    }
     if (input.decision === 'revoked' && latest && !sameTuple(latest.tuple, expected))
       throw new Error('APPROVAL_TUPLE_MISMATCH');
     const request: typeof fetch = (url, init) =>
@@ -415,7 +418,7 @@ export class D1ApprovalService {
       )
         throw new Error('STAGING_CANDIDATE_DRIFT');
       const production = await request(
-        'https://api.github.com/repos/PointCommunity/pointsite/git/ref/heads/main',
+        `https://api.github.com/repos/PointCommunity/${publicationDestination('production', this.config.builderOrigin).repository}/git/ref/heads/main`,
         { headers: { 'user-agent': 'PointSite-Builder', accept: 'application/vnd.github+json' } },
       );
       if (!production.ok) throw new Error('PRODUCTION_BASE_UNAVAILABLE');

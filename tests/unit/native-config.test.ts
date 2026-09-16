@@ -15,12 +15,12 @@ const fixture = {
   GITHUB_CLIENT_SECRET: 'b'.repeat(20),
   SESSION_SECRET: 'c'.repeat(32),
 };
-test('native Canary requires its own origin, real sign-in and disabled public Production publishing', () => {
+test('native Canary requires its own origin and real sign-in for its public lane', () => {
   expect(parseConfig(fixture).runtime).toBe('node');
   expect(() =>
     parseConfig({ ...fixture, STAGING_REPOSITORY: 'PointCommunity/pointsite-staging' }),
   ).toThrow();
-  expect(() => parseConfig({ ...fixture, PRODUCTION_ENABLED: 'true' })).toThrow();
+  expect(parseConfig({ ...fixture, PRODUCTION_ENABLED: 'true' }).productionEnabled).toBe(true);
   expect(() =>
     parseConfig({ ...fixture, BUILDER_ORIGIN: 'https://builder.eaglepass.io' }),
   ).toThrow();

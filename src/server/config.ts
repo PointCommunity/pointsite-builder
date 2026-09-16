@@ -36,13 +36,6 @@ const RuntimeConfigSchema = z
         message: 'Staging repository must match the Builder environment',
       });
     }
-    if (value.ENVIRONMENT === 'canary' && value.PRODUCTION_ENABLED === 'true') {
-      context.addIssue({
-        code: 'custom',
-        path: ['PRODUCTION_ENABLED'],
-        message: 'Canary cannot publish public Production',
-      });
-    }
     if (value.RUNTIME === 'node' && value.ENVIRONMENT !== 'local') {
       const expected =
         value.ENVIRONMENT === 'canary'

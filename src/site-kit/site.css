@@ -1490,6 +1490,10 @@ body:has(.point-site) {
   pointer-events: none;
   transform: translateY(-0.4rem);
 }
+.point-site .point-navigation--right .point-navigation__dropdown {
+  right: 0;
+  left: auto;
+}
 .point-site .point-navigation__item:hover .point-navigation__dropdown,
 .point-site .point-navigation__item:focus-within .point-navigation__dropdown {
   opacity: 1;
