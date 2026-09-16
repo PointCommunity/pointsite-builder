@@ -44,6 +44,7 @@ paths:
                       dashboard,
                       editor.layout,
                       editor.forms,
+                      editor.navigation,
                       editor.library,
                       editor.preview,
                       editor.history,

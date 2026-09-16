@@ -38,7 +38,6 @@ import { SiteFrame } from '../../site-kit/SiteRenderer';
 import siteCss from '../../site-kit/site.css?inline';
 import editorCanvasCss from './editor-canvas.css?inline';
 import { BlockInspector } from './BlockInspector';
-import { replaceNavigationItems } from '../settings/navigation-document';
 import { GridOverlay } from './GridOverlay';
 import { getGridBreakpoint, setGridBreakpoint, useGridBreakpoint } from './GridBreakpointContext';
 import { breakpointForWidth } from './grid-breakpoint';
@@ -866,6 +865,7 @@ function VisualEditorImpl({
   pageId,
   structureRevision,
   onEditFooter,
+  onEditNavigation,
   onPageIdChange,
   onStructureChange,
   toolbar,
@@ -874,6 +874,7 @@ function VisualEditorImpl({
   pageId: string;
   structureRevision: number;
   onEditFooter: () => void;
+  onEditNavigation: (id: string) => void;
   onPageIdChange: (id: string) => void;
   onStructureChange: () => void;
   toolbar: HTMLElement | null;
@@ -945,12 +946,7 @@ function VisualEditorImpl({
             block={value}
             document={document}
             onChange={onChange}
-            onNavigationChange={(navigation, designId) =>
-              updateDocument(
-                (next) => replaceNavigationItems(next, navigation, designId),
-                mutationForContext('navigation'),
-              )
-            }
+            onEditNavigation={onEditNavigation}
           />
         ),
       },

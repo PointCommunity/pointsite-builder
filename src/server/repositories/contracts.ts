@@ -9,11 +9,11 @@ import type {
 export type Role = 'viewer' | 'editor' | 'publisher' | 'administrator';
 export type DraftStatus = 'active' | 'archived' | 'deleted';
 export type EditorPanel =
-  'layout' | 'forms' | 'library' | 'preview' | 'history' | 'settings' | 'admin';
+  'layout' | 'forms' | 'navigation' | 'library' | 'preview' | 'history' | 'settings' | 'admin';
 
 export interface EditorViewState {
   draftId: string;
-  panel: EditorPanel;
+  panel: Exclude<EditorPanel, 'navigation'>;
   pageId: string | null;
   selectedElementId: string | null;
   previewViewport: 'phone' | 'tablet' | 'desktop';

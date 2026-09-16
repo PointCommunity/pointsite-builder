@@ -60,7 +60,21 @@
       <code>e43489e75c295409b4f4c02f70d338f51f0c5a27</code>. Issue #36 is open, In Progress, P1 /
       High / XL, assigned to brimdor, and the sole active Project card. The PM approved the
       recommended compatibility-first approach and coordinated consumer work. Bridge implementation
-      is underway in isolated worktrees; no release has occurred.
+      completed and was approved for Production. The bridge is live at image digest
+      <code>sha256:9b02188417bc5b8cece6be3fc9b81d8622dfffb1bd0a188b6c02b147d9e5137d</code>, source
+      <code>8c9ddc8f05b7544255e0502b7e897abf2d69a828</code>, merge
+      <code>d748048d99fcaede2bfb540fde08a51590b31687</code>, tree
+      <code>9ceb7de07e1ba6e4dfbd831abbda47daa83b4614</code>, GitOps
+      <code>7e46881681f157f0f209a9a30c4e570b16b1ecf0</code>. PR #74 records backup, exact-image
+      restart and authenticated Production evidence. This image is the required rollback target for
+      Designer activation. Phase two is now In Progress.
+    </p>
+    <p>
+      Rollback boundary: the retained bridge and SQLite editor_view_states constraint know the
+      existing workspace panel names only. Navigation uses its dedicated panel in the running UI,
+      but stores Settings as the resume panel. Reopening returns to Settings; named designs and
+      their edits remain intact. This avoids a database migration or unreadable rollback UI state.
+      Restore dedicated Navigation panel resume only after the rollback reader supports it.
     </p>
 
     <h2>Objective and acceptance</h2>
@@ -368,35 +382,68 @@
     </p>
 
     <h2>Dependency-ordered plan and tasks</h2>
+    <p>
+      Activation audit evidence: the initial Chromium inventory covered 308 combinations of seven
+      panels, eleven supported widths (721–2560px), both themes and 100%/200% text. Form checkbox
+      indicators were 13×44px and 13×88px. Shared indicator sizing now follows text, while labels
+      retain at least 44×44px targets. Expanded control-bound checks found clipped Preview zoom,
+      Form answer-type, Library toolbar, History filter, Social label and Admin add-person controls
+      at 200% text. Wrapping toolbars, bounded form grids and minimum-width corrections address the
+      shared causes. Visual review additionally found overlapping header controls and a cramped Form
+      Designer at 200% text; wrapping header groups and content-sized form columns correct these. A
+      header-overlap assertion now supplements viewport-bound checks. Inspector/fieldset borders and
+      stacked editor cards now use dividers and spacing. Publishing, every Settings category and the
+      Navigation inspector are included in the regression audit; screenshots supplement geometry
+      checks. Full cross-browser gates remain required before release.
+    </p>
+    <p>
+      Focused activation evidence: 19 migration, default-document and Designer tests pass. Native
+      SQLite checks import real schema-9 revisions in JSON and compact storage, migrate on read,
+      save schema 10 and reopen without changing historical bytes or checksums. Native browser
+      editing verifies design creation, rename, nesting, promotion, ordering, Layout assignment,
+      guarded deletion, heading focus and saved reload in light/dark themes. Browser regressions
+      exercise shared updates across two pages, an independent third-page design, pointer child
+      ordering and keyboard movement. No public candidate has been published.
+    </p>
+    <p>
+      Activation implementation: first finish the baseline width/theme/text-size audit, then add
+      tested pure menu movement and usage operations. Build one selected-item editor with native
+      drag reordering and buttons/parent selection sharing the same operation. Add stable design
+      selection, guarded deletion and a contained renderer preview. Integrate workspace routing,
+      checkout view state and Layout edit links, remove duplicate Settings/inspector menu editors,
+      then activate deterministic migration and update the protected consumers together. Test the
+      migration independently of schema-9 fixtures and retain the bridge image throughout. Finish
+      with the same sequential full QA and separate exact-candidate Canary approval.
+    </p>
     <ol>
       <li>
         Done: PM accepted the recommended compatibility release and protected-consumer coordination.
       </li>
       <li>
-        Complete fresh baseline browser audit; record concrete findings here before UI changes.
+        Done: complete fresh baseline browser audit and record concrete findings before UI changes.
       </li>
       <li>
-        Specify the bridge read/write contract, rollout ordering and exact rollback rehearsal; add
-        failing compatibility tests.
+        Done: specify the bridge read/write contract, rollout ordering and exact rollback rehearsal;
+        add failing compatibility tests.
       </li>
       <li>
-        Implement the bridge with existing schema, migration, renderer and persistence patterns;
-        validate old and new fixture round trips.
+        Done: implement the bridge with existing schema, migration, renderer and persistence
+        patterns; validate old and new fixture round trips.
       </li>
       <li>
-        Complete sequential QA, protected consumer verification, PR and Canary handoff for the
+        Done: complete sequential QA, protected consumer verification, PR and Canary handoff for the
         bridge; obtain exact release approvals.
       </li>
       <li>
-        Add deterministic migration, design-reference integrity, canonicalization and revision
+        Done: add deterministic migration, design-reference integrity, canonicalization and revision
         round-trip tests; implement the activated model.
       </li>
       <li>
-        Add tested item movement operations and the Designer with drag, keyboard and single-pointer
-        parity.
+        Done: add tested item movement operations and the Designer with drag, keyboard and
+        single-pointer parity.
       </li>
       <li>
-        Integrate tab/view-state/feedback routing, Layout selection, immediate placement and
+        Done: integrate tab/view-state/feedback routing, Layout selection, immediate placement and
         independent resizing.
       </li>
       <li>
@@ -426,17 +473,19 @@
       separate designs on two pages, then restored original source content byte-for-byte. Both
       consumers match all 17 canonical file hashes. Final publication review added design traversal
       to media selection, preserving existing destination restrictions and rejecting missing design
-      references. Focused publication, rollback and verification checks pass. Exact-image rehearsal
-      and releases remain pending. The full Designer and shared-style remediation remain subsequent
-      Issue #36 work.
+      references. Focused publication, rollback and verification checks passed. Exact-image
+      rehearsal and the approved bridge Production release subsequently completed; PR #74 records
+      the evidence. The activation candidate adds the full Designer and shared-style remediation.
     </p>
     <p>
       Reviewed runtime source: 8e0a568e21cf00518cc0e8754c7ce692e83b4461. Consumer changes:
       PointCommunity/pointsite-staging PR #30; pointsite-staging-canary PR #1; public PointSite
-      workflow references only, PR #2. Normal Staging and public caller merges wait for exact bridge
-      Canary approval. Before each environment transition, ensure no publication, verification or
-      rollback job is in flight. Preserve the prior source/runtime/caller tuple together for
-      rollback; changing only the image would leave caller hashes mismatched.
+      workflow references only, PR #2. All three bridge consumer PRs merged with the approved bridge
+      release. Activation runtime source is 3789751c8725f023945b9348d7b3b43737976f81. Its normal
+      Staging and public caller merges wait for exact activation Canary approval. Before each
+      environment transition, ensure no publication, verification or rollback job is in flight.
+      Preserve the prior source/runtime/caller tuple together for rollback; changing only the image
+      would leave caller hashes mismatched.
     </p>
 
     <h2>Implementation conventions and verification</h2>

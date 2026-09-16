@@ -1,9 +1,7 @@
-import { SiteDocumentSchema } from './schema';
-import { createCompatibilitySection } from './migrations';
+import { createCompatibilitySection, migrateDocument } from './migrations';
 import { createEditableHeaderSection } from './editable-header';
 import { createEditablePageHeroSection } from './editable-page-hero';
 import type { SiteDocument, SiteElement } from './types';
-import { RENDERER_VERSION, SCHEMA_VERSION } from './version';
 import { independentResponsiveValue } from './grid-layout';
 
 function uid(sequence: number): string {
@@ -789,8 +787,8 @@ const pages: SiteDocument['pages'] = [
 ];
 
 const rawDocument = {
-  schemaVersion: SCHEMA_VERSION,
-  rendererVersion: RENDERER_VERSION,
+  schemaVersion: 9,
+  rendererVersion: '9.0.0',
   site: {
     name: 'Point Community Church',
     shortName: 'Point ATX',
@@ -900,4 +898,4 @@ const rawDocument = {
   },
 };
 
-export const defaultSiteDocument: SiteDocument = SiteDocumentSchema.parse(rawDocument);
+export const defaultSiteDocument: SiteDocument = migrateDocument(rawDocument).document;

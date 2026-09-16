@@ -9,11 +9,12 @@ import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { canonicalize, checksumDocument } from '../../src/site-kit/canonicalize';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
-import { replaceNavigationItems } from '../../src/client/settings/navigation-document';
+import { prepareRevisionPayload } from '../../src/server/repositories/revision-payloads';
+import { legacyNavigationDocument } from '../fixtures/legacy-navigation';
 import { acquireDraftProof } from '../fixtures/draft-proof';
 
 test.each(['legacy', 'compact-v1'] as const)(
-  'bridge preserves both document versions through %s save, reopen and history',
+  'activation preserves immutable schema-9 bytes through %s migration, save and reopen',
   async (format) => {
     const directory = await mkdtemp(join(tmpdir(), 'builder-navigation-36-'));
     let database = new SqliteDatabase(join(directory, 'workspace.sqlite'));
@@ -33,6 +34,63 @@ test.each(['legacy', 'compact-v1'] as const)(
         actor,
         idempotencyKey: crypto.randomUUID(),
         requestId: 'fixture',
+      });
+      // Import an actual pre-activation revision; createDraft now writes schema 10.
+      const legacy = legacyNavigationDocument();
+      const legacyId = crypto.randomUUID();
+      const legacyChecksum = await checksumDocument(legacy);
+      const payload =
+        format === 'compact-v1'
+          ? await prepareRevisionPayload(database, {
+              id: legacyId,
+              draftId: old.id,
+              sequence: 2,
+              document: legacy,
+            })
+          : { documentJson: canonicalize(legacy), statements: [] };
+      await database.batch([
+        database
+          .prepare(
+            `INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at)
+          VALUES (?,?,2,?,?,?,9,'9.0.0',?,'fixture')`,
+          )
+          .bind(
+            legacyId,
+            old.id,
+            old.latestRevisionId,
+            legacyChecksum,
+            payload.documentJson,
+            actor,
+          ),
+        ...payload.statements,
+        database
+          .prepare('UPDATE drafts SET latest_revision_id=? WHERE id=?')
+          .bind(legacyId, old.id),
+      ]);
+      const storedLegacy = async () => ({
+        revision: await database
+          .prepare('SELECT * FROM revisions WHERE id=?')
+          .bind(legacyId)
+          .first(),
+        payload: await database
+          .prepare('SELECT * FROM revision_payloads WHERE revision_id=?')
+          .bind(legacyId)
+          .first(),
+      });
+      const immutableBefore = await storedLegacy();
+      const migrated = await repository.getDraft(old.id);
+      expect(migrated.document).toEqual(defaultSiteDocument);
+      expect(migrated.revision.checksum).toBe(legacyChecksum);
+      const changedLegacy = structuredClone(migrated.document);
+      changedLegacy.navigationDesigns![0].items[0].label = 'Migrated menu';
+      await repository.saveDraft({
+        draftId: old.id,
+        ...(await acquireDraftProof(repository, old.id, actor)),
+        document: changedLegacy,
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'fixture',
+        action: { category: 'text-edit', context: 'navigation' },
       });
       const current = upgradeNavigation(defaultSiteDocument);
       current.navigationDesigns!.push({
@@ -55,7 +113,8 @@ test.each(['legacy', 'compact-v1'] as const)(
       });
       const items = structuredClone(current.navigationDesigns![1].items);
       items[0].label = 'Shared navigation change';
-      const updated = replaceNavigationItems(current, items, designId);
+      const updated = structuredClone(current);
+      updated.navigationDesigns![1].items = items;
       const saved = await repository.saveDraft({
         draftId: draft.id,
         ...(await acquireDraftProof(repository, draft.id, actor)),
@@ -72,8 +131,10 @@ test.each(['legacy', 'compact-v1'] as const)(
       database = new SqliteDatabase(join(directory, 'workspace.sqlite'));
       repository = new D1DraftRepository(database, undefined, format);
       expect(canonicalize((await repository.getDraft(old.id)).document)).toBe(
-        canonicalize(defaultSiteDocument),
+        canonicalize(changedLegacy),
       );
+      expect((await repository.getRevision(legacyId)).document).toEqual(defaultSiteDocument);
+      expect(await storedLegacy()).toEqual(immutableBefore);
       expect((await repository.getDraft(draft.id)).document).toEqual(updated);
       expect((await repository.getRevision(draft.revision.id)).document).toEqual(current);
       expect((await repository.getRevision(saved.revision.id)).actionContext).toBe('navigation');

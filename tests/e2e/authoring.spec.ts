@@ -533,9 +533,77 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
-test('compatibility bridge edits and reloads selected designs without downgrading a draft', async ({
-  page,
-}) => {
+test('Navigation Designer creates, shares and protects designs across pages', async ({ page }) => {
+  const controls = await installApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const tabs = page.getByRole('navigation', { name: 'Editor sections' });
+  await tabs.getByRole('button', { name: 'Navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'New design' }).click();
+  await page.getByLabel('Design name', { exact: true }).fill('Shared secondary');
+  await page.getByRole('button', { name: 'Add top-level link' }).click();
+  await page.getByLabel('Link label', { exact: true }).fill('Visit');
+  await page.getByLabel('Internal page').selectOption('/contact');
+  await page.getByRole('button', { name: 'Add child link' }).click();
+  await page.getByLabel('Link label', { exact: true }).fill('First child');
+  await page.getByRole('button', { name: '1. Visit /contact', exact: true }).click();
+  await page.getByRole('button', { name: 'Add child link' }).click();
+  await page.getByLabel('Link label', { exact: true }).fill('Second child');
+  await page
+    .getByRole('button', { name: 'Child: Second child /', exact: true })
+    .dragTo(page.getByRole('button', { name: 'Child: First child /', exact: true }));
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Second child moved to position 1' }),
+  ).toBeVisible();
+  await page.getByLabel('Parent link').selectOption('');
+  await page.getByRole('button', { name: 'Move earlier' }).press('Enter');
+  await expect(page.getByRole('button', { name: '1. Second child /', exact: true })).toBeVisible();
+  const designId = await page
+    .getByRole('combobox', { name: 'Navigation design', exact: true })
+    .inputValue();
+  await tabs.getByRole('button', { name: 'Layout', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  for (const title of ['Home', 'Who We Are']) {
+    await page.getByLabel('Choose page').selectOption({ label: title });
+    await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
+    await page
+      .getByRole('combobox', { name: 'Navigation design', exact: true })
+      .selectOption(designId);
+    await expect(canvas.getByRole('link', { name: 'Visit', exact: true })).toBeVisible();
+  }
+  await page.getByRole('button', { name: 'Edit in Navigation Designer' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Navigation Designer', exact: true }),
+  ).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Delete design' })).toBeDisabled();
+  await expect(page.getByText(/Used by 2 Navigation elements/)).toBeVisible();
+  await page.getByLabel('Design name', { exact: true }).fill('Renamed secondary');
+  await page.getByLabel('Link label', { exact: true }).fill('Shared update');
+  await page.getByRole('heading', { name: 'Navigation Designer', exact: true }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await tabs.getByRole('button', { name: 'Layout', exact: true }).click();
+  for (const title of ['Home', 'Who We Are']) {
+    await page.getByLabel('Choose page').selectOption({ label: title });
+    await expect(canvas.getByRole('link', { name: 'Shared update', exact: true })).toBeVisible();
+  }
+  await page.getByLabel('Choose page').selectOption({ label: 'Our Beliefs' });
+  await expect(canvas.getByRole('link', { name: 'About', exact: true })).toBeVisible();
+  await tabs.getByRole('button', { name: 'Navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'New design' }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Delete design' }).click();
+  await expect(page.getByRole('option', { name: 'New navigation', exact: true })).toHaveCount(0);
+  expect(controls.saveRequests.length).toBeGreaterThan(0);
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  const closingCheckout = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/checkout'),
+  );
+  await page.getByRole('button', { name: '← All drafts', exact: true }).click();
+  expect((await closingCheckout).postDataJSON().viewState.panel).toBe('settings');
+  await expect(page.getByRole('heading', { name: 'Website drafts' })).toBeVisible();
+});
+
+test('Navigation Designer edits and reloads independently selected designs', async ({ page }) => {
   const document = upgradeNavigation(defaultSiteDocument);
   const secondary = {
     id: '00000000-0000-4000-8000-000000000037',
@@ -546,24 +614,17 @@ test('compatibility bridge edits and reloads selected designs without downgradin
   await installApi(page, 'administrator', 'admin', (target) => Object.assign(target, document));
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page
-    .getByRole('navigation', { name: 'Settings categories' })
-    .getByRole('button', { name: 'Navigation', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await page
     .getByRole('combobox', { name: 'Navigation design', exact: true })
     .selectOption(secondary.id);
-  await page
-    .getByRole('group', { name: 'Secondary link', exact: true })
-    .getByLabel('Label', { exact: true })
-    .fill('Updated secondary');
-  await page.getByRole('heading', { name: 'Navigation', exact: true }).click();
+  await page.getByLabel('Link label', { exact: true }).fill('Updated secondary');
+  await page.getByRole('heading', { name: 'Navigation Designer', exact: true }).click();
   await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   await page
     .getByRole('combobox', { name: 'Navigation design', exact: true })
     .selectOption(document.navigationDesigns![0].id);
-  await expect(page.getByRole('group', { name: 'About', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Link label', { exact: true })).toHaveValue('About');
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
@@ -592,7 +653,7 @@ test('compact categories and questions preserve edits without navigation revisio
     await page.getByRole('button', { name: panel, exact: true }).click();
   }
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  for (const category of ['Footer', 'Social', 'Navigation', 'Collections', 'Design', 'Identity']) {
+  for (const category of ['Footer', 'Social', 'Collections', 'Design', 'Identity']) {
     await page
       .getByRole('navigation', { name: 'Settings categories' })
       .getByRole('button', { name: category, exact: true })
@@ -2872,7 +2933,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Split feature', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Navigation', exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Linked media', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save now', exact: true })).toHaveCount(0);
@@ -3024,7 +3085,7 @@ test('ships the logo and menu as independently editable grid elements', async ({
   await expect(canvas.getByRole('img', { name: 'Point Community Church' })).toBeVisible();
   await expect(canvas.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Navigation', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Navigation', exact: true }).last()).toBeVisible();
 
   await canvas.getByRole('button', { name: 'Church navigation', exact: true }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Navigation' })).toBeVisible();
@@ -3037,34 +3098,33 @@ test('ships the logo and menu as independently editable grid elements', async ({
     '8',
   );
 
-  const aboutLabel = page
-    .getByRole('group', { name: 'About' })
-    .getByLabel('Label', { exact: true })
-    .first();
+  await page.getByRole('button', { name: 'Edit in Navigation Designer' }).click();
+  const aboutLabel = page.getByLabel('Link label', { exact: true });
   await aboutLabel.fill('Our church');
-  await expect(
-    page.getByRole('group', { name: 'Our church' }).getByLabel('Label', { exact: true }).first(),
-  ).toHaveValue('Our church');
-  await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toBeVisible();
-
-  const aboutLink = page
-    .getByRole('group', { name: 'Our church' })
-    .getByRole('group', { name: 'Link' })
-    .first();
+  await expect(page.getByLabel('Link label', { exact: true })).toHaveValue('Our church');
+  const menuPreview = page.locator('iframe.preview-frame').contentFrame();
+  await expect(menuPreview.getByRole('link', { name: 'Our church', exact: true })).toBeVisible();
+  const aboutLink = page.getByRole('group', { name: 'Destination', exact: true });
   await aboutLink.getByLabel('Internal page').selectOption('/contact');
-  await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
+  await expect(menuPreview.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
     'href',
     '/contact',
   );
+  await menuPreview.getByRole('link', { name: 'Our church', exact: true }).click();
+  await expect(menuPreview.getByRole('link', { name: 'Our church', exact: true })).toBeVisible();
   await aboutLink.getByLabel('Type').selectOption('external');
   await aboutLink.getByLabel('External URL').fill('pointatx.org');
   await expect(aboutLink.getByLabel('External URL')).toHaveAttribute('aria-invalid', 'true');
   await aboutLink.getByLabel('External URL').fill('http://legacy.example.com');
-  await expect(canvas.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
+  await expect(menuPreview.getByRole('link', { name: 'Our church', exact: true })).toHaveAttribute(
     'href',
     'http://legacy.example.com',
   );
+  await menuPreview.getByRole('link', { name: 'Our church', exact: true }).click();
+  await expect(menuPreview.getByRole('link', { name: 'Our church', exact: true })).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
 
+  await page.getByRole('button', { name: 'Layout', exact: true }).click();
   await canvas.getByRole('img', { name: 'Point Community Church' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Image' })).toBeVisible();
   await canvas.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -3222,10 +3282,7 @@ test('attributes completed actions across Forms, Library, and whole-site setting
   );
 
   await page.getByRole('button', { name: 'Navigation', exact: true }).click();
-  const navigationLabel = page
-    .getByRole('group', { name: 'About' })
-    .getByLabel('Label', { exact: true })
-    .first();
+  const navigationLabel = page.getByLabel('Link label', { exact: true });
   await expectAction(
     async () => {
       await navigationLabel.fill('About Point');
@@ -3234,6 +3291,7 @@ test('attributes completed actions across Forms, Library, and whole-site setting
     { category: 'text-edit', context: 'navigation' },
   );
 
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Collections', exact: true }).click();
   await expectAction(() => page.getByRole('button', { name: 'Add person' }).click(), {
     category: 'add',

@@ -13,7 +13,7 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
-  it('selects a named design and routes edits to its stable identity in the compatibility editor', () => {
+  it('selects a named design and routes edits to its stable identity in Navigation Designer', () => {
     const document = upgradeNavigation(defaultSiteDocument);
     const first = document.navigationDesigns![0];
     const second = { ...structuredClone(first), id: crypto.randomUUID(), name: 'Secondary' };
@@ -23,13 +23,13 @@ describe('BlockInspector', () => {
       (item) => item.element.type === 'navigation',
     )!.element;
     const onChange = vi.fn();
-    const onNavigationChange = vi.fn();
+    const onEditNavigation = vi.fn();
     const { rerender } = render(
       <BlockInspector
         block={block}
         document={document}
         onChange={onChange}
-        onNavigationChange={onNavigationChange}
+        onEditNavigation={onEditNavigation}
       />,
     );
     fireEvent.change(screen.getByLabelText('Navigation design'), { target: { value: second.id } });
@@ -39,17 +39,11 @@ describe('BlockInspector', () => {
         block={{ ...block, navigationDesignId: second.id } as typeof block}
         document={document}
         onChange={onChange}
-        onNavigationChange={onNavigationChange}
+        onEditNavigation={onEditNavigation}
       />,
     );
-    const label = within(screen.getByRole('group', { name: 'Secondary link' })).getByLabelText(
-      'Label',
-    );
-    fireEvent.change(label, { target: { value: 'Shared edit' } });
-    expect(onNavigationChange).toHaveBeenCalledWith(
-      [expect.objectContaining({ label: 'Shared edit' })],
-      second.id,
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit in Navigation Designer' }));
+    expect(onEditNavigation).toHaveBeenCalledWith(second.id);
     expect(screen.queryByRole('group', { name: 'About' })).not.toBeInTheDocument();
   });
   it('offers all People styles while keeping legacy leadership selections', () => {
@@ -103,29 +97,21 @@ describe('BlockInspector', () => {
     );
   });
 
-  it('edits the shared menu while a Navigation element is selected', () => {
+  it('keeps placement-specific presentation separate from shared menu editing', () => {
     const navigation = allBlocks.find((item) => item.type === 'navigation')!;
-    const onNavigationChange = vi.fn();
+    const onEditNavigation = vi.fn();
     render(
       <BlockInspector
         block={navigation}
         document={defaultSiteDocument}
         onChange={vi.fn()}
-        onNavigationChange={onNavigationChange}
+        onEditNavigation={onEditNavigation}
       />,
     );
 
-    const menuLabel = within(screen.getByRole('group', { name: 'About' })).getAllByLabelText(
-      'Label',
-    )[0];
-    fireEvent.change(menuLabel, { target: { value: 'Our church' } });
-    expect(onNavigationChange).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.objectContaining({ label: 'Our church' })]),
-    );
-    expect(menuLabel).toHaveValue('Our church');
-    expect(
-      within(screen.getByRole('group', { name: 'Our church' })).getAllByLabelText('Type')[0],
-    ).toHaveValue('internal');
+    expect(screen.getByLabelText('Navigation label')).toBeInTheDocument();
+    expect(screen.getByLabelText('Navigation alignment')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'About' })).not.toBeInTheDocument();
   });
 
   it('offers complete horizontal and vertical alignment for Split View text', () => {
