@@ -1883,6 +1883,37 @@ for (const surface of ['transparent', 'canvas', 'primary'] as const) {
   }
 }
 
+test('right-aligned Navigation dropdowns stay inside the published viewport', async ({ page }) => {
+  await installApi(page, 'administrator', 'admin', (document) => {
+    const navigation = document.navigationDesigns![0].items;
+    navigation.at(-1)!.children = [
+      { id: '70000000-0000-4000-8000-000000000070', label: 'Contact details', href: '/contact' },
+    ];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  await page.getByRole('button', { name: 'Preview at desktop width' }).click();
+  const menu = preview.getByRole('navigation', { name: 'Church navigation' });
+  const parent = menu.getByRole('link', { name: 'Contact', exact: true });
+  const dropdown = menu.locator('.point-navigation__dropdown').last();
+  const fits = () =>
+    preview.locator('html').evaluate((element) => element.scrollWidth <= innerWidth + 1);
+  await expect.poll(fits).toBe(true);
+  await parent.hover();
+  await expect(dropdown).toHaveCSS('opacity', '1');
+  expect(
+    await dropdown.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth;
+    }),
+  ).toBe(true);
+  await parent.focus();
+  await expect(menu.getByRole('link', { name: 'Contact details', exact: true })).toBeVisible();
+  await expect.poll(fits).toBe(true);
+});
+
 test('previews the same renderer at mobile, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();

@@ -424,6 +424,34 @@ const repository = `PointCommunity/${destination.repository}`;</pre>
       editing remains blocked. Dependency audit reported zero vulnerabilities.
     </p>
 
+    <h2>Canary review finding: navigation dropdown overflow</h2>
+    <p>
+      Staging run 35127566253 reached browser verification but stopped before candidate commit or
+      deployment. A private local rebuild of its exact captured schema-10 inputs reproduced the
+      failure: a right-aligned Navigation dropdown extended 28 pixels beyond the 1280-pixel
+      viewport. Its left-anchored, 13-rem panel contributed page overflow even while transparent.
+      Align these panels to their parent's right edge in the shared renderer, synchronize the
+      reviewed runtime, and keep the strict publication browser gate unchanged. Verify closed,
+      hovered and focused states plus the captured candidate at all publication widths before
+      updating Canary pins.
+    </p>
+
+    <p>
+      The new regression fails on the original CSS and passes in Chromium, Firefox and WebKit after
+      the four-line fix. Rebuilding the captured candidate with the fixed CSS passes all 33 checks
+      (11 pages at 360, 768 and 1280 pixels), with no retained layout or accessibility exceptions.
+      The strict publication verifier is unchanged. Only new publication runtime pins advance;
+      verification and rollback runtime pins retain their previously reviewed identities.
+    </p>
+    <p>
+      Final repair gates passed: 772 tests, performance p95 0.95 ms, 472,333 JavaScript gzip bytes,
+      294 browser passes and 20 existing skips, and zero dependency vulnerabilities. Hands-on review
+      of the captured output confirmed closed, hovered and keyboard-focused dropdown containment;
+      page widths remained 1280, 768 and 360 pixels respectively, with no console errors or warnings.
+      The runtime separately passed 57 tests, lint/build/TypeScript, 45 browser checks with three
+      existing skips, dependency audit and exact-head Quality.
+    </p>
+
     <h2>Commands and testing strategy</h2>
     <p>
       Use repository-native Vitest/integration/browser tests with bounded workers. Run full suites
