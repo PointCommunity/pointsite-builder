@@ -24,6 +24,7 @@ import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
 import { SiteSettings } from '../settings/SiteSettings';
 import { FormsEditor } from '../settings/FormsEditor';
+import { NavigationDesigner } from '../settings/NavigationDesigner';
 import { StagingPublish } from '../publish/StagingPublish';
 import { MediaLibrary } from '../media/MediaLibrary';
 import { draftDisplayDocument } from '../media/draft-display-document';
@@ -42,6 +43,7 @@ type Panel = EditorPanel;
 const panelLabels: Record<Panel, string> = {
   layout: 'Layout',
   forms: 'Forms',
+  navigation: 'Navigation',
   library: 'Library',
   preview: 'Preview',
   history: 'History',
@@ -137,6 +139,14 @@ function Workspace({
         : (checkout?.viewState?.panel ?? 'layout'),
   );
   const [publishOpen, setPublishOpen] = useState(false);
+  const [navigationDesignId, setNavigationDesignId] = useState('');
+  const openNavigationDesign = useCallback((id: string) => {
+    setNavigationDesignId(id);
+    setPanel('navigation');
+    window.requestAnimationFrame(() =>
+      globalThis.document.getElementById('navigation-designer-title')?.focus(),
+    );
+  }, []);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
   const [pageId, setPageId] = useState(
     document.pages.some((page) => page.id === checkout?.viewState?.pageId)
@@ -173,7 +183,8 @@ function Workspace({
   const viewState = useCallback(
     (): EditorViewState => ({
       draftId: draft.id,
-      panel,
+      // ponytail: resume in Settings until the retained rollback reader supports Navigation.
+      panel: panel === 'navigation' ? 'settings' : panel,
       pageId: pageId || null,
       selectedElementId: null,
       previewViewport: checkout?.viewState?.previewViewport ?? 'desktop',
@@ -349,6 +360,7 @@ function Workspace({
   const availablePanels: Panel[] = [
     'layout',
     'forms',
+    'navigation',
     'library',
     'preview',
     'history',
@@ -536,7 +548,7 @@ function Workspace({
       </nav>
       {panel === 'layout' ? (
         <main id="main-content" className="content-workspace">
-          <section className="canvas-shell">
+          <section className="canvas-shell" aria-label="Layout Designer">
             {editable ? (
               <Suspense fallback={<p>Loading visual editor…</p>}>
                 <VisualEditor
@@ -544,6 +556,7 @@ function Workspace({
                   pageId={pageId}
                   structureRevision={structureRevision}
                   onEditFooter={openFooterSettings}
+                  onEditNavigation={openNavigationDesign}
                   onPageIdChange={setPageId}
                   onStructureChange={handleStructureChange}
                   toolbar={layoutToolbar}
@@ -573,6 +586,25 @@ function Workspace({
               }
               onChange={(forms) =>
                 updateDocument((next) => ({ ...next, forms }), mutationForContext('forms'))
+              }
+            />
+          ) : (
+            <p>Viewer access is read only.</p>
+          )}
+        </main>
+      ) : null}
+      {panel === 'navigation' ? (
+        <main id="main-content" className="single-panel">
+          {editable ? (
+            <NavigationDesigner
+              document={document}
+              selectedId={navigationDesignId}
+              onSelect={setNavigationDesignId}
+              onChange={(navigationDesigns) =>
+                updateDocument(
+                  (next) => ({ ...next, navigationDesigns }),
+                  mutationForContext('navigation'),
+                )
               }
             />
           ) : (

@@ -4,17 +4,20 @@ import { canonicalize } from '../../src/site-kit/canonicalize';
 import { migrateDocument, upgradeNavigation } from '../../src/site-kit/migrations';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { renderBlock } from '../../src/site-kit/registry';
+import { legacyNavigationDocument } from '../fixtures/legacy-navigation';
 
 describe('Navigation compatibility reader', () => {
-  it('keeps legacy reads and writes byte-equivalent until activation', () => {
-    const before = canonicalize(defaultSiteDocument);
-    expect(migrateDocument(JSON.parse(before)).applied).toEqual([]);
-    expect(canonicalize(migrateDocument(JSON.parse(before)).document)).toBe(before);
-    expect(defaultSiteDocument.schemaVersion).toBe(9);
+  it('activates migration on read without mutating the legacy input', () => {
+    const legacy = legacyNavigationDocument();
+    const before = canonicalize(legacy);
+    const migrated = migrateDocument(legacy);
+    expect(migrated.applied).toEqual(['9-to-10']);
+    expect(migrated.document).toEqual(defaultSiteDocument);
+    expect(canonicalize(legacy)).toBe(before);
   });
 
   it('explicitly upgrades every reference deterministically without changing placement or links', () => {
-    const before = structuredClone(defaultSiteDocument);
+    const before = legacyNavigationDocument();
     const next = upgradeNavigation(before);
     expect(next.schemaVersion).toBe(10);
     expect(next.navigation).toEqual([]);
@@ -35,7 +38,7 @@ describe('Navigation compatibility reader', () => {
         }
       }
     }
-    expect(before).toEqual(defaultSiteDocument);
+    expect(before).toEqual(legacyNavigationDocument());
     expect(upgradeNavigation(before)).toEqual(next);
     expect(upgradeNavigation(next)).toEqual(next);
     expect(migrateDocument(next)).toEqual({ document: next, applied: [] });
@@ -67,7 +70,7 @@ describe('Navigation compatibility reader', () => {
   });
 
   it('repairs legacy duplicate item identities deterministically while preserving visible links', () => {
-    const legacy = structuredClone(defaultSiteDocument);
+    const legacy = legacyNavigationDocument();
     legacy.navigation[1].id = legacy.navigation[0].children[0].id;
     expect(SiteDocumentSchema.safeParse(legacy).success).toBe(true);
     const next = upgradeNavigation(legacy);
@@ -98,8 +101,7 @@ describe('Navigation compatibility reader', () => {
     if (fault === 'duplicate-item') design.items[1].id = design.items[0].children[0].id;
     if (fault === 'grandchild') Object.assign(design.items[0].children[0], { children: [] });
     if (fault === 'unsafe-link') design.items[0].href = 'javascript:alert(1)';
-    if (fault === 'legacy-shadow')
-      document.navigation = structuredClone(defaultSiteDocument.navigation);
+    if (fault === 'legacy-shadow') document.navigation = legacyNavigationDocument().navigation;
     if (fault === 'legacy-reference') document.schemaVersion = 9;
     if (fault === 'missing-designs') delete document.navigationDesigns;
     expect(SiteDocumentSchema.safeParse(document).success).toBe(false);

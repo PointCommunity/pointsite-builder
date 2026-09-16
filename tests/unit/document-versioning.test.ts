@@ -101,6 +101,7 @@ describe('document versioning', () => {
       '6-to-7',
       '7-to-8',
       '8-to-9',
+      '9-to-10',
     ]);
     expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.document.rendererVersion).toBe(RENDERER_VERSION);
@@ -122,6 +123,7 @@ describe('document versioning', () => {
       '6-to-7',
       '7-to-8',
       '8-to-9',
+      '9-to-10',
     ]);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[1]).toMatchObject({
@@ -152,6 +154,7 @@ describe('document versioning', () => {
       '6-to-7',
       '7-to-8',
       '8-to-9',
+      '9-to-10',
     ]);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[1]?.items[0]?.grid.desktop).toEqual({
@@ -189,7 +192,15 @@ describe('document versioning', () => {
     }
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['3-to-4', '4-to-5', '5-to-6', '6-to-7', '7-to-8', '8-to-9']);
+    expect(migrated.applied).toEqual([
+      '3-to-4',
+      '4-to-5',
+      '5-to-6',
+      '6-to-7',
+      '7-to-8',
+      '8-to-9',
+      '9-to-10',
+    ]);
     expect(
       migrated.document.pages.flatMap((page) =>
         page.blocks.slice(1).flatMap((section) => section.items.map((item) => item.element.id)),
@@ -213,7 +224,7 @@ describe('document versioning', () => {
     delete fields[0].width;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['4-to-5', '5-to-6', '6-to-7', '7-to-8', '8-to-9']);
+    expect(migrated.applied).toEqual(['4-to-5', '5-to-6', '6-to-7', '7-to-8', '8-to-9', '9-to-10']);
     expect(migrated.document.linkedMedia).toEqual([]);
     expect(migrated.document.forms[0]).toMatchObject({
       layout: 'two-column',
@@ -230,7 +241,7 @@ describe('document versioning', () => {
     for (const page of pages) delete page.showHeader;
 
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['5-to-6', '6-to-7', '7-to-8', '8-to-9']);
+    expect(migrated.applied).toEqual(['5-to-6', '6-to-7', '7-to-8', '8-to-9', '9-to-10']);
     const migratedPage = migrated.document.pages[0];
     expect(migratedPage).not.toHaveProperty('showHeader');
     expect(migratedPage?.blocks[0]).toMatchObject({
@@ -253,7 +264,7 @@ describe('document versioning', () => {
     const first = migrateDocument(legacy);
     const second = migrateDocument(legacy);
 
-    expect(first.applied).toEqual(['6-to-7', '7-to-8', '8-to-9']);
+    expect(first.applied).toEqual(['6-to-7', '7-to-8', '8-to-9', '9-to-10']);
     expect(first.document).toEqual(second.document);
     expect(first.document.pages[0]?.blocks[0]?.items.map((item) => item.element.type)).toEqual([
       'image',
@@ -287,7 +298,7 @@ describe('document versioning', () => {
     const second = migrateDocument(versionSevenStandardPageDocument());
     const page = first.document.pages[0];
 
-    expect(first.applied).toEqual(['7-to-8', '8-to-9']);
+    expect(first.applied).toEqual(['7-to-8', '8-to-9', '9-to-10']);
     expect(first.document).toEqual(second.document);
     expect(page).not.toHaveProperty('eyebrow');
     expect(page).not.toHaveProperty('intro');
@@ -343,7 +354,7 @@ describe('document versioning', () => {
     const migratedItem = migrated.document.pages[0]?.blocks[0]?.items[0];
     const hero = migratedItem?.element;
 
-    expect(migrated.applied).toEqual(['8-to-9']);
+    expect(migrated.applied).toEqual(['8-to-9', '9-to-10']);
     expect(migratedItem?.grid).toEqual({
       desktop: { column: 2, row: 3, columnSpan: 7, rowSpan: 5 },
       tablet: { column: 3, row: 4, columnSpan: 8, rowSpan: 6 },

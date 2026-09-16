@@ -22,7 +22,7 @@ it('retains every rendered image, metadata image and asset link without mutating
   });
   document.pages[0].blocks[0].backgroundMediaId = background.id;
   document.pages[0].metadata.ogImageMediaId = metadata.id;
-  document.navigation[0].href = '/assets/download.webp?download=1#image';
+  document.navigationDesigns![0].items[0].href = '/assets/download.webp?download=1#image';
   document.pages[1].status = 'hidden';
   const before = structuredClone(document);
   const paths = publicationMediaPaths(document);

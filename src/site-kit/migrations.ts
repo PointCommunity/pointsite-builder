@@ -1,7 +1,7 @@
 import { SiteDocumentSchema, SiteElementSchema } from './schema';
 import { independentGridArea, independentResponsiveValue, legacyGridAreas } from './grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
-import { MAX_SUPPORTED_SCHEMA_VERSION, RENDERER_VERSION, SCHEMA_VERSION } from './version';
+import { MAX_SUPPORTED_SCHEMA_VERSION } from './version';
 import { createEditableHeaderSection, derivedUuid } from './editable-header';
 import { createEditablePageHeroSection, type LegacyPageHero } from './editable-page-hero';
 
@@ -235,8 +235,8 @@ function migrateEightToNine(input: object): unknown {
   };
   return {
     ...input,
-    schemaVersion: SCHEMA_VERSION,
-    rendererVersion: RENDERER_VERSION,
+    schemaVersion: 9,
+    rendererVersion: '9.0.0',
     pages: (legacy.pages ?? []).map((page) => ({
       ...page,
       blocks: ((page.blocks as Array<Record<string, unknown>>) ?? []).map((section) => ({
@@ -316,14 +316,18 @@ export function migrateDocument(input: unknown): MigrationResult {
   apply(7, migrateSixToSeven);
   apply(8, migrateSevenToEight);
   apply(9, migrateEightToNine);
+  apply(10, migrateNineToTen);
 
   return { document: SiteDocumentSchema.parse(current), applied };
 }
 
-/** Explicit only until the compatibility release is retained as the rollback image. */
+/** Kept for callers that explicitly prepare a Navigation document. */
 export function upgradeNavigation(input: unknown): SiteDocument {
-  const document = migrateDocument(input).document;
-  if (document.schemaVersion === 10) return document;
+  return migrateDocument(input).document;
+}
+
+function migrateNineToTen(input: object): SiteDocument {
+  const document = SiteDocumentSchema.parse(input);
   const id = '00000000-0000-4000-8000-000000000036';
   // Legacy documents did not require unique menu item IDs.
   const items = structuredClone(document.navigation);

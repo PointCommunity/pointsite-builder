@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import type { NavigationEntry, SiteDocument, SiteElement } from '../../site-kit/types';
-import { NavigationEditor } from '../settings/NavigationEditor';
+import type { ReactNode } from 'react';
+import type { SiteDocument, SiteElement } from '../../site-kit/types';
 import { LinkDestinationField } from './LinkDestinationField';
 
 function Text({
@@ -154,38 +153,16 @@ const surfaceOptions = [
   { label: 'Primary', value: 'primary' },
 ] as const;
 
-function StatefulNavigationEditor({
-  navigation,
-  pages,
-  onChange,
-}: {
-  navigation: NavigationEntry[];
-  pages: SiteDocument['pages'];
-  onChange: (navigation: NavigationEntry[]) => void;
-}) {
-  const [value, setValue] = useState(navigation);
-  return (
-    <NavigationEditor
-      navigation={value}
-      pages={pages}
-      onChange={(next) => {
-        setValue(next);
-        onChange(next);
-      }}
-    />
-  );
-}
-
 export function BlockInspector({
   block,
   document,
   onChange,
-  onNavigationChange,
+  onEditNavigation,
 }: {
   block: SiteElement;
   document: SiteDocument;
   onChange: (block: SiteElement) => void;
-  onNavigationChange?: (navigation: NavigationEntry[], designId?: string) => void;
+  onEditNavigation?: (designId: string) => void;
 }) {
   switch (block.type) {
     case 'hero':
@@ -1405,23 +1382,14 @@ export function BlockInspector({
             ]}
             onChange={(surface) => onChange({ ...block, surface })}
           />
-          {onNavigationChange ? (
-            <StatefulNavigationEditor
-              key={block.navigationDesignId ?? 'legacy'}
-              navigation={
-                document.schemaVersion === 9
-                  ? document.navigation
-                  : (document.navigationDesigns?.find(
-                      (design) => design.id === block.navigationDesignId,
-                    )?.items ?? [])
-              }
-              pages={document.pages}
-              onChange={(navigation) =>
-                block.navigationDesignId
-                  ? onNavigationChange(navigation, block.navigationDesignId)
-                  : onNavigationChange(navigation)
-              }
-            />
+          {onEditNavigation && block.navigationDesignId ? (
+            <button
+              type="button"
+              className="button"
+              onClick={() => onEditNavigation(block.navigationDesignId!)}
+            >
+              Edit in Navigation Designer
+            </button>
           ) : null}
         </div>
       );

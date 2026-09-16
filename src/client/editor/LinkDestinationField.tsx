@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { isSafeExternalHttpUrl, isSafeInternalPath } from '../../site-kit/url-policy';
 
 type PageChoice = { title: string; route: string };
@@ -20,6 +20,7 @@ export function LinkDestinationField({
   onChange: (value: string) => void;
 }) {
   const persistedType = typeFor(value);
+  const errorId = useId();
   const [modeOverride, setModeOverride] = useState<LinkType>();
   const [externalDraft, setExternalDraft] = useState(persistedType === 'external' ? value : '');
   const [externalTouched, setExternalTouched] = useState(false);
@@ -78,6 +79,7 @@ export function LinkDestinationField({
               placeholder="http://example.com"
               value={externalDraft}
               aria-invalid={externalInvalid ? 'true' : undefined}
+              aria-describedby={externalInvalid ? errorId : undefined}
               onBlur={() => setExternalTouched(true)}
               onChange={(event) => {
                 const next = event.target.value;
@@ -90,7 +92,7 @@ export function LinkDestinationField({
         )}
       </div>
       {externalInvalid ? (
-        <p className="field-error">
+        <p id={errorId} className="field-error">
           External URLs must begin with http:// or https:// and include a site address.
         </p>
       ) : null}

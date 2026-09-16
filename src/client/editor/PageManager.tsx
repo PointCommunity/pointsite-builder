@@ -59,6 +59,11 @@ export function PageManager({
     updateDocument(
       (next) => {
         const logo = next.media.find((item) => item.sourcePath.endsWith('/point-logo.png'));
+        const header = createEditableHeaderSection(id, logo?.id);
+        for (const { element } of header.items) {
+          if (element.type === 'navigation' && next.schemaVersion >= 10)
+            element.navigationDesignId = next.navigationDesigns?.[0]?.id;
+        }
         next.pages.push({
           id,
           title,
@@ -76,7 +81,7 @@ export function PageManager({
               eyebrow: 'New page',
               intro: 'Add a short introduction for this page.',
             }),
-            createEditableHeaderSection(id, logo?.id),
+            header,
           ],
         });
         return next;

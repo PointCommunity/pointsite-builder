@@ -3,11 +3,9 @@ import type { SiteDocument } from '../../site-kit/types';
 import { useEditor } from '../editor/EditorProvider';
 import { mutationForContext } from '../editor/action-attribution';
 import { ThemeEditor } from './ThemeEditor';
-import { NavigationEditor } from './NavigationEditor';
-import { replaceNavigationItems } from './navigation-document';
 import { CollectionsEditor } from './CollectionsEditor';
 
-const categories = ['Identity', 'Footer', 'Social', 'Navigation', 'Collections', 'Design'] as const;
+const categories = ['Identity', 'Footer', 'Social', 'Collections', 'Design'] as const;
 
 export function SiteSettings({
   initialCategory = 'Identity',
@@ -31,10 +29,6 @@ export function SiteSettings({
     setCategory(next);
   };
   const { document, updateDocument } = useEditor();
-  const [navigationDesignId, setNavigationDesignId] = useState(document.navigationDesigns?.[0]?.id);
-  const navigationDesign =
-    document.navigationDesigns?.find((design) => design.id === navigationDesignId) ??
-    document.navigationDesigns?.[0];
   const updateSite = (change: (site: SiteDocument['site']) => void) =>
     updateDocument((next) => {
       change(next.site);
@@ -326,34 +320,6 @@ export function SiteSettings({
           Add social link
         </button>
       </section>
-      <div data-settings-category="Navigation" hidden={category !== 'Navigation'}>
-        {document.schemaVersion === 10 ? (
-          <label>
-            <span>Navigation design</span>
-            <select
-              value={navigationDesign?.id ?? ''}
-              onChange={(event) => setNavigationDesignId(event.target.value)}
-            >
-              {document.navigationDesigns?.map((design) => (
-                <option key={design.id} value={design.id}>
-                  {design.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <NavigationEditor
-          key={navigationDesign?.id ?? 'legacy'}
-          navigation={navigationDesign?.items ?? document.navigation}
-          pages={document.pages}
-          onChange={(navigation) =>
-            updateDocument(
-              (next) => replaceNavigationItems(next, navigation, navigationDesign?.id),
-              mutationForContext('navigation'),
-            )
-          }
-        />
-      </div>
       <div data-settings-category="Collections" hidden={category !== 'Collections'}>
         <CollectionsEditor
           document={document}

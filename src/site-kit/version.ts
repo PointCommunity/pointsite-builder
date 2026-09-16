@@ -1,6 +1,6 @@
-export const SCHEMA_VERSION = 9 as const;
-export const RENDERER_VERSION = '9.0.0' as const;
-// The bridge reads both contracts but does not upgrade existing drafts automatically.
+export const SCHEMA_VERSION = 10 as const;
+export const RENDERER_VERSION = '10.0.0' as const;
+// The retained compatibility release can also read and edit this contract.
 export const MAX_SUPPORTED_SCHEMA_VERSION = 10 as const;
 
 export function supportsRenderer(identity: {

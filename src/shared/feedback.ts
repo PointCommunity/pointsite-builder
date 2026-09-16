@@ -2,6 +2,7 @@ export const feedbackScreens = {
   dashboard: { location: '/drafts', name: 'Draft list' },
   'editor.layout': { location: '/editor/layout', name: 'Editor: Layout' },
   'editor.forms': { location: '/editor/forms', name: 'Editor: Forms' },
+  'editor.navigation': { location: '/editor/navigation', name: 'Navigation Designer' },
   'editor.library': { location: '/editor/library', name: 'Editor: Library' },
   'editor.preview': { location: '/editor/preview', name: 'Editor: Preview' },
   'editor.history': { location: '/editor/history', name: 'Editor: History' },

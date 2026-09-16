@@ -44,14 +44,14 @@ const EXPECTED_ASSETS = [
 describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
-    expect(defaultSiteDocument.schemaVersion).toBe(9);
-    expect(defaultSiteDocument.rendererVersion).toBe('9.0.0');
+    expect(defaultSiteDocument.schemaVersion).toBe(10);
+    expect(defaultSiteDocument.rendererVersion).toBe('10.0.0');
   });
 
   it('represents every current generated route and navigation link', () => {
     expect(defaultSiteDocument.pages.map(({ route }) => route).sort()).toEqual(EXPECTED_ROUTES);
     expect(
-      defaultSiteDocument.navigation.flatMap(({ href, children }) => [
+      defaultSiteDocument.navigationDesigns![0].items.flatMap(({ href, children }) => [
         href,
         ...children.map((child) => child.href),
       ]),

@@ -113,8 +113,8 @@ export function FormsEditor({
     >
       <header className="section-heading">
         <div>
-          <p className="eyebrow">No-code form builder</p>
-          <h2 id="forms-title">Forms</h2>
+          <p className="eyebrow">Website forms</p>
+          <h2 id="forms-title">Form Designer</h2>
         </div>
         <p>
           Build short, accessible forms. Visitor entries open a prepared email and are not stored.
