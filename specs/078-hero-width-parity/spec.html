@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 78: Editor-authoritative hero width</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        max-width: 960px;
+        margin: auto;
+        padding: 3rem 1.5rem;
+        background: #111827;
+        color: #e5e7eb;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      a {
+        color: #93c5fd;
+      }
+      code {
+        color: #c4b5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 78: Editor-authoritative hero width</h1>
+    <h2>Objective and acceptance</h2>
+    <p>
+      Use the approved Issue scope: preserve the Layout editor's visible hero width, background,
+      imagery, text geometry and gutters in Preview and generated publication output. Existing
+      drafts must require no reauthoring. Preserve navigation, adjacent sections, responsive
+      placement, text resizing and actions. Public-site parity requires separately authorized
+      content publication and live verification.
+    </p>
+    <h2>Measured cause</h2>
+    <p>
+      Production Builder's published revision 4 reproduces the reported Who We Are discrepancy. At a
+      measured 1280 CSS pixel iframe viewport, loaded fonts and visual viewport scale 1, both
+      surfaces have a 1280px hero at x=-7.5 and a 1160px page shell at x=52.5 (15px scrollbar).
+      Layout adds a 1160px flex grid-item wrapper with overflow hidden; Preview renders the
+      compatibility hero directly inside the page shell. Only Layout clips the hero background to
+      the intended shell. The editor's wrapper and rendering must remain unchanged.
+    </p>
+    <p>
+      <a href="https://www.w3.org/TR/css-values-4/#viewport-relative-lengths">CSS Values Level 4</a>
+      defines viewport units;
+      <a href="https://www.w3.org/TR/css-overflow-3/#overflow-properties">CSS Overflow Level 3</a>
+      defines clipping. Source evidence: compatibility rendering in
+      <code>src/site-kit/registry.tsx</code>, editor elements in
+      <code>src/client/editor/VisualEditor.tsx</code>, and hero breakout plus grid-item clipping in
+      <code>src/site-kit/site.css</code>.
+    </p>
+    <h2>Plan</h2>
+    <p>
+      The initial Chromium regression failed with Preview painted bounds 0–1280 versus Layout
+      60–1220 at a 1280px viewport. Reusing the wrapper restores the intended 1160px visible width
+      without changing the hero border box or text. Existing non-hero compatibility sections have
+      independent narrow-screen overflow (17px at 900px in the default fixture); verification
+      compares publication overflow with the pre-fix markup to ensure this change adds none. Editor
+      overlays can also extend the document in Firefox, so painted hero geometry is measured
+      separately.
+    </p>
+    <ol>
+      <li>
+        Add a failing browser regression measuring visible hero bounds, text, imagery, navigation
+        and adjacent content in Layout, Preview and static renderer output from identical fixture
+        content.
+      </li>
+      <li>
+        Reuse the existing grid-item wrapper for compatibility page heroes in the shared renderer.
+        Do not resize the editor, change saved documents, or redesign hero contents. Verify actual
+        grid/flow heroes retain their existing wrappers.
+      </li>
+      <li>
+        Synchronize the reviewed renderer into the canonical publication runtime, update its exact
+        blob and runtime identities, and preserve lane-specific publication callers. No schema or
+        document-version change is needed for an equivalent rendering correction.
+      </li>
+      <li>
+        Run focused regressions, then all local gates sequentially, review and exact-head CI. Deploy
+        the Builder Canary candidate and present specific PM tests. Production promotion requires
+        exact Canary approval; content publication remains an authenticated Administrator action.
+      </li>
+    </ol>
+    <h2>Verification tasks</h2>
+    <ul>
+      <li>
+        Who We Are and image/canvas hero variants: 1280, 1440, 1920, 2560, Tablet/Phone presets and
+        900/901, 760/761, 520/521 boundaries; loaded fonts; zero horizontal overflow; visible bounds
+        within 0.1 CSS pixel.
+      </li>
+      <li>
+        Save/reopen, heading/body resizing, alignment/actions, enlarged text and Preview zoom.
+        Compare painted bounds by intersecting the hero with clipping ancestors, not just its
+        overflowing border box.
+      </li>
+      <li>
+        Run
+        <code
+          >npx playwright test tests/e2e/authoring.spec.ts --grep "hero containment"
+          --workers=1</code
+        >, <code>npm run check</code>, <code>npm run test:performance</code>,
+        <code>npm run test:e2e</code>, <code>npm audit --audit-level=high</code>, and
+        <code>git diff --check</code>.
+      </li>
+      <li>
+        Record evidence in the PR/Issue. Clean inventoried outputs with
+        <code>node scripts/local-qa.mjs cleanup</code>; stop task servers and remove task test
+        images.
+      </li>
+    </ul>
+    <h2>Structure, conventions and boundaries</h2>
+    <p>
+      Reuse React/TypeScript, existing Vitest/Playwright infrastructure and CSS classes, such as
+      <code>className="point-layout-item point-layout-item--grid"</code>. Implementation lives in
+      <code>src/site-kit/registry.tsx</code>; publication identity in
+      <code>src/server/publish/renderer-contract.ts</code>; browser tests in
+      <code>tests/e2e/</code>. No dependencies, migration or new abstraction. Preserve security,
+      accessibility, existing public content and unrelated dirty Staging work. Never publish content
+      from chat, fabricate PM approval, or close before unchanged Production acceptance.
+    </p>
+  </body>
+</html>

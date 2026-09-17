@@ -97,6 +97,10 @@ describe('controlled public renderer', () => {
     expect(container.querySelector('.site-header')).toBeNull();
     expect(screen.getByRole('navigation', { name: 'Church navigation' })).toBeVisible();
     expect(container.querySelector('.page-hero.page-hero--image')).not.toBeNull();
+    expect(container.querySelector('.page-hero')?.parentElement).toHaveClass(
+      'point-layout-item',
+      'point-layout-item--grid',
+    );
     expect(container.querySelector('.page-body.shell')).not.toBeNull();
     expect(screen.getByText('About Point')).toHaveClass('eyebrow');
     expect(screen.getByRole('heading', { level: 1, name: 'Who We Are' })).toBeVisible();

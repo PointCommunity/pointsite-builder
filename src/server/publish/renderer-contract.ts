@@ -13,7 +13,7 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'migrations.ts': 'aae48642293999d909f52670de539f7bc2294d4b',
   'presets.ts': '00f8bf6df9e55c2eac6a92bb5388a32dc21563ff',
   'publication-media.ts': '5ddefb7d934e45bc32606cf0699822c5ba4e48fc',
-  'registry.tsx': 'fcf40b3bbc6f2de92982042372e3c382aeccc7cc',
+  'registry.tsx': '9b1911bb215d8416fa6d66878d368d9630631559',
   'schema.ts': '949499943fa4a7a83319adce709cb449e7d0e36f',
   'site.css': 'db7e1d854345e12662426a0040f9bcc1718af09d',
   'tokens.ts': '8ff9fdad08fa333d3e192408fd4b4a228460df94',
@@ -25,9 +25,9 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
 export type StagingRendererContract = Record<string, string>;
 
 /** Reviewed reusable runtime and caller; content commits never select executable code. */
-export const PUBLICATION_WORKFLOW_REVISION = 'e9b411b6a9d7603321f921704c4f6d17ecb60fb7';
-export const PUBLICATION_CALLER_BLOB = 'd908bdb9e35a2b51cb1884a247dabe1432cb15f4';
-export const PUBLICATION_PRODUCTION_CALLER_BLOB = '133973458949447c0e9f4988571bbef4b5e4d316';
+export const PUBLICATION_WORKFLOW_REVISION = '52b24585b6dc5e555bbbee250bcb3362f49576b4';
+export const PUBLICATION_CALLER_BLOB = '77b533d609a8d9765ece046df6207a081ce0afb5';
+export const PUBLICATION_PRODUCTION_CALLER_BLOB = 'bd838872ed21e5653f0c6172b8e014e019028ca8';
 
 /** Verification advances independently from the original deployment runtime. */
 export const VERIFICATION_WORKFLOW_REVISION = '5fc43bf6909a042841f3d6d6ebea0136f70b2f54';

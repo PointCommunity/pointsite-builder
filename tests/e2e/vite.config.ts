@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 // a Worker configuration error to unrelated browser pages through Vite's overlay.
 export default defineConfig({
   // The worker is lazy-loaded; discover its codec before an upload can trigger a reload.
-  optimizeDeps: { include: ['@jsquash/webp/encode'] },
+  optimizeDeps: { include: ['@jsquash/webp/encode', 'react-dom/server'] },
   worker: { format: 'es' },
   cacheDir: 'node_modules/.vite-e2e',
   plugins: [
