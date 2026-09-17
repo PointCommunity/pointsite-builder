@@ -1771,12 +1771,53 @@ components:
           required: [attempts, retryAt, needsAttention]
           properties:
             attempts: { type: integer, minimum: 0 }
+            stage:
+              { type: string, enum: [queued, building, preparing, deploying, verifying, complete] }
+            actions:
+              type: object
+              description: Bounded public Actions metadata for this recorded run attempt. Diagnostic only; never publication proof.
+              required: [checkedAt]
+              properties:
+                checkedAt: { type: string, format: date-time }
+                unavailable: { type: string }
+                jobs:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [name, status, conclusion, workflowUrl, steps]
+                    properties:
+                      name: { type: string }
+                      status: { type: string }
+                      conclusion: { type: [string, 'null'] }
+                      workflowUrl: { type: string, format: uri }
+                      errorsUnavailable: { type: boolean }
+                      errors:
+                        type: array
+                        maxItems: 20
+                        items:
+                          type: object
+                          properties:
+                            message: { type: string }
+                            path: { type: string }
+                            line: { type: integer }
+                      steps:
+                        type: array
+                        maxItems: 100
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            number: { type: integer }
+                            status: { type: string }
+                            conclusion: { type: [string, 'null'] }
             retryAt: { type: string, format: date-time }
             needsAttention: { type: boolean }
             reserved: { type: boolean }
             canReconcileStopped: { type: boolean }
             canRetryCaptured: { type: boolean }
             canVerifyCompleted: { type: boolean }
+            canVerifyOutput: { type: boolean }
             failureCode: { type: string, pattern: '^PUBLISH_[A-Z_]+$' }
             workflowUrl: { type: string, format: uri }
         status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }

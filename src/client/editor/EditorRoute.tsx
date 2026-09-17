@@ -342,6 +342,7 @@ function Workspace({
     window.queueMicrotask(() => publishButtonRef.current?.focus());
   };
   const trapPublishingFocus = (event: KeyboardEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest('dialog[open]')) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       closePublishing();
@@ -352,7 +353,7 @@ function Workspace({
       event.currentTarget.querySelectorAll<HTMLElement>(
         'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    );
+    ).filter((element) => element.getClientRects().length > 0);
     const first = focusable[0];
     const last = focusable.at(-1);
     if (!first || !last) return;
@@ -369,9 +370,10 @@ function Workspace({
   const keepPublishingFocus = (event: FocusEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget)) return;
     const dialog = event.currentTarget;
-    window.queueMicrotask(() =>
-      dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus(),
-    );
+    window.queueMicrotask(() => {
+      if (!dialog.contains(globalThis.document.activeElement))
+        dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus();
+    });
   };
   const openFooterSettings = useCallback(() => {
     setSettingsCategory('Footer');

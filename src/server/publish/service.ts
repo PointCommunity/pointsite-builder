@@ -129,7 +129,7 @@ export class StagingPublisher {
         ? {
             ...this.workflowJob(job, now),
             ...(job.candidate.publicationProtocol === 2
-              ? { dispatch: await this.jobs.dispatchStatus(job.id) }
+              ? { dispatch: await this.jobs.dispatchStatus(job.id, true) }
               : {}),
           }
         : null,
