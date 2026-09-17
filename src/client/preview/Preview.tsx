@@ -8,8 +8,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { SiteDocument } from '../../site-kit/types';
 import { SitePreviewFrame } from './SitePreviewFrame';
+import { siteViewports } from './viewports';
 
-const widths = { phone: 360, tablet: 768, desktop: 1280 } as const;
 const zoomSteps = [25, 50, 75, 100, 125] as const;
 type Zoom = 'auto' | number;
 
@@ -20,7 +20,7 @@ const viewportIcons = {
 };
 
 export function Preview({ document }: { document: SiteDocument }) {
-  const [viewport, setViewport] = useState<keyof typeof widths>('desktop');
+  const [viewport, setViewport] = useState<keyof typeof siteViewports>('desktop');
   const [zoom, setZoom] = useState<Zoom>('auto');
   const [stageWidth, setStageWidth] = useState(0);
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '');
@@ -34,7 +34,7 @@ export function Preview({ document }: { document: SiteDocument }) {
   }, []);
   const page = document.pages.find((candidate) => candidate.id === pageId) ?? document.pages[0];
   if (!page) return <p>No page selected.</p>;
-  const width = widths[viewport];
+  const { width, height } = siteViewports[viewport];
   const autoPercent = Math.max(25, Math.min(100, Math.floor(((stageWidth - 32) / width) * 100)));
   const zoomPercent = zoom === 'auto' ? autoPercent : zoom;
   const scale = zoomPercent / 100;
@@ -69,7 +69,7 @@ export function Preview({ document }: { document: SiteDocument }) {
         </label>
         <div className="preview-controls" aria-label="Preview controls">
           <div className="preview-control-group" aria-label="Preview viewport">
-            {(Object.keys(widths) as Array<keyof typeof widths>).map((name) => {
+            {(Object.keys(siteViewports) as Array<keyof typeof siteViewports>).map((name) => {
               const Icon = viewportIcons[name];
               return (
                 <button
@@ -129,6 +129,7 @@ export function Preview({ document }: { document: SiteDocument }) {
           document={document}
           route={page.route}
           width={width}
+          height={height}
           scale={scale}
           onNavigate={navigate}
         />

@@ -6,6 +6,7 @@ import { preparePublicationInputs } from './inputs';
 import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
 import { retryCapturedPublication } from './retry';
 import { reconcileCompletedPublication } from './reconcile';
+import { readPublicationActions } from './progress';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -306,10 +307,12 @@ export class D1PublishJobStore {
       : { state: 'available' as const };
   }
 
-  async dispatchStatus(id: string) {
+  async dispatchStatus(id: string, includeActions = false) {
     const row = await this.database
       .prepare(
-        `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,
+        `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,j.status,
+      pr.dispatch_revision,COALESCE(pr.run_attempt,pr.reserved_run_attempt) AS run_attempt,
+      pr.build_json,pr.commit_authorized_at,pr.deploy_authorized_at,pr.deployment_json,
       COALESCE(run_id,reserved_run_id) AS run_id,
       (reserved_run_id IS NOT NULL AND deploy_authorized_at IS NULL
         AND j.status IN ('queued','running')) AS can_reconcile,
@@ -329,6 +332,13 @@ export class D1PublishJobStore {
         dispatch_error: string | null;
         run_id: string | null;
         environment: string;
+        status: string;
+        dispatch_revision: string;
+        run_attempt: string | null;
+        build_json: string | null;
+        commit_authorized_at: string | null;
+        deploy_authorized_at: string | null;
+        deployment_json: string | null;
         can_reconcile: number;
         can_retry_captured: number;
         can_verify_completed: number;
@@ -336,6 +346,29 @@ export class D1PublishJobStore {
       }>();
     if (!row) return undefined;
     return {
+      stage:
+        row.status === 'succeeded'
+          ? 'complete'
+          : row.deployment_json
+            ? 'verifying'
+            : row.deploy_authorized_at
+              ? 'deploying'
+              : row.build_json
+                ? 'preparing'
+                : row.run_id
+                  ? 'building'
+                  : 'queued',
+      ...(includeActions && row.run_id && row.run_attempt
+        ? {
+            actions: await readPublicationActions({
+              target: row.environment === 'staging' ? 'staging' : 'production',
+              builderOrigin: this.builderOrigin,
+              runId: row.run_id,
+              attempt: row.run_attempt,
+              sha: row.dispatch_revision,
+            }),
+          }
+        : {}),
       attempts: row.dispatch_count,
       retryAt: row.dispatch_after,
       reserved: row.run_id !== null,

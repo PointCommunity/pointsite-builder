@@ -1,4 +1,5 @@
 import type { CandidateTuple } from '../api';
+import type { ActionsProgress } from '../../server/publish/progress';
 
 export type PublishJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
@@ -45,6 +46,8 @@ export interface StagingWorkflowJob {
   publicationProtocol?: 2;
   workflowRevision?: string;
   dispatch?: {
+    stage?: string;
+    actions?: ActionsProgress;
     attempts: number;
     retryAt: string;
     needsAttention: boolean;

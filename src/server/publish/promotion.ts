@@ -107,7 +107,7 @@ export class D1ProductionPublisher {
           dispatch: await new D1PublishJobStore(
             this.database,
             this.config.builderOrigin,
-          ).dispatchStatus(row.id),
+          ).dispatchStatus(row.id, true),
         }
       : null;
     if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');

@@ -211,6 +211,151 @@ async function openPublishing(page: Page) {
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
 }
 
+for (const canary of [false, true])
+  test(`compact publishing sends accepted Staging to ${canary ? 'Canary' : 'Production'} with Help and confirmation`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 760, height: 900 });
+    await page.clock.install();
+    await mockPublishing(page, 'accepted', 'administrator');
+    const label = canary ? 'Site Canary' : 'Site Production';
+    const origin = canary ? 'https://canary.pointatx.org' : 'https://pointatx.org';
+    const stagingOrigin = canary
+      ? 'https://staging-canary.pointatx.org'
+      : 'https://staging.pointatx.org';
+    const tuple = {
+      siteId: 'pointsite',
+      publicationProtocol: 2,
+      revisionId: draft.revision.id,
+      revisionChecksum: draft.revision.checksum,
+      schemaVersion: draft.document.schemaVersion,
+      rendererVersion: draft.document.rendererVersion,
+      candidateChecksum: 'b'.repeat(64),
+      stagingBaseSha: 'c'.repeat(40),
+      stagingCommitSha: 'd'.repeat(40),
+      productionBaseSha: 'e'.repeat(40),
+      workflowRevision: 'f'.repeat(40),
+      artifactDigest: '1'.repeat(64),
+    };
+    const approval = {
+      id: 'acceptance',
+      publishJobId: 'staging',
+      decision: 'approved',
+      createdAt: new Date().toISOString(),
+      tuple,
+    };
+    await page.route('**/api/publish/staging/workflow?**', (route) =>
+      route.fulfill({
+        json: {
+          publicationProtocol: 2,
+          currentStagingSha: tuple.stagingCommitSha,
+          reviewUrl: stagingOrigin,
+          preflight: { state: 'required', reason: 'not-validated' },
+          availability: { state: 'available' },
+          approval,
+          job: {
+            ...tuple,
+            id: 'staging',
+            draftId: draft.id,
+            status: 'succeeded',
+            requestedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            evidence: { verificationStatus: 'passed', artifactDigest: tuple.artifactDigest },
+          },
+        },
+      }),
+    );
+    let progress = 0;
+    const captures: unknown[] = [];
+    await page.route('**/api/publish/production/workflow?**', (route) => {
+      const stage = progress;
+      if (progress > 0 && progress < 3) progress++;
+      return route.fulfill({
+        json: {
+          enabled: true,
+          destination: { repository: canary ? 'pointsite-canary' : 'pointsite', origin },
+          busy: stage > 0 && stage < 3,
+          job: stage
+            ? {
+                id: 'production',
+                status: stage === 3 ? 'succeeded' : 'running',
+                revisionId: tuple.revisionId,
+                candidateChecksum: tuple.candidateChecksum,
+                stagingJobId: 'staging',
+                approvalId: approval.id,
+                artifactDigest: tuple.artifactDigest,
+                requestedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+                completedAt: null,
+                dispatch: {
+                  attempts: 1,
+                  reserved: true,
+                  needsAttention: false,
+                  stage: stage === 1 ? 'building' : 'verifying',
+                  retryAt: new Date().toISOString(),
+                },
+                evidence:
+                  stage === 3
+                    ? { verificationStatus: 'passed', artifactDigest: tuple.artifactDigest }
+                    : {},
+              }
+            : null,
+        },
+      });
+    });
+    await page.route('**/api/publish/production', (route) => {
+      captures.push(route.request().postDataJSON());
+      progress = 1;
+      return route.fulfill({ status: 202, json: { id: 'production', status: 'queued' } });
+    });
+    await openPublishing(page);
+    const panel = page.getByRole('dialog', { name: 'Publish your site' });
+    const helpButton = page.getByRole('button', { name: 'Publishing help' });
+    await helpButton.click();
+    await expect(page.getByRole('dialog', { name: 'Publishing help' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Publishing help' })).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    await expect(helpButton).toBeFocused();
+    await expect(page.locator('.technical-details')).not.toHaveAttribute('open', '');
+    const publish = page.getByRole('button', { name: `Publish to ${label}`, exact: true });
+    await publish.click();
+    let confirm = page.getByRole('dialog', { name: `Publish to ${label}?` });
+    await expect(confirm.getByRole('link', { name: stagingOrigin })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+    await expect(confirm.getByRole('link', { name: origin })).toHaveAttribute('target', '_blank');
+    expect(captures).toHaveLength(0);
+    await page.keyboard.press('Escape');
+    await expect(publish).toBeFocused();
+    await publish.click();
+    confirm = page.getByRole('dialog', { name: `Publish to ${label}?` });
+    await expect(
+      confirm.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).resolves.toBe(true);
+    expect((await new AxeBuilder({ page }).include('dialog[open]').analyze()).violations).toEqual(
+      [],
+    );
+    await confirm.getByRole('button', { name: `Confirm publish to ${label}` }).click();
+    await expect(page.getByText('Building your website')).toBeVisible();
+    await page.clock.runFor(10_000);
+    await expect(page.getByText('Checking the published website')).toBeVisible();
+    await page.clock.runFor(10_000);
+    await expect(
+      page.getByRole('heading', { name: `Congratulations! Your site is live in ${label}.` }),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: `Open ${label}` })).toHaveAttribute('href', origin);
+    expect(captures).toEqual([{ stagingJobId: 'staging', approvalId: approval.id, tuple }]);
+    await expect(page.getByRole('button', { name: /accept/i })).toHaveCount(0);
+    await expect(
+      panel.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).resolves.toBe(true);
+    await panel.screenshot({ path: testInfo.outputPath('publishing-complete.png') });
+    expect((await new AxeBuilder({ page }).include('.publish-panel').analyze()).violations).toEqual(
+      [],
+    );
+  });
+
 test('saves an in-memory schema upgrade before publishing without requiring an edit', async ({
   page,
 }) => {
@@ -264,7 +409,7 @@ test('saves an in-memory schema upgrade before publishing without requiring an e
     });
   });
   await openPublishing(page);
-  await page.getByRole('button', { name: 'Publish current revision 8' }).click();
+  await page.getByRole('button', { name: 'Publish to Staging' }).click();
   await expect.poll(() => published.length).toBe(1);
   expect(published[0]).toMatchObject({
     expectedRevisionId: selected.latestRevisionId,
@@ -333,6 +478,7 @@ test('Production restore requires a separate confirmation and keeps the captured
     return route.fulfill({ status: 202, json: { id: 'rollback', status: 'queued' } });
   });
   await openPublishing(page);
+  await page.getByText('Danger zone', { exact: true }).click();
   const prepare = page.getByRole('button', { name: 'Prepare selected restore' });
   await expect(prepare).toBeDisabled();
   await page.getByLabel('Verified release').selectOption('baseline');
@@ -539,7 +685,7 @@ for (const site of ['Canary', 'Production'])
             status: recovered ? 'succeeded' : 'running',
             revisionId: draft.revision.id,
             stagingJobId: '30000000-0000-4000-8000-000000000011',
-            approvalId: 'acceptance',
+            approvalId: '40000000-0000-4000-8000-000000000011',
             candidateChecksum: 'b'.repeat(64),
             artifactDigest: 'a'.repeat(64),
             baseSha: 'e'.repeat(40),
@@ -571,10 +717,7 @@ for (const site of ['Canary', 'Production'])
       await route.fulfill({ contentType: 'application/json', body: '{"recovered":true}' });
     });
     await openPublishing(page);
-    await expect(page.getByRole('link', { name: destination.origin })).toHaveAttribute(
-      'href',
-      destination.origin,
-    );
+    await expect(page.getByRole('heading', { name: `Publishing to ${label}` })).toBeVisible();
     await expect(
       page.getByRole('button', { name: `Verify completed ${label} publication` }),
     ).toBeVisible();
@@ -585,14 +728,14 @@ for (const site of ['Canary', 'Production'])
     await expect(verify).toBeVisible();
     await verify.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByText(`This ${label} publication was verified.`)).toBeVisible();
-    await expect(page.getByRole('heading', { name: label, exact: true })).toBeFocused();
+    await expect(page.getByText('Publication completed and verified.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Congratulations/ })).toBeFocused();
     await expect(verify).toHaveCount(0);
-    await page.getByText(`${label} publication details`, { exact: true }).click();
+    await page.getByText('Technical details', { exact: true }).click();
     await page
-      .locator('.production-lock')
+      .locator('.publish-panel')
       .screenshot({ path: testInfo.outputPath('production-status.png') });
-    const violations = await new AxeBuilder({ page }).include('.production-lock').analyze();
+    const violations = await new AxeBuilder({ page }).include('.publish-panel').analyze();
     expect(violations.violations).toEqual([]);
   });
 
@@ -704,6 +847,7 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(retry).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  await page.getByText('Cancel this publication', { exact: true }).click();
   const cancel = page.getByRole('button', { name: 'Cancel queued publication' });
   await cancel.focus();
   await page.keyboard.press('Enter');
@@ -718,12 +862,14 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(captured).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
+  if (!(await cancel.isVisible()))
+    await page.getByText('Cancel this publication', { exact: true }).click();
   await expect(cancel).toBeEnabled();
   await cancel.focus();
   await page.keyboard.press('Enter');
   await expect(cancel).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
-  await page.getByRole('button', { name: 'Try publishing again' }).click();
+  await page.getByRole('button', { name: 'Publish to Staging' }).click();
   await expect.poll(() => published.length).toBe(1);
   expect(published[0]).toMatchObject({
     draftId: draft.id,
@@ -736,8 +882,8 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await verify.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
-  await expect(page.getByText('Staging is ready for review')).toBeVisible();
-  await expect(page.getByText('Newer edits are not included.')).toBeVisible();
+  await expect(page.getByText('Review Staging, then accept this version')).toBeVisible();
+  await expect(page.getByText('Newer draft edits are not included.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Accept this Staging version' })).toBeEnabled();
   expect(actions).toEqual(['retry', 'cancel', 'retry-captured', 'cancel', 'verify-completed']);
   expect(published).toHaveLength(1);
@@ -747,10 +893,10 @@ test('automatically advances an immediate exact verification', async ({ page }) 
   await page.clock.install();
   const requests = await mockPublishing(page, 'immediate');
   await openPublishing(page);
-  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
-  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await expect(page.getByText('No action needed — Builder is verifying Staging')).toBeVisible();
+  await expect(page.getByText(/Progress updates automatically/)).toBeVisible();
   await page.clock.runFor(10_000);
-  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(page.getByText('Review Staging, then accept this version')).toBeVisible();
   expect(requests()).toBe(1);
 });
 
@@ -758,13 +904,13 @@ test('keeps following prolonged verification without duplicate publication', asy
   await page.clock.install();
   const requests = await mockPublishing(page, 'prolonged');
   await openPublishing(page);
-  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await expect(page.getByText(/Progress updates automatically/)).toBeVisible();
   await page.clock.runFor(10_000);
-  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
+  await expect(page.getByText('No action needed — Builder is verifying Staging')).toBeVisible();
   await expect.poll(requests).toBe(1);
-  await expect(page.getByRole('button', { name: 'Check now' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Publish to Staging' })).toHaveCount(0);
   await page.clock.runFor(10_000);
-  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(page.getByText('Review Staging, then accept this version')).toBeVisible();
   expect(requests()).toBe(2);
   await expect(page.getByRole('button', { name: /publish .*Staging/i })).toHaveCount(0);
 });
@@ -773,23 +919,14 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   await page.clock.install();
   await mockPublishing(page, 'failed-then-passed');
   await openPublishing(page);
-  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await expect(page.getByText(/Progress updates automatically/)).toBeVisible();
   await page.clock.runFor(10_000);
-  await expect(page.getByText('Staging verification failed')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Review 2 failed Staging checks' })).toBeVisible();
-  await expect(page.getByText('Website safety checks')).toBeVisible();
-  await expect(page.getByText('Staging update', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open website safety check' })).toHaveAttribute(
-    'href',
-    'https://github.com/PointCommunity/pointsite-staging/actions/runs/11',
-  );
-  await expect(page.getByText(/Automatic recovery has already checked/i)).toBeVisible();
-  await expect(
-    page.getByText(/do not publish the draft again just to clear this message/i),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Staging needs attention' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy support details' })).toBeVisible();
+  await expect(page.locator('.technical-details')).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Accept this Staging version' })).toHaveCount(0);
   await page.setViewportSize({ width: 760, height: 900 });
-  const dialog = page.getByRole('dialog', { name: 'Publish and accept on Staging' });
+  const dialog = page.getByRole('dialog', { name: 'Publish your site' });
   await expect(
     dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).resolves.toBe(true);
@@ -797,16 +934,16 @@ test('explains failed verification and recovers with manual refresh', async ({ p
   expect(
     results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
   ).toEqual([]);
-  await page.getByRole('button', { name: 'Check Staging status again' }).click();
-  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await page.getByRole('button', { name: 'Check Staging status' }).click();
+  await expect(page.getByText('Review Staging, then accept this version')).toBeVisible();
 });
 
 test('marks a replaced Staging candidate stale and offers safe republication', async ({ page }) => {
   await mockPublishing(page, 'stale');
   await openPublishing(page);
-  await expect(page.getByText('No longer current on Staging')).toBeVisible();
-  await expect(page.getByText(/another accepted or published candidate/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Publish current revision 7' })).toBeVisible();
+  await expect(page.getByText('Publish the current revision 7')).toBeVisible();
+  await expect(page.getByText(/Builder checks this saved version/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish to Staging' })).toBeVisible();
   await expect(page.getByRole('button', { name: /accept this revision/i })).toHaveCount(0);
 });
 
@@ -826,14 +963,12 @@ test('keeps replaced and current candidates associated with separate drafts acro
     await expect(
       earlierPage.getByRole('heading', { level: 1, name: 'Guided publishing' }),
     ).toBeVisible();
-    await expect(earlierPage.getByText('No longer current on Staging')).toBeVisible();
-    await expect(
-      earlierPage.getByRole('button', { name: 'Publish current revision 7' }),
-    ).toBeVisible();
+    await expect(earlierPage.getByText('Publish the current revision 7')).toBeVisible();
+    await expect(earlierPage.getByRole('button', { name: 'Publish to Staging' })).toBeVisible();
     await expect(
       currentPage.getByRole('heading', { level: 1, name: 'Christmas site' }),
     ).toBeVisible();
-    await expect(currentPage.getByText('Official Staging candidate accepted')).toBeVisible();
+    await expect(currentPage.getByText('Staging accepted')).toBeVisible();
   } finally {
     await Promise.all([earlierContext.close(), currentContext.close()]);
   }
@@ -850,32 +985,27 @@ test('waits for an occupied shared Staging slot without publishing or exposing a
   });
   await mockPublishing(page, 'busy');
   await openPublishing(page);
-  await expect(page.getByText('Staging is currently in use')).toBeVisible();
-  await expect(page.getByText(/without queuing or interrupting/i)).toBeVisible();
-  await expect(page.getByText(/another publication is currently publishing/i)).toBeVisible();
-  await expect(page.getByText(/check recovery after/i)).toBeVisible();
+  await expect(page.getByText('Wait for Staging to become available')).toBeVisible();
+  await expect(page.getByText(/Another publication is using Staging/)).toBeVisible();
   await page.clock.runFor(10_000);
   expect(publicationRequests).toBe(0);
 });
 
-test('pauses old pending monitoring with a manual fallback and accessible responsive status', async ({
-  page,
-}) => {
+test('keeps old publication progress live with accessible responsive status', async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 900 });
-  await mockPublishing(page, 'timed-out');
+  await page.clock.install();
+  const reads = await mockPublishing(page, 'timed-out');
   await openPublishing(page);
-  await expect(page.getByText('Automatic monitoring paused')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Continue verification' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Continue verification' })).toBeVisible();
-  await expect(page.getByText(/does not publish again/i)).toBeVisible();
-  const dialog = page.getByRole('dialog', { name: 'Publish and accept on Staging' });
+  await expect(page.getByText(/Progress updates automatically/)).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect.poll(reads).toBe(1);
+  const dialog = page.getByRole('dialog', { name: 'Publish your site' });
   await expect(
     dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).resolves.toBe(true);
-  const results = await new AxeBuilder({ page }).include('.publish-modal').analyze();
-  expect(
-    results.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? '')),
-  ).toEqual([]);
+  expect((await new AxeBuilder({ page }).include('.publish-modal').analyze()).violations).toEqual(
+    [],
+  );
 });
 
 test('gives an Administrator a clear Production handoff without an unavailable action', async ({
@@ -883,9 +1013,8 @@ test('gives an Administrator a clear Production handoff without an unavailable a
 }) => {
   await mockPublishing(page, 'accepted', 'administrator');
   await openPublishing(page);
-  await expect(page.getByText('Your next step · Administrator')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Your Staging work is complete' })).toBeVisible();
-  await expect(page.getByText(/Check the public site section below/i)).toBeVisible();
-  await expect(page.getByText(/organization owner.*Builder Administrator role/i)).toBeVisible();
+
+  await expect(page.getByRole('heading', { name: 'Staging accepted' })).toBeVisible();
+  await expect(page.getByText(/Public site publishing is not enabled/)).toBeVisible();
   await expect(page.getByRole('button', { name: /publish.*production/i })).toHaveCount(0);
 });

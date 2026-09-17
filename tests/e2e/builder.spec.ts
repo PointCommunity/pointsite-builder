@@ -391,9 +391,12 @@ test('audits configuration density across supported widths and text sizes', asyn
             await page
               .locator('.visual-editor iframe')
               .contentFrame()
-              .getByRole('button', { name: /^(Church navigation|Menu)$/ })
+              .locator('.point-layout-item[data-puck-component]:has(.point-navigation)')
               .first()
               .click();
+            await expect(
+              page.getByRole('combobox', { name: 'Navigation design', exact: true }),
+            ).toBeVisible();
             await measure('Navigation inspector');
             await page.getByRole('button', { name: 'Publish', exact: true }).click();
             await measure('Publishing dialog');
@@ -509,7 +512,7 @@ test('changes the design and creates a page without code', async ({ page }) => {
   await expect(page.getByText(/Production is locked/)).toHaveCount(0);
 });
 
-test('publishes and accepts only exact verified staging while production stays locked', async ({
+test('publishes and accepts only exact verified staging when public publishing is disabled', async ({
   page,
 }) => {
   await page.clock.install();
@@ -531,55 +534,47 @@ test('publishes and accepts only exact verified staging while production stays l
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Close publishing window' })).toBeFocused();
-  await expect(page.getByText('Loading public site status…')).toBeVisible();
+  await expect(page.getByText('Loading public site status…')).toBeHidden();
   await page.keyboard.press('Shift+Tab');
-  await expect(page.getByText('Technical evidence', { exact: true })).toBeFocused();
+  await expect(page.getByText('Technical details', { exact: true })).toBeFocused();
   releaseProductionStatus();
-  await expect(
-    page.getByText(/Public site publishing is not enabled in Builder yet/),
-  ).toBeVisible();
+  await expect(page.getByText(/Public site publishing is not enabled/)).toBeHidden();
   await expect(
     page
-      .getByRole('dialog', { name: 'Publish and accept on Staging' })
+      .getByRole('dialog', { name: 'Publish your site' })
       .evaluate((dialog) => dialog.contains(globalThis.document.activeElement)),
   ).resolves.toBe(true);
   await expect(
     page.getByRole('list', { name: 'Staging publishing progress' }).getByRole('listitem'),
   ).toHaveCount(5);
-  await expect(page.getByText('Private preflight required')).toBeVisible();
-  await page.getByRole('button', { name: /Check and publish revision \d+/ }).click();
-  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
-  await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /Check and publish revision \d+/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish to Staging' }).click();
+  await expect(page.getByRole('heading', { name: /Builder is verifying Staging/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish to Staging' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
-  await expect(page.getByText('Verifying the exact Staging candidate')).toBeVisible();
-  await expect(page.getByText(/Automatic updates are on/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Builder is verifying Staging/ })).toBeVisible();
+  await expect(page.getByText(/Progress updates automatically/)).toBeVisible();
   await page.clock.runFor(10_000);
-  await expect(page.getByText('Staging is ready for review')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Review Staging, then accept this version' }),
+  ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open Staging for review' })).toHaveAttribute(
     'href',
     'https://staging.pointatx.org',
   );
-  await expect(page.getByText('c'.repeat(64))).toBeHidden();
+  await expect(page.locator('.technical-details')).toHaveJSProperty('open', false);
   await page.getByRole('button', { name: 'Accept this Staging version' }).click();
-  await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
-  await expect(
-    page.getByText(
-      'This exact revision is accepted on Staging. The public site has its own publication status.',
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Public site publishing is not enabled in Builder yet/),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Staging accepted' })).toBeVisible();
+  await expect(page.getByText(/Public site publishing is not enabled/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
-  await expect(page.getByText('Official Staging candidate accepted')).toBeVisible();
-  await expect(page.getByRole('button', { name: /publish this revision/i })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Staging accepted' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish to Staging' })).toHaveCount(0);
   expect(productionWrites).toEqual([]);
 });

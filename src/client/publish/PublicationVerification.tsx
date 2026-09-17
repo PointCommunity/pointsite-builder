@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ClientApiError } from '../api';
 import type { PublicationVerificationState } from './workflow';
+import { CopyPublishingDetails, usePublishingSupport, supportError } from './PublishingSupport';
 
 export function PublicationVerification({
   target,
@@ -19,7 +20,7 @@ export function PublicationVerification({
 }) {
   const [verification, setVerification] = useState<PublicationVerificationState | null>();
   const [busy, setBusy] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [failure, setFailure] = useState<ReturnType<typeof supportError> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<{ scope: string; key: string } | null>(null);
   const reading = useRef({ generation: 0, mounted: true });
@@ -31,9 +32,10 @@ export function PublicationVerification({
     try {
       const result = await api.getPublicationVerification(target, jobId);
       if (generation === reading.current.generation) setVerification(result.verification);
-    } catch {
+    } catch (error) {
       if (generation === reading.current.generation) {
         setVerification(undefined);
+        setFailure(supportError(error));
         setError('Verification status is unavailable. Check status before trying again.');
       }
     }
@@ -57,13 +59,7 @@ export function PublicationVerification({
       verification.needsAttention
     )
       return;
-    const remaining = Date.parse(verification.requestedAt) + 15 * 60_000 - Date.now();
-    if (!Number.isFinite(remaining) || remaining <= 0) {
-      setPaused(true);
-      return;
-    }
-    setPaused(false);
-    const timer = window.setTimeout(() => void load(), Math.min(10_000, remaining));
+    const timer = window.setTimeout(() => void load(), 10_000);
     return () => window.clearTimeout(timer);
   }, [verification, busy, load]);
   useEffect(() => {
@@ -107,6 +103,7 @@ export function PublicationVerification({
       await onRefresh(true);
       completed = true;
     } catch (failure) {
+      setFailure(supportError(failure));
       setError(
         failure instanceof ClientApiError && failure.code === 'PUBLICATION_RUN_NOT_TERMINAL'
           ? 'The cloud workflow is still running. Wait for it to stop, then check status.'
@@ -120,6 +117,7 @@ export function PublicationVerification({
     }
   };
   const active = verification?.status === 'queued' || verification?.status === 'running';
+  usePublishingSupport(`${label} recovery`, { verification, error: failure });
   return (
     <section className="publish-next-action" aria-labelledby={`${target}-verification-heading`}>
       <h3 id={`${target}-verification-heading`} tabIndex={-1} ref={heading}>
@@ -146,14 +144,6 @@ export function PublicationVerification({
                     ? 'Verification is checking the existing publication.'
                     : 'Verification needs another attempt.'}
       </p>
-      {paused && active ? (
-        <p>Automatic verification monitoring paused. Check status to read the latest progress.</p>
-      ) : null}
-      {verification?.workflowUrl ? (
-        <a href={verification.workflowUrl} target="_blank" rel="noreferrer">
-          Verification cloud progress
-        </a>
-      ) : null}
       {verification === null || (verification?.status === 'failed' && verification.attempt < 3) ? (
         <button
           className="button"
@@ -197,6 +187,7 @@ export function PublicationVerification({
         </p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
+      {error || verification?.status === 'failed' ? <CopyPublishingDetails /> : null}
       <button
         className="button"
         type="button"

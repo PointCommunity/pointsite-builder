@@ -125,7 +125,7 @@ it('reopens a saved report and reconciles it without starting another verificati
   expect(screen.queryByRole('button', { name: 'Retry stopped verification' })).toBeNull();
 });
 
-it('bounds monitoring, allows manual refresh and prevents a fourth attempt', async () => {
+it('continues monitoring while preventing a fourth recovery attempt', async () => {
   vi.useFakeTimers();
   const row = {
     ...pending,
@@ -150,15 +150,14 @@ it('bounds monitoring, allows manual refresh and prevents a fourth attempt', asy
     await vi.advanceTimersByTimeAsync(20_000);
   });
   expect(read).toHaveBeenCalledTimes(2);
-  expect(screen.getByText(/Automatic verification monitoring paused/)).toBeVisible();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000);
   });
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
   expect(screen.queryByRole('button', { name: 'Retry stopped verification' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Check verification status' }));
   await act(async () => {
     await Promise.resolve();
   });
-  expect(read).toHaveBeenCalledTimes(3);
+  expect(read).toHaveBeenCalledTimes(4);
 });

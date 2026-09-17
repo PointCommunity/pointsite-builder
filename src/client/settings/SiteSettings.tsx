@@ -9,8 +9,10 @@ const categories = ['Identity', 'Footer', 'Social', 'Collections', 'Design'] as 
 
 export function SiteSettings({
   initialCategory = 'Identity',
+  onEditFooter,
 }: {
   initialCategory?: (typeof categories)[number];
+  onEditFooter?: () => void;
 }) {
   const [category, setCategory] = useState(initialCategory);
   const root = useRef<HTMLDivElement>(null);
@@ -196,7 +198,20 @@ export function SiteSettings({
         tabIndex={-1}
         aria-labelledby="services-title"
       >
-        <h3 id="services-title">Footer content and giving</h3>
+        <h3 id="services-title">
+          {document.footer ? 'Footer and site details' : 'Footer content and giving'}
+        </h3>
+        {document.footer && onEditFooter ? (
+          <>
+            <p>
+              Customize the footer with Layout Blocks. The fields below keep your site's service and
+              giving details.
+            </p>
+            <button type="button" className="button" onClick={onEditFooter}>
+              Edit footer in Layout
+            </button>
+          </>
+        ) : null}
         <div className="field-grid">
           <label>
             <span>Service label</span>
@@ -244,6 +259,12 @@ export function SiteSettings({
         aria-labelledby="social-title"
       >
         <h3 id="social-title">Social links</h3>
+        {document.footer ? (
+          <p>
+            These links are used when you add a new Social links Block. Edit existing links by
+            selecting their Block in Layout.
+          </p>
+        ) : null}
         <div className="settings-list">
           {document.site.socialLinks.map((link, index) => (
             <div className="settings-list__item" key={index}>

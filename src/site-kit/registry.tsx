@@ -1,6 +1,14 @@
-import { Fragment, useState, type ElementType, type FormEvent, type ReactNode } from 'react';
-import type { CSSProperties } from 'react';
-import type { SectionBlock, SiteDocument, SiteElement } from './types';
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useState,
+  type ElementType,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import type { CSSProperties, HTMLAttributes, Ref } from 'react';
+import type { ElementPlacement, SectionBlock, SiteDocument, SiteElement } from './types';
 import { youtubeEmbedUrl } from './linked-media';
 
 export const blockDefinitions: Record<
@@ -24,6 +32,7 @@ export const blockDefinitions: Record<
   text: { label: 'Text', supportsMoveButtons: true },
   button: { label: 'Button', supportsMoveButtons: true },
   navigation: { label: 'Navigation', supportsMoveButtons: true },
+  socialLinks: { label: 'Social links', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -394,6 +403,7 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
           {node.attribution ? <footer>— {node.attribution}</footer> : null}
         </blockquote>
       );
+    if (node.type === 'address') return <address key={key}>{node.text}</address>;
     return (
       <p key={key}>
         <a href={node.href} {...linkAttributes(node.href)}>
@@ -548,7 +558,12 @@ export function renderBlock(
     case 'richText':
       return (
         <section
-          className={`content-section ${block.variant === 'prose' ? 'prose' : 'point-prose'}`}
+          className={
+            block.variant === 'footer'
+              ? 'point-prose point-footer-information'
+              : `content-section ${block.variant === 'prose' ? 'prose' : 'point-prose'}`
+          }
+          style={block.align ? { textAlign: block.align } : undefined}
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
@@ -1070,6 +1085,34 @@ export function renderBlock(
       );
     case 'navigation':
       return <NavigationBlock block={block} document={document} onNavigate={onNavigate} />;
+    case 'socialLinks':
+      return (
+        <section
+          className={`point-social point-align--${block.align}${block.variant === 'footer' ? ' point-footer-information' : ''}`}
+          style={{ textAlign: block.align }}
+        >
+          {block.heading ? <h2>{block.heading}</h2> : null}
+          <div
+            className={`point-social__links point-social__links--${block.appearance} point-social__links--${block.align}`}
+          >
+            {block.links.map((link, index) => (
+              <a key={index} href={link.url} {...linkAttributes(link.url)} aria-label={link.label}>
+                {block.appearance === 'labels' ? (
+                  link.label
+                ) : (
+                  <span aria-hidden="true">
+                    {
+                      { facebook: 'f', instagram: '◎', youtube: '▶', x: '𝕏', other: '↗' }[
+                        link.platform
+                      ]
+                    }
+                  </span>
+                )}
+              </a>
+            ))}
+          </div>
+        </section>
+      );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
@@ -1083,90 +1126,131 @@ const sectionTotalGap = {
   large: '33rem',
 } as const;
 
+const LayoutContext = createContext<Pick<SectionBlock, 'layout' | 'columns'>>({
+  layout: 'compatibility',
+  columns: 1,
+});
+
+export function LayoutItem({
+  placement,
+  children,
+  dragRef,
+}: {
+  placement: Pick<ElementPlacement, 'grid' | 'align' | 'span'>;
+  children: ReactNode;
+  dragRef?: Ref<HTMLDivElement>;
+}) {
+  const section = useContext(LayoutContext);
+  const flow = section.layout === 'flow';
+  const style = Object.fromEntries(
+    (['desktop', 'tablet', 'mobile'] as const).flatMap((breakpoint) => {
+      const area = placement.grid[breakpoint];
+      return [
+        ...(!flow
+          ? [
+              [`--point-grid-${breakpoint}-column`, area.column],
+              [`--point-grid-${breakpoint}-row`, area.row],
+              [`--point-grid-${breakpoint}-column-span`, area.columnSpan],
+              [`--point-grid-${breakpoint}-row-span`, area.rowSpan],
+            ]
+          : []),
+        [`--point-align-${breakpoint}`, placement.align[breakpoint]],
+      ];
+    }),
+  ) as CSSProperties;
+  return (
+    <div
+      ref={dragRef}
+      className={`point-layout-item point-layout-item--grid${flow ? ` point-layout-item--flow point-layout-item--span-${Math.min(placement.span, section.columns)}` : ''}`}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function LayoutSection({
+  section,
+  document,
+  children,
+  renderContent,
+  controls,
+  sectionId,
+  interaction,
+}: {
+  section: Omit<SectionBlock, 'id' | 'type' | 'items'>;
+  document: SiteDocument;
+  children?: ReactNode;
+  renderContent?: (className: string, style: CSSProperties) => ReactNode;
+  controls?: ReactNode;
+  sectionId?: string;
+  interaction?: Pick<HTMLAttributes<HTMLElement>, 'onPointerMoveCapture' | 'onPointerLeave'>;
+}) {
+  // Older Flow sections always stacked, regardless of their stored column count.
+  const columns = document.schemaVersion >= 11 ? section.columns : 1;
+  if (section.layout === 'compatibility')
+    return (
+      <LayoutContext value={{ layout: section.layout, columns }}>
+        {renderContent ? renderContent('point-compatibility-slot', {}) : children}
+      </LayoutContext>
+    );
+  const style = {
+    '--point-section-columns': section.layout === 'flow' ? columns : 12,
+    '--point-section-gap':
+      section.gapPixels === undefined ? sectionGap[section.gap] : `${section.gapPixels}px`,
+    '--point-section-total-gap':
+      section.gapPixels === undefined
+        ? sectionTotalGap[section.gap]
+        : `${section.gapPixels * 11}px`,
+    '--point-section-min-rows': section.minRows,
+  } as CSSProperties;
+  return (
+    <LayoutContext value={{ layout: section.layout, columns }}>
+      <section
+        className={`point-layout-section point-layout-section--${section.layout} point-layout-section--position-${section.position} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}${section.border && section.border !== 'none' ? ` point-layout-section--border-${section.border}` : ''}${section.layout === 'flow' ? ` point-layout-section--stack-${section.stackAt ?? 'smallTablet'}` : ''}`}
+        style={
+          section.paddingPixels === undefined ? undefined : { paddingBlock: section.paddingPixels }
+        }
+        aria-label={section.name}
+        data-point-section-id={sectionId}
+        {...interaction}
+      >
+        {section.backgroundMediaId ? (
+          <img
+            className={`point-layout-section__background point-layout-section__background--${section.backgroundPosition}`}
+            src={mediaRecord(document, section.backgroundMediaId).sourcePath}
+            alt=""
+          />
+        ) : null}
+        {section.overlay !== 'none' ? (
+          <div className="point-layout-section__overlay" aria-hidden="true" />
+        ) : null}
+        {renderContent ? (
+          renderContent('point-layout-section__grid', style)
+        ) : (
+          <div className="point-layout-section__grid" style={style}>
+            {children}
+          </div>
+        )}
+        {controls}
+      </section>
+    </LayoutContext>
+  );
+}
+
 export function renderSection(
   section: SectionBlock,
   document: SiteDocument,
   onNavigate?: (route: string) => void,
 ): ReactNode {
-  if (section.layout === 'compatibility') {
-    const placement = section.items[0];
-    if (!placement) return null;
-    const content = renderBlock(placement.element, document, onNavigate);
-    // Match the editor's clipping box without changing the authored Hero contents.
-    return placement.element.type === 'hero' && placement.element.variant === 'pageHero' ? (
-      <div className="point-layout-item point-layout-item--grid">{content}</div>
-    ) : (
-      content
-    );
-  }
-
-  const style = {
-    '--point-section-columns': section.layout === 'flow' ? 1 : 12,
-    '--point-section-gap': sectionGap[section.gap],
-    '--point-section-total-gap': sectionTotalGap[section.gap],
-    '--point-section-min-rows': section.minRows,
-  } as CSSProperties;
-  const sectionColumns = section.layout === 'flow' ? 1 : section.columns;
-
+  const items = section.layout === 'compatibility' ? section.items.slice(0, 1) : section.items;
   return (
-    <section
-      className={`point-layout-section point-layout-section--${section.layout} point-layout-section--position-${section.position} point-layout-section--${section.width} point-layout-section--${section.surface} point-layout-section--pad-${section.padding} point-layout-section--overlay-${section.overlay}`}
-      aria-label={section.name}
-    >
-      {section.backgroundMediaId ? (
-        <img
-          className={`point-layout-section__background point-layout-section__background--${section.backgroundPosition}`}
-          src={mediaRecord(document, section.backgroundMediaId).sourcePath}
-          alt=""
-        />
-      ) : null}
-      {section.overlay !== 'none' ? (
-        <div className="point-layout-section__overlay" aria-hidden="true" />
-      ) : null}
-      <div className="point-layout-section__grid" style={style}>
-        {section.items.map((placement) => {
-          const desktop = placement.grid.desktop;
-          const tablet = placement.grid.tablet;
-          const mobile = placement.grid.mobile;
-          const spanClass =
-            section.layout === 'flow'
-              ? ` point-layout-item--span-${Math.min(placement.span, sectionColumns)}`
-              : '';
-          const placementStyle =
-            section.layout === 'grid'
-              ? ({
-                  '--point-grid-desktop-column': desktop.column,
-                  '--point-grid-desktop-row': desktop.row,
-                  '--point-grid-desktop-column-span': desktop.columnSpan,
-                  '--point-grid-desktop-row-span': desktop.rowSpan,
-                  '--point-grid-tablet-column': tablet.column,
-                  '--point-grid-tablet-row': tablet.row,
-                  '--point-grid-tablet-column-span': tablet.columnSpan,
-                  '--point-grid-tablet-row-span': tablet.rowSpan,
-                  '--point-grid-mobile-column': mobile.column,
-                  '--point-grid-mobile-row': mobile.row,
-                  '--point-grid-mobile-column-span': mobile.columnSpan,
-                  '--point-grid-mobile-row-span': mobile.rowSpan,
-                  '--point-align-desktop': placement.align.desktop,
-                  '--point-align-tablet': placement.align.tablet,
-                  '--point-align-mobile': placement.align.mobile,
-                } as CSSProperties)
-              : ({
-                  '--point-align-desktop': placement.align.desktop,
-                  '--point-align-tablet': placement.align.tablet,
-                  '--point-align-mobile': placement.align.mobile,
-                } as CSSProperties);
-          return (
-            <div
-              className={`point-layout-item point-layout-item--${section.layout}${spanClass}`}
-              key={placement.id}
-              style={placementStyle}
-            >
-              {renderBlock(placement.element, document, onNavigate)}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <LayoutSection section={section} document={document}>
+      {items.map((placement) => (
+        <LayoutItem placement={placement} key={placement.id}>
+          {renderBlock(placement.element, document, onNavigate)}
+        </LayoutItem>
+      ))}
+    </LayoutSection>
   );
 }

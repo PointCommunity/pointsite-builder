@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { RollbackSelection, RollbackSnapshot } from './workflow';
+import { PublishingDialog } from './PublishingDialog';
+import { usePublishingSupport, supportError, CopyPublishingDetails } from './PublishingSupport';
 
 export function ProductionRollback({
   onRefresh,
   label = 'Site Production',
+  origin,
 }: {
   onRefresh: () => Promise<void>;
   label?: string;
+  origin?: string;
 }) {
   const [snapshot, setSnapshot] = useState<RollbackSnapshot | null>();
   const [selected, setSelected] = useState('');
@@ -16,6 +20,7 @@ export function ProductionRollback({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [failure, setFailure] = useState<ReturnType<typeof supportError> | null>(null);
   const reading = useRef(0),
     acting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -24,8 +29,11 @@ export function ProductionRollback({
     try {
       const value = await api.getRollback();
       if (generation === reading.current) setSnapshot(value);
-    } catch {
-      if (generation === reading.current) setSnapshot(null);
+    } catch (error) {
+      if (generation === reading.current) {
+        setSnapshot(null);
+        setFailure(supportError(error));
+      }
     }
   }, []);
   useEffect(() => {
@@ -65,7 +73,8 @@ export function ProductionRollback({
         await api.recoverRollback(job.id, action);
         setPrepared(null);
       }
-    } catch {
+    } catch (error) {
+      setFailure(supportError(error));
       setError(
         'The action could not be confirmed. Check rollback status before trying again. Running cloud operations must finish before recovery.',
       );
@@ -77,6 +86,7 @@ export function ProductionRollback({
       heading.current?.focus();
     }
   };
+  usePublishingSupport('Restore', { ...snapshot, error: failure });
   if (snapshot?.enabled === false) return null;
   return (
     <section aria-labelledby="production-rollback-heading">
@@ -104,11 +114,6 @@ export function ProductionRollback({
                     : 'The captured rollback continues in the cloud after you close Builder.'}
             </p>
           ) : null}
-          {job?.workflowUrl ? (
-            <a href={job.workflowUrl} target="_blank" rel="noreferrer">
-              Rollback cloud progress
-            </a>
-          ) : null}
           {active ? (
             <>
               {job.canVerify ? (
@@ -121,14 +126,21 @@ export function ProductionRollback({
                   Verify completed rollback
                 </button>
               ) : null}
-              <button
-                className="button"
-                type="button"
-                disabled={busy}
-                onClick={() => void act('cancel')}
-              >
-                Cancel queued or stopped rollback
-              </button>
+              <details>
+                <summary>Cancel this restore</summary>
+                <p>
+                  This cancels a restore that has not started or has already stopped. It cannot undo
+                  a website change already made. Restoring later requires a new request.
+                </p>
+                <button
+                  className="button button--danger"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void act('cancel')}
+                >
+                  Cancel queued or stopped rollback
+                </button>
+              </details>
             </>
           ) : (
             <>
@@ -157,13 +169,22 @@ export function ProductionRollback({
                 </p>
               ) : null}
               {prepared ? (
-                <>
+                <PublishingDialog
+                  title={`Restore selected release to ${label}?`}
+                  busy={busy}
+                  onClose={() => setPrepared(null)}
+                >
                   <p>
-                    This replaces the public website with the selected release. Continue only when
-                    that is the version you want visitors to see.
+                    This replaces the website at{' '}
+                    <a href={origin} target="_blank" rel="noreferrer">
+                      {origin ?? label}
+                    </a>{' '}
+                    with the selected release. Drafts and saved history stay available. Once the
+                    replacement is deployed, cancelling cannot undo it. Changing it again requires
+                    another restore or publication.
                   </p>
                   <button
-                    className="button"
+                    className="button button--danger"
                     type="button"
                     disabled={busy}
                     onClick={() => void act('restore')}
@@ -178,13 +199,16 @@ export function ProductionRollback({
                   >
                     Discard restore selection
                   </button>
-                </>
+                </PublishingDialog>
               ) : (
                 <button
-                  className="button"
+                  className="button button--danger"
                   type="button"
                   disabled={busy || !selected}
-                  onClick={() => void act('prepare')}
+                  onClick={(event) => {
+                    event.currentTarget.focus();
+                    void act('prepare');
+                  }}
                 >
                   Prepare selected restore
                 </button>
@@ -194,6 +218,7 @@ export function ProductionRollback({
         </>
       )}
       {error ? <p role="alert">{error}</p> : null}
+      {error || failure ? <CopyPublishingDetails /> : null}
       <button className="button" type="button" disabled={busy} onClick={() => void load()}>
         Check rollback status
       </button>

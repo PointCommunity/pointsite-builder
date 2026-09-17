@@ -36,6 +36,11 @@ const ActionSchema = z.strictObject({
 });
 
 const BlockBase = { id: uuid } as const;
+const SocialLinkSchema = z.strictObject({
+  platform: z.enum(['facebook', 'instagram', 'youtube', 'x', 'other']),
+  label: shortText,
+  url: SafeHttpsUrlSchema,
+});
 
 const HeroBlockSchema = z.strictObject({
   ...BlockBase,
@@ -79,6 +84,7 @@ const RichTextNodeSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('bulletedList'), items: z.array(shortText).min(1).max(30) }),
   z.strictObject({ type: z.literal('numberedList'), items: z.array(shortText).min(1).max(30) }),
   z.strictObject({ type: z.literal('quote'), text: bodyText, attribution: shortText.optional() }),
+  z.strictObject({ type: z.literal('address'), text: bodyText }),
   z.strictObject({ type: z.literal('link'), text: shortText, href: SafeHrefSchema }),
 ]);
 
@@ -88,7 +94,8 @@ const RichTextBlockSchema = z.strictObject({
   content: z.array(RichTextNodeSchema).min(1).max(100),
   eyebrow: z.string().trim().max(80).optional(),
   heading: z.string().trim().max(180).optional(),
-  variant: z.enum(['standard', 'prose']).optional(),
+  variant: z.enum(['standard', 'prose', 'footer']).optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
 });
 
 const ImageBlockSchema = z.strictObject({
@@ -273,6 +280,16 @@ const NavigationBlockSchema = z.strictObject({
   surface: z.enum(['transparent', 'canvas', 'primary']),
 });
 
+const SocialLinksBlockSchema = z.strictObject({
+  ...BlockBase,
+  type: z.literal('socialLinks'),
+  heading: z.string().trim().max(180).optional(),
+  links: z.array(SocialLinkSchema).max(12),
+  align: z.enum(['left', 'center', 'right']),
+  appearance: z.enum(['icons', 'labels']),
+  variant: z.enum(['standard', 'footer']).optional(),
+});
+
 function isSafePlainText(value: string): boolean {
   return ![...value].some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -298,6 +315,7 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
   TextBlockSchema,
   ButtonBlockSchema,
   NavigationBlockSchema,
+  SocialLinksBlockSchema,
 ]);
 
 export const GridAreaSchema = z
@@ -353,9 +371,13 @@ export const SectionBlockSchema = z
       z.literal(12),
     ]),
     gap: z.enum(['none', 'small', 'medium', 'large']),
-    width: z.enum(['full', 'shell', 'narrow']),
+    width: z.enum(['full', 'shell', 'narrow', 'site']),
     surface: z.enum(['transparent', 'canvas', 'surface', 'primary']),
     padding: z.enum(['none', 'small', 'medium', 'large']),
+    gapPixels: z.number().int().min(0).max(160).optional(),
+    paddingPixels: z.number().int().min(0).max(240).optional(),
+    border: z.enum(['none', 'top', 'bottom', 'all']).optional(),
+    stackAt: z.enum(['phone', 'smallTablet', 'tablet']).optional(),
     minRows: z.number().int().min(1).max(100),
     backgroundMediaId: uuid.optional(),
     backgroundPosition: z.enum(['top', 'center', 'bottom']),
@@ -579,7 +601,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.union([z.literal(9), z.literal(10)]),
+    schemaVersion: z.union([z.literal(9), z.literal(10), z.literal(11)]),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,
@@ -595,15 +617,7 @@ export const SiteDocumentSchema = z
       }),
       service: z.strictObject({ label: shortText, schedule: shortText }),
       givingUrl: SafeHttpsUrlSchema,
-      socialLinks: z
-        .array(
-          z.strictObject({
-            platform: z.enum(['facebook', 'instagram', 'youtube', 'x', 'other']),
-            label: shortText,
-            url: SafeHttpsUrlSchema,
-          }),
-        )
-        .max(12),
+      socialLinks: z.array(SocialLinkSchema).max(12),
     }),
     theme: ThemeSchema,
     navigation: z.array(NavigationEntrySchema).max(20),
@@ -659,6 +673,7 @@ export const SiteDocumentSchema = z
       )
       .max(500),
     collections: CollectionsSchema,
+    footer: z.array(SectionBlockSchema).max(20).optional(),
   })
   .superRefine((document, context) => {
     const designs = document.navigationDesigns;
@@ -669,7 +684,7 @@ export const SiteDocumentSchema = z
         message: 'Navigation designs require schema version 10',
       });
     }
-    if (document.schemaVersion === 10) {
+    if (document.schemaVersion >= 10) {
       if (!designs)
         context.addIssue({
           code: 'custom',
@@ -682,13 +697,21 @@ export const SiteDocumentSchema = z
           path: ['navigation'],
           message: 'Version 10 stores menu items only in Navigation designs',
         });
-      if (document.rendererVersion !== '10.0.0')
+      if (document.rendererVersion !== `${document.schemaVersion}.0.0`)
         context.addIssue({
           code: 'custom',
           path: ['rendererVersion'],
-          message: 'Navigation designs require renderer 10.0.0',
+          message: `Schema ${document.schemaVersion} requires renderer ${document.schemaVersion}.0.0`,
         });
     }
+    if (
+      document.schemaVersion === 11 ? document.footer === undefined : document.footer !== undefined
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['footer'],
+        message: 'Editable footers require schema 11 and an explicit section list',
+      });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {
       if (designIds.has(design.id))
@@ -699,9 +722,42 @@ export const SiteDocumentSchema = z
         });
       designIds.add(design.id);
     });
-    document.pages.forEach((page, pageIndex) =>
-      page.blocks.forEach((section, sectionIndex) =>
+    const regions = document.pages.map((page, index) => ({
+      blocks: page.blocks,
+      path: ['pages', index, 'blocks'] as (string | number)[],
+    }));
+    if (document.footer) regions.push({ blocks: document.footer, path: ['footer'] });
+    regions.forEach(({ blocks, path }) =>
+      blocks.forEach((section, sectionIndex) => {
+        const sectionPath = [...path, sectionIndex];
+        if (
+          document.schemaVersion < 11 &&
+          (section.width === 'site' ||
+            section.gapPixels !== undefined ||
+            section.paddingPixels !== undefined ||
+            section.border !== undefined ||
+            section.stackAt !== undefined)
+        )
+          context.addIssue({
+            code: 'custom',
+            path: sectionPath,
+            message: 'These section styles require schema 11',
+          });
         section.items.forEach((item, itemIndex) => {
+          const elementPath = [...sectionPath, 'items', itemIndex, 'element'];
+          if (
+            document.schemaVersion < 11 &&
+            (item.element.type === 'socialLinks' ||
+              (item.element.type === 'richText' &&
+                (item.element.variant === 'footer' ||
+                  item.element.align !== undefined ||
+                  item.element.content.some((node) => node.type === 'address'))))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'These block styles require schema 11',
+            });
           if (item.element.type !== 'navigation') return;
           const reference = item.element.navigationDesignId;
           if (
@@ -711,24 +767,15 @@ export const SiteDocumentSchema = z
           ) {
             context.addIssue({
               code: 'custom',
-              path: [
-                'pages',
-                pageIndex,
-                'blocks',
-                sectionIndex,
-                'items',
-                itemIndex,
-                'element',
-                'navigationDesignId',
-              ],
+              path: [...elementPath, 'navigationDesignId'],
               message:
                 document.schemaVersion === 9
                   ? 'Navigation design references require schema version 10'
                   : 'Select an existing Navigation design',
             });
           }
-        }),
-      ),
+        });
+      }),
     );
     const routeOwners = new Map<string, number>();
     document.pages.forEach((page, index) => {

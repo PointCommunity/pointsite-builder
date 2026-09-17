@@ -622,6 +622,10 @@ textarea {
   min-width: 0;
   overscroll-behavior: contain;
 }
+.visual-editor #puck-canvas-root {
+  /* Puck's fit-to-space height changes vh units when panels or zoom change. */
+  height: auto !important;
+}
 .visual-editor [class*='_Sidebar--right_'] {
   overflow-x: hidden;
 }
@@ -1053,6 +1057,94 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
   cursor: pointer;
   font-weight: 750;
 }
+.technical-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+.publish-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-right: 4rem;
+}
+.publish-heading h2,
+.publish-heading p,
+.publish-draft-name {
+  margin: 0;
+}
+.publish-draft-name {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.publish-help {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem;
+}
+.publish-accepted {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.publish-accepted h3 {
+  color: var(--text);
+}
+.publish-danger {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+}
+.publish-danger summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.publish-danger[open] > .button {
+  margin-top: 1rem;
+}
+.publish-danger section {
+  margin-top: 1rem;
+}
+.publish-danger .button {
+  margin: 0.3rem 0.3rem 0.3rem 0;
+}
+.publish-copy {
+  margin-block: 0.5rem;
+}
+.publish-copy textarea {
+  width: 100%;
+  font-family: monospace;
+}
+.publishing-dialog {
+  max-width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+}
+.publishing-dialog a {
+  overflow-wrap: anywhere;
+}
+.publishing-dialog > .button {
+  margin: 0.3rem;
+}
+.publication-progress {
+  display: grid;
+  gap: 0.5rem;
+  padding-block: 0.5rem;
+}
+.publication-progress progress {
+  width: 100%;
+  accent-color: var(--brand-strong);
+}
+.publish-steps.publish-steps--production {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0.5rem 0;
+}
 .technical-links a {
   overflow-wrap: anywhere;
 }
@@ -1079,7 +1171,14 @@ html[data-point-grid-preview='true'] [data-dnd-dragging] {
 }
 @media (max-width: 850px) {
   .publish-steps {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+  .publish-steps li {
     grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0.5rem 0.2rem;
+    font-size: 0.8rem;
   }
   .publish-steps small {
     font-size: 0.875rem;

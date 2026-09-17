@@ -1,7 +1,12 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
+import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
+import { blockDefinitions } from '../../src/site-kit/registry';
+import { blockCatalogDocument } from '../fixtures/block-data';
+import { siteViewports } from '../../src/client/preview/viewports';
 import type * as HeroPublication from '../fixtures/hero-publication';
 import type { PendingJournalState } from '../../src/client/editor/pending-journal';
 import type * as JournalModule from '../../src/client/editor/pending-journal';
@@ -53,6 +58,8 @@ async function installApi(
 ) {
   const draft = original();
   configureDocument?.(draft.document);
+  draft.revision.schemaVersion = draft.document.schemaVersion;
+  draft.revision.rendererVersion = draft.document.rendererVersion;
   const drafts = [draft];
   if (densityFixture) {
     for (let index = 1; index < 8; index++)
@@ -152,6 +159,7 @@ async function installApi(
   ];
   let conflictNextSave = false;
   let ownedDraftId: string | null = null;
+  let checkoutAcquiredAt: string | null = null;
   let nextSaveGate: Promise<void> | null = null;
   let releaseNextSave: (() => void) | null = null;
   const saveRequests: Array<{
@@ -189,19 +197,22 @@ async function installApi(
     else if (path.endsWith('/checkout') && method === 'GET') body = { active: true };
     else if (path.endsWith('/checkout') && method === 'DELETE') {
       ownedDraftId = null;
+      checkoutAcquiredAt = null;
       status = 204;
       body = undefined;
     } else if (path.endsWith('/checkout')) {
+      const event = checkoutAcquiredAt ? 'resumed' : 'acquired';
+      checkoutAcquiredAt ??= new Date().toISOString();
       ownedDraftId = path.split('/').at(-2)!;
       body = {
         draftId: path.split('/').at(-2),
         actor: `${role}@pointatx.org`,
         clientId: (request.postDataJSON() as { clientId: string }).clientId,
         token: '30000000-0000-4000-8000-000000000001',
-        acquiredAt: new Date().toISOString(),
+        acquiredAt: checkoutAcquiredAt,
         lastActivityAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
-        event: 'acquired',
+        event,
         viewState: null,
       };
     } else if (path === '/api/drafts' && method === 'GET')
@@ -252,6 +263,18 @@ async function installApi(
             context: RevisionRecord['actionContext'];
           };
         };
+        if (!SiteDocumentSchema.safeParse(input.document).success) {
+          await route.fulfill({
+            status: 422,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              code: 'VALIDATION_FAILED',
+              message: 'Review the draft content',
+              requestId: 'request',
+            }),
+          });
+          return;
+        }
         saveRequests.push({
           action: input.action as { category: string; context: string },
           idempotencyKey: request.headers()['idempotency-key'] ?? null,
@@ -534,6 +557,322 @@ async function installApi(
 
 test.beforeEach(async ({ page }) => installApi(page));
 
+test('keeps Properties state only for the current checkout', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const properties = page.getByRole('button', { name: 'Properties', exact: true });
+  await expect(properties).toHaveAttribute('aria-pressed', 'false');
+  await properties.click();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.getByRole('button', { name: 'Layout', exact: true }).click();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await properties.click();
+  await page.reload();
+  await expect(properties).toHaveAttribute('aria-pressed', 'false');
+  await properties.click();
+  await page.getByRole('button', { name: '← All drafts', exact: true }).click();
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await expect(properties).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('preserves deliberately opened Properties across narrow-screen view changes and refresh', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const properties = page.getByRole('button', { name: 'Properties', exact: true });
+  await expect(properties).toHaveAttribute('aria-pressed', 'false');
+  await properties.click();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  const panel = page.getByRole('combobox', { name: 'Editor section', exact: true });
+  await panel.selectOption({ label: 'Preview' });
+  await panel.selectOption({ label: 'Layout' });
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('recreates the fixed footer with editable Blocks at every responsive boundary', async ({
+  page,
+}) => {
+  const document = upgradeNavigation(defaultSiteDocument);
+  const composed = {
+    ...document,
+    schemaVersion: 11 as const,
+    rendererVersion: '11.0.0',
+    footer: [createEditableFooterSection(document.site)],
+  };
+  await page.goto('/');
+  await page.evaluate(
+    async ({ legacy, composed }) => {
+      const modulePath = '/tests/fixtures/hero-publication.tsx';
+      const { publishedHtml } = (await import(modulePath)) as typeof HeroPublication;
+      for (const [id, document] of [
+        ['legacy-footer', legacy],
+        ['composed-footer', composed],
+      ] as const) {
+        const frame = window.document.createElement('iframe');
+        frame.id = id;
+        frame.style.cssText = 'border:0;height:900px';
+        frame.srcdoc = publishedHtml(document, '/');
+        window.document.body.appendChild(frame);
+      }
+    },
+    { legacy: document, composed },
+  );
+  const measure = async (frame: FrameLocator) => {
+    await frame.owner().scrollIntoViewIfNeeded();
+    await frame.locator('.point-site > footer').scrollIntoViewIfNeeded();
+    return frame.locator('.point-site > footer').evaluate(async (root) => {
+      await root.ownerDocument.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const top = root.getBoundingClientRect().top;
+      return [root, ...root.querySelectorAll('h2,p,address,a')].map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName,
+          text:
+            element === root ? '' : (element as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
+          font: style.font,
+          color: style.color,
+          bounds: [rect.x, rect.y - top, rect.width, rect.height],
+        };
+      });
+    });
+  };
+  for (const width of [1920, 1280, 901, 900, 768, 761, 760, 601, 600, 520, 360]) {
+    for (const id of ['legacy-footer', 'composed-footer'])
+      await page
+        .locator(`#${id}`)
+        .evaluate((element, width) => (element.style.width = `${width}px`), width);
+    const legacy = await measure(page.locator('#legacy-footer').contentFrame());
+    const actual = await measure(page.locator('#composed-footer').contentFrame());
+    expect(actual, `footer recreation at ${width}px`).toEqual(legacy);
+  }
+});
+
+test('edits composed footer Blocks, saves, reloads and previews the same content', async ({
+  page,
+}) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 11;
+    document.rendererVersion = '11.0.0';
+    document.footer = [createEditableFooterSection(document.site)];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('button', { name: 'Edit global footer' }).click();
+  await expect(page.getByLabel('Choose page')).toHaveValue('footer');
+  await canvas
+    .getByRole('button', { name: 'Service Times Sunday at 10:30 AM', exact: true })
+    .click();
+  await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Gather together');
+  await page.getByRole('textbox', { name: 'Paragraph', exact: true }).fill('Sundays at 11 AM');
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  for (const { label } of Object.values(blockDefinitions))
+    await expect(
+      page.getByText(label, { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await canvas.getByRole('button', { name: 'Edit global footer' }).click();
+  await expect(canvas.getByRole('heading', { name: 'Gather together' })).toBeVisible();
+  await expect(canvas.getByText('Sundays at 11 AM', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  await expect(preview.getByRole('heading', { name: 'Gather together' })).toBeVisible();
+  expect(controls.saveRequests.at(-1)?.document.footer?.[0].items[0].element).toMatchObject({
+    type: 'richText',
+    heading: 'Gather together',
+    content: [{ type: 'paragraph', children: [{ text: 'Sundays at 11 AM' }] }],
+  });
+  expect(controls.saveRequests.at(-1)?.document.schemaVersion).toBe(11);
+});
+
+test('rebuilds identity, editorial text and footer content from Blocks on an empty page', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; footer editing and renderer parity run in all browsers.',
+  );
+  test.setTimeout(90_000);
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 11;
+    document.rendererVersion = '11.0.0';
+    document.pages[0].blocks = [];
+    document.footer = [];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const drag = async (name: string, target: ReturnType<typeof page.locator>) => {
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    const source = page
+      .getByRole('button', { name, exact: true })
+      .and(page.locator(':not([inert])'));
+    let from = await source.boundingBox();
+    let to = await target.boundingBox();
+    // Puck replaces the section DOM after its settings change. Resolve fresh targets before dragging.
+    await expect(async () => {
+      await source.scrollIntoViewIfNeeded();
+      await target.scrollIntoViewIfNeeded();
+      from = await source.boundingBox();
+      to = await target.boundingBox();
+      expect(from).not.toBeNull();
+      expect(to).not.toBeNull();
+    }).toPass({ timeout: 5000 });
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 6, { steps: 16 });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+  };
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
+  const section = canvas.locator('section[aria-label="Blank section"]');
+  await expect(section).toBeVisible();
+  await page.getByRole('combobox', { name: 'Section layout', exact: true }).selectOption('flow');
+  await page.getByRole('combobox', { name: 'Columns', exact: true }).selectOption('1');
+  await page.getByRole('combobox', { name: 'Content width', exact: true }).selectOption('full');
+  await page.getByRole('combobox', { name: 'Spacing', exact: true }).selectOption('none');
+  await drag('Cards', section.locator('[data-puck-dropzone]'));
+  await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('identity');
+  await page
+    .getByRole('textbox', { name: 'Section heading', exact: true })
+    .fill('Family. Disciples. Mission.');
+  await page.getByRole('textbox', { name: 'Eyebrow', exact: true }).first().fill('Our identity');
+  await page.getByRole('textbox', { name: 'Title', exact: true }).first().fill('Family');
+  await page
+    .getByRole('textbox', { name: 'Body', exact: true })
+    .first()
+    .fill('We care for one another.');
+  for (const title of ['Disciples', 'Mission']) {
+    await page.getByRole('button', { name: 'Add card', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Title', exact: true }).last().fill(title);
+    await page
+      .getByRole('textbox', { name: 'Body', exact: true })
+      .last()
+      .fill(`Our ${title.toLowerCase()} together.`);
+  }
+  await expect(canvas.getByRole('heading', { name: 'Family. Disciples. Mission.' })).toBeVisible();
+  await drag('Rich text', section.locator('[data-puck-dropzone]'));
+  await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('prose');
+  await page
+    .getByRole('textbox', { name: 'Section heading', exact: true })
+    .fill('What is the Church anyway?');
+  await page
+    .getByRole('textbox', { name: 'Paragraph', exact: true })
+    .fill('People connected to one another because of Jesus.');
+  await page.getByRole('button', { name: 'Pages', exact: true }).click();
+  await page.getByLabel('Choose page').selectOption('footer');
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
+  await page.getByRole('combobox', { name: 'Section layout', exact: true }).selectOption('flow');
+  await page.getByRole('combobox', { name: 'Columns', exact: true }).selectOption('3');
+  await page.getByRole('combobox', { name: 'Stack columns on', exact: true }).selectOption('phone');
+  await page.getByRole('combobox', { name: 'Content width', exact: true }).selectOption('site');
+  await page
+    .getByRole('spinbutton', { name: 'Custom space between elements', exact: true })
+    .fill('50');
+  await page
+    .getByRole('spinbutton', { name: 'Custom space above and below', exact: true })
+    .fill('65');
+  await page.getByRole('combobox', { name: 'Border', exact: true }).selectOption('top');
+  await drag('Rich text', section.locator('[data-puck-dropzone]'));
+  await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
+  await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Service Times');
+  await page.getByRole('textbox', { name: 'Paragraph', exact: true }).fill('Sunday at 10:30 AM');
+  await drag('Rich text', section.locator('[data-puck-dropzone]'));
+  await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
+  await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Contact Info');
+  await page.getByRole('combobox', { name: 'Content type', exact: true }).selectOption('address');
+  await page
+    .getByRole('textbox', { name: 'Address', exact: true })
+    .fill('11300 Old San Antonio Road\nManchaca, TX 78652');
+  await drag('Social links', section.locator('[data-puck-dropzone]'));
+  await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  for (const name of [
+    'Family. Disciples. Mission.',
+    'What is the Church anyway?',
+    'Service Times',
+    'Contact Info',
+  ])
+    await expect(preview.getByRole('heading', { name, exact: true })).toBeVisible();
+  const saved = controls.saveRequests.at(-1)!.document;
+  expect(
+    saved.pages[0].blocks.flatMap((block) => block.items.map((item) => item.element.type)).sort(),
+  ).toEqual(['cards', 'richText']);
+  expect(
+    saved.footer?.flatMap((block) => block.items.map((item) => item.element.type)).sort(),
+  ).toEqual(['richText', 'richText', 'socialLinks']);
+});
+
+test('keeps alignment controls available in older Flow sections', async ({ page }) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    const section = document.pages[0].blocks.find(
+      (item) => item.items[0]?.element.type === 'hero',
+    )!;
+    section.layout = 'flow';
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('heading', { level: 1 }).click();
+  await page
+    .getByRole('combobox', { name: 'desktop vertical alignment', exact: true })
+    .selectOption('end');
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  const saved = controls.saveRequests.at(-1)!.document;
+  expect(saved.schemaVersion).toBe(10);
+  expect(saved.pages[0].blocks.find((item) => item.layout === 'flow')?.items[0].align.desktop).toBe(
+    'end',
+  );
+});
+
+test('restoring an older revision from the footer keeps Layout reachable', async ({ page }) => {
+  await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 11;
+    document.rendererVersion = '11.0.0';
+    document.footer = [createEditableFooterSection(document.site)];
+  });
+  await page.route('**/restore', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(original()),
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByLabel('Choose page').selectOption('footer');
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(page.getByText(/restored as a new revision/)).toBeVisible();
+  await page.getByRole('button', { name: 'Layout', exact: true }).click();
+  await expect(page.getByLabel('Choose page')).toHaveValue(defaultSiteDocument.pages[0].id);
+  await expect(
+    page.locator('.visual-editor iframe').contentFrame().locator('.home-hero'),
+  ).toBeVisible();
+});
+
 test('Navigation Designer creates, shares and protects designs across pages', async ({ page }) => {
   const controls = await installApi(page);
   await page.goto('/');
@@ -670,8 +1009,10 @@ test('compact categories and questions preserve edits without navigation revisio
   await page.getByLabel('Contact email').filter({ visible: true }).fill('invalid');
   await page.getByRole('button', { name: 'Design', exact: true }).click();
   await expect(page.getByLabel('Contact email').filter({ visible: true })).toBeFocused();
+  await expect(page.getByText('A change needs attention before it can save.')).toBeVisible();
   await page.getByLabel('Contact email').filter({ visible: true }).fill('valid@example.com');
   await page.getByRole('button', { name: 'Forms', exact: true }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   await expect(page.locator('.form-field-editor:visible')).toHaveCount(1);
   const summaries = page.locator('.question-summary');
   await summaries.last().click();
@@ -1353,9 +1694,7 @@ test('renames inline with keyboard and pointer while keeping publishing, history
     'Unknown public site baseline - Revision 1',
   );
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
-  await expect(
-    page.getByRole('dialog').locator('strong').filter({ hasText: 'Renamed Sunday' }),
-  ).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('Renamed Sunday', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await page.getByRole('button', { name: '← All drafts' }).click();
   await expect(page.locator('.draft-card h2')).toHaveText('Renamed Sunday');
@@ -2063,6 +2402,171 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await preview.getByRole('button', { name: 'Menu', exact: true }).press('Enter');
   await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
+
+for (const fixture of ['existing pages', 'every Block variant'] as const)
+  test(`matches complete authored ${fixture} in Preview and publication`, async ({ page }) => {
+    test.setTimeout(180_000);
+    const source = fixture === 'existing pages' ? defaultSiteDocument : blockCatalogDocument();
+    await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
+    const measure = async (frame: FrameLocator) => {
+      await frame.owner().scrollIntoViewIfNeeded();
+      return frame.locator('.point-site').evaluate(async (root) => {
+        await document.fonts.ready;
+        await Promise.all(
+          Array.from(root.querySelectorAll('img')).map((image) => {
+            image.loading = 'eager';
+            return image.decode().catch(() => {});
+          }),
+        );
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await Promise.all(
+          root
+            .getAnimations({ subtree: true })
+            .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+            .map((animation) => animation.finished.catch(() => {})),
+        );
+        return Array.from(
+          root.querySelectorAll(
+            'h1,h2,h3,h4,p,a,img,figure,address,video,iframe,.point-layout-item',
+          ),
+        )
+          .filter(
+            (element) =>
+              !element.closest('.sr-only,[aria-hidden="true"]') &&
+              element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+          )
+          .map((element) => {
+            const bounds = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return {
+              tag: element.tagName,
+              kind: element.matches('.point-layout-item')
+                ? element.firstElementChild?.className
+                : element.className,
+              text: element.matches('.point-layout-item') ? undefined : element.textContent?.trim(),
+              font: style.font,
+              color: style.color,
+              background: style.backgroundColor,
+              backgroundImage: style.backgroundImage,
+              objectFit: style.objectFit,
+              overflow: style.overflow,
+              bounds: [bounds.x, bounds.y, bounds.width, bounds.height],
+            };
+          });
+      });
+    };
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    const canvasElement = page.locator('.visual-editor iframe');
+    const canvas = canvasElement.contentFrame();
+    const authored = new Map<string, Awaited<ReturnType<typeof measure>>[]>();
+    const viewports = [
+      { name: 'desktop', ...siteViewports.desktop },
+      { name: 'desktop', ...siteViewports.desktop, width: 1920 },
+      { name: 'tablet', ...siteViewports.tablet },
+      { name: 'phone', ...siteViewports.phone },
+    ] as const;
+    for (const target of source.pages) {
+      await page.getByLabel('Choose page').selectOption(target.id);
+      await expect(canvas.locator('.point-site')).toBeVisible();
+      const samples = [];
+      for (const viewport of viewports) {
+        const button = page.getByRole('button', { name: `Switch to ${viewport.label} viewport` });
+        if (await button.isEnabled()) await button.click();
+        await canvasElement.evaluate((frame, width) => {
+          frame.style.width = width === 1920 ? '1920px' : '100%';
+        }, viewport.width);
+        await expect
+          .poll(() => canvas.locator('body').evaluate(() => [innerWidth, innerHeight]))
+          .toEqual([viewport.width, viewport.height]);
+        const sample = await measure(canvas);
+        samples.push(sample);
+        if (
+          fixture === 'every Block variant' &&
+          target === source.pages[0] &&
+          viewport.width === 1280
+        ) {
+          await page.getByRole('button', { name: 'Properties', exact: true }).click();
+          await page.getByRole('button', { name: 'Zoom viewport out', exact: true }).click();
+          expect(await measure(canvas), 'panels and zoom preserve authored geometry').toEqual(
+            sample,
+          );
+          await page.getByRole('button', { name: 'Properties', exact: true }).click();
+        }
+      }
+      authored.set(target.route, samples);
+    }
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    const previewElement = page.locator('iframe.preview-frame');
+    const preview = previewElement.contentFrame();
+    await page.evaluate(() => {
+      const frame = document.createElement('iframe');
+      frame.id = 'published-page';
+      frame.style.cssText = 'border:0;height:900px';
+      document.body.appendChild(frame);
+    });
+    const publishedElement = page.locator('#published-page');
+    const published = publishedElement.contentFrame();
+    for (const target of source.pages) {
+      await page.getByRole('combobox', { name: 'Page', exact: true }).selectOption(target.id);
+      const html = await page.evaluate(
+        async ({ document, route }) => {
+          const modulePath = '/tests/fixtures/hero-publication.tsx';
+          const { publishedHtml } = (await import(modulePath)) as typeof HeroPublication;
+          return publishedHtml(document, route);
+        },
+        { document: source, route: target.route },
+      );
+      await publishedElement.evaluate(
+        (frame, value) => ((frame as HTMLIFrameElement).srcdoc = value),
+        html,
+      );
+      await expect(published.locator('.point-site')).toBeVisible();
+      for (const [index, { name, width, height }] of viewports.entries()) {
+        await page.getByRole('button', { name: `Preview at ${name} width` }).click();
+        if (width === 1920)
+          await previewElement.evaluate((frame) => {
+            frame.style.width = '1920px';
+          });
+        await expect
+          .poll(() => preview.locator('body').evaluate(() => [innerWidth, innerHeight]))
+          .toEqual([width, height]);
+        await publishedElement.evaluate(
+          (frame, viewport) => {
+            frame.style.width = `${viewport.width}px`;
+            frame.style.height = `${viewport.height}px`;
+          },
+          { width, height },
+        );
+        const expected = authored.get(target.route)![index];
+        for (const [surface, frame] of [
+          ['Preview', preview],
+          ['Published', published],
+        ] as const) {
+          const actual = await measure(frame);
+          expect(actual.length, `${target.route}: ${surface} content`).toBe(expected.length);
+          for (const [position, element] of actual.entries()) {
+            const reference = expected[position];
+            expect(
+              { ...element, bounds: [] },
+              `${target.route}: ${surface} styles ${position}`,
+            ).toEqual({ ...reference, bounds: [] });
+            element.bounds.forEach((value, axis) => {
+              expect(
+                value,
+                `${target.route}: ${surface} ${width}px ${position} ${element.tag} ${element.kind} ${element.text?.slice(0, 60)} axis ${axis}`,
+              ).toBeCloseTo(reference.bounds[axis], 1);
+            });
+          }
+          if (fixture === 'every Block variant' && width === 1280 && surface === 'Preview') {
+            await page.getByLabel('Preview zoom', { exact: true }).selectOption('125');
+            expect(await measure(frame), 'Preview zoom preserves content geometry').toEqual(actual);
+            await page.getByLabel('Preview zoom', { exact: true }).selectOption('auto');
+          }
+        }
+      }
+    }
+  });
 
 for (const surface of ['primary', 'image', 'canvas'] as const) {
   test(`preserves editor hero containment in Preview and publication: ${surface}`, async ({

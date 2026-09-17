@@ -19,6 +19,12 @@ import type {
   Role,
 } from '../../server/repositories/contracts';
 import { checkoutPhase, checkoutRemaining, isGenuineActivity } from '../../shared/draft-checkout';
+import { documentRegions, FOOTER_REGION } from '../../site-kit/document-sections';
+import {
+  clearPropertiesPreference,
+  restorePropertiesPreference,
+  savePropertiesPreference,
+} from './layout-preferences';
 import { api, ClientApiError } from '../api';
 import { Preview } from '../preview/Preview';
 import { RevisionHistory } from '../revisions/RevisionHistory';
@@ -139,6 +145,14 @@ function Workspace({
         : (checkout?.viewState?.panel ?? 'layout'),
   );
   const [publishOpen, setPublishOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(() => restorePropertiesPreference(checkout));
+  const changeProperties = useCallback(
+    (open: boolean) => {
+      setPropertiesOpen(open);
+      if (checkout) savePropertiesPreference(checkout, open);
+    },
+    [checkout],
+  );
   const [navigationDesignId, setNavigationDesignId] = useState('');
   const openNavigationDesign = useCallback((id: string) => {
     setNavigationDesignId(id);
@@ -148,11 +162,14 @@ function Workspace({
     );
   }, []);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
-  const [pageId, setPageId] = useState(
-    document.pages.some((page) => page.id === checkout?.viewState?.pageId)
+  const [selectedPageId, setPageId] = useState(
+    documentRegions(document).some((page) => page.id === checkout?.viewState?.pageId)
       ? (checkout?.viewState?.pageId ?? '')
       : (document.pages[0]?.id ?? ''),
   );
+  const pageId = documentRegions(document).some((page) => page.id === selectedPageId)
+    ? selectedPageId
+    : (document.pages[0]?.id ?? '');
   const [leaseExpiresAt, setLeaseExpiresAt] = useState(checkout?.expiresAt ?? null);
   const [leaseNow, setLeaseNow] = useState(0);
   const [leaseLost, setLeaseLost] = useState(false);
@@ -170,7 +187,10 @@ function Workspace({
   );
   const checkoutUnavailable = leaseLost || leaseExpired || autosave.errorKind === 'authority';
   useEffect(() => {
-    if (checkoutUnavailable) stopAutosave();
+    if (checkoutUnavailable) {
+      stopAutosave();
+      clearPropertiesPreference();
+    }
   }, [checkoutUnavailable, stopAutosave]);
   const editable =
     role !== 'viewer' &&
@@ -206,10 +226,15 @@ function Workspace({
         void api
           .touchCheckout(draft.id, checkout.clientId, checkout.token, viewState())
           .then(() => api.releaseCheckout(draft.id, checkout.clientId, checkout.token))
-          .then(onClose)
+          .then(() => {
+            clearPropertiesPreference();
+            onClose();
+          })
           .catch((error) => {
-            if (isAuthorityUnavailable(error)) onClose();
-            else
+            if (isAuthorityUnavailable(error)) {
+              clearPropertiesPreference();
+              onClose();
+            } else
               setRecoveryStatus(
                 'The checkout could not be released. Retry leaving when connected.',
               );
@@ -317,6 +342,7 @@ function Workspace({
     window.queueMicrotask(() => publishButtonRef.current?.focus());
   };
   const trapPublishingFocus = (event: KeyboardEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest('dialog[open]')) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       closePublishing();
@@ -327,6 +353,8 @@ function Workspace({
       event.currentTarget.querySelectorAll<HTMLElement>(
         'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
+    ).filter((element) =>
+      element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
     );
     const first = focusable[0];
     const last = focusable.at(-1);
@@ -344,9 +372,10 @@ function Workspace({
   const keepPublishingFocus = (event: FocusEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget)) return;
     const dialog = event.currentTarget;
-    window.queueMicrotask(() =>
-      dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus(),
-    );
+    window.queueMicrotask(() => {
+      if (!dialog.contains(globalThis.document.activeElement))
+        dialog.querySelector<HTMLElement>('button:not([disabled]), a[href], summary')?.focus();
+    });
   };
   const openFooterSettings = useCallback(() => {
     setSettingsCategory('Footer');
@@ -555,11 +584,17 @@ function Workspace({
                   draftId={draft.id}
                   pageId={pageId}
                   structureRevision={structureRevision}
-                  onEditFooter={openFooterSettings}
+                  onEditFooter={
+                    document.footer === undefined
+                      ? openFooterSettings
+                      : () => setPageId(FOOTER_REGION)
+                  }
                   onEditNavigation={openNavigationDesign}
                   onPageIdChange={setPageId}
                   onStructureChange={handleStructureChange}
                   toolbar={layoutToolbar}
+                  propertiesOpen={propertiesOpen}
+                  onPropertiesChange={changeProperties}
                 />
               </Suspense>
             ) : (
@@ -575,7 +610,7 @@ function Workspace({
               forms={document.forms}
               usedFormIds={
                 new Set(
-                  document.pages.flatMap((page) =>
+                  documentRegions(document).flatMap((page) =>
                     page.blocks.flatMap((section) =>
                       section.items.flatMap((placement) =>
                         placement.element.type === 'form' ? [placement.element.formId] : [],
@@ -615,7 +650,13 @@ function Workspace({
       {panel === 'settings' ? (
         <main id="main-content" className="single-panel">
           {editable ? (
-            <SiteSettings initialCategory={settingsCategory} />
+            <SiteSettings
+              initialCategory={settingsCategory}
+              onEditFooter={() => {
+                setPageId(FOOTER_REGION);
+                setPanel('layout');
+              }}
+            />
           ) : (
             <p>Viewer access is read only.</p>
           )}

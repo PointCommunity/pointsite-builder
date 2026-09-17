@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Issue 78: Editor-authoritative hero width</title>
+    <title>Issue 78: Layout parity and complete Blocks authoring</title>
     <style>
       :root {
         color-scheme: dark;
@@ -27,7 +27,183 @@
     </style>
   </head>
   <body>
-    <h1>Issue 78: Editor-authoritative hero width</h1>
+    <h1>Issue 78: Layout parity and complete Blocks authoring</h1>
+    <h2>Approved expanded contract</h2>
+    <p>
+      The PM approved the expanded Issue title, body and metadata on September 17, 2026.
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/78">Issue #78</a>
+      remains the acceptance authority: P0, High impact, XL effort, In Progress. The earlier
+      hero-only correction is historical evidence, not completion of this expanded contract.
+    </p>
+    <ul>
+      <li>
+        Layout is the visual reference for every page and element. Preview and generated or
+        published output must match at the same revision, viewport, browser, zoom and loaded assets.
+        Editor controls must not affect content geometry.
+      </li>
+      <li>
+        Every rendered element, including the complete footer and navigation, must be recreatable
+        and customizable through visible Blocks and understandable controls. Existing drafts must
+        retain their content and intended appearance without reauthoring.
+      </li>
+      <li>
+        Properties starts collapsed. Remember deliberate open/closed state for the same user, draft
+        and current checkout across view changes and refresh. Check-in or loss of checkout ends
+        persistence; a reopened draft, another draft or new checkout starts collapsed.
+      </li>
+    </ul>
+    <h2>Implementation order and verification tasks</h2>
+    <section aria-labelledby="publishing-feedback">
+      <h2 id="publishing-feedback">September 17 PM finding: understandable publishing</h2>
+      <p>
+        The PM rejects the dense publishing window shown during Canary review. Continue this
+        remediation under Issue 78; the prior candidate is not approved for promotion. Preserve the
+        approved Issue body and its parity, Blocks and checkout requirements.
+      </p>
+      <ul>
+        <li>
+          Keep short phase labels and one relevant forward action. Put explanations in a temporary
+          Help dialog opened by an accessible circled question-mark button.
+        </li>
+        <li>
+          After the current version is accepted on Staging, show the public destination flow.
+          Confirm that the exact accepted site at staging.pointatx.org replaces pointatx.org, with
+          both links opening another tab. Resolve the independent Canary destinations from the
+          existing service. New draft edits and stale acceptance must never be promoted.
+        </li>
+        <li>
+          Show live publication progress until completion, including workflows longer than fifteen
+          minutes. Reopening restores durable progress. Read failures must be visible and retryable
+          without creating another publication. Success requires existing artifact and deployment
+          verification; show congratulations and the destination link, with no further Production
+          acceptance.
+        </li>
+        <li>
+          Place rollback and revoke acceptance in a compact Danger zone at the bottom. Require
+          deliberate confirmations. Revocation permanently records withdrawal and requires a new
+          acceptance; it does not unpublish a website. Restore replaces the public release and
+          cannot be undone by cancelling after deployment; another restore is required.
+        </li>
+        <li>
+          Keep technical details collapsed. One copy action gathers available Staging, Production,
+          recovery and error context, timestamps and Actions links. Failed publication exposes the
+          same copy action directly. Include no draft content, credentials or private provider
+          response bodies. Clipboard failure offers selectable text and never claims success.
+        </li>
+      </ul>
+      <p>
+        Implementation: reuse the current lifecycle, exact capture/recovery APIs, native dialog,
+        details and clipboard. Extend existing status with recorded runner milestones and bounded,
+        cached public Actions job/step reads. Actions metadata is diagnostic, never deployment
+        proof.
+        <a href="https://docs.github.com/en/rest/actions/workflow-jobs"
+          >GitHub's workflow jobs API</a
+        >
+        supplies job and step status for public runs. Restrict reads to the recorded lane/run,
+        validate identity, redact text, bound responses, and report unavailable/rate-limited reads.
+      </p>
+      <p>
+        Verify first: current acceptance versus newer edits; confirmation cancellation and repeated
+        clicks; Canary URL isolation; truthful progress and failures; monitoring beyond fifteen
+        minutes; complete redacted clipboard bundle and denial fallback; Help focus, Escape,
+        keyboard navigation, mobile and 200% reflow. Retain request identity and all existing server
+        authority/recovery checks. Run full QA sequentially before a new Canary release.
+      </p>
+    </section>
+    <ol>
+      <li>
+        Reproduce complete pages across Layout, Preview and static output. Compare element bounds,
+        text wrapping, typography, backgrounds and crops; test all registered elements and variants
+        rather than only the original hero. Record failures before fixes.
+      </li>
+      <li>
+        Share section framing, placement styles and element wrappers between the editor and
+        publication renderer. Keep Puck drag/drop and selection as editor behavior around those
+        shared primitives. Use the editor's intended structure for compatibility sections. Remove
+        independent layout decisions only after parity regressions cover them.
+      </li>
+      <li>
+        Audit the visible Blocks catalog and all inspector fields against the schema and renderer.
+        Expose missing entries, including Call to action. Represent the footer using editable blocks
+        and reusable sections; preserve current footer content and appearance. Any format change
+        needs validated old-document loading, recovery and compatible rollback readers before
+        enabling new-format writes.
+      </li>
+      <li>
+        Bind Properties state to checkout identity, default it to collapsed, and invalidate it when
+        that checkout ends. Add lifecycle tests for navigation, refresh, check-in, lease loss and
+        subsequent drafts without altering save or checkout authority.
+      </li>
+      <li>
+        Prove blank-draft recreation and customization using real UI interactions. Check all
+        existing pages and variants at Mobile, Tablet, Desktop, wider Desktop, breakpoints and 200%
+        reflow. Panel visibility must not change a selected canvas viewport's output.
+      </li>
+      <li>
+        Run full configured local gates sequentially, review the complete change and exact-head CI,
+        synchronize the governed publication runtime, and deploy Canary. Obtain new exact-candidate
+        approval before Production. Verify published sites only after their separately authorized
+        Administrator publication. Unverified surfaces remain pending.
+      </li>
+    </ol>
+    <h2>Source inventory and current evidence</h2>
+    <h3>Compatibility-first delivery</h3>
+    <p>
+      The existing Navigation transition in specification 036 establishes the release pattern.
+      Schema 11 adds a required footer section list (an empty list intentionally hides the footer),
+      Social links, Address content, text alignment, and the section controls needed to reproduce
+      the old footer. Schema 9/10 reject these additions. The first candidate reads, preserves,
+      edits, saves, recovers and publishes 11 while continuing to write 10 for existing drafts. No
+      automatic footer migration or new-format creation is enabled in that candidate.
+    </p>
+    <p>
+      After the compatibility candidate passes Canary review and is retained as a proven Production
+      rollback reader, a second candidate activates the deterministic 10-to-11 conversion. It must
+      preserve all old site data and footer appearance, including the 600px column-stack boundary.
+      Existing Flow sections must normalize to one column on conversion: schema 9/10 ignored their
+      stored column counts. The compatibility reader retains that behavior; schema 11 enables the
+      explicit column control. Both candidates require their own exact-candidate checks and
+      approval. The Issue stays open until conversion, full Blocks recreation, and separately
+      authorized live publication checks pass. A bridge release alone does not satisfy the approved
+      scope.
+    </p>
+    <p>
+      Focused Chromium tests reproduced a 64.375px vertical mismatch at Our Gatherings on Who We
+      Are. Shared section and element framing now passes whole-page geometry/style comparison on
+      every default route in Chromium, Firefox and WebKit. The full Blocks catalog exposed a second
+      cause: viewport-height-based elements received different iframe heights. Layout and Preview
+      now share fixed Phone (360 × 800), Tablet (768 × 1024) and Desktop (1280 × 900) viewports.
+      Zoom scales their presentation without changing content dimensions. The catalog test covers
+      every schema variant, loaded assets, complete-page geometry and styles at those viewports.
+      Properties checkout lifecycle and schema 10/11 SQLite save/reload tests also pass. Full
+      repository and release checks remain pending.
+    </p>
+    <p>
+      The baseline registry defines 17 element types. The editor's visible categories omit Call to
+      action. Its element renderer adds a grid-item wrapper to every element, while the shared
+      compatibility renderer wraps only page heroes. Section rendering is duplicated. SiteFooter
+      fixes its column composition outside page Blocks. EditorPanels opens Properties on selection;
+      checkout view state does not persist its visibility. Identity columns already have a Cards
+      variant and inspector control, so their recreation must be tested rather than assumed absent.
+    </p>
+    <p>
+      Implementation remains in the existing React/TypeScript site-kit, editor and checkout modules.
+      Reuse registered block controls and repository-native Vitest/Playwright tests; add no
+      dependencies. Preserve strict schema and URL validation, accessibility, isolated drafts and
+      publication authority. Format with repository Prettier, retain strict types and use shared
+      React components rather than copying markup.
+    </p>
+    <h2>Required commands</h2>
+    <p>
+      Prepare a fresh worktree with <code>node scripts/local-qa.mjs prepare</code> and
+      <code>npm ci</code>. Run focused regressions, then <code>npm run check</code>,
+      <code>npm run test:performance</code>, <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code> and <code>git diff --check</code> sequentially.
+      Bound Vitest to four workers and Playwright to two. Stop test servers and run
+      <code>node scripts/local-qa.mjs cleanup</code> after testing, including failure paths.
+    </p>
+    <h2>Historical hero-only investigation</h2>
+    <p>The following records the prior correction. Its narrow scope is superseded above.</p>
     <h2>Objective and acceptance</h2>
     <p>
       Use the approved Issue scope: preserve the Layout editor's visible hero width, background,

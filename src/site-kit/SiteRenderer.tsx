@@ -10,11 +10,27 @@ function SiteFooter({
   document,
   editing = false,
   onEdit,
+  content,
 }: {
   document: SiteDocument;
   editing?: boolean;
   onEdit?: () => void;
+  content?: ReactNode;
 }) {
+  if (document.footer !== undefined)
+    return document.footer.length || content !== undefined ? (
+      <footer className="point-composed-footer">
+        {editing && onEdit ? (
+          <button className="point-footer-edit" type="button" onClick={onEdit}>
+            Edit global footer
+          </button>
+        ) : null}
+        {content ??
+          document.footer.map((section) => (
+            <Fragment key={section.id}>{renderSection(section, document)}</Fragment>
+          ))}
+      </footer>
+    ) : null;
   const social = new Map(document.site.socialLinks.map((item) => [item.platform, item]));
   const facebook = social.get('facebook');
   const instagram = social.get('instagram');
@@ -67,6 +83,7 @@ export function SiteFrame({
   editing = false,
   onEditFooter,
   onNavigate,
+  footerContent,
 }: {
   document: SiteDocument;
   page: PageDocument;
@@ -74,6 +91,7 @@ export function SiteFrame({
   editing?: boolean;
   onEditFooter?: () => void;
   onNavigate?: (route: string) => void;
+  footerContent?: ReactNode;
 }) {
   const isHome = page.template === 'home' || page.route === '/';
   const navigate = (event: ReactMouseEvent) => {
@@ -101,7 +119,12 @@ export function SiteFrame({
       <main id="point-main">
         {isHome ? children : <div className="page-body shell">{children}</div>}
       </main>
-      <SiteFooter document={document} editing={editing} onEdit={onEditFooter} />
+      <SiteFooter
+        document={document}
+        editing={editing}
+        onEdit={onEditFooter}
+        content={footerContent}
+      />
     </div>
   );
 }

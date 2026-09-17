@@ -30,6 +30,7 @@ export function publicationMediaPaths(document: SiteDocument): string[] {
   };
   // The static route generator currently exports every page, including hidden routes.
   visit(document.pages);
+  visit(document.footer);
   visit(document.navigation);
   for (const id of ids) {
     const media = document.media.find((item) => item.id === id);

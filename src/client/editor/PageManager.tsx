@@ -1,4 +1,5 @@
 import type { SiteDocument } from '../../site-kit/types';
+import { documentRegions, FOOTER_REGION } from '../../site-kit/document-sections';
 import { createEditableHeaderSection } from '../../site-kit/editable-header';
 import { createEditablePageHeroSection } from '../../site-kit/editable-page-hero';
 import { useEditor } from './EditorProvider';
@@ -138,19 +139,30 @@ export function PageManager({
     if (fallback) onPageIdChange(fallback.id);
   };
 
+  const pageSelector = (
+    <label>
+      <span>Choose page</span>
+      <select value={pageId} onChange={(event) => onPageIdChange(event.target.value)}>
+        {documentRegions(document).map((item) => (
+          <option value={item.id} key={item.id}>
+            {item.title}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  if (pageId === FOOTER_REGION && document.footer !== undefined)
+    return (
+      <section className="page-manager" aria-labelledby="page-manager-title">
+        <h2 id="page-manager-title">Footer</h2>
+        {pageSelector}
+        <p>This footer appears on every page. Use Blocks to add and arrange its content.</p>
+      </section>
+    );
   return (
     <section className="page-manager" aria-labelledby="page-manager-title">
       <h2 id="page-manager-title">Page</h2>
-      <label>
-        <span>Choose page</span>
-        <select value={page.id} onChange={(event) => onPageIdChange(event.target.value)}>
-          {document.pages.map((item) => (
-            <option value={item.id} key={item.id}>
-              {item.title}
-            </option>
-          ))}
-        </select>
-      </label>
+      {pageSelector}
       <div className="page-actions">
         <button type="button" className="button" onClick={create}>
           New

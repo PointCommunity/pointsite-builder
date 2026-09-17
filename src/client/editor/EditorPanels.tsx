@@ -78,17 +78,17 @@ export function CompactEditorHeader() {
   useEffect(() => {
     const narrow = window.matchMedia('(max-width: 1100px)');
     const fit = () => {
-      if (narrow.matches)
+      if (narrow.matches && right)
         dispatch({
           type: 'setUi',
-          ui: selectedId ? { leftSideBarVisible: false } : { rightSideBarVisible: false },
+          ui: { leftSideBarVisible: false },
           recordHistory: false,
         });
     };
     fit();
     narrow.addEventListener('change', fit);
     return () => narrow.removeEventListener('change', fit);
-  }, [dispatch, selectedId]);
+  }, [dispatch, right]);
   useEffect(() => {
     if (selectedId)
       dispatch({

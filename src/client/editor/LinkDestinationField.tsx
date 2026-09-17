@@ -1,5 +1,9 @@
 import { useId, useState } from 'react';
-import { isSafeExternalHttpUrl, isSafeInternalPath } from '../../site-kit/url-policy';
+import {
+  isSafeExternalHttpUrl,
+  isSafeInternalPath,
+  SafeHttpsUrlSchema,
+} from '../../site-kit/url-policy';
 
 type PageChoice = { title: string; route: string };
 type LinkType = 'internal' | 'external';
@@ -13,46 +17,52 @@ export function LinkDestinationField({
   value,
   pages,
   onChange,
+  httpsOnly = false,
 }: {
   label: string;
   value: string;
   pages: PageChoice[];
   onChange: (value: string) => void;
+  httpsOnly?: boolean;
 }) {
   const persistedType = typeFor(value);
   const errorId = useId();
   const [modeOverride, setModeOverride] = useState<LinkType>();
   const [externalDraft, setExternalDraft] = useState(persistedType === 'external' ? value : '');
   const [externalTouched, setExternalTouched] = useState(false);
-  const mode = modeOverride ?? persistedType;
+  const mode = httpsOnly ? 'external' : (modeOverride ?? persistedType);
   const currentInternal = isSafeInternalPath(value) ? value : (pages[0]?.route ?? '/');
   const knownInternal = pages.some((page) => page.route === currentInternal);
-  const externalInvalid = externalTouched && !isSafeExternalHttpUrl(externalDraft);
+  const acceptsUrl = (url: string) =>
+    httpsOnly ? SafeHttpsUrlSchema.safeParse(url).success : isSafeExternalHttpUrl(url);
+  const externalInvalid = externalTouched && !acceptsUrl(externalDraft);
 
   return (
     <fieldset className="link-destination-field">
       <legend>{label}</legend>
       <div className="link-destination-controls">
-        <label>
-          <span>Type</span>
-          <select
-            data-local-control
-            value={mode}
-            onChange={(event) => {
-              const next = event.target.value as LinkType;
-              setModeOverride(next);
-              setExternalTouched(false);
-              if (next === 'internal') onChange(currentInternal);
-              else
-                setExternalDraft(
-                  (current) => current || (persistedType === 'external' ? value : ''),
-                );
-            }}
-          >
-            <option value="internal">Internal</option>
-            <option value="external">External</option>
-          </select>
-        </label>
+        {!httpsOnly ? (
+          <label>
+            <span>Type</span>
+            <select
+              data-local-control
+              value={mode}
+              onChange={(event) => {
+                const next = event.target.value as LinkType;
+                setModeOverride(next);
+                setExternalTouched(false);
+                if (next === 'internal') onChange(currentInternal);
+                else
+                  setExternalDraft(
+                    (current) => current || (persistedType === 'external' ? value : ''),
+                  );
+              }}
+            >
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+            </select>
+          </label>
+        ) : null}
         {mode === 'internal' ? (
           <label className="link-destination-value">
             <span>Internal page</span>
@@ -76,7 +86,7 @@ export function LinkDestinationField({
               type="url"
               inputMode="url"
               spellCheck={false}
-              placeholder="http://example.com"
+              placeholder={httpsOnly ? 'https://example.com' : 'http://example.com'}
               value={externalDraft}
               aria-invalid={externalInvalid ? 'true' : undefined}
               aria-describedby={externalInvalid ? errorId : undefined}
@@ -85,7 +95,7 @@ export function LinkDestinationField({
                 const next = event.target.value;
                 setExternalDraft(next);
                 setExternalTouched(true);
-                if (isSafeExternalHttpUrl(next)) onChange(next);
+                if (acceptsUrl(next)) onChange(next);
               }}
             />
           </label>
@@ -93,7 +103,8 @@ export function LinkDestinationField({
       </div>
       {externalInvalid ? (
         <p id={errorId} className="field-error">
-          External URLs must begin with http:// or https:// and include a site address.
+          External URLs must begin with {httpsOnly ? 'https://' : 'http:// or https://'} and include
+          a site address.
         </p>
       ) : null}
     </fieldset>
