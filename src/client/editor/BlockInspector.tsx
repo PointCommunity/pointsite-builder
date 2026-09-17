@@ -369,6 +369,9 @@ export function BlockInspector({
             options={[
               { label: 'Standard text', value: 'standard' },
               { label: 'Point editorial section', value: 'prose' },
+              ...(document.schemaVersion >= 11
+                ? [{ label: 'Footer information', value: 'footer' as const }]
+                : []),
             ]}
             onChange={(variant) => onChange({ ...block, variant })}
           />
@@ -383,6 +386,18 @@ export function BlockInspector({
             onChange={(heading) => onChange({ ...block, heading })}
           />
           <p className="field-help">Use one content item per paragraph, list, quote, or link.</p>
+          {document.schemaVersion >= 11 ? (
+            <Select
+              label="Text alignment"
+              value={block.align ?? (block.variant === 'footer' ? 'center' : 'left')}
+              options={[
+                { label: 'Left', value: 'left' },
+                { label: 'Center', value: 'center' },
+                { label: 'Right', value: 'right' },
+              ]}
+              onChange={(align) => onChange({ ...block, align })}
+            />
+          ) : null}
           {block.content.map((node, index) => (
             <Row
               key={index}
@@ -400,6 +415,9 @@ export function BlockInspector({
                   { label: 'Numbered list', value: 'numberedList' },
                   { label: 'Quote', value: 'quote' },
                   { label: 'Link', value: 'link' },
+                  ...(document.schemaVersion >= 11
+                    ? [{ label: 'Address', value: 'address' as const }]
+                    : []),
                 ]}
                 onChange={(type) => {
                   const next: RichNode =
@@ -407,8 +425,11 @@ export function BlockInspector({
                       ? { type, children: [{ text: 'New paragraph' }] }
                       : type === 'bulletedList' || type === 'numberedList'
                         ? { type, items: ['New item'] }
-                        : type === 'quote'
-                          ? { type, text: 'New quote' }
+                        : type === 'quote' || type === 'address'
+                          ? {
+                              type,
+                              text: type === 'quote' ? 'New quote' : 'Street\nCity, State ZIP',
+                            }
                           : { type, text: 'Link text', href: '/' };
                   onChange({
                     ...block,
@@ -429,6 +450,22 @@ export function BlockInspector({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
                         itemIndex === index ? { type: 'paragraph', children: [{ text }] } : item,
+                      ),
+                    })
+                  }
+                />
+              ) : null}
+              {node.type === 'address' ? (
+                <Text
+                  label="Address"
+                  value={node.text}
+                  area
+                  onChange={(text) =>
+                    text &&
+                    onChange({
+                      ...block,
+                      content: block.content.map((item, itemIndex) =>
+                        itemIndex === index ? { ...node, text } : item,
                       ),
                     })
                   }
@@ -1333,10 +1370,118 @@ export function BlockInspector({
           />
         </div>
       );
+    case 'socialLinks':
+      return (
+        <div className="block-inspector inspector-grid">
+          <Text
+            label="Section heading"
+            value={block.heading}
+            onChange={(heading) => onChange({ ...block, heading })}
+          />
+          <Select
+            label="Layout style"
+            value={block.variant ?? 'standard'}
+            options={[
+              { label: 'Standard', value: 'standard' },
+              { label: 'Footer information', value: 'footer' },
+            ]}
+            onChange={(variant) => onChange({ ...block, variant })}
+          />
+          <Select
+            label="Link appearance"
+            value={block.appearance}
+            options={[
+              { label: 'Icons', value: 'icons' },
+              { label: 'Labels', value: 'labels' },
+            ]}
+            onChange={(appearance) => onChange({ ...block, appearance })}
+          />
+          <Select
+            label="Alignment"
+            value={block.align}
+            options={[
+              { label: 'Left', value: 'left' },
+              { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
+            ]}
+            onChange={(align) => onChange({ ...block, align })}
+          />
+          {block.links.map((link, index) => (
+            <Row
+              key={index}
+              onRemove={() =>
+                onChange({ ...block, links: block.links.filter((_, item) => item !== index) })
+              }
+            >
+              <Select
+                label="Social platform"
+                value={link.platform}
+                options={(['facebook', 'instagram', 'youtube', 'x', 'other'] as const).map(
+                  (value) => ({
+                    label: value === 'other' ? 'Website' : value[0].toUpperCase() + value.slice(1),
+                    value,
+                  }),
+                )}
+                onChange={(platform) =>
+                  onChange({
+                    ...block,
+                    links: block.links.map((item, position) =>
+                      position === index ? { ...item, platform } : item,
+                    ),
+                  })
+                }
+              />
+              <Text
+                label="Link label"
+                value={link.label}
+                onChange={(label) =>
+                  label &&
+                  onChange({
+                    ...block,
+                    links: block.links.map((item, position) =>
+                      position === index ? { ...item, label } : item,
+                    ),
+                  })
+                }
+              />
+              <LinkDestinationField
+                label="Web address"
+                value={link.url}
+                pages={document.pages}
+                httpsOnly
+                onChange={(url) =>
+                  onChange({
+                    ...block,
+                    links: block.links.map((item, position) =>
+                      position === index ? { ...item, url } : item,
+                    ),
+                  })
+                }
+              />
+            </Row>
+          ))}
+          <button
+            type="button"
+            className="button"
+            disabled={block.links.length >= 12}
+            onClick={() =>
+              onChange({
+                ...block,
+                links: [
+                  ...block.links,
+                  { platform: 'other', label: 'Website', url: 'https://example.com' },
+                ],
+              })
+            }
+          >
+            Add link
+          </button>
+        </div>
+      );
     case 'navigation':
       return (
         <div className="block-inspector inspector-grid">
-          {document.schemaVersion === 10 ? (
+          {document.schemaVersion >= 10 ? (
             <Select
               label="Navigation design"
               value={block.navigationDesignId ?? ''}

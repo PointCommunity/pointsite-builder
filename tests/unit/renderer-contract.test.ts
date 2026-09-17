@@ -5,7 +5,7 @@ import { STAGING_RENDERER_CONTRACT } from '../../src/server/publish/renderer-con
 
 describe('protected Staging renderer contract', () => {
   it('pins every canonical Builder site-kit file to its current Git blob identity', () => {
-    expect(Object.keys(STAGING_RENDERER_CONTRACT)).toHaveLength(17);
+    expect(Object.keys(STAGING_RENDERER_CONTRACT)).toHaveLength(19);
     for (const [filename, expectedBlob] of Object.entries(STAGING_RENDERER_CONTRACT)) {
       const observed = execFileSync('git', ['hash-object', `src/site-kit/${filename}`], {
         encoding: 'utf8',

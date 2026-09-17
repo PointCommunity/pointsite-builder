@@ -1,5 +1,10 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { SiteBlock } from '../../site-kit/types';
+import {
+  documentRegions,
+  layoutSections,
+  replaceLayoutSections,
+} from '../../site-kit/document-sections';
 import { useEditor } from './EditorProvider';
 import { mutationForContext } from './action-attribution';
 
@@ -25,20 +30,20 @@ export function StructurePanel({
       controls.find((button) => button.getAttribute('aria-label') === focus) ?? controls[0]
     )?.focus();
   }, [focus]);
-  const page = document.pages.find((candidate) => candidate.id === pageId);
+  const page = documentRegions(document).find((candidate) => candidate.id === pageId);
   if (!page) return null;
   const move = (index: number, delta: number) => {
     const moved = page.blocks[index];
     updateDocument(
       (next) => {
-        const target = next.pages.find((candidate) => candidate.id === pageId);
+        const target = layoutSections(next, pageId);
         if (!target) return next;
         const destination = index + delta;
-        if (destination < 0 || destination >= target.blocks.length) return next;
-        const blocks = [...target.blocks];
+        if (destination < 0 || destination >= target.length) return next;
+        const blocks = [...target];
         const [item] = blocks.splice(index, 1);
         if (item) blocks.splice(destination, 0, item);
-        target.blocks = blocks;
+        replaceLayoutSections(next, pageId, blocks);
         return next;
       },
       mutationForContext('page-structure', 'reorder'),
@@ -49,8 +54,13 @@ export function StructurePanel({
   const remove = (id: string) => {
     updateDocument(
       (next) => {
-        const target = next.pages.find((candidate) => candidate.id === pageId);
-        if (target) target.blocks = target.blocks.filter((block) => block.id !== id);
+        const target = layoutSections(next, pageId);
+        if (target)
+          replaceLayoutSections(
+            next,
+            pageId,
+            target.filter((block) => block.id !== id),
+          );
         return next;
       },
       mutationForContext('page-structure', 'remove'),
@@ -62,10 +72,10 @@ export function StructurePanel({
     const source = page.blocks.find((block) => block.id === id);
     updateDocument(
       (next) => {
-        const target = next.pages.find((candidate) => candidate.id === pageId);
-        const index = target?.blocks.findIndex((block) => block.id === id) ?? -1;
+        const target = layoutSections(next, pageId);
+        const index = target?.findIndex((block) => block.id === id) ?? -1;
         if (!target || index < 0) return next;
-        const copy = structuredClone(target.blocks[index]);
+        const copy = structuredClone(target[index]);
         copy.id = crypto.randomUUID();
         copy.name = `${copy.name} copy`;
         copy.items = copy.items.map((placement) => ({
@@ -73,7 +83,7 @@ export function StructurePanel({
           id: crypto.randomUUID(),
           element: { ...placement.element, id: crypto.randomUUID() },
         }));
-        target.blocks.splice(index + 1, 0, copy);
+        target.splice(index + 1, 0, copy);
         return next;
       },
       mutationForContext('page-structure', 'duplicate'),

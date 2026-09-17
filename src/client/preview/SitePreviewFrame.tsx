@@ -18,12 +18,14 @@ export function SitePreviewFrame({
   document,
   route,
   width,
+  height,
   scale,
   onNavigate,
 }: {
   document: SiteDocument;
   route: string;
   width: number;
+  height: number;
   scale: number;
   onNavigate: (route: string) => void;
 }) {
@@ -35,14 +37,14 @@ export function SitePreviewFrame({
   return (
     <div
       className="preview-frame-viewport"
-      style={{ width: width * scale }}
+      style={{ width: width * scale, height: height * scale }}
       data-preview-scale={scale}
     >
       <iframe
         className="preview-frame"
         title={`Live preview of ${route} at ${width} pixels`}
         srcDoc={previewShell}
-        style={{ width, height: `${100 / scale}%`, transform: `scale(${scale})` }}
+        style={{ width, height, transform: `scale(${scale})` }}
         onLoad={(event) => connectFrame(event.currentTarget)}
       />
       {mountNode

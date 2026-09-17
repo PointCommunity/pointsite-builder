@@ -563,5 +563,6 @@ export class D1LibraryService {
       Object.values(record).forEach(visit);
     };
     visit(document.pages);
+    visit(document.footer);
   }
 }

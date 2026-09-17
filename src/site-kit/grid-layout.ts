@@ -40,6 +40,7 @@ const defaultRows: Record<SiteElement['type'], number> = {
   text: 3,
   button: 2,
   navigation: 2,
+  socialLinks: 3,
 };
 
 export function defaultRowSpan(type: SiteElement['type']): number {

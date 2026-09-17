@@ -622,6 +622,10 @@ textarea {
   min-width: 0;
   overscroll-behavior: contain;
 }
+.visual-editor #puck-canvas-root {
+  /* Puck's fit-to-space height changes vh units when panels or zoom change. */
+  height: auto !important;
+}
 .visual-editor [class*='_Sidebar--right_'] {
   overflow-x: hidden;
 }

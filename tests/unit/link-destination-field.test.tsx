@@ -6,6 +6,27 @@ import { defaultSiteDocument } from '../../src/site-kit/default-site';
 const pages = defaultSiteDocument.pages.map(({ title, route }) => ({ title, route }));
 
 describe('LinkDestinationField', () => {
+  it('buffers invalid social addresses and only saves complete HTTPS URLs', () => {
+    const onChange = vi.fn();
+    render(
+      <LinkDestinationField
+        label="Social link"
+        value="https://example.com"
+        pages={pages}
+        httpsOnly
+        onChange={onChange}
+      />,
+    );
+    expect(screen.queryByLabelText('Type')).toBeNull();
+    const input = screen.getByLabelText('External URL');
+    for (const value of ['https://', 'http://example.com', '/contact'])
+      fireEvent.change(input, { target: { value } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(input, { target: { value: 'https://example.com/community' } });
+    expect(onChange).toHaveBeenCalledWith('https://example.com/community');
+  });
+
   it('selects an internal destination from the current page catalog', () => {
     const onChange = vi.fn();
     render(<LinkDestinationField label="Link" value="/give" pages={pages} onChange={onChange} />);

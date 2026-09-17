@@ -309,7 +309,7 @@ describe('controlled public renderer', () => {
   });
 
   it('publishes accessible non-drag structure metadata for every block', () => {
-    expect(Object.keys(blockDefinitions)).toHaveLength(17);
+    expect(Object.keys(blockDefinitions)).toHaveLength(18);
     for (const definition of Object.values(blockDefinitions)) {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);

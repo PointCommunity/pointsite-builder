@@ -1,7 +1,8 @@
 import type { NavigationEntry, SiteDocument } from '../../site-kit/types';
+import { documentRegions } from '../../site-kit/document-sections';
 
 export function navigationUsage(document: SiteDocument, designId: string) {
-  return document.pages.flatMap((page) =>
+  return documentRegions(document).flatMap((page) =>
     page.blocks.flatMap((section) =>
       section.items.flatMap(({ element }) =>
         element.type === 'navigation' && element.navigationDesignId === designId

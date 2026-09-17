@@ -1,6 +1,7 @@
 import { IDS, validSiteDocument } from './site-documents';
-import { SiteDocumentSchema } from '../../src/site-kit/schema';
-import { createCompatibilitySection } from '../../src/site-kit/migrations';
+import { SiteDocumentSchema, SiteElementSchema } from '../../src/site-kit/schema';
+import { createCompatibilitySection, migrateDocument } from '../../src/site-kit/migrations';
+import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
 import type { SiteDocument, SiteElement } from '../../src/site-kit/types';
 import { independentResponsiveValue } from '../../src/site-kit/grid-layout';
 
@@ -162,3 +163,38 @@ export const allBlocksDocument: SiteDocument = {
     },
   ],
 };
+
+export function blockCatalogDocument(): SiteDocument {
+  const document = migrateDocument(allBlocksDocument).document;
+  document.schemaVersion = 11;
+  document.rendererVersion = '11.0.0';
+  document.footer = [createEditableFooterSection(document.site)];
+  const sources = document.pages[0].blocks.map((section) => section.items[0].element);
+  sources.push(document.footer[0].items[2].element);
+  const sections = sources.flatMap((element) => {
+    const schema = SiteElementSchema.options.find(
+      (option) => option.shape.type.value === element.type,
+    )!;
+    const variants =
+      'variant' in schema.shape ? schema.shape.variant.unwrap().options : [undefined];
+    return variants.map((variant) =>
+      createCompatibilitySection(
+        SiteElementSchema.parse({
+          ...element,
+          id: crypto.randomUUID(),
+          ...(variant ? { variant } : {}),
+        }),
+      ),
+    );
+  });
+  // Small pages keep the same catalog reachable on low-memory authoring devices.
+  const original = document.pages[0];
+  document.pages = Array.from({ length: Math.ceil(sections.length / 20) }, (_, index) => ({
+    ...structuredClone(original),
+    id: crypto.randomUUID(),
+    title: `Blocks ${index + 1}`,
+    route: index ? `/blocks-${index + 1}` : '/',
+    blocks: sections.slice(index * 20, (index + 1) * 20),
+  }));
+  return SiteDocumentSchema.parse(document);
+}

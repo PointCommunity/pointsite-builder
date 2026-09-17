@@ -48,18 +48,18 @@ export function SectionInspector({
     return (
       <div className="block-inspector">
         <p className="inspector-help">
-          Production-compatible section. Convert it to Flow or Grid to customize its container.
+          This section contains one Block. Choose Flow or Grid to arrange multiple Blocks inside it.
         </p>
         <Select
           label="Section layout"
           value={settings.layout}
           options={[
-            { label: 'Production compatible', value: 'compatibility' },
+            { label: 'Single Block', value: 'compatibility' },
             { label: 'Flow', value: 'flow' },
             { label: 'Grid', value: 'grid' },
           ]}
           onChange={(layout) =>
-            onChange({ ...settings, layout, ...(layout === 'grid' ? { columns: 12 } : {}) })
+            onChange({ ...settings, layout, columns: layout === 'grid' ? 12 : 1 })
           }
         />
       </div>
@@ -87,7 +87,7 @@ export function SectionInspector({
           { label: 'Grid', value: 'grid' },
         ]}
         onChange={(layout) =>
-          onChange({ ...settings, layout, ...(layout === 'grid' ? { columns: 12 } : {}) })
+          onChange({ ...settings, layout, columns: layout === 'grid' ? 12 : 1 })
         }
       />
       <Select
@@ -102,6 +102,29 @@ export function SectionInspector({
       {settings.layout === 'grid' ? (
         <p className="inspector-help">Standard responsive grid: 12 columns</p>
       ) : null}
+      {settings.layout === 'flow' && document && document.schemaVersion >= 11 ? (
+        <>
+          <Select
+            label="Columns"
+            value={settings.columns}
+            options={([1, 2, 3, 4, 6, 12] as const).map((value) => ({
+              label: String(value),
+              value,
+            }))}
+            onChange={(columns) => onChange({ ...settings, columns })}
+          />
+          <Select
+            label="Stack columns on"
+            value={settings.stackAt ?? 'smallTablet'}
+            options={[
+              { label: 'Phones', value: 'phone' },
+              { label: 'Phones and small tablets', value: 'smallTablet' },
+              { label: 'Phones and tablets', value: 'tablet' },
+            ]}
+            onChange={(stackAt) => onChange({ ...settings, stackAt })}
+          />
+        </>
+      ) : null}
       <Select
         label="Content width"
         value={settings.width}
@@ -109,6 +132,9 @@ export function SectionInspector({
           { label: 'Full width', value: 'full' },
           { label: 'Site width', value: 'shell' },
           { label: 'Narrow', value: 'narrow' },
+          ...(document && document.schemaVersion >= 11
+            ? [{ label: 'Site edges', value: 'site' as const }]
+            : []),
         ]}
         onChange={(width) => onChange({ ...settings, width })}
       />
@@ -127,13 +153,13 @@ export function SectionInspector({
         label="Spacing"
         value={settings.padding}
         options={spacingOptions}
-        onChange={(padding) => onChange({ ...settings, padding })}
+        onChange={(padding) => onChange({ ...settings, padding, paddingPixels: undefined })}
       />
       <Select
         label="Element gap"
         value={settings.gap}
         options={spacingOptions}
-        onChange={(gap) => onChange({ ...settings, gap })}
+        onChange={(gap) => onChange({ ...settings, gap, gapPixels: undefined })}
       />
       {settings.layout === 'grid' ? (
         <label className="inspector-field">
@@ -146,11 +172,62 @@ export function SectionInspector({
             onChange={(event) =>
               onChange({
                 ...settings,
-                minRows: Math.max(1, Math.min(100, Number(event.target.value) || 1)),
+                minRows: Math.max(1, Math.min(100, Math.round(Number(event.target.value)) || 1)),
               })
             }
           />
         </label>
+      ) : null}
+      {document && document.schemaVersion >= 11 ? (
+        <>
+          <label className="inspector-field">
+            <span>Custom space between elements</span>
+            <input
+              type="number"
+              min="0"
+              max="160"
+              placeholder="Use preset"
+              value={settings.gapPixels ?? ''}
+              onChange={(event) =>
+                onChange({
+                  ...settings,
+                  gapPixels:
+                    event.target.value === ''
+                      ? undefined
+                      : Math.max(0, Math.min(160, Math.round(Number(event.target.value)))),
+                })
+              }
+            />
+          </label>
+          <label className="inspector-field">
+            <span>Custom space above and below</span>
+            <input
+              type="number"
+              min="0"
+              max="240"
+              placeholder="Use preset"
+              value={settings.paddingPixels ?? ''}
+              onChange={(event) =>
+                onChange({
+                  ...settings,
+                  paddingPixels:
+                    event.target.value === ''
+                      ? undefined
+                      : Math.max(0, Math.min(240, Math.round(Number(event.target.value)))),
+                })
+              }
+            />
+          </label>
+          <Select
+            label="Border"
+            value={settings.border ?? 'none'}
+            options={(['none', 'top', 'bottom', 'all'] as const).map((value) => ({
+              label: value[0].toUpperCase() + value.slice(1),
+              value,
+            }))}
+            onChange={(border) => onChange({ ...settings, border })}
+          />
+        </>
       ) : null}
       <label className="inspector-field">
         <span>Background image</span>

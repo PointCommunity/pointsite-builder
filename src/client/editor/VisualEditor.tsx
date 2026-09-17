@@ -22,7 +22,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
-import { blockDefinitions, renderBlock } from '../../site-kit/registry';
+import { blockDefinitions, LayoutItem, LayoutSection, renderBlock } from '../../site-kit/registry';
 import { SiteElementSchema } from '../../site-kit/schema';
 import {
   areaForBreakpoint,
@@ -35,6 +35,12 @@ import {
 } from '../../site-kit/grid-layout';
 import type { SectionBlock, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
+import {
+  documentRegions,
+  FOOTER_REGION,
+  layoutSections,
+  replaceLayoutSections,
+} from '../../site-kit/document-sections';
 import siteCss from '../../site-kit/site.css?inline';
 import editorCanvasCss from './editor-canvas.css?inline';
 import { BlockInspector } from './BlockInspector';
@@ -43,6 +49,7 @@ import { getGridBreakpoint, setGridBreakpoint, useGridBreakpoint } from './GridB
 import { breakpointForWidth } from './grid-breakpoint';
 import { GridPlacementInspector } from './GridPlacementInspector';
 import { SectionInspector, type SectionSettings } from './SectionInspector';
+import { siteViewports } from '../preview/viewports';
 import { draftDisplayDocument } from '../media/draft-display-document';
 import { useEditorDocument, type useEditor } from './EditorProvider';
 import { usePointPuck } from './puck-store';
@@ -180,7 +187,7 @@ function HeroTextResizeHandle({
       );
       box.style.setProperty('--point-hero-text-width', `${latest}%`);
       const pending = structuredClone(document);
-      const element = pending.pages
+      const element = documentRegions(pending)
         .flatMap((page) =>
           page.blocks.flatMap((section) => section.items.map((item) => item.element)),
         )
@@ -267,18 +274,17 @@ const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
   FullWidthSection: 'Full-Width',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
-const gapValues = { none: '0px', small: '0.75rem', medium: '1.5rem', large: '3rem' };
-const totalGapValues = { none: '0px', small: '8.25rem', medium: '16.5rem', large: '33rem' };
-const editorViewports: Viewports = [
-  { width: 360, height: 'auto', label: 'Phone', icon: 'Smartphone' },
-  { width: 768, height: 'auto', label: 'Tablet', icon: 'Tablet' },
-  { width: 1280, height: 'auto', label: 'Desktop', icon: 'Monitor' },
-];
+const editorViewports: Viewports = Object.values(siteViewports);
 const editorDnd = { behavior: 'auto' as const };
 const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
+function EditorViewport({ children }: { children: ReactNode }) {
+  const height = usePointPuck((state) => state.appState.ui.viewports.current.height);
+  return <div style={{ height }}>{children}</div>;
+}
 const editorOverrides = {
   componentOverlay: GridOverlay,
   header: CompactEditorHeader,
+  preview: EditorViewport,
 };
 const editorPlugins = [{ ...legacySideBarPlugin(), render: EditorPagePanel }];
 
@@ -386,13 +392,21 @@ function defaultElement<T extends SiteElement['type']>(
     navigation: {
       id,
       type: 'navigation',
-      ...(document.schemaVersion === 10
+      ...(document.schemaVersion >= 10
         ? { navigationDesignId: document.navigationDesigns?.[0]?.id }
         : {}),
       label: 'Church navigation',
       orientation: 'responsive',
       align: 'right',
       surface: 'transparent',
+    },
+    socialLinks: {
+      id,
+      type: 'socialLinks',
+      heading: 'Follow us',
+      links: structuredClone(document.site.socialLinks),
+      align: 'center',
+      appearance: 'icons',
     },
   };
   return defaults[type] as Extract<SiteElement, { type: T }>;
@@ -589,7 +603,7 @@ function SectionComponent({
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
     };
-  }, [settings.gap, settings.layout]);
+  }, [settings.gap, settings.gapPixels, settings.layout]);
   useEffect(() => {
     if (isDragging) return;
     const ownerDocument = gridRef.current?.ownerDocument;
@@ -620,58 +634,42 @@ function SectionComponent({
     hostDocument.addEventListener('pointermove', forwardPointer, true);
     return () => hostDocument.removeEventListener('pointermove', forwardPointer, true);
   }, [isDragging, settings.layout]);
-  if (settings.layout === 'compatibility')
-    return <Content className="point-compatibility-slot" minEmptyHeight={48} />;
-  const style = {
-    '--point-section-columns': settings.layout === 'flow' ? 1 : GRID_COLUMNS,
-    '--point-section-gap': gapValues[settings.gap],
-    '--point-section-total-gap': totalGapValues[settings.gap],
-    '--point-section-min-rows': settings.minRows,
-  } as CSSProperties;
-  const background = settings.backgroundMediaId
-    ? document.media.find((item) => item.id === settings.backgroundMediaId)
-    : undefined;
   return (
-    <section
-      className={`point-layout-section point-layout-section--${settings.layout} point-layout-section--position-${settings.position} point-layout-section--${settings.width} point-layout-section--${settings.surface} point-layout-section--pad-${settings.padding} point-layout-section--overlay-${settings.overlay}`}
-      aria-label={settings.name}
-      data-point-section-id={id}
-      onPointerMoveCapture={(event: PointerEvent<HTMLElement>) =>
-        trackGridPointerCoordinates(event.clientX, event.clientY)
-      }
-      onPointerLeave={clearDropPreview}
-    >
-      {background ? (
-        <img
-          className={`point-layout-section__background point-layout-section__background--${settings.backgroundPosition}`}
-          src={background.sourcePath}
-          alt=""
+    <LayoutSection
+      section={settings}
+      document={document}
+      sectionId={id}
+      interaction={{
+        onPointerMoveCapture: (event) => trackGridPointerCoordinates(event.clientX, event.clientY),
+        onPointerLeave: clearDropPreview,
+      }}
+      renderContent={(className, style) => (
+        <Content
+          ref={gridRef}
+          className={`${className}${isDragging || isGridInteracting ? ' point-layout-section__grid--active' : ''}`}
+          data-grid-drop-preview={dropPreview ? 'true' : undefined}
+          style={style}
+          minEmptyHeight={settings.layout === 'compatibility' ? 48 : 96}
         />
-      ) : null}
-      {settings.overlay !== 'none' ? (
-        <div className="point-layout-section__overlay" aria-hidden="true" />
-      ) : null}
-      <Content
-        ref={gridRef}
-        className={`point-layout-section__grid${isDragging || isGridInteracting ? ' point-layout-section__grid--active' : ''}`}
-        data-grid-drop-preview={dropPreview ? 'true' : undefined}
-        style={style}
-        minEmptyHeight={96}
-      />
-      {isDragging && dropPreview ? (
-        <div
-          className={`point-grid-drop-preview point-grid-drop-preview--${dropPreview.valid ? 'valid' : 'invalid'}`}
-          data-drop-valid={dropPreview.valid}
-          style={dropPreview.style}
-          aria-hidden="true"
-        >
-          <span>{dropPreview.label}</span>
-        </div>
-      ) : null}
-      <p className="sr-only" role="status" aria-live="polite">
-        {dropAnnouncement}
-      </p>
-    </section>
+      )}
+      controls={
+        <>
+          {isDragging && dropPreview ? (
+            <div
+              className={`point-grid-drop-preview point-grid-drop-preview--${dropPreview.valid ? 'valid' : 'invalid'}`}
+              data-drop-valid={dropPreview.valid}
+              style={dropPreview.style}
+              aria-hidden="true"
+            >
+              <span>{dropPreview.label}</span>
+            </div>
+          ) : null}
+          <p className="sr-only" role="status" aria-live="polite">
+            {dropAnnouncement}
+          </p>
+        </>
+      }
+    />
   );
 }
 
@@ -793,6 +791,10 @@ function sectionToData(section: SectionBlock): ComponentData {
         surface: section.surface,
         padding: section.padding,
         minRows: section.minRows,
+        ...(section.gapPixels === undefined ? {} : { gapPixels: section.gapPixels }),
+        ...(section.paddingPixels === undefined ? {} : { paddingPixels: section.paddingPixels }),
+        ...(section.border === undefined ? {} : { border: section.border }),
+        ...(section.stackAt === undefined ? {} : { stackAt: section.stackAt }),
         ...(section.backgroundMediaId ? { backgroundMediaId: section.backgroundMediaId } : {}),
         backgroundPosition: section.backgroundPosition,
         overlay: section.overlay,
@@ -822,9 +824,11 @@ function dataToSection(item: ComponentData): SectionBlock {
     items: content.map((child) => ({
       id: String(child.props.id),
       span: Number(
-        (child.props.grid as SectionBlock['items'][number]['grid'])?.desktop.columnSpan ??
-          child.props.span ??
-          12,
+        settings.layout === 'flow'
+          ? (child.props.span ?? 1)
+          : ((child.props.grid as SectionBlock['items'][number]['grid'])?.desktop.columnSpan ??
+              child.props.span ??
+              12),
       ),
       align: (child.props.align ??
         independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
@@ -869,6 +873,8 @@ function VisualEditorImpl({
   onPageIdChange,
   onStructureChange,
   toolbar,
+  propertiesOpen,
+  onPropertiesChange,
 }: {
   draftId: string;
   pageId: string;
@@ -878,6 +884,8 @@ function VisualEditorImpl({
   onPageIdChange: (id: string) => void;
   onStructureChange: () => void;
   toolbar: HTMLElement | null;
+  propertiesOpen: boolean;
+  onPropertiesChange: (open: boolean) => void;
 }) {
   const { document, stageDocument, completeDocument } = useEditorDocument();
   const displayDocument = useMemo(
@@ -894,9 +902,15 @@ function VisualEditorImpl({
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  const page = document.pages.find((candidate) => candidate.id === pageId);
+  const editingFooter = pageId === FOOTER_REGION && document.footer !== undefined;
+  const page =
+    document.pages.find((candidate) => candidate.id === pageId) ??
+    (editingFooter ? document.pages[0] : undefined);
   const data = useMemo<Data>(
-    () => ({ content: (page?.blocks ?? []).map(sectionToData), root: { props: {} } }),
+    () => ({
+      content: (layoutSections(document, pageId) ?? []).map(sectionToData),
+      root: { props: {} },
+    }),
     // Puck owns page-content state until an explicit structure reset changes its instance key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageId, structureRevision, interactionRevision],
@@ -994,8 +1008,24 @@ function VisualEditorImpl({
           : undefined;
         const parentSettings = parentProps?.settings as Partial<SectionSettings> | undefined;
         if (parentSettings?.layout === 'compatibility') return { block: fields.block };
-        if (parentSettings?.layout === 'flow') {
+        if (parentSettings?.layout === 'flow' && document.schemaVersion < 11)
           return { block: fields.block, align: fields.align };
+        if (parentSettings?.layout === 'flow') {
+          return {
+            block: fields.block,
+            span: {
+              ...fields.span,
+              label: 'Width in row',
+              options: Array.from({ length: parentSettings.columns ?? 1 }, (_, index) => ({
+                value: index + 1,
+                label:
+                  index + 1 === parentSettings.columns
+                    ? 'Full row'
+                    : `${index + 1} column${index ? 's' : ''}`,
+              })),
+            },
+            align: fields.align,
+          };
         }
         return {
           block: fields.block,
@@ -1051,7 +1081,12 @@ function VisualEditorImpl({
           props: {
             ...data.props,
             block: { ...data.props.block, id: crypto.randomUUID() },
-            span: parentSettings?.layout === 'grid' ? defaultSpan : 12,
+            span:
+              parentSettings?.layout === 'flow'
+                ? 1
+                : parentSettings?.layout === 'grid'
+                  ? defaultSpan
+                  : 12,
             grid,
             ...(applies && !intent.valid ? { gridDropRejected: true } : {}),
           },
@@ -1062,36 +1097,13 @@ function VisualEditorImpl({
         block,
         align,
         grid,
+        span,
         puck,
       }: ElementProps & { id: string; puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
         const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
-        const desktop = grid.desktop;
-        const tablet = grid.tablet;
-        const mobile = grid.mobile;
-        const style = {
-          '--point-grid-desktop-column': desktop.column,
-          '--point-grid-desktop-row': desktop.row,
-          '--point-grid-desktop-column-span': desktop.columnSpan,
-          '--point-grid-desktop-row-span': desktop.rowSpan,
-          '--point-grid-tablet-column': tablet.column,
-          '--point-grid-tablet-row': tablet.row,
-          '--point-grid-tablet-column-span': tablet.columnSpan,
-          '--point-grid-tablet-row-span': tablet.rowSpan,
-          '--point-grid-mobile-column': mobile.column,
-          '--point-grid-mobile-row': mobile.row,
-          '--point-grid-mobile-column-span': mobile.columnSpan,
-          '--point-grid-mobile-row-span': mobile.rowSpan,
-          '--point-align-desktop': align.desktop,
-          '--point-align-tablet': align.tablet,
-          '--point-align-mobile': align.mobile,
-        } as CSSProperties;
         return (
-          <div
-            ref={puck.dragRef}
-            className="point-layout-item point-layout-item--grid"
-            style={style}
-          >
+          <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }}>
             {parsed.success ? (
               renderBlock(
                 parsed.data,
@@ -1106,7 +1118,7 @@ function VisualEditorImpl({
             ) : (
               <p>Configure this element.</p>
             )}
-          </div>
+          </LayoutItem>
         );
       },
     };
@@ -1115,10 +1127,13 @@ function VisualEditorImpl({
   const config = {
     categories: {
       sections: { title: 'Sections', components: [...sectionTypes] },
-      site: { title: 'Site elements', components: ['navigation'] },
+      site: {
+        title: 'Site elements',
+        components: ['navigation', ...(document.schemaVersion >= 11 ? ['socialLinks'] : [])],
+      },
       content: {
         title: 'Text and buttons',
-        components: ['hero', 'heading', 'text', 'richText', 'button'],
+        components: ['hero', 'heading', 'text', 'richText', 'button', 'cta'],
       },
       media: {
         title: 'Images and media',
@@ -1135,8 +1150,14 @@ function VisualEditorImpl({
         <>
           <style>{`${siteCss}\n${editorCanvasCss}`}</style>
           <CanvasBreakpointReporter />
-          <SiteFrame document={displayDocument} page={page} editing onEditFooter={onEditFooter}>
-            {children}
+          <SiteFrame
+            document={displayDocument}
+            page={page}
+            editing
+            onEditFooter={editingFooter ? undefined : onEditFooter}
+            footerContent={editingFooter ? children : undefined}
+          >
+            {editingFooter ? null : children}
           </SiteFrame>
         </>
       ),
@@ -1145,7 +1166,7 @@ function VisualEditorImpl({
   return (
     <div
       className="visual-editor"
-      aria-label={`Visual canvas for ${page.title}`}
+      aria-label={`Visual canvas for ${editingFooter ? 'Footer' : page.title}`}
       data-interaction-revision={interactionRevision}
       onClickCapture={(event) => {
         const button = (event.target as Element).closest('button');
@@ -1178,14 +1199,17 @@ function VisualEditorImpl({
         toolbar={toolbar}
       >
         <Puck
-          key={`${page.id}:${structureRevision}:${interactionRevision}`}
+          key={`${pageId}:${structureRevision}:${interactionRevision}`}
           config={config}
           data={data}
+          ui={{ rightSideBarVisible: propertiesOpen }}
           dnd={editorDnd}
           overrides={editorOverrides}
           plugins={editorPlugins}
           _experimentalFullScreenCanvas={touchWorkspace}
           onAction={(action: PuckAction, nextState) => {
+            if (action.type === 'setUi' && nextState.ui.rightSideBarVisible !== propertiesOpen)
+              queueMicrotask(() => onPropertiesChange(nextState.ui.rightSideBarVisible));
             if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
             const rejectedInsert =
               (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
@@ -1233,8 +1257,7 @@ function VisualEditorImpl({
                 : rootElementToSection(item),
             );
             const changed = structuredClone(document);
-            const target = changed.pages.find((candidate) => candidate.id === pageId);
-            if (target) target.blocks = sections;
+            replaceLayoutSections(changed, pageId, sections);
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);
               else completeDocument(changed, mutation);
