@@ -2,6 +2,7 @@ import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
+import type * as HeroPublication from '../fixtures/hero-publication';
 import type { PendingJournalState } from '../../src/client/editor/pending-journal';
 import type * as JournalModule from '../../src/client/editor/pending-journal';
 import type { DraftRecord, RevisionRecord, Role } from '../../src/server/repositories/contracts';
@@ -2062,6 +2063,147 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await preview.getByRole('button', { name: 'Menu', exact: true }).press('Enter');
   await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
+
+for (const surface of ['primary', 'image', 'canvas'] as const) {
+  test(`preserves editor hero containment in Preview and publication: ${surface}`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const controls = await installApi(page, 'administrator', 'admin', (document) => {
+      const hero = document.pages[1].blocks
+        .flatMap((section) => section.items)
+        .map((item) => item.element)
+        .find((element) => element.type === 'hero');
+      if (!hero || hero.type !== 'hero') throw new Error('Expected page Hero');
+      hero.surface = surface;
+      hero.align = 'center';
+      hero.actions = [{ label: 'Our beliefs', href: '/what-we-believe', style: 'primary' }];
+    });
+    const measure = (frame: FrameLocator) =>
+      frame.locator('.page-hero').evaluate(async (hero) => {
+        await document.fonts.ready;
+        const rect = (element: Element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, right: box.right, width: box.width, height: box.height };
+        };
+        const box = rect(hero);
+        let left = box.left,
+          right = box.right;
+        for (let parent = hero.parentElement; parent; parent = parent.parentElement) {
+          if (['hidden', 'clip', 'auto', 'scroll'].includes(getComputedStyle(parent).overflowX)) {
+            const clip = rect(parent);
+            left = Math.max(left, clip.left);
+            right = Math.min(right, clip.right);
+          }
+        }
+        return {
+          viewport: innerWidth,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          visible: { left, right, width: right - left },
+          box,
+          background: getComputedStyle(hero).backgroundImage,
+          shell: (() => {
+            const { left, right, width } = rect(document.querySelector('.page-body')!);
+            return { left, right, width };
+          })(),
+          navigation: rect(document.querySelector('.point-navigation')!),
+          text: Array.from(hero.querySelectorAll('.point-hero-text-box')).map(rect),
+          image: hero.querySelector('img') ? rect(hero.querySelector('img')!) : null,
+        };
+      });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
+    const canvasElement = page.locator('.visual-editor iframe');
+    const canvas = canvasElement.contentFrame();
+    await canvas.getByRole('heading', { name: 'Who We Are', exact: true }).click();
+    await canvas
+      .getByRole('button', { name: 'Resize Hero heading width', exact: true })
+      .press('ArrowLeft');
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    await expect.poll(() => controls.saveRequests.length).toBeGreaterThan(0);
+    const saved = controls.saveRequests.at(-1)!.document;
+    await page.reload();
+    await page.getByLabel('Choose page').selectOption({ label: 'Who We Are' });
+    await expect(canvas.getByRole('heading', { name: 'Who We Are', exact: true })).toBeVisible();
+    const widths = [1280, 1440, 1920, 2560, 901, 900, 768, 761, 760, 521, 520, 360];
+    const authored = [];
+    for (const width of widths) {
+      await canvasElement.evaluate((frame, width) => {
+        frame.style.width = `${width}px`;
+      }, width);
+      authored.push(await measure(canvas));
+    }
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.getByRole('button', { name: 'Preview at desktop width' }).click();
+    await page
+      .getByRole('combobox', { name: 'Page', exact: true })
+      .selectOption({ label: 'Who We Are' });
+    const previewElement = page.locator('iframe.preview-frame');
+    const preview = previewElement.contentFrame();
+    const html = await page.evaluate(
+      async ({ document, route }) => {
+        const modulePath = '/tests/fixtures/hero-publication.tsx';
+        const { publishedHtml } = (await import(modulePath)) as typeof HeroPublication;
+        return publishedHtml(document, route);
+      },
+      { document: saved, route: '/who-we-are' },
+    );
+    await page.evaluate((html) => {
+      const frame = document.createElement('iframe');
+      frame.id = 'published-hero';
+      frame.style.border = '0';
+      frame.style.height = '900px';
+      frame.srcdoc = html;
+      document.body.appendChild(frame);
+    }, html);
+    const publishedElement = page.locator('#published-hero');
+    const published = publishedElement.contentFrame();
+    for (const [index, width] of widths.entries()) {
+      await previewElement.evaluate((frame, width) => {
+        frame.style.width = `${width}px`;
+      }, width);
+      await publishedElement.evaluate((frame, width) => {
+        frame.style.width = `${width}px`;
+      }, width);
+      const expected = authored[index];
+      expect(expected.viewport).toBe(width);
+      expect(expected.visible.left).toBeGreaterThanOrEqual(0);
+      expect(expected.visible.right).toBeLessThanOrEqual(width);
+      expect(expected.visible.left).toBeCloseTo(expected.shell.left, 1);
+      expect(expected.visible.right).toBeCloseTo(expected.shell.right, 1);
+      const previewBounds = await measure(preview);
+      const publishedBounds = await measure(published);
+      // Unrelated compatibility sections already overflow at some narrow widths.
+      // Compare against the pre-fix direct-child Hero markup to reject new overflow.
+      const previousOverflow = await published.locator('.page-hero').evaluate((hero) => {
+        const wrapper = hero.parentElement!;
+        wrapper.replaceWith(hero);
+        const overflow =
+          document.documentElement.scrollWidth - document.documentElement.clientWidth;
+        hero.replaceWith(wrapper);
+        wrapper.appendChild(hero);
+        return overflow;
+      });
+      expect(previewBounds.overflow).toBeLessThanOrEqual(previousOverflow);
+      expect(publishedBounds).toEqual(previewBounds);
+      expect({ ...previewBounds, overflow: expected.overflow }, `Preview ${width}`).toEqual(
+        expected,
+      );
+    }
+    await page.getByRole('combobox', { name: 'Preview zoom', exact: true }).selectOption('125');
+    const zoomed = await measure(preview);
+    expect({ ...zoomed, overflow: authored.at(-1)!.overflow }).toEqual(authored.at(-1));
+    await preview.locator('html').evaluate((element) => {
+      element.style.fontSize = '200%';
+    });
+    const enlarged = await measure(preview);
+    expect(enlarged.visible.left).toBeGreaterThanOrEqual(0);
+    expect(enlarged.visible.right).toBeLessThanOrEqual(enlarged.viewport);
+    await preview.getByRole('link', { name: 'Our beliefs', exact: true }).last().click();
+    await expect(preview.getByRole('heading', { name: 'Our Beliefs', exact: true })).toBeVisible();
+  });
+}
 
 test('keeps a non-auto desktop grid position identical in canvas and Preview', async ({ page }) => {
   await page.goto('/');

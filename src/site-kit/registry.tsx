@@ -1090,7 +1090,14 @@ export function renderSection(
 ): ReactNode {
   if (section.layout === 'compatibility') {
     const placement = section.items[0];
-    return placement ? renderBlock(placement.element, document, onNavigate) : null;
+    if (!placement) return null;
+    const content = renderBlock(placement.element, document, onNavigate);
+    // Match the editor's clipping box without changing the authored Hero contents.
+    return placement.element.type === 'hero' && placement.element.variant === 'pageHero' ? (
+      <div className="point-layout-item point-layout-item--grid">{content}</div>
+    ) : (
+      content
+    );
   }
 
   const style = {
