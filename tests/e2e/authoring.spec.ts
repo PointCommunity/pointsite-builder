@@ -567,6 +567,24 @@ test('keeps Properties state only for the current checkout', async ({ page }) =>
   await expect(properties).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('preserves deliberately opened Properties across narrow-screen view changes and refresh', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const properties = page.getByRole('button', { name: 'Properties', exact: true });
+  await expect(properties).toHaveAttribute('aria-pressed', 'false');
+  await properties.click();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  const panel = page.getByRole('combobox', { name: 'Editor section', exact: true });
+  await panel.selectOption({ label: 'Preview' });
+  await panel.selectOption({ label: 'Layout' });
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(properties).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('recreates the fixed footer with editable Blocks at every responsive boundary', async ({
   page,
 }) => {

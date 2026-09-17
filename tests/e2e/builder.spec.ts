@@ -391,9 +391,12 @@ test('audits configuration density across supported widths and text sizes', asyn
             await page
               .locator('.visual-editor iframe')
               .contentFrame()
-              .getByRole('button', { name: /^(Church navigation|Menu)$/ })
+              .locator('.point-layout-item[data-puck-component]:has(.point-navigation)')
               .first()
               .click();
+            await expect(
+              page.getByRole('combobox', { name: 'Navigation design', exact: true }),
+            ).toBeVisible();
             await measure('Navigation inspector');
             await page.getByRole('button', { name: 'Publish', exact: true }).click();
             await measure('Publishing dialog');
