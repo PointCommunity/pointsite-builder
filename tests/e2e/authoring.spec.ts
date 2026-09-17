@@ -2155,7 +2155,7 @@ for (const surface of ['primary', 'image', 'canvas'] as const) {
       frame.style.border = '0';
       frame.style.height = '900px';
       frame.srcdoc = html;
-      document.body.append(frame);
+      document.body.appendChild(frame);
     }, html);
     const publishedElement = page.locator('#published-hero');
     const published = publishedElement.contentFrame();
@@ -2182,7 +2182,7 @@ for (const surface of ['primary', 'image', 'canvas'] as const) {
         const overflow =
           document.documentElement.scrollWidth - document.documentElement.clientWidth;
         hero.replaceWith(wrapper);
-        wrapper.append(hero);
+        wrapper.appendChild(hero);
         return overflow;
       });
       expect(previewBounds.overflow).toBeLessThanOrEqual(previousOverflow);
