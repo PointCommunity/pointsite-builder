@@ -263,7 +263,18 @@ async function installApi(
             context: RevisionRecord['actionContext'];
           };
         };
-        expect(SiteDocumentSchema.safeParse(input.document).error?.issues).toBeUndefined();
+        if (!SiteDocumentSchema.safeParse(input.document).success) {
+          await route.fulfill({
+            status: 422,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              code: 'VALIDATION_FAILED',
+              message: 'Review the draft content',
+              requestId: 'request',
+            }),
+          });
+          return;
+        }
         saveRequests.push({
           action: input.action as { category: string; context: string },
           idempotencyKey: request.headers()['idempotency-key'] ?? null,
@@ -998,8 +1009,10 @@ test('compact categories and questions preserve edits without navigation revisio
   await page.getByLabel('Contact email').filter({ visible: true }).fill('invalid');
   await page.getByRole('button', { name: 'Design', exact: true }).click();
   await expect(page.getByLabel('Contact email').filter({ visible: true })).toBeFocused();
+  await expect(page.getByText('A change needs attention before it can save.')).toBeVisible();
   await page.getByLabel('Contact email').filter({ visible: true }).fill('valid@example.com');
   await page.getByRole('button', { name: 'Forms', exact: true }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   await expect(page.locator('.form-field-editor:visible')).toHaveCount(1);
   const summaries = page.locator('.question-summary');
   await summaries.last().click();
