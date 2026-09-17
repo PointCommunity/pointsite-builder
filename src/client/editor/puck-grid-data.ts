@@ -2,6 +2,12 @@ import type { ComponentData, Data } from '@puckeditor/core';
 
 let latestData: Data | undefined;
 
+export function documentComponentId(item: ComponentData): string {
+  const id = String(item.props.id);
+  // Puck prefixes inserted and duplicated component UUIDs with their type.
+  return id.startsWith(`${item.type}-`) ? id.slice(item.type.length + 1) : id;
+}
+
 export function rememberPuckData(data: Data): void {
   latestData = data;
 }

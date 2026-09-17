@@ -68,6 +68,7 @@ import {
 import {
   childComponents,
   currentPuckData,
+  documentComponentId,
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
@@ -818,11 +819,11 @@ function dataToSection(item: ComponentData): SectionBlock {
   const settings = item.props.settings as SectionSettings;
   const content = (item.props.content ?? []) as ComponentData[];
   return {
-    id: String(item.props.id),
+    id: documentComponentId(item),
     type: 'section',
     ...settings,
     items: content.map((child) => ({
-      id: String(child.props.id),
+      id: documentComponentId(child),
       span: Number(
         settings.layout === 'flow'
           ? (child.props.span ?? 1)
@@ -851,7 +852,7 @@ function rootElementToSection(item: ComponentData): SectionBlock {
     ...sectionDefaults('Section'),
     items: [
       {
-        id: String(item.props.id || crypto.randomUUID()),
+        id: documentComponentId(item),
         span: Number(item.props.span ?? 12),
         align: (item.props.align ??
           independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],

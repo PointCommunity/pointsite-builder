@@ -1,6 +1,7 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
 import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
 import { blockDefinitions } from '../../src/site-kit/registry';
@@ -262,6 +263,7 @@ async function installApi(
             context: RevisionRecord['actionContext'];
           };
         };
+        expect(SiteDocumentSchema.safeParse(input.document).error?.issues).toBeUndefined();
         saveRequests.push({
           action: input.action as { category: string; context: string },
           idempotencyKey: request.headers()['idempotency-key'] ?? null,

@@ -1,5 +1,9 @@
 import type { Data } from '@puckeditor/core';
-import { childComponents, siblingComponents } from '../../src/client/editor/puck-grid-data';
+import {
+  childComponents,
+  documentComponentId,
+  siblingComponents,
+} from '../../src/client/editor/puck-grid-data';
 
 const data: Data = {
   root: { props: {} },
@@ -18,6 +22,14 @@ const data: Data = {
 };
 
 describe('Puck grid data traversal', () => {
+  it('keeps document UUIDs stable across inserted, duplicated and reopened components', () => {
+    const id = '10000000-0000-4000-8000-000000000001';
+    for (const type of ['Section', 'ThreeColumnSection', 'richText', 'socialLinks']) {
+      expect(documentComponentId({ type, props: { id: `${type}-${id}` } })).toBe(id);
+      expect(documentComponentId({ type, props: { id } })).toBe(id);
+    }
+  });
+
   it('finds direct children for insertion collision checks', () => {
     expect(childComponents(data, 'section-1').map((item) => item.props.id)).toEqual([
       'heading-1',
