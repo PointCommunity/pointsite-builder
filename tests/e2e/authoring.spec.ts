@@ -1694,9 +1694,7 @@ test('renames inline with keyboard and pointer while keeping publishing, history
     'Unknown public site baseline - Revision 1',
   );
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
-  await expect(
-    page.getByRole('dialog').locator('strong').filter({ hasText: 'Renamed Sunday' }),
-  ).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('Renamed Sunday', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close publishing window' }).click();
   await page.getByRole('button', { name: '← All drafts' }).click();
   await expect(page.locator('.draft-card h2')).toHaveText('Renamed Sunday');

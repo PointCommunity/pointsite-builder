@@ -353,7 +353,9 @@ function Workspace({
       event.currentTarget.querySelectorAll<HTMLElement>(
         'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    ).filter((element) => element.getClientRects().length > 0);
+    ).filter((element) =>
+      element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+    );
     const first = focusable[0];
     const last = focusable.at(-1);
     if (!first || !last) return;
