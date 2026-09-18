@@ -248,7 +248,8 @@ it('reads Library without history scans or writes, rebuilds in bounded batches, 
   await expect(library.list(draft.id)).rejects.toThrow('Library history is being prepared');
   for (let step = 0; step < 3; step++) await projection.backfill(draft.id);
   expect(await library.list(draft.id)).toEqual(before);
-});
+  // Twenty full saves plus projection rebuilds use the existing long D1-test budget.
+}, 15_000);
 
 it('persists an upload exactly once, scopes its bytes, and rejects key reuse and duplicate files', async () => {
   const command = {
