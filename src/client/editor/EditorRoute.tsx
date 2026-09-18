@@ -386,6 +386,7 @@ function Workspace({
       target?.focus();
     });
   }, []);
+  const openFooterLayout = useCallback(() => setPageId(FOOTER_REGION), []);
   const availablePanels: Panel[] = [
     'layout',
     'forms',
@@ -585,9 +586,7 @@ function Workspace({
                   pageId={pageId}
                   structureRevision={structureRevision}
                   onEditFooter={
-                    document.footer === undefined
-                      ? openFooterSettings
-                      : () => setPageId(FOOTER_REGION)
+                    document.footer === undefined ? openFooterSettings : openFooterLayout
                   }
                   onEditNavigation={openNavigationDesign}
                   onPageIdChange={setPageId}
