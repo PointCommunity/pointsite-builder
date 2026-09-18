@@ -3,7 +3,7 @@ import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fix
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
-import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
+import { legacyFooterDocument } from '../fixtures/legacy-footer';
 import { blockDefinitions } from '../../src/site-kit/registry';
 import { blockCatalogDocument } from '../fixtures/block-data';
 import { siteViewports } from '../../src/client/preview/viewports';
@@ -601,13 +601,8 @@ test('preserves deliberately opened Properties across narrow-screen view changes
 test('recreates the fixed footer with editable Blocks at every responsive boundary', async ({
   page,
 }) => {
-  const document = upgradeNavigation(defaultSiteDocument);
-  const composed = {
-    ...document,
-    schemaVersion: 11 as const,
-    rendererVersion: '11.0.0',
-    footer: [createEditableFooterSection(document.site)],
-  };
+  const document = legacyFooterDocument();
+  const composed = upgradeNavigation(document);
   await page.goto('/');
   await page.evaluate(
     async ({ legacy, composed }) => {
@@ -661,11 +656,7 @@ test('recreates the fixed footer with editable Blocks at every responsive bounda
 test('edits composed footer Blocks, saves, reloads and previews the same content', async ({
   page,
 }) => {
-  const controls = await installApi(page, 'administrator', 'admin', (document) => {
-    document.schemaVersion = 11;
-    document.rendererVersion = '11.0.0';
-    document.footer = [createEditableFooterSection(document.site)];
-  });
+  const controls = await installApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
@@ -707,8 +698,6 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
   );
   test.setTimeout(90_000);
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
-    document.schemaVersion = 11;
-    document.rendererVersion = '11.0.0';
     document.pages[0].blocks = [];
     document.footer = [];
   });
@@ -824,7 +813,7 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
   ).toEqual(['richText', 'richText', 'socialLinks']);
 });
 
-test('keeps alignment controls available in older Flow sections', async ({ page }) => {
+test('keeps alignment controls available in Flow sections', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     const section = document.pages[0].blocks.find(
       (item) => item.items[0]?.element.type === 'hero',
@@ -840,18 +829,14 @@ test('keeps alignment controls available in older Flow sections', async ({ page 
     .selectOption('end');
   await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   const saved = controls.saveRequests.at(-1)!.document;
-  expect(saved.schemaVersion).toBe(10);
+  expect(saved.schemaVersion).toBe(11);
   expect(saved.pages[0].blocks.find((item) => item.layout === 'flow')?.items[0].align.desktop).toBe(
     'end',
   );
 });
 
-test('restoring an older revision from the footer keeps Layout reachable', async ({ page }) => {
-  await installApi(page, 'administrator', 'admin', (document) => {
-    document.schemaVersion = 11;
-    document.rendererVersion = '11.0.0';
-    document.footer = [createEditableFooterSection(document.site)];
-  });
+test('restoring an older revision from the footer keeps the footer editable', async ({ page }) => {
+  await installApi(page);
   await page.route('**/restore', (route) =>
     route.fulfill({
       status: 200,
@@ -867,9 +852,12 @@ test('restoring an older revision from the footer keeps Layout reachable', async
   await page.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(page.getByText(/restored as a new revision/)).toBeVisible();
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
-  await expect(page.getByLabel('Choose page')).toHaveValue(defaultSiteDocument.pages[0].id);
+  await expect(page.getByLabel('Choose page')).toHaveValue('footer');
   await expect(
-    page.locator('.visual-editor iframe').contentFrame().locator('.home-hero'),
+    page
+      .locator('.visual-editor iframe')
+      .contentFrame()
+      .getByRole('heading', { name: 'Service Times' }),
   ).toBeVisible();
 });
 
@@ -2282,8 +2270,8 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
   await expect(page.getByLabel('Preview zoom')).toHaveValue('auto');
   await page.getByRole('button', { name: 'Preview at phone width' }).click();
   await expect(preview.locator('.point-navigation__toggle')).toBeVisible();
-  await preview.locator('.site-footer').scrollIntoViewIfNeeded();
-  await expect(preview.locator('.site-footer')).toBeVisible();
+  await preview.locator('.point-composed-footer').scrollIntoViewIfNeeded();
+  await expect(preview.locator('.point-composed-footer')).toBeVisible();
   await preview.locator('.point-navigation__toggle').click();
   await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
   const pageSelector = page.getByLabel('Page').first();
@@ -2304,7 +2292,7 @@ test('previews the same renderer at mobile, tablet, and desktop widths', async (
     await pageSelector.selectOption({ label: title });
     await expect(preview.getByRole('heading', { level: 1, name: title })).toBeVisible();
     await expect(preview.locator(landmark).first()).toBeVisible();
-    await expect(preview.locator('.site-footer')).toBeAttached();
+    await expect(preview.locator('.point-composed-footer')).toBeAttached();
   }
 });
 
@@ -3234,7 +3222,7 @@ test('shows the complete production-style site chrome and content inside the edi
   await expect(canvas.locator('.home-feature--photo')).toBeVisible();
   await expect(canvas.locator('.home-feature--split')).toBeVisible();
   await expect(canvas.locator('.gathering-section')).toBeVisible();
-  await expect(canvas.locator('.site-footer')).toBeVisible();
+  await expect(canvas.locator('.point-composed-footer')).toBeVisible();
 
   const pageSelector = page.getByLabel('Choose page');
   for (const [title, landmark] of [
@@ -3253,7 +3241,7 @@ test('shows the complete production-style site chrome and content inside the edi
     await expect(canvas.getByRole('heading', { level: 1, name: title })).toBeVisible();
     await expect(canvas.locator(landmark).first()).toBeVisible();
     await expect(canvas.locator('section[aria-label="Site header"]')).toBeVisible();
-    await expect(canvas.locator('.site-footer')).toBeVisible();
+    await expect(canvas.locator('.point-composed-footer')).toBeVisible();
   }
 });
 
@@ -3586,11 +3574,11 @@ test('builds a standardized section by dragging an element from the toybox', asy
 
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).scrollIntoViewIfNeeded();
   await reloadedCanvas.getByRole('button', { name: 'Edit global footer' }).click();
-  await expect(page.getByRole('button', { name: 'Settings' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Layout', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
   );
-  await expect(page.locator('#footer-settings')).toBeFocused();
+  await expect(page.getByLabel('Choose page')).toHaveValue('footer');
 });
 
 test('keeps the Sections toolbox structural and exposes recipe parts as atomic items', async ({

@@ -11,7 +11,7 @@ describe('Navigation compatibility reader', () => {
     const legacy = legacyNavigationDocument();
     const before = canonicalize(legacy);
     const migrated = migrateDocument(legacy);
-    expect(migrated.applied).toEqual(['9-to-10']);
+    expect(migrated.applied).toEqual(['9-to-10', '10-to-11']);
     expect(migrated.document).toEqual(defaultSiteDocument);
     expect(canonicalize(legacy)).toBe(before);
   });
@@ -19,7 +19,7 @@ describe('Navigation compatibility reader', () => {
   it('explicitly upgrades every reference deterministically without changing placement or links', () => {
     const before = legacyNavigationDocument();
     const next = upgradeNavigation(before);
-    expect(next.schemaVersion).toBe(10);
+    expect(next.schemaVersion).toBe(11);
     expect(next.navigation).toEqual([]);
     expect(next.navigationDesigns).toHaveLength(1);
     expect(next.navigationDesigns?.[0].items).toEqual(before.navigation);

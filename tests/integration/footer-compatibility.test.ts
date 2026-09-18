@@ -7,13 +7,12 @@ import { SqliteDatabase } from '../../server/sqlite';
 import { migrateDatabase } from '../../server/migrations';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
-import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
-import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { acquireDraftProof } from '../fixtures/draft-proof';
+import { legacyFooterDocument } from '../fixtures/legacy-footer';
 
 test.each(['legacy', 'compact-v1'] as const)(
-  'compatibility release writes old drafts unchanged and preserves schema 11 through %s save and reopen',
+  'new and legacy drafts get editable footers and preserve edits through %s save and reopen',
   async (format) => {
     const directory = await mkdtemp(join(tmpdir(), 'builder-footer-78-'));
     let database = new SqliteDatabase(join(directory, 'workspace.sqlite'));
@@ -35,15 +34,9 @@ test.each(['legacy', 'compact-v1'] as const)(
           idempotencyKey: crypto.randomUUID(),
           requestId: 'fixture',
         });
-      const old = await create(defaultSiteDocument);
-      expect(old.document.schemaVersion).toBe(10);
-      expect(old.document.footer).toBeUndefined();
-      const document = SiteDocumentSchema.parse({
-        ...defaultSiteDocument,
-        schemaVersion: 11,
-        rendererVersion: '11.0.0',
-        footer: [createEditableFooterSection(defaultSiteDocument.site)],
-      });
+      const old = await create(legacyFooterDocument());
+      expect(old.document).toEqual(defaultSiteDocument);
+      const document = defaultSiteDocument;
       const draft = await create(document);
       const changed = structuredClone(document);
       const block = changed.footer![0].items[0].element;
