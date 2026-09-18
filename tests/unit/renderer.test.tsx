@@ -81,7 +81,9 @@ describe('controlled public renderer', () => {
     expect(container.querySelector('.home-feature--photo')).not.toBeNull();
     expect(container.querySelector('.home-feature--split')).not.toBeNull();
     expect(container.querySelector('.gathering-section')).not.toBeNull();
-    expect(container.querySelector('.site-footer .footer-grid')).not.toBeNull();
+    expect(
+      container.querySelector('.point-composed-footer .point-layout-section__grid'),
+    ).not.toBeNull();
     expect(screen.getByRole('link', { name: 'Who we are' })).toHaveAttribute('href', '/who-we-are');
     expect(screen.getByRole('link', { name: 'Our beliefs' })).toHaveAttribute(
       'href',
@@ -147,7 +149,7 @@ describe('controlled public renderer', () => {
 
     expect(container.querySelector('.page-hero')).toBeNull();
     expect(screen.queryByRole('heading', { level: 1, name: 'Who We Are' })).not.toBeInTheDocument();
-    expect(container.querySelector('.site-footer')).not.toBeNull();
+    expect(container.querySelector('.point-composed-footer')).not.toBeNull();
   });
 
   it('keeps the editable Hero in the same page canvas as overlay-capable sections', () => {
@@ -220,7 +222,7 @@ describe('controlled public renderer', () => {
       );
       expect(container.querySelector('.site-header')).toBeNull();
       expect(container.querySelector('section[aria-label="Site header"]')).not.toBeNull();
-      expect(container.querySelector('.site-footer')).not.toBeNull();
+      expect(container.querySelector('.point-composed-footer')).not.toBeNull();
       expect(container.querySelector('#point-main')).not.toBeNull();
       expect(container.textContent).toContain(
         page.title === 'Home' ? 'Jesus-followers' : page.title,

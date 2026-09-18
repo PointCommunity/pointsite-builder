@@ -356,12 +356,10 @@ for (const canary of [false, true])
     );
   });
 
-test('saves an in-memory schema upgrade before publishing without requiring an edit', async ({
-  page,
-}) => {
+test('saves the footer upgrade before publishing without requiring an edit', async ({ page }) => {
   const selected = structuredClone(draft);
-  selected.revision.schemaVersion = 9;
-  selected.revision.rendererVersion = '9.0.0';
+  selected.revision.schemaVersion = 10;
+  selected.revision.rendererVersion = '10.0.0';
   await mockPublishing(page, 'stale', 'administrator', selected);
   let saves = 0;
   await page.route(`**/api/drafts/${selected.id}`, async (route) => {
@@ -376,8 +374,8 @@ test('saves an in-memory schema upgrade before publishing without requiring an e
       id: selected.latestRevisionId,
       sequence: 8,
       checksum: 'f'.repeat(64),
-      schemaVersion: 10,
-      rendererVersion: '10.0.0',
+      schemaVersion: 11,
+      rendererVersion: '11.0.0',
     };
     await route.fulfill({ json: selected });
   });

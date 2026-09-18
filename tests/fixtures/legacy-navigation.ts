@@ -8,6 +8,7 @@ export function legacyNavigationDocument(): SiteDocument {
   document.rendererVersion = '9.0.0';
   document.navigation = document.navigationDesigns![0].items;
   delete document.navigationDesigns;
+  delete document.footer;
   for (const page of document.pages)
     for (const section of page.blocks)
       for (const { element } of section.items)

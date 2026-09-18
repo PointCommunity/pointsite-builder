@@ -8,9 +8,10 @@ import { supportsRenderer } from '../../src/site-kit/version';
 import { createEditableFooterSection } from '../../src/site-kit/editable-footer';
 import { publicationMediaPaths } from '../../src/site-kit/publication-media';
 import { renderSection } from '../../src/site-kit/registry';
+import { legacyFooterDocument } from '../fixtures/legacy-footer';
 
 test('old Flow sections keep stacking while schema 11 supports authored columns', () => {
-  const document = structuredClone(defaultSiteDocument);
+  const document = legacyFooterDocument();
   const section = document.pages[0].blocks[0];
   section.layout = 'flow';
   section.columns = 3;
@@ -75,7 +76,7 @@ test('composed content requires its own format and cannot silently enter an olde
   const missingFooter = { ...input, footer: undefined };
   expect(SiteDocumentSchema.safeParse(missingFooter).success).toBe(false);
   expect(SiteDocumentSchema.safeParse({ ...input, rendererVersion: '10.0.0' }).success).toBe(false);
-  const legacy = migrateDocument(defaultSiteDocument).document;
+  const legacy = legacyFooterDocument();
   legacy.pages[0].blocks = [{ ...input.footer[0], items: [], gapPixels: 50 }];
   expect(SiteDocumentSchema.safeParse(legacy).success).toBe(false);
 });

@@ -167,6 +167,38 @@
       authorized live publication checks pass. A bridge release alone does not satisfy the approved
       scope.
     </p>
+    <h3>Footer activation candidate</h3>
+    <p>
+      The compatibility reader is now deployed in Production through
+      <a href="https://github.com/PointCommunity/pointsite-builder/pull/80">PR 80</a>: source
+      ecb944562422c847a06dea340eb7378316059a47, image
+      sha256:b9afd2b05ae20c3601a69427546ac65c4938d378f8f8b7e7b2ab7e1da954d772. The matching runtime
+      cc59ebcacf12550a42fc8c45684c450a0cacfb70 passed both Canary publication lanes and its
+      Production callers are synchronized. Retain this reader as the rollback version for the
+      activation candidate.
+    </p>
+    <ol>
+      <li>
+        Activate schema 11 through the existing deterministic document migration chain. Reuse the
+        tested footer composition, retain every existing document field, and normalize legacy Flow
+        sections to one column before introducing explicit schema 11 column controls.
+      </li>
+      <li>
+        Reuse the existing checkout-protected upgrade save. Old revision bytes and metadata stay
+        immutable; the conversion is saved as a new revision. Preserve intentionally empty or
+        customized schema 11 footers and authored columns on repeated reads, saves and restores.
+      </li>
+      <li>
+        Prove migration, both storage formats, legacy footer geometry at the 600px boundary,
+        automatically available footer editing, and complete recreation through the visible Blocks
+        controls. Remove manual schema preparation from the normal authoring regressions.
+      </li>
+      <li>
+        Synchronize the runtime, run all QA sequentially, qualify the new immutable candidate on
+        Canary, and request its own Production approval. Public content publication stays inside the
+        authenticated Administrator workflow.
+      </li>
+    </ol>
     <p>
       Focused Chromium tests reproduced a 64.375px vertical mismatch at Our Gatherings on Who We
       Are. Shared section and element framing now passes whole-page geometry/style comparison on

@@ -4,6 +4,7 @@ import type { SectionBlock, SiteDocument, SiteElement } from './types';
 import { MAX_SUPPORTED_SCHEMA_VERSION } from './version';
 import { createEditableHeaderSection, derivedUuid } from './editable-header';
 import { createEditablePageHeroSection, type LegacyPageHero } from './editable-page-hero';
+import { createEditableFooterSection } from './editable-footer';
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(version: unknown) {
@@ -317,6 +318,7 @@ export function migrateDocument(input: unknown): MigrationResult {
   apply(8, migrateSevenToEight);
   apply(9, migrateEightToNine);
   apply(10, migrateNineToTen);
+  apply(11, migrateTenToEleven);
 
   return { document: SiteDocumentSchema.parse(current), applied };
 }
@@ -358,5 +360,22 @@ function migrateNineToTen(input: object): SiteDocument {
         ),
       })),
     })),
+  });
+}
+
+function migrateTenToEleven(input: object): SiteDocument {
+  const document = SiteDocumentSchema.parse(input);
+  return SiteDocumentSchema.parse({
+    ...document,
+    schemaVersion: 11,
+    rendererVersion: '11.0.0',
+    // Before schema 11, Flow always stacked items regardless of stored columns.
+    pages: document.pages.map((page) => ({
+      ...page,
+      blocks: page.blocks.map((section) =>
+        section.layout === 'flow' ? { ...section, columns: 1 } : section,
+      ),
+    })),
+    footer: [createEditableFooterSection(document.site)],
   });
 }

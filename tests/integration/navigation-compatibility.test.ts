@@ -11,11 +11,19 @@ import { canonicalize, checksumDocument } from '../../src/site-kit/canonicalize'
 import { upgradeNavigation } from '../../src/site-kit/migrations';
 import { prepareRevisionPayload } from '../../src/server/repositories/revision-payloads';
 import { legacyNavigationDocument } from '../fixtures/legacy-navigation';
+import { legacyFooterDocument } from '../fixtures/legacy-footer';
 import { acquireDraftProof } from '../fixtures/draft-proof';
 
-test.each(['legacy', 'compact-v1'] as const)(
-  'activation preserves immutable schema-9 bytes through %s migration, save and reopen',
-  async (format) => {
+test.each(
+  (['legacy', 'compact-v1'] as const).flatMap((format) =>
+    [legacyNavigationDocument, legacyFooterDocument].map((fixture) => ({
+      format,
+      legacy: fixture(),
+    })),
+  ),
+)(
+  'activation preserves immutable schema-$legacy.schemaVersion bytes through $format migration, save and reopen',
+  async ({ format, legacy }) => {
     const directory = await mkdtemp(join(tmpdir(), 'builder-navigation-36-'));
     let database = new SqliteDatabase(join(directory, 'workspace.sqlite'));
     try {
@@ -35,8 +43,7 @@ test.each(['legacy', 'compact-v1'] as const)(
         idempotencyKey: crypto.randomUUID(),
         requestId: 'fixture',
       });
-      // Import an actual pre-activation revision; createDraft now writes schema 10.
-      const legacy = legacyNavigationDocument();
+      // Import an actual pre-activation revision; createDraft writes the current schema.
       const legacyId = crypto.randomUUID();
       const legacyChecksum = await checksumDocument(legacy);
       const payload =
@@ -52,7 +59,7 @@ test.each(['legacy', 'compact-v1'] as const)(
         database
           .prepare(
             `INSERT INTO revisions(id,draft_id,sequence,parent_revision_id,checksum,document_json,schema_version,renderer_version,created_by,created_at)
-          VALUES (?,?,2,?,?,?,9,'9.0.0',?,'fixture')`,
+          VALUES (?,?,2,?,?,?,?,?,?,'fixture')`,
           )
           .bind(
             legacyId,
@@ -60,6 +67,8 @@ test.each(['legacy', 'compact-v1'] as const)(
             old.latestRevisionId,
             legacyChecksum,
             payload.documentJson,
+            legacy.schemaVersion,
+            legacy.rendererVersion,
             actor,
           ),
         ...payload.statements,
@@ -81,8 +90,8 @@ test.each(['legacy', 'compact-v1'] as const)(
       const migrated = await repository.getDraft(old.id);
       expect(migrated.document).toEqual(defaultSiteDocument);
       expect(migrated.revision.checksum).toBe(legacyChecksum);
-      expect(migrated.revision.schemaVersion).toBe(9);
-      expect(migrated.revision.rendererVersion).toBe('9.0.0');
+      expect(migrated.revision.schemaVersion).toBe(legacy.schemaVersion);
+      expect(migrated.revision.rendererVersion).toBe(legacy.rendererVersion);
       const upgraded = await repository.saveDraft({
         draftId: old.id,
         ...(await acquireDraftProof(repository, old.id, actor)),
@@ -94,7 +103,7 @@ test.each(['legacy', 'compact-v1'] as const)(
       });
       expect(upgraded.revision.id).not.toBe(legacyId);
       expect(upgraded.revision.checksum).toBe(await checksumDocument(upgraded.document));
-      expect(upgraded.revision.schemaVersion).toBe(10);
+      expect(upgraded.revision.schemaVersion).toBe(11);
       expect(await storedLegacy()).toEqual(immutableBefore);
       const changedLegacy = structuredClone(migrated.document);
       changedLegacy.navigationDesigns![0].items[0].label = 'Migrated menu';
@@ -153,6 +162,22 @@ test.each(['legacy', 'compact-v1'] as const)(
       expect((await repository.getDraft(draft.id)).document).toEqual(updated);
       expect((await repository.getRevision(draft.revision.id)).document).toEqual(current);
       expect((await repository.getRevision(saved.revision.id)).actionContext).toBe('navigation');
+      const restored = await repository.restoreRevision({
+        draftId: old.id,
+        revisionId: legacyId,
+        ...(await acquireDraftProof(repository, old.id, actor)),
+        actor,
+        idempotencyKey: crypto.randomUUID(),
+        requestId: 'restore-fixture',
+      });
+      expect(restored.document).toEqual(defaultSiteDocument);
+      expect(restored.revision).toMatchObject({
+        schemaVersion: 11,
+        rendererVersion: '11.0.0',
+        actionCategory: 'restore',
+      });
+      expect(restored.revision.id).not.toBe(legacyId);
+      expect(await storedLegacy()).toEqual(immutableBefore);
       expect(await database.prepare('PRAGMA integrity_check').first('integrity_check')).toBe('ok');
       expect((await database.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
     } finally {

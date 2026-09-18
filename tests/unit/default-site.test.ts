@@ -44,8 +44,8 @@ const EXPECTED_ASSETS = [
 describe('default PointSite document', () => {
   it('is valid and carries the current renderer identity', () => {
     expect(SiteDocumentSchema.parse(defaultSiteDocument)).toEqual(defaultSiteDocument);
-    expect(defaultSiteDocument.schemaVersion).toBe(10);
-    expect(defaultSiteDocument.rendererVersion).toBe('10.0.0');
+    expect(defaultSiteDocument.schemaVersion).toBe(11);
+    expect(defaultSiteDocument.rendererVersion).toBe('11.0.0');
   });
 
   it('represents every current generated route and navigation link', () => {

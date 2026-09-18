@@ -1,5 +1,5 @@
-export const SCHEMA_VERSION = 10 as const;
-export const RENDERER_VERSION = '10.0.0' as const;
+export const SCHEMA_VERSION = 11 as const;
+export const RENDERER_VERSION = '11.0.0' as const;
 // The retained compatibility release can also read and edit this contract.
 export const MAX_SUPPORTED_SCHEMA_VERSION = 11 as const;
 
