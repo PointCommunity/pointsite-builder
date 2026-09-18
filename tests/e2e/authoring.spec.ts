@@ -2398,6 +2398,8 @@ for (const fixture of ['existing pages', 'every Block variant'] as const)
     await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
     const measure = async (frame: FrameLocator) => {
       await frame.owner().scrollIntoViewIfNeeded();
+      // Scrolling a surface under the pointer can open a navigation dropdown.
+      await page.mouse.move(0, 0);
       return frame.locator('.point-site').evaluate(async (root) => {
         await document.fonts.ready;
         await Promise.all(
