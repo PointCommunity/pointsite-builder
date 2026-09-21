@@ -107,6 +107,6 @@ it.each(['startup_failure', 'failure', 'timed_out', 'cancelled'])(
     expect(screen.getByRole('status')).toHaveTextContent(
       conclusion === 'cancelled' ? 'Publishing run cancelled' : 'Publishing run stopped',
     );
-    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
   },
 );

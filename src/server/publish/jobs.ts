@@ -4,6 +4,7 @@ import type { DraftRecord } from '../repositories/contracts';
 import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { preparePublicationInputs } from './inputs';
 import { recoverQueuedPublication, type QueuedRecoveryInput } from './recovery';
+import type { PublisherConfig } from './service';
 import { retryCapturedPublication } from './retry';
 import { reconcileCompletedPublication } from './reconcile';
 import { readPublicationActions } from './progress';
@@ -81,11 +82,11 @@ export class D1PublishJobStore {
     return `PointCommunity/${publicationDestination('staging', this.builderOrigin).repository}`;
   }
 
-  async recoverQueued(input: QueuedRecoveryInput) {
+  async recoverQueued(input: QueuedRecoveryInput, config?: PublisherConfig) {
     if (!(await this.getById(input.jobId))) throw new Error('PUBLICATION_RECOVERY_CHANGED');
     if (input.action === 'verify-completed')
       return reconcileCompletedPublication(this.database, input, undefined, this.builderOrigin);
-    return recoverQueuedPublication(this.database, input, undefined, this.builderOrigin);
+    return recoverQueuedPublication(this.database, input, undefined, this.builderOrigin, config);
   }
 
   retryCaptured(
@@ -316,6 +317,12 @@ export class D1PublishJobStore {
     const row = await this.database
       .prepare(
         `SELECT dispatch_count,dispatch_after,dispatch_error,j.environment,j.status,j.requested_at,
+      (pr.deploy_authorized_at IS NULL AND EXISTS(SELECT 1 FROM publication_slots WHERE job_id=j.id)
+        AND (j.status IN ('queued','running') OR
+          (j.status='cancelled' AND json_extract(j.evidence_json,'$.cancellation.pending')=1))) AS can_cancel,
+      (j.status='cancelled' AND EXISTS(SELECT 1 FROM publication_slots WHERE job_id=j.id)
+        AND json_extract(j.evidence_json,'$.cancellation.pending')=1) AS cancelling,
+      json_extract(j.evidence_json,'$.cancellation.error') AS cancellation_error,
       COALESCE(j.result_sha,j.base_sha) AS retry_base,pi.workflow_revision,
       pr.dispatch_revision,COALESCE(pr.run_attempt,pr.reserved_run_attempt) AS run_attempt,
       pr.build_json,pr.commit_authorized_at,pr.deploy_authorized_at,pr.deployment_json,
@@ -338,6 +345,9 @@ export class D1PublishJobStore {
       .bind(id)
       .first<{
         dispatch_count: number;
+        can_cancel: number;
+        cancelling: number;
+        cancellation_error: string | null;
         dispatch_after: string;
         dispatch_error: string | null;
         run_id: string | null;
@@ -376,6 +386,9 @@ export class D1PublishJobStore {
       (current.baseSha !== row.retry_base || current.workflowRevision !== row.workflow_revision);
     return {
       checkedAt: new Date().toISOString(),
+      canCancel: row.can_cancel === 1,
+      cancelling: row.cancelling === 1,
+      ...(row.cancellation_error ? { cancellationError: row.cancellation_error } : {}),
       startUnconfirmed: unconfirmed,
       stage:
         row.status === 'succeeded'
@@ -396,11 +409,13 @@ export class D1PublishJobStore {
       canReconcileStopped: row.can_reconcile === 1,
       canRetryCaptured: row.can_retry_captured === 1 && !changed,
       retryBlocker:
-        changed && ['queued', 'cancelled'].includes(row.status)
-          ? 'The destination or publishing setup changed. End this attempt if cancellation is available, then check and deliberately publish a fresh version.'
-          : row.status === 'cancelled' && row.can_retry_captured !== 1
-            ? 'This captured version cannot be retried: its authority, retry limit or publication slot changed. Check status and start a fresh checked publication when available.'
-            : undefined,
+        row.cancelling === 1
+          ? undefined
+          : changed && ['queued', 'cancelled'].includes(row.status)
+            ? 'The destination or publishing setup changed. End this attempt if cancellation is available, then check and deliberately publish a fresh version.'
+            : row.status === 'cancelled' && row.can_retry_captured !== 1
+              ? 'This captured version cannot be retried: its authority, retry limit or publication slot changed. Check status and start a fresh checked publication when available.'
+              : undefined,
       canVerifyCompleted: row.can_verify_completed === 1,
       canVerifyOutput: row.can_verify_output === 1,
       needsAttention:

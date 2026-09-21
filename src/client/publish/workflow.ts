@@ -49,6 +49,9 @@ export interface StagingWorkflowJob {
     checkedAt?: string;
     startUnconfirmed?: boolean;
     canRetryQueued?: boolean;
+    canCancel?: boolean;
+    cancelling?: boolean;
+    cancellationError?: string;
     retryBlocker?: string;
     stage?: string;
     actions?: ActionsProgress;
@@ -237,6 +240,11 @@ export function deriveStagingWorkflow(input: {
   const stagingChanged = Boolean(verifiedStagingSha && currentStagingSha !== verifiedStagingSha);
 
   const captured = job?.publicationProtocol === 2;
+  if (job?.dispatch?.cancelling)
+    return state('publishing', 2, 'Cancelling publication', 'Stopping the publishing run.', {
+      canRefresh: true,
+      shouldPoll: !input.monitoringPaused,
+    });
   if (captured && job.status === 'queued' && job.dispatch?.needsAttention)
     return state(
       'paused',

@@ -67,19 +67,15 @@ it('keeps checking and cancellation visible during polling and retains Productio
   const read = vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(active);
   render(<ProductionPublish draftId="draft" approval={null} />);
   const check = await screen.findByRole('button', { name: 'Check Site Production status' });
-  expect(
-    screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
-  ).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Cancel Site Production publication' })).toBeVisible();
   read.mockRejectedValueOnce(new Error('offline'));
   fireEvent.click(check);
   await screen.findByText('Status check unavailable');
-  expect(
-    screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
-  ).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Cancel Site Production publication' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
+      screen.getByRole('button', { name: 'Cancel Site Production publication' }),
     ).toBeEnabled(),
   );
 });
@@ -113,6 +109,35 @@ it('names the public Canary destination on both publish and rollback controls', 
   expect(screen.getByRole('heading', { name: 'Restore a Site Canary release' })).toBeVisible();
   expect(screen.queryByText(/Site Production/)).toBeNull();
 });
+
+it.each(['building', 'preparing', 'deploying'])(
+  'keeps Production cancellation until deployment authorization: %s',
+  async (stage) => {
+    const running = structuredClone(queued);
+    if (!running.enabled || !running.job?.dispatch) throw new Error('fixture');
+    running.job.status = 'running';
+    Object.assign(running.job.dispatch, {
+      reserved: true,
+      stage,
+      canCancel: stage !== 'deploying',
+      needsAttention: false,
+    });
+    vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(running);
+    const recover = vi.spyOn(api, 'recoverProduction').mockResolvedValue({ recovered: true });
+    render(<ProductionPublish draftId="draft" approval={null} />);
+    await screen.findByRole('progressbar');
+    if (stage === 'deploying')
+      expect(
+        screen.queryByRole('button', { name: 'Cancel Site Production publication' }),
+      ).toBeNull();
+    else {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel Site Production publication' }));
+      await waitFor(() =>
+        expect(recover).toHaveBeenCalledWith('production', 'cancel', 6, expect.any(String)),
+      );
+    }
+  },
+);
 
 it('requires matching artifact evidence before describing a completed publication as verified', async () => {
   const completed = structuredClone(queued);

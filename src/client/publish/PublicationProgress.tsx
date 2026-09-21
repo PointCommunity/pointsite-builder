@@ -1,16 +1,30 @@
 import type { StagingWorkflowJob } from './workflow';
+import { usePublishingSupport } from './PublishingSupport';
+
+export interface ProgressProps {
+  job?: Pick<StagingWorkflowJob, 'status' | 'dispatch'> | null;
+  checkedAt?: string;
+  stale?: boolean;
+  paused?: boolean;
+  label?: string;
+}
+
+const milestones = [
+  ['queued', 'Queue'],
+  ['building', 'Build'],
+  ['preparing', 'Prepare'],
+  ['deploying', 'Publish'],
+  ['verifying', 'Check'],
+];
 
 export function PublicationProgress({
   job,
   checkedAt,
   stale = false,
   paused = false,
-}: {
-  job?: Pick<StagingWorkflowJob, 'status' | 'dispatch'> | null;
-  checkedAt?: string;
-  stale?: boolean;
-  paused?: boolean;
-}) {
+  label = 'Staging',
+}: ProgressProps) {
+  usePublishingSupport(`${label} progress`, { kind: 'progress', job, checkedAt, stale, paused });
   if (!job) return null;
   const dispatch = job.dispatch;
   const actions = dispatch?.actions;
@@ -31,32 +45,100 @@ export function PublicationProgress({
   const active = ['queued', 'running'].includes(job.status);
   const title = stale
     ? 'Status check unavailable'
-    : !active
-      ? job.status === 'succeeded'
-        ? 'Publication completed'
-        : job.status === 'cancelled'
-          ? 'Publication cancelled'
-          : 'Publication failed'
-      : stopped || failed
-        ? actions?.run?.conclusion === 'cancelled'
-          ? 'Publishing run cancelled'
-          : actions?.run?.conclusion === 'success'
-            ? 'Execution finished; publication not confirmed'
-            : 'Publishing run stopped'
-        : actions?.unavailable
-          ? 'Current execution status unavailable'
-          : unconfirmed
-            ? 'Start not confirmed'
-            : actions?.run && ['queued', 'waiting', 'pending'].includes(actions.run.status)
-              ? 'Publication is queued'
-              : actions?.run?.status === 'in_progress' && dispatch?.stage === 'queued'
-                ? 'Execution started; waiting for Builder confirmation'
-                : (titles[dispatch?.stage ?? ''] ?? 'Publication is running');
+    : dispatch?.cancelling
+      ? 'Cancelling publication'
+      : !active
+        ? job.status === 'succeeded'
+          ? 'Publication completed'
+          : job.status === 'cancelled'
+            ? 'Publication cancelled'
+            : 'Publication failed'
+        : stopped || failed
+          ? actions?.run?.conclusion === 'cancelled'
+            ? 'Publishing run cancelled'
+            : actions?.run?.conclusion === 'success'
+              ? 'Execution finished; publication not confirmed'
+              : 'Publishing run stopped'
+          : actions?.unavailable
+            ? 'Current execution status unavailable'
+            : unconfirmed
+              ? 'Start not confirmed'
+              : actions?.run && ['queued', 'waiting', 'pending'].includes(actions.run.status)
+                ? 'Publication is queued'
+                : actions?.run?.status === 'in_progress' && dispatch?.stage === 'queued'
+                  ? 'Execution started; waiting for Builder confirmation'
+                  : (titles[dispatch?.stage ?? ''] ?? 'Publication is running');
+  const completed =
+    job.status === 'succeeded'
+      ? milestones.length
+      : Math.max(
+          0,
+          milestones.findIndex(([stage]) => stage === dispatch?.stage),
+        );
   return (
     <div className="publication-progress">
       <strong role="status" aria-live="polite">
         {title}
       </strong>
+      <div
+        className="publication-progress__bar"
+        role="progressbar"
+        aria-label={`${label} publication progress`}
+        aria-valuemin={0}
+        aria-valuemax={milestones.length}
+        aria-valuenow={completed}
+        aria-valuetext={`${title}. ${completed} of ${milestones.length} steps complete.`}
+      >
+        <span style={{ width: `${(completed / milestones.length) * 100}%` }} />
+      </div>
+      <ol className="publication-progress__steps" aria-label="Publication steps">
+        {milestones.map(([stage, name], index) => (
+          <li
+            key={stage}
+            data-state={
+              index < completed ? 'complete' : index === completed ? 'current' : 'waiting'
+            }
+            aria-current={
+              index === completed && active && !dispatch?.cancelling ? 'step' : undefined
+            }
+          >
+            <span aria-hidden="true">{index < completed ? '✓' : index + 1}</span>
+            <span>{name}</span>
+            <span className="visually-hidden">
+              {index < completed ? ' complete' : index === completed ? ' current step' : ' waiting'}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {dispatch?.cancelling ? (
+        <p>
+          {dispatch.cancellationError
+            ? 'Cancellation needs another check. Retry cancellation below.'
+            : 'Stopping the publishing run. You can close this window.'}
+        </p>
+      ) : stale ? (
+        <p>Showing saved progress. Check status to reconnect.</p>
+      ) : paused ? (
+        <p>Automatic monitoring paused. Check status to resume.</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function PublicationDiagnostics({ job, checkedAt, stale, paused }: ProgressProps) {
+  if (!job) return null;
+  const dispatch = job.dispatch;
+  const actions = dispatch?.actions;
+  const active = ['queued', 'running'].includes(job.status);
+  const stopped = actions?.run?.status === 'completed';
+  const failed = actions?.jobs?.some(
+    (item) => item.conclusion && !['success', 'skipped', 'neutral'].includes(item.conclusion),
+  );
+  const unconfirmed =
+    dispatch?.startUnconfirmed ??
+    (job.status === 'queued' && dispatch?.reserved === false && !actions?.run);
+  return (
+    <div>
       {dispatch?.retryBlocker ? <p>{dispatch.retryBlocker}</p> : null}
       {checkedAt ? (
         <p>

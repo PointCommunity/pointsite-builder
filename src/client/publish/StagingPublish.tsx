@@ -192,6 +192,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
       job.publicationProtocol !== 2 ||
       !job.dispatch ||
       !(
+        (action === 'cancel' && job.dispatch.canCancel === true) ||
         (job.status === 'queued' && job.dispatch.reserved === false) ||
         (action === 'reconcile' && job.dispatch.canReconcileStopped === true) ||
         (action === 'retry-captured' && job.dispatch.canRetryCaptured === true) ||
@@ -382,11 +383,13 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           </ol>
           <section className="publish-next-action" aria-labelledby="publish-next-action-title">
             <h3 id="publish-next-action-title" ref={nextActionHeading} tabIndex={-1}>
-              {failed
-                ? 'Staging needs attention'
-                : lifecycle.phase === 'publishing'
-                  ? 'Publishing to Staging'
-                  : nextStep.title}
+              {dispatch?.cancelling
+                ? 'Cancelling Staging publication'
+                : failed
+                  ? 'Staging needs attention'
+                  : lifecycle.phase === 'publishing'
+                    ? 'Publishing to Staging'
+                    : nextStep.title}
             </h3>
             <p>
               {failed
@@ -523,19 +526,25 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                 try again.
               </p>
             ) : null}
-            {job?.status === 'queued' && dispatch?.reserved === false ? (
+            {dispatch?.canCancel ||
+            (job?.status === 'queued' &&
+              dispatch?.reserved === false &&
+              dispatch.canCancel === undefined) ? (
               <div className="publish-danger">
-                <p>
-                  Cancel this queued attempt before starting a fresh checked publication. Your draft
-                  stays saved.
-                </p>
+                <p>Cancellation is available until publishing starts. Your draft stays saved.</p>
                 <button
                   className="button button--danger"
                   type="button"
-                  disabled={busy || status.stale}
+                  disabled={
+                    busy || status.stale || (dispatch?.cancelling && !dispatch.cancellationError)
+                  }
                   onClick={() => void recoverQueued('cancel')}
                 >
-                  Cancel queued publication
+                  {dispatch?.cancelling
+                    ? dispatch.cancellationError
+                      ? 'Retry cancellation'
+                      : 'Cancelling publication…'
+                    : 'Cancel publication'}
                 </button>
               </div>
             ) : null}

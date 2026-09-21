@@ -15,6 +15,7 @@ export async function createInstallationToken(input: {
   fetcher?: typeof fetch;
   repository?: PublicationRepository;
   readOnly?: boolean;
+  cancelActions?: boolean;
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1_000);
   const key = await importPKCS8(input.privateKey.replaceAll('\\n', '\n'), 'RS256');
@@ -34,7 +35,8 @@ export async function createInstallationToken(input: {
             body: JSON.stringify({
               repositories: [input.repository],
               permissions: {
-                contents: input.readOnly ? 'read' : 'write',
+                contents: input.readOnly || input.cancelActions ? 'read' : 'write',
+                ...(input.cancelActions ? { actions: 'write' } : {}),
                 checks: 'read',
                 metadata: 'read',
               },
@@ -65,6 +67,7 @@ export async function createPublisherToken(input: {
   subject: string;
   login: string;
   fetcher?: typeof fetch;
+  cancelActions?: boolean;
 }): Promise<string> {
   try {
     z.string()

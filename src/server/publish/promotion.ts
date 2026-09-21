@@ -156,7 +156,13 @@ export class D1ProductionPublisher {
         this.fetcher,
         this.config.builderOrigin,
       );
-    return recoverQueuedPublication(this.database, input, this.fetcher, this.config.builderOrigin);
+    return recoverQueuedPublication(
+      this.database,
+      input,
+      this.fetcher,
+      this.config.builderOrigin,
+      this.config,
+    );
   }
 
   async retryCaptured(value: QueuedRecoveryInput) {

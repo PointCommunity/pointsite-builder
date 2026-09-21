@@ -87,7 +87,7 @@ export class StagingPublisher {
         await this.assertCloudRuntime(client, baseSha);
       });
     }
-    return this.jobs.recoverQueued(input);
+    return this.jobs.recoverQueued(input, this.config);
   }
 
   async workflowForDraft(draftId: string) {

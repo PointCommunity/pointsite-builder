@@ -3,6 +3,7 @@ import { createPublisherToken, githubHeaders } from '../github/app-auth';
 import type { PublisherConfig } from './service';
 import { currentPromotion } from './promotion';
 import { publicationDestination } from './destinations';
+import { continueCancellation } from './cancellation';
 
 const DispatchSchema = z.object({
   repository: z.string(),
@@ -135,6 +136,16 @@ export async function dispatchPendingPublication(
   fetcher: typeof fetch = fetch,
   productionEnabled = false,
 ): Promise<void> {
+  const cancellations = await database
+    .prepare(
+      `SELECT ps.job_id FROM publication_slots ps
+    JOIN publish_jobs j ON j.id=ps.job_id JOIN publication_runs pr ON pr.job_id=j.id
+    WHERE j.status='cancelled' AND json_extract(j.evidence_json,'$.cancellation.pending')=1
+      AND pr.dispatch_after<=strftime('%Y-%m-%dT%H:%M:%fZ','now') LIMIT 2`,
+    )
+    .all<{ job_id: string }>();
+  for (const cancellation of cancellations.results)
+    await continueCancellation(database, cancellation.job_id, config, fetcher);
   const row = await database
     .prepare(
       `SELECT pr.job_id FROM publication_slots ps

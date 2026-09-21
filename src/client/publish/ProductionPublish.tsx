@@ -55,7 +55,8 @@ export function ProductionPublish({
         ? 'Site Production'
         : 'Public site';
   const dispatch = job?.dispatch;
-  const active = job?.status === 'queued' || job?.status === 'running';
+  const active =
+    job?.status === 'queued' || job?.status === 'running' || Boolean(dispatch?.cancelling);
   useEffect(() => {
     if (!active || busy || status.paused) return;
     const timer = window.setTimeout(() => void load(), 10_000);
@@ -153,11 +154,13 @@ export function ProductionPublish({
       {showForward ? (
         <section className="publish-next-action" aria-labelledby="production-heading">
           <h3 id="production-heading" tabIndex={-1} ref={heading}>
-            {currentVerified
-              ? `Congratulations! Your site is live in ${label}.`
-              : active
-                ? `Publishing to ${label}`
-                : `Publish to ${label}`}
+            {dispatch?.cancelling
+              ? `Cancelling ${label} publication`
+              : currentVerified
+                ? `Congratulations! Your site is live in ${label}.`
+                : active
+                  ? `Publishing to ${label}`
+                  : `Publish to ${label}`}
           </h3>
           {snapshot?.enabled ? (
             <ol
@@ -220,6 +223,7 @@ export function ProductionPublish({
                 <p>Publish and accept this saved version on Staging first.</p>
               )}
               <PublicationProgress
+                label={label}
                 job={job}
                 checkedAt={status.checkedAt}
                 stale={status.stale}
@@ -325,19 +329,22 @@ export function ProductionPublish({
               Check {label} status
             </button>
           ) : null}
-          {queued ? (
+          {dispatch?.canCancel || (queued && dispatch?.canCancel === undefined) ? (
             <div className="publish-danger">
-              <p>
-                Cancel this queued attempt before deliberately publishing a fresh accepted version.
-                The current website stays online.
-              </p>
+              <p>Cancellation is available until publishing starts.</p>
               <button
                 className="button button--danger"
                 type="button"
-                disabled={busy || status.stale}
+                disabled={
+                  busy || status.stale || (dispatch?.cancelling && !dispatch.cancellationError)
+                }
                 onClick={() => void act('cancel')}
               >
-                Cancel queued {label} publication
+                {dispatch?.cancelling
+                  ? dispatch.cancellationError
+                    ? 'Retry cancellation'
+                    : 'Cancelling publication…'
+                  : `Cancel ${label} publication`}
               </button>
             </div>
           ) : null}

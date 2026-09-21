@@ -1770,6 +1770,21 @@ components:
           additionalProperties: false
           required: [attempts, retryAt, needsAttention]
           properties:
+            checkedAt: { type: string, format: date-time }
+            startUnconfirmed: { type: boolean }
+            canRetryQueued: { type: boolean }
+            retryBlocker: { type: string }
+            canCancel:
+              {
+                type: boolean,
+                description: Cancellation is allowed only before deployment authorization.,
+              }
+            cancelling:
+              {
+                type: boolean,
+                description: Builder is fenced and retains the slot until native execution is confirmed stopped.,
+              }
+            cancellationError: { type: string }
             attempts: { type: integer, minimum: 0 }
             stage:
               { type: string, enum: [queued, building, preparing, deploying, verifying, complete] }
@@ -1779,6 +1794,16 @@ components:
               required: [checkedAt]
               properties:
                 checkedAt: { type: string, format: date-time }
+                retryAt: { type: string, format: date-time }
+                lastSuccessfulCheckAt: { type: string, format: date-time }
+                unconfirmed: { type: boolean }
+                run:
+                  type: object
+                  required: [status, conclusion, workflowUrl]
+                  properties:
+                    status: { type: string }
+                    conclusion: { type: [string, 'null'] }
+                    workflowUrl: { type: string, format: uri }
                 unavailable: { type: string }
                 jobs:
                   type: array
