@@ -4,7 +4,7 @@ import { publicationDestination } from './destinations';
 import { publicationJson } from './build-proof';
 import type { PublisherConfig } from './service';
 
-/** The cancelled job fences all runner callbacks. Hold its slot until native execution stops. */
+/** Fence runner callbacks before checking native execution or releasing an unreserved slot. */
 export async function continueCancellation(
   database: D1Database,
   jobId: string,
@@ -110,14 +110,25 @@ export async function continueCancellation(
         ),
       );
     if (list.total_count !== list.workflow_runs.length) throw new Error('Truncated run listing');
+    const matched = list.workflow_runs.map((value) => schema.safeParse(value));
     const ids = new Set(
-      list.workflow_runs.flatMap((value) => {
-        const parsed = schema.safeParse(value);
-        return parsed.success ? [String(parsed.data.id)] : [];
-      }),
+      matched.flatMap((parsed) => (parsed.success ? [String(parsed.data.id)] : [])),
     );
     if (row.reserved_run_id) ids.add(row.reserved_run_id);
-    if (!ids.size) throw new Error('Execution not yet identified');
+    const unidentified = ids.size === 0;
+    // Startup failures can lose the dynamic run title before any runner reserves this job.
+    // A complete empty/terminal listing plus the atomic unreserved guard below is sufficient:
+    // even a delayed dispatch cannot reserve a cancelled job. Never cancel an unnamed run.
+    const terminalScope = schema.omit({ display_title: true }).extend({
+      status: z.literal('completed'),
+      conclusion: z.string().min(1),
+    });
+    if (
+      list.workflow_runs.some(
+        (value, index) => !matched[index].success && !terminalScope.safeParse(value).success,
+      )
+    )
+      throw new Error('Unidentified execution may still be active');
     let terminal = true;
     for (const id of ids) {
       const run = schema.parse(await read(`${api}/${id}`));
@@ -156,10 +167,12 @@ export async function continueCancellation(
               .prepare(
                 `SELECT json(CASE WHEN EXISTS(SELECT 1 FROM publish_jobs j
           JOIN publication_runs pr ON pr.job_id=j.id JOIN publication_slots ps ON ps.job_id=j.id
-          WHERE j.id=? AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL)
+          WHERE j.id=? AND j.status='cancelled' AND pr.deploy_authorized_at IS NULL
+            AND (?=0 OR (pr.reserved_run_id IS NULL AND pr.run_id IS NULL
+              AND pr.build_json IS NULL AND pr.deployment_json IS NULL AND j.result_sha IS NULL)))
           THEN 'true' ELSE 'cancellation changed' END)`,
               )
-              .bind(jobId),
+              .bind(jobId, unidentified ? 1 : 0),
             database
               .prepare(
                 `UPDATE publish_jobs SET evidence_json=json_set(evidence_json,'$.cancellation.pending',0) WHERE id=?`,
