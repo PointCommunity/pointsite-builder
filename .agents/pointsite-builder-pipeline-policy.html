@@ -407,6 +407,31 @@
       recovery always requires PM authorization.
     </p>
 
+    <h2>Publication incident recovery</h2>
+    <p>
+      A report that Staging or Production publishing is stuck requires live diagnosis and verified
+      recovery. Inspect the affected authenticated Builder with the internal browser, correlate its
+      publication record with the deployed source/tree, Argo image and complete scoped provider
+      evidence, then trace the shared cancellation and scheduled-continuation path. A missing
+      expected run name, run ID, or runner reservation is evidence to explain; it is not a terminal
+      diagnosis.
+    </p>
+    <p>
+      Cancel only an exact identified GitHub Actions run while publication remains safely
+      cancellable. An unreserved cancelled slot may be released only after the complete provider
+      listing proves every run in the captured repository, revision, branch, workflow, event and
+      time scope is terminal, and an atomic guard confirms that no reservation, build, result,
+      deployment or deployment authorization appeared. Incomplete, unavailable, active, mismatched,
+      truncated or racing evidence fails closed. Never send cancellation to an unnamed run or start
+      another publication to test recovery.
+    </p>
+    <p>
+      Use the active owning Issue for durable source repair, including a focused remediation after
+      merge. Release through the existing immutable Canary and Production gates. Deployment is not
+      recovery until the existing stuck record reaches a truthful terminal state in the internal
+      browser and the appropriate publish action is available again without creating a new job.
+    </p>
+
     <h2>GitHub enforcement limitation</h2>
     <p>
       The source repository is public; its Project remains private. Branch protection and rulesets
