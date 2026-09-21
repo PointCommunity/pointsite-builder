@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Recover Builder Publication'
+  short_description: 'Diagnose and clear stuck Builder publishing safely'
+  default_prompt: 'Use $pointsite-builder-recover-publication to diagnose and recover this stuck Builder publication.'

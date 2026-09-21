@@ -10,7 +10,7 @@ Pipeliner adoption, alignment, updates and requested monitor management use the 
 Use this skill for every change to `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.agents/`, `.claude/skills/`, or skill-workflow validation scripts.
 
 - `.agents/skills/` is canonical. Do not put Builder workflow authority only in user-global skills.
-- Keep the eight `pointsite-builder-*` workflow packages separate from the five approved shared design packages. Shared packages may guide implementation or review but must not weaken, replace, or duplicate pipeline authority. The review skill owns Canary; the release skill owns approved same-digest Production promotion.
+- Keep the nine `pointsite-builder-*` workflow packages separate from the five approved shared design packages. Shared packages may guide implementation or review but must not weaken, replace, or duplicate pipeline authority. The recovery skill owns stuck publication incidents, the review skill owns Canary, and the release skill owns approved same-digest Production promotion.
 - Every canonical skill needs valid `name` and `description` frontmatter and focused instructions.
 - Every Claude adapter must be a regular file pointing to its canonical relative `SKILL.md`; never duplicate full instructions or use symlinks.
 - Keep `CLAUDE.md` and `GEMINI.md` as imports of `AGENTS.md`, not duplicate policies.

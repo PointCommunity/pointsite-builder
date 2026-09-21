@@ -13,6 +13,7 @@ const pipelineSkillNames = [
   'pointsite-builder-review-issue',
   'pointsite-builder-release-production',
   'pointsite-builder-close-issue',
+  'pointsite-builder-recover-publication',
   'pointsite-builder-pipeline-health',
   'pointsite-builder-maintain-skills',
 ];
@@ -89,6 +90,8 @@ requireText(agents, 'Approved to complete Issue #<number>', 'AGENTS.md');
 requireText(agents, 'Do not create or open a standalone acceptance report', 'AGENTS.md');
 requireText(policy, 'Lean completion evidence', policyPath);
 requireText(policy, 'Do not create or open a standalone acceptance', policyPath);
+requireText(policy, 'Publication incident recovery', policyPath);
+requireText(policy, 'complete scoped provider', policyPath);
 
 const transitionContracts = {
   'pointsite-builder-create-issue': 'never ask the PM to add or move the card',
@@ -129,6 +132,22 @@ for (const [skillName, contract] of Object.entries(showcaseContracts)) {
     read(`.agents/skills/${skillName}/SKILL.md`),
     contract,
     `.agents/skills/${skillName}/SKILL.md`,
+  );
+}
+
+const publicationRecoverySkill = read(
+  '.agents/skills/pointsite-builder-recover-publication/SKILL.md',
+);
+for (const contract of [
+  'Do not report that a publication is merely stuck',
+  'complete provider listing proves every run',
+  'Never send a GitHub cancellation request for an unnamed run',
+  'Do not start a new publication as a test',
+]) {
+  requireText(
+    publicationRecoverySkill,
+    contract,
+    '.agents/skills/pointsite-builder-recover-publication/SKILL.md',
   );
 }
 
