@@ -33,9 +33,14 @@ import { dispatchPendingPublication, dispatchPublication } from '../../src/serve
 import { publicationGitHubFixture } from '../fixtures/publication-github';
 import { publicationDestination } from '../../src/server/publish/destinations';
 
-it.each(['staging', 'production'] as const)(
-  'cancels %s native execution and retains its slot until terminal confirmation',
-  async (target) => {
+it.each([
+  ['staging', true],
+  ['staging', false],
+  ['production', true],
+  ['production', false],
+] as const)(
+  'cancels %s native execution and retains its slot until terminal confirmation (reserved=%s)',
+  async (target, reserved) => {
     const { database, repository, createInput } = await fixture();
     const subject = 'github:12345';
     await database
@@ -81,7 +86,9 @@ it.each(['staging', 'production'] as const)(
       database.prepare("UPDATE publish_jobs SET status='running' WHERE id=?").bind(job.id),
       database
         .prepare(
-          `UPDATE publication_runs SET dispatch_count=1,reserved_run_id='12345',reserved_run_attempt='1',reserved_check_run_id='23456',run_id='12345',run_attempt='1',check_run_id='34567',claimed_at='fixture' WHERE job_id=?`,
+          reserved
+            ? `UPDATE publication_runs SET dispatch_count=1,reserved_run_id='12345',reserved_run_attempt='1',reserved_check_run_id='23456',run_id='12345',run_attempt='1',check_run_id='34567',claimed_at='fixture' WHERE job_id=?`
+            : `UPDATE publication_runs SET dispatch_count=1 WHERE job_id=?`,
         )
         .bind(job.id),
     ]);
@@ -103,7 +110,12 @@ it.each(['staging', 'production'] as const)(
       head_branch: 'main',
       event: 'repository_dispatch',
       path: '.github/workflows/publish-candidate.yml',
-      display_title: `${target === 'staging' ? 'Publish Staging candidate' : 'Publish accepted public candidate'} ${wrongIdentity ? crypto.randomUUID() : job.id}`,
+      display_title:
+        completed && !reserved
+          ? target === 'staging'
+            ? 'Publish Staging candidate'
+            : 'Publish accepted public candidate'
+          : `${target === 'staging' ? 'Publish Staging candidate' : 'Publish accepted public candidate'} ${wrongIdentity ? crypto.randomUUID() : job.id}`,
       created_at: new Date().toISOString(),
       repository: {
         id: Number(destination.id),
@@ -208,6 +220,175 @@ it.each(['staging', 'production'] as const)(
 );
 
 const actor = 'editor@pointatx.org';
+
+it.each([
+  'generic failure',
+  'empty',
+  'provider error',
+  'active',
+  'truncated',
+  'wrong repository',
+  'reservation race',
+  'named plus active generic',
+])('recovers unreserved cancellation safely with %s evidence', async (scenario) => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+      VALUES (?,'fixture-publisher','administrator',1,'fixture','fixture','fixture')`,
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const store = new D1PublishJobStore(database);
+  const job = await store.captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    idempotencyKey: 'startup-failure-capture',
+    requestId: 'capture',
+  });
+  await database
+    .prepare('UPDATE publication_runs SET dispatch_count=6 WHERE job_id=?')
+    .bind(job.id)
+    .run();
+  const nonce = await database
+    .prepare('SELECT nonce FROM publication_runs WHERE job_id=?')
+    .bind(job.id)
+    .first<string>('nonce');
+  const keys = await generateKeyPair('RS256', { extractable: true });
+  const config = {
+    appId: '123',
+    installationId: '456',
+    privateKey: await exportPKCS8(keys.privateKey),
+  };
+  let unavailable = scenario === 'provider error';
+  const run = {
+    id: 12345,
+    run_attempt: 1,
+    status: scenario === 'active' ? 'queued' : 'completed',
+    conclusion: scenario === 'active' ? null : 'failure',
+    head_sha: 'b'.repeat(40),
+    head_branch: 'main',
+    event: 'repository_dispatch',
+    path: '.github/workflows/publish-candidate.yml',
+    display_title:
+      scenario === 'named plus active generic'
+        ? `Publish Staging candidate ${job.id}`
+        : 'Publish Staging candidate',
+    created_at: new Date().toISOString(),
+    repository: {
+      id: scenario === 'wrong repository' ? 1 : 1357847426,
+      full_name: 'PointCommunity/pointsite-staging',
+    },
+  };
+  const fetcher = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const path = url instanceof Request ? url.url : url.toString();
+    if (path.endsWith('/access_tokens'))
+      return Response.json({ token: 'fixture-installation-token', expires_at: 'fixture' });
+    if (path.endsWith('/permission'))
+      return Response.json({ permission: 'admin', user: { id: 12345 } });
+    expect(init?.method).not.toBe('POST'); // Never guess which unnamed run to cancel.
+    if (unavailable) return new Response(null, { status: 503 });
+    if (scenario === 'reservation race')
+      await database
+        .prepare(
+          `UPDATE publication_runs
+        SET reserved_run_id='12345',reserved_run_attempt='1',reserved_check_run_id='23456' WHERE job_id=?`,
+        )
+        .bind(job.id)
+        .run();
+    if (path.endsWith('/12345')) return Response.json(run);
+    const runs =
+      scenario === 'named plus active generic'
+        ? [
+            run,
+            {
+              ...run,
+              id: 67890,
+              status: 'queued',
+              conclusion: null,
+              display_title: 'Publish Staging candidate',
+            },
+          ]
+        : scenario === 'empty'
+          ? []
+          : [run];
+    return Response.json({
+      total_count: scenario === 'truncated' ? 101 : runs.length,
+      workflow_runs: runs,
+    });
+  });
+  const input = {
+    jobId: job.id,
+    action: 'cancel' as const,
+    expectedAttempts: 6,
+    actor: subject,
+    idempotencyKey: 'startup-failure-cancel',
+    requestId: 'cancel',
+  };
+  await recoverQueuedPublication(database, input, fetcher, undefined, config);
+  const slot = () =>
+    database.prepare('SELECT job_id FROM publication_slots WHERE job_id=?').bind(job.id).first();
+  if (scenario === 'provider error') {
+    expect(await slot()).not.toBeNull();
+    unavailable = false;
+    await database
+      .prepare("UPDATE publication_runs SET dispatch_after='2000-01-01T00:00:00Z' WHERE job_id=?")
+      .bind(job.id)
+      .run();
+    await dispatchPendingPublication(database, config, fetcher);
+  }
+  if (
+    [
+      'active',
+      'truncated',
+      'wrong repository',
+      'reservation race',
+      'named plus active generic',
+    ].includes(scenario)
+  ) {
+    expect(await slot()).not.toBeNull();
+    expect(await store.dispatchStatus(job.id)).toMatchObject({
+      cancelling: true,
+      cancellationError: 'PUBLICATION_CANCELLATION_UNCONFIRMED',
+    });
+    return;
+  }
+  expect(await slot()).toBeNull();
+  expect(await store.dispatchStatus(job.id)).toMatchObject({ cancelling: false });
+  const token = await new SignJWT(
+    publicationClaims({
+      target: 'staging',
+      jobId: job.id,
+      nonce: nonce!,
+      workflowRevision: 'a'.repeat(40),
+      dispatchRevision: 'b'.repeat(40),
+    }),
+  )
+    .setProtectedHeader({ alg: 'RS256' })
+    .sign(keys.privateKey);
+  await expect(
+    new D1PublicationRunner(database, () => Promise.resolve(keys.publicKey)).reserve(job.id, token),
+  ).rejects.toThrow('PUBLISH_RUNNER_UNAUTHORIZED');
+  const next = await store.captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'c'.repeat(40),
+    idempotencyKey: 'after-startup-failure',
+    requestId: 'next',
+  });
+  await recoverQueuedPublication(database, input, fetcher, undefined, config);
+  expect(
+    await database
+      .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")
+      .first('job_id'),
+  ).toBe(next.id);
+});
+
 const png = new Uint8Array(
   Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aTgAAAABJRU5ErkJggg==',

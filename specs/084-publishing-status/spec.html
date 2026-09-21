@@ -76,10 +76,10 @@
       <a href="https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run"
         >cancel workflow run API</a
       >
-      requires repository Actions write permission. HTTP 202 acknowledges a request; only a fresh
-      terminal run observation permits releasing the held slot. Unknown identity, provider failure
-      and concurrent deployment fail closed. Scheduled retries keep cancellation durable after the
-      browser closes. No live content cancellation from chat.
+      requires repository Actions write permission. HTTP 202 acknowledges a request; reserved jobs
+      require a fresh terminal run observation before releasing the held slot. Unknown identity,
+      provider failure and concurrent deployment fail closed. Scheduled retries keep cancellation
+      durable after the browser closes. No live content cancellation from chat.
     </p>
     <ol>
       <li>
@@ -107,6 +107,29 @@
       unconfirmed and retains the slot.
     </p>
     <h2>Behavior contract</h2>
+    <p>
+      September 21 Production follow-up: workflow validation failed before runner reservation.
+      GitHub returned completed failure runs with zero jobs and a generic display title, omitting
+      the publication UUID. Cancellation fenced the Builder job but could never correlate those
+      runs, retaining the slot indefinitely. Existing runtime-retention protection in the caller
+      repository does not repair that captured job.
+    </p>
+    <p>
+      Recovery plan: preserve exact-identity native cancellation for identifiable runs. For an
+      unreserved cancelled job only, accept a complete, fresh provider listing with no runs or only
+      terminal runs in the captured repository, SHA, branch, event, caller and time window. This
+      proves no possible execution is currently active without claiming that an unnamed run belongs
+      to this job. Atomically require no reservation, claim, build, commit or deployment authority
+      before releasing this job's slot. Late or concurrent dispatches cannot reserve the cancelled
+      job. Unavailable, truncated, active or mismatched evidence must retain the slot. The scheduled
+      recovery path must finish already-pending cancellations after deployment, without data edits.
+    </p>
+    <p>
+      Verification: reproduce generic zero-job failures and empty run listings; cover both targets,
+      provider failure, active and malformed runs, incomplete listings, concurrent reservation,
+      stale callbacks, idempotent retries and a fresh next capture. Run focused regressions before
+      the sequential full gates and deploy a new exact Canary candidate for approval.
+    </p>
     <ol>
       <li>
         Read exact recorded run attempts, including run-level outcomes with zero jobs. Before
