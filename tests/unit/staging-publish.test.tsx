@@ -156,6 +156,43 @@ const queuedCloud: StagingWorkflowSnapshot = {
 };
 
 describe('guided Staging publishing', () => {
+  it('keeps check and cancel visible during polling and preserves a queued job after a read failure', async () => {
+    const captured: StagingWorkflowSnapshot = {
+      ...ready,
+      publicationProtocol: 2,
+      availability: { state: 'busy', phase: 'queued' },
+      job: {
+        ...job,
+        status: 'queued',
+        publicationProtocol: 2,
+        stagingCommitSha: null,
+        dispatch: {
+          attempts: 1,
+          retryAt: '',
+          needsAttention: false,
+          reserved: false,
+          startUnconfirmed: true,
+        },
+      },
+    };
+    const read = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(captured);
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    const check = await screen.findByRole('button', { name: 'Check Staging status' });
+    expect(screen.getByRole('button', { name: 'Cancel queued publication' })).toBeVisible();
+    expect(screen.getByText('Start not confirmed')).toBeVisible();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    read.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(check);
+    await screen.findByText('Status check unavailable');
+    expect(screen.getByRole('button', { name: 'Cancel queued publication' })).toBeDisabled();
+    expect(screen.getByText(/Showing the last known publication/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Check Staging status' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel queued publication' })).toBeEnabled(),
+    );
+    expect(publish).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
@@ -286,7 +323,6 @@ describe('guided Staging publishing', () => {
       .mockResolvedValue({ recovered: true });
     renderPublish();
     fireEvent.click(await screen.findByRole('button', { name: 'Publish to Staging' }));
-    fireEvent.click(await screen.findByText('Cancel this publication'));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel queued publication' }));
     await waitFor(() =>
       expect(recover).toHaveBeenCalledWith(job.id, 'cancel', 6, expect.any(String)),

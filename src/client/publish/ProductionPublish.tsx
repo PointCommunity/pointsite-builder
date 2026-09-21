@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api';
-import type { ProductionWorkflowSnapshot, StagingAcceptanceSummary } from './workflow';
+import type { StagingAcceptanceSummary } from './workflow';
 import { PublicationVerification } from './PublicationVerification';
 import { ProductionRollback } from './ProductionRollback';
 import { PublishingDialog } from './PublishingDialog';
@@ -11,6 +11,7 @@ import {
   supportError,
 } from './PublishingSupport';
 import { PublicationProgress } from './PublicationProgress';
+import { usePublicationStatus } from './usePublicationStatus';
 
 type RecoveryAction = Parameters<typeof api.recoverProduction>[1];
 
@@ -27,41 +28,24 @@ export function ProductionPublish({
   dangerActions?: ReactNode;
   approval: StagingAcceptanceSummary | null;
 }) {
-  const [snapshot, setSnapshot] = useState<ProductionWorkflowSnapshot | null>();
-  const [busy, setBusy] = useState(false);
+  const read = useCallback(() => api.getProductionWorkflow(draftId), [draftId]);
+  const status = usePublicationStatus(draftId, read);
+  const { snapshot, load } = status;
+  const [actionBusy, setBusy] = useState(false);
+  const busy = actionBusy || status.checking;
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [failure, setFailure] = useState<ReturnType<typeof supportError> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<{ scope: string; key: string } | null>(null);
-  const reading = useRef({ generation: 0 });
   const acting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const load = useCallback(async () => {
-    const generation = ++reading.current.generation;
-    try {
-      const value = await api.getProductionWorkflow(draftId);
-      if (generation === reading.current.generation) setSnapshot(value);
-    } catch (error) {
-      if (generation === reading.current.generation) {
-        setSnapshot(null);
-        setFailure(supportError(error));
-      }
-    }
-  }, [draftId]);
   const refreshVerification = useCallback(
     async (focus = false) => {
-      await load();
+      await load(true);
       if (focus) heading.current?.focus();
     },
     [load],
   );
-  useEffect(() => {
-    const state = reading.current;
-    void load();
-    return () => {
-      ++state.generation;
-    };
-  }, [load]);
   const job = snapshot?.enabled ? snapshot.job : null;
   const destination = snapshot?.enabled ? snapshot.destination : undefined;
   const label =
@@ -73,20 +57,19 @@ export function ProductionPublish({
   const dispatch = job?.dispatch;
   const active = job?.status === 'queued' || job?.status === 'running';
   useEffect(() => {
-    if (!active || busy || dispatch?.needsAttention) return;
+    if (!active || busy || status.paused) return;
     const timer = window.setTimeout(() => void load(), 10_000);
     return () => window.clearTimeout(timer);
-  }, [active, busy, dispatch?.needsAttention, snapshot, load]);
+  }, [active, busy, status.paused, snapshot, load]);
 
   const act = async (action: 'promote' | RecoveryAction) => {
-    if (acting.current || !snapshot?.enabled) return;
+    if (acting.current || busy || status.stale || !snapshot?.enabled) return;
     const scope =
       action === 'promote'
         ? JSON.stringify([draftId, approval?.id, approval?.tuple])
         : JSON.stringify([job?.id, action, dispatch?.attempts, dispatch?.retryAt]);
     if (request.current?.scope !== scope) request.current = { scope, key: crypto.randomUUID() };
     acting.current = true;
-    ++reading.current.generation;
     setBusy(true);
     setError(null);
     try {
@@ -113,7 +96,7 @@ export function ProductionPublish({
       setFailure(supportError(failure));
       setError('The action could not be confirmed. Check status or copy support details.');
     } finally {
-      await load();
+      await load(true);
       acting.current = false;
       setBusy(false);
       setConfirmation(null);
@@ -121,6 +104,7 @@ export function ProductionPublish({
     }
   };
   const canPromote =
+    !status.stale &&
     stagingReady &&
     snapshot?.enabled &&
     !snapshot.busy &&
@@ -150,16 +134,20 @@ export function ProductionPublish({
   const currentVerified = verified && stagingReady && job?.approvalId === approval?.id;
   const failed =
     !verified &&
-    (Boolean(error || failure || dispatch?.needsAttention) ||
+    (Boolean(error || failure || status.error || dispatch?.needsAttention) ||
       Boolean(job && !active) ||
       Boolean(
         dispatch?.actions?.jobs?.some(
           (item) => item.conclusion && !['success', 'skipped', 'neutral'].includes(item.conclusion),
         ),
       ));
-  const showRecovery = failed || !dispatch?.actions || Boolean(dispatch.actions.unavailable);
+  const showRecovery =
+    failed ||
+    !dispatch?.actions ||
+    Boolean(dispatch.actions.unavailable) ||
+    dispatch.actions.run?.status === 'completed';
   usePublishingSupport('Public website', { ...snapshot, error: failure });
-  const showForward = stagingReady || active || failed;
+  const showForward = stagingReady || active || failed || Boolean(status.error);
   return (
     <>
       {showForward ? (
@@ -211,7 +199,9 @@ export function ProductionPublish({
                 <p role="status">
                   {failed
                     ? 'Publication needs attention. Copy the support details if you need help.'
-                    : 'Progress updates automatically. You can close this window and return later.'}
+                    : status.paused
+                      ? 'Automatic monitoring paused. Check status to resume.'
+                      : 'Progress updates automatically. You can close this window and return later.'}
                 </p>
               ) : snapshot.busy ? (
                 <p>Another {label} publication needs to finish before publishing.</p>
@@ -229,7 +219,12 @@ export function ProductionPublish({
               ) : (
                 <p>Publish and accept this saved version on Staging first.</p>
               )}
-              <PublicationProgress job={job} />
+              <PublicationProgress
+                job={job}
+                checkedAt={status.checkedAt}
+                stale={status.stale}
+                paused={status.paused}
+              />
               {currentVerified ? (
                 <a
                   className="button button--primary"
@@ -253,11 +248,13 @@ export function ProductionPublish({
                   Publish to {label}
                 </button>
               ) : null}
-              {queued && dispatch.needsAttention ? (
+              {queued &&
+              (dispatch.canRetryQueued ?? dispatch.attempts >= 6) &&
+              dispatch.failureCode !== 'PUBLISH_BASE_CHANGED' ? (
                 <button
                   className="button"
                   type="button"
-                  disabled={busy || !(Date.parse(dispatch.retryAt) <= Date.now())}
+                  disabled={busy || status.stale || !(Date.parse(dispatch.retryAt) <= Date.now())}
                   onClick={() => void act('retry')}
                 >
                   Retry queued publication
@@ -267,7 +264,7 @@ export function ProductionPublish({
                 <button
                   className="button"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || status.stale}
                   onClick={() => void act('reconcile')}
                 >
                   Recover stopped publication
@@ -277,7 +274,7 @@ export function ProductionPublish({
                 <button
                   className="button"
                   type="button"
-                  disabled={busy || snapshot.busy}
+                  disabled={busy || status.stale || snapshot.busy}
                   onClick={() => void act('retry-captured')}
                 >
                   Retry captured {label} version
@@ -287,7 +284,7 @@ export function ProductionPublish({
                 <button
                   className="button"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || status.stale}
                   onClick={() => void act('verify-completed')}
                 >
                   Verify completed {label} publication
@@ -300,15 +297,21 @@ export function ProductionPublish({
                   label={label}
                   jobId={job.id}
                   dispatchAttempts={dispatch.attempts}
-                  disabled={busy}
+                  disabled={busy || status.stale}
                   onRefresh={refreshVerification}
                 />
               ) : null}
             </>
           )}
           {error ? <p role="alert">{error}</p> : null}
+          {status.error ? (
+            <p role="alert">
+              Status could not be checked. The last known publication is saved. Check status to try
+              again.
+            </p>
+          ) : null}
           {failed ? <CopyPublishingDetails /> : null}
-          {snapshot?.enabled !== false && !currentVerified && (!active || failed) ? (
+          {snapshot?.enabled !== false ? (
             <button
               className="button"
               type="button"
@@ -316,11 +319,27 @@ export function ProductionPublish({
               onClick={() => {
                 setFailure(null);
                 setError(null);
-                void load();
+                void load(true).then(() => heading.current?.focus());
               }}
             >
               Check {label} status
             </button>
+          ) : null}
+          {queued ? (
+            <div className="publish-danger">
+              <p>
+                Cancel this queued attempt before deliberately publishing a fresh accepted version.
+                The current website stays online.
+              </p>
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={busy || status.stale}
+                onClick={() => void act('cancel')}
+              >
+                Cancel queued {label} publication
+              </button>
+            </div>
           ) : null}
         </section>
       ) : null}
@@ -329,25 +348,14 @@ export function ProductionPublish({
         <details className="publish-danger">
           <summary>Danger zone</summary>
           {dangerActions}
-          {queued ? (
-            <details>
-              <summary>Cancel this publication</summary>
-              <p>
-                This stops the queued publication before it starts. The current website stays
-                online. Publishing later requires a new request.
-              </p>
-              <button
-                className="button button--danger"
-                type="button"
-                disabled={busy}
-                onClick={() => void act('cancel')}
-              >
-                Cancel queued {label} publication
-              </button>
-            </details>
-          ) : null}
           {snapshot?.enabled ? (
-            <ProductionRollback onRefresh={load} label={label} origin={destination?.origin} />
+            <ProductionRollback
+              onRefresh={async () => {
+                await load(true);
+              }}
+              label={label}
+              origin={destination?.origin}
+            />
           ) : null}
         </details>
       ) : null}

@@ -42,6 +42,10 @@ const jobsSchema = z.object({
 });
 export interface ActionsProgress {
   checkedAt: string;
+  retryAt?: string;
+  lastSuccessfulCheckAt?: string;
+  unconfirmed?: boolean;
+  run?: { status: string; conclusion: string | null; workflowUrl: string };
   unavailable?: string;
   jobs?: {
     name: string;
@@ -63,26 +67,31 @@ export async function readPublicationActions(
   input: {
     target: 'staging' | 'production';
     builderOrigin?: string;
-    runId: string;
-    attempt: string;
+    runId?: string;
+    attempt?: string;
+    jobId?: string;
+    requestedAt?: string;
     sha: string;
   },
   fetcher: typeof fetch = fetch,
 ): Promise<ActionsProgress> {
-  const repository = publicationDestination(input.target, input.builderOrigin).repository;
+  const destination = publicationDestination(input.target, input.builderOrigin);
+  const repository = destination.repository;
   if (
-    !/^[1-9][0-9]{0,19}$/.test(input.runId) ||
-    !/^[1-9][0-9]{0,19}$/.test(input.attempt) ||
+    (input.runId !== undefined
+      ? !/^[1-9][0-9]{0,19}$/.test(input.runId) || !/^[1-9][0-9]{0,19}$/.test(input.attempt ?? '')
+      : !z.uuid().safeParse(input.jobId).success ||
+        !Number.isFinite(Date.parse(input.requestedAt ?? ''))) ||
     !/^[a-f0-9]{40}$/.test(input.sha)
   )
     return { checkedAt: new Date().toISOString(), unavailable: 'ACTIONS_IDENTITY_UNAVAILABLE' };
-  const url = `https://api.github.com/repos/PointCommunity/${repository}/actions/runs/${input.runId}/attempts/${input.attempt}/jobs?per_page=100`;
+  const api = `https://api.github.com/repos/PointCommunity/${repository}/actions/runs`;
   let cache = caches.get(fetcher);
   if (!cache) {
     cache = new Map();
     caches.set(fetcher, cache);
   }
-  const key = `${url}:${input.sha}`;
+  const key = `${api}:${input.runId ?? input.jobId}:${input.attempt ?? ''}:${input.sha}:${input.requestedAt ?? ''}`;
   const prior = cache.get(key);
   if (prior && prior.until > Date.now()) return prior.value;
   // Public API allowance is shared by the host. Milestones refresh every ten seconds;
@@ -93,7 +102,9 @@ export async function readPublicationActions(
   };
   entry.value = (async () => {
     const checkedAt = new Date().toISOString();
-    try {
+    let unavailable = 'ACTIONS_STATUS_UNAVAILABLE';
+    let runProgress: ActionsProgress['run'];
+    const read = async (url: string) => {
       const response = await fetcher(url, {
         headers: {
           accept: 'application/vnd.github+json',
@@ -108,23 +119,94 @@ export async function readPublicationActions(
         const retry = Number(response.headers.get('retry-after')) * 1000;
         entry.until = Math.max(
           entry.until,
-          Math.min(Date.now() + 3_600_000, Math.max(reset || 0, Date.now() + (retry || 60_000))),
+          Math.min(
+            Date.now() + 3_600_000,
+            Math.max(
+              Number.isFinite(reset) ? reset : 0,
+              Date.now() + (Number.isFinite(retry) && retry > 0 ? retry : 60_000),
+            ),
+          ),
         );
-        return {
-          checkedAt,
-          unavailable:
-            response.status === 403 || response.status === 429
-              ? 'ACTIONS_RATE_LIMITED'
-              : 'ACTIONS_STATUS_UNAVAILABLE',
-        };
+        unavailable =
+          response.status === 403 || response.status === 429 ? 'ACTIONS_RATE_LIMITED' : unavailable;
+        throw new Error('Provider unavailable');
       }
-      const result = jobsSchema.parse(await publicationJson(response, 262_144));
+      return publicationJson(response, 524_288);
+    };
+    try {
+      const runSchema = z.object({
+        id: z.number().int().positive().safe(),
+        run_attempt: z.number().int().positive(),
+        status: state,
+        conclusion,
+        head_sha: z.literal(input.sha),
+        head_branch: z.literal('main'),
+        event: z.literal('repository_dispatch'),
+        path: z.enum([
+          '.github/workflows/publish-candidate.yml',
+          '.github/workflows/publish-candidate.yml@main',
+          '.github/workflows/publish-candidate.yml@refs/heads/main',
+        ]),
+        repository: z.object({
+          id: z
+            .number()
+            .int()
+            .refine((id) => String(id) === destination.id),
+          full_name: z.literal(`PointCommunity/${repository}`),
+        }),
+        display_title: z.string(),
+        created_at: z.string(),
+      });
+      let run;
+      if (input.runId) {
+        run = runSchema.parse(await read(`${api}/${input.runId}/attempts/${input.attempt}`));
+        if (String(run.id) !== input.runId || String(run.run_attempt) !== input.attempt)
+          throw new Error('Run identity mismatch');
+      } else {
+        const list = z
+          .object({
+            total_count: z.number().int().nonnegative(),
+            workflow_runs: z.array(z.unknown()).max(100),
+          })
+          .parse(await read(`${api}?event=repository_dispatch&head_sha=${input.sha}&per_page=100`));
+        const matches = list.workflow_runs.flatMap((value) => {
+          const parsed = runSchema.safeParse(value);
+          if (!parsed.success) return [];
+          const valueRun = parsed.data;
+          const title =
+            input.target === 'staging'
+              ? 'Publish Staging candidate'
+              : 'Publish accepted public candidate';
+          return valueRun.display_title === `${title} ${input.jobId}` &&
+            Date.parse(valueRun.created_at) >=
+              Math.floor(Date.parse(input.requestedAt!) / 1000) * 1000
+            ? [valueRun]
+            : [];
+        });
+        // A truncated listing cannot prove that another matching dispatch is absent.
+        if (list.total_count !== list.workflow_runs.length || matches.length !== 1)
+          return {
+            checkedAt,
+            lastSuccessfulCheckAt: checkedAt,
+            retryAt: new Date(entry.until).toISOString(),
+            unconfirmed: true,
+          };
+        run = matches[0];
+      }
+      runProgress = {
+        status: run.status,
+        conclusion: run.conclusion,
+        workflowUrl: `https://github.com/PointCommunity/${repository}/actions/runs/${run.id}`,
+      };
+      const result = jobsSchema.parse(
+        await read(`${api}/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`),
+      );
       if (
         result.total_count !== result.jobs.length ||
         result.jobs.some(
           (job) =>
-            String(job.run_id) !== input.runId ||
-            String(job.run_attempt) !== input.attempt ||
+            job.run_id !== run.id ||
+            job.run_attempt !== run.run_attempt ||
             job.head_sha !== input.sha,
         )
       )
@@ -177,17 +259,27 @@ export async function readPublicationActions(
       );
       return {
         checkedAt,
+        lastSuccessfulCheckAt: checkedAt,
+        retryAt: new Date(entry.until).toISOString(),
+        run: runProgress,
         jobs: result.jobs.map((job, index) => ({
           ...jobs[index],
           name: supportText(job.name),
           status: job.status,
           conclusion: job.conclusion,
-          workflowUrl: `https://github.com/PointCommunity/${repository}/actions/runs/${input.runId}/job/${job.id}`,
+          workflowUrl: `https://github.com/PointCommunity/${repository}/actions/runs/${run.id}/job/${job.id}`,
           steps: job.steps.map((value) => ({ ...value, name: supportText(value.name) })),
         })),
       };
     } catch {
-      return { checkedAt, unavailable: 'ACTIONS_STATUS_UNAVAILABLE' };
+      const previous = await prior?.value;
+      return {
+        ...previous,
+        ...(runProgress ? { run: runProgress } : {}),
+        checkedAt,
+        unavailable,
+        retryAt: new Date(entry.until).toISOString(),
+      };
     }
   })();
   cache.delete(key);

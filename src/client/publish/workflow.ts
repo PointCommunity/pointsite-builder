@@ -46,6 +46,10 @@ export interface StagingWorkflowJob {
   publicationProtocol?: 2;
   workflowRevision?: string;
   dispatch?: {
+    checkedAt?: string;
+    startUnconfirmed?: boolean;
+    canRetryQueued?: boolean;
+    retryBlocker?: string;
     stage?: string;
     actions?: ActionsProgress;
     attempts: number;
@@ -238,10 +242,8 @@ export function deriveStagingWorkflow(input: {
       'paused',
       2,
       'Publication needs attention',
-      job.dispatch.reserved === false
-        ? 'Automatic dispatch retries stopped. Your captured version is saved. Retry after the recorded wait, or cancel this queued publication.'
-        : 'Automatic dispatch retries stopped. Your captured version is saved. Check status to reconcile its native execution.',
-      { canRefresh: true },
+      'Check status for the latest known result, or use the available recovery action below. Your captured version stays saved.',
+      { canRefresh: true, shouldPoll: !input.monitoringPaused },
     );
   if (
     (!revisionChanged || captured) &&
@@ -253,7 +255,7 @@ export function deriveStagingWorkflow(input: {
         'paused',
         2,
         'Automatic monitoring paused',
-        'Your captured publication continues in the cloud. Check status to read its latest progress.',
+        'The last known publication is saved. Check status to read its latest progress.',
         { canRefresh: true },
       );
     return state(
@@ -262,8 +264,8 @@ export function deriveStagingWorkflow(input: {
       'Publishing to public Staging',
       captured
         ? revisionChanged
-          ? 'The captured version continues in the cloud. Your newer saved edits are separate from this publication.'
-          : 'The captured version continues in the cloud, even after you close Builder.'
+          ? 'The captured version stays saved. Your newer saved edits are separate from this publication.'
+          : 'The captured version stays saved, even after you close Builder.'
         : 'The exact candidate is being created. This workflow will continue automatically.',
       { canRefresh: true, shouldPoll: true },
     );

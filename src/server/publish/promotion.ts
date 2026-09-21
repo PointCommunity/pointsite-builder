@@ -57,9 +57,12 @@ export class D1ProductionPublisher {
     z.uuid().parse(draftId);
     ProductionCaptureSchema.shape.actor.parse(actor);
     const authority = this.database
-      .prepare("SELECT 1 FROM user_roles WHERE email=? AND active=1 AND role='administrator'")
+      .prepare(
+        "SELECT github_login FROM user_roles WHERE email=? AND active=1 AND role='administrator'",
+      )
       .bind(actor);
-    if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
+    const currentActor = await authority.first<{ github_login: string }>();
+    if (!currentActor) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
     const row = await this.database
       .prepare(
         `SELECT j.id,j.status,j.candidate_checksum,j.base_sha,
@@ -107,9 +110,27 @@ export class D1ProductionPublisher {
           dispatch: await new D1PublishJobStore(
             this.database,
             this.config.builderOrigin,
-          ).dispatchStatus(row.id, true),
+          ).dispatchStatus(row.id, true, {
+            baseSha: row.result_sha ?? row.base_sha,
+            workflowRevision: this.config.workflowRevision,
+          }),
         }
       : null;
+    if (job?.dispatch?.canRetryCaptured) {
+      try {
+        await this.verifyDestination(
+          row!.result_sha ?? row!.base_sha,
+          actor,
+          currentActor.github_login,
+          (url, init) =>
+            this.fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) }),
+        );
+      } catch {
+        job.dispatch.canRetryCaptured = false;
+        job.dispatch.retryBlocker =
+          'The captured destination or publishing authority could not be confirmed. Check status; if the destination changed, deliberately publish a fresh accepted version.';
+      }
+    }
     if (!(await authority.first())) throw new Error('PRODUCTION_AUTHORITY_CHANGED');
     return {
       job,

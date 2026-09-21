@@ -46,7 +46,7 @@ const queued: ProductionWorkflowSnapshot = {
     completedAt: null,
     evidence: {},
     dispatch: {
-      attempts: 3,
+      attempts: 6,
       needsAttention: true,
       reserved: false,
       retryAt: '2026-09-13T00:00:00Z',
@@ -57,6 +57,31 @@ const queued: ProductionWorkflowSnapshot = {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+it('keeps checking and cancellation visible during polling and retains Production on read failure', async () => {
+  const active = structuredClone(queued);
+  if (!active.enabled || !active.job?.dispatch) throw new Error('fixture');
+  active.job.dispatch.needsAttention = false;
+  active.job.dispatch.attempts = 1;
+  const read = vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(active);
+  render(<ProductionPublish draftId="draft" approval={null} />);
+  const check = await screen.findByRole('button', { name: 'Check Site Production status' });
+  expect(
+    screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
+  ).toBeVisible();
+  read.mockRejectedValueOnce(new Error('offline'));
+  fireEvent.click(check);
+  await screen.findByText('Status check unavailable');
+  expect(
+    screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
+  ).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Cancel queued Site Production publication' }),
+    ).toBeEnabled(),
+  );
 });
 
 it('names the public Canary destination on both publish and rollback controls', async () => {
@@ -179,7 +204,7 @@ it('reopens saved progress and preserves recovery identity across lost replies',
   );
   fireEvent.click(screen.getByRole('button', { name: 'Retry queued publication' }));
   await waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
-  expect(recover.mock.calls[0]).toEqual(['production', 'retry', 3, expect.any(String)]);
+  expect(recover.mock.calls[0]).toEqual(['production', 'retry', 6, expect.any(String)]);
   expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
 });
 

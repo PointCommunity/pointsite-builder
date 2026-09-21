@@ -266,6 +266,100 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+it('surfaces unreserved zero-job failure without changing authority and hides stale captured retry', async () => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by) VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')",
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const store = new D1PublishJobStore(database);
+  const job = await store.captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    idempotencyKey: 'status-startup-failure-84',
+    requestId: 'fixture',
+  });
+  const current = { baseSha: 'b'.repeat(40), workflowRevision: 'a'.repeat(40) };
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    startUnconfirmed: true,
+    needsAttention: false,
+  });
+  await database
+    .prepare("UPDATE publish_jobs SET requested_at='2026-01-01T00:00:00Z' WHERE id=?")
+    .bind(job.id)
+    .run();
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    startUnconfirmed: true,
+    needsAttention: true,
+  });
+  await database
+    .prepare('UPDATE publication_runs SET dispatch_count=1 WHERE job_id=?')
+    .bind(job.id)
+    .run();
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          (url instanceof Request ? url.url : url.toString()).includes('/jobs?')
+            ? { total_count: 0, jobs: [] }
+            : {
+                total_count: 1,
+                workflow_runs: [
+                  {
+                    id: 123,
+                    run_attempt: 1,
+                    status: 'completed',
+                    conclusion: 'startup_failure',
+                    head_sha: 'b'.repeat(40),
+                    head_branch: 'main',
+                    event: 'repository_dispatch',
+                    path: '.github/workflows/publish-candidate.yml',
+                    display_title: `Publish Staging candidate ${job.id}`,
+                    created_at: new Date().toISOString(),
+                    repository: { id: 1357847426, full_name: 'PointCommunity/pointsite-staging' },
+                  },
+                ],
+              },
+        ),
+      ),
+    ),
+  );
+  expect(await store.dispatchStatus(job.id, true, current)).toMatchObject({
+    needsAttention: true,
+    reserved: false,
+    actions: { run: { conclusion: 'startup_failure' }, jobs: [] },
+  });
+  expect((await store.getById(job.id))?.status).toBe('queued');
+  expect(
+    await database
+      .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")
+      .first('job_id'),
+  ).toBe(job.id);
+  await store.recoverQueued({
+    jobId: job.id,
+    action: 'cancel',
+    expectedAttempts: 1,
+    actor: subject,
+    idempotencyKey: 'status-startup-cancel-84',
+    requestId: 'fixture',
+  });
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    canRetryCaptured: true,
+  });
+  const stale = await store.dispatchStatus(job.id, false, { ...current, baseSha: 'c'.repeat(40) });
+  expect(stale?.canRetryCaptured).toBe(false);
+  expect(stale?.retryBlocker).toContain('destination');
+  expect(
+    await database.prepare("SELECT job_id FROM publication_slots WHERE target='staging'").first(),
+  ).toBeNull();
+});
+
 it.each(['staging', 'production'] as const)(
   'recovers a completed %s deployment without publishing again',
   async (target) => {
