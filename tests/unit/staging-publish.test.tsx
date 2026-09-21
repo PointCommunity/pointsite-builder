@@ -156,6 +156,64 @@ const queuedCloud: StagingWorkflowSnapshot = {
 };
 
 describe('guided Staging publishing', () => {
+  it('keeps earlier completed progress out of a new publication', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
+      ...ready,
+      preflight: { state: 'required', reason: 'revision-changed' },
+      job: {
+        ...job,
+        publicationProtocol: 2,
+        revisionId: 'earlier-revision',
+        evidence: { verificationStatus: 'passed' },
+      },
+      approval: accepted.approval,
+    });
+    renderPublish();
+    expect(await screen.findByRole('button', { name: 'Publish to Staging' })).toBeVisible();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByText('Publication completed')).toBeNull();
+    expect(screen.queryByText('Newer draft edits are not included.')).toBeNull();
+    fireEvent.click(screen.getByText('Technical details'));
+    expect(await screen.findByText(/Last successful status check:/)).toBeVisible();
+  });
+
+  it('keeps check and cancel visible during polling and preserves a queued job after a read failure', async () => {
+    const captured: StagingWorkflowSnapshot = {
+      ...ready,
+      publicationProtocol: 2,
+      availability: { state: 'busy', phase: 'queued' },
+      job: {
+        ...job,
+        status: 'queued',
+        publicationProtocol: 2,
+        stagingCommitSha: null,
+        dispatch: {
+          attempts: 1,
+          retryAt: '',
+          needsAttention: false,
+          reserved: false,
+          startUnconfirmed: true,
+        },
+      },
+    };
+    const read = vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue(captured);
+    const publish = vi.spyOn(api, 'publishStaging');
+    renderPublish();
+    const check = await screen.findByRole('button', { name: 'Check Staging status' });
+    expect(screen.getByRole('button', { name: 'Cancel publication' })).toBeVisible();
+    expect(screen.getByText('Start not confirmed')).toBeVisible();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    read.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(check);
+    await screen.findByText('Status check unavailable');
+    expect(screen.getByRole('button', { name: 'Cancel publication' })).toBeDisabled();
+    expect(screen.getByText(/Showing saved progress/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Check Staging status' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel publication' })).toBeEnabled(),
+    );
+    expect(publish).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
@@ -183,6 +241,42 @@ describe('guided Staging publishing', () => {
     expect(recover.mock.calls[0]).toEqual([job.id, 'retry', 6, expect.any(String)]);
     expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
   });
+
+  it.each(['building', 'preparing'])(
+    'cancels a reserved Staging job during %s and monitors cancellation',
+    async (stage) => {
+      const running: StagingWorkflowSnapshot = {
+        ...queuedCloud,
+        job: {
+          ...queuedCloud.job!,
+          status: 'running',
+          dispatch: {
+            ...queuedCloud.job!.dispatch!,
+            reserved: true,
+            canCancel: true,
+            needsAttention: false,
+            stage,
+          },
+        },
+      };
+      const pending = structuredClone(running);
+      pending.job!.status = 'cancelled';
+      pending.job!.dispatch!.cancelling = true;
+      vi.spyOn(api, 'getStagingWorkflow').mockResolvedValueOnce(running).mockResolvedValue(pending);
+      const recover = vi
+        .spyOn(api, 'recoverQueuedPublication')
+        .mockResolvedValue({ recovered: true });
+      renderPublish();
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel publication' }));
+      await waitFor(() =>
+        expect(recover).toHaveBeenCalledWith(job.id, 'cancel', 6, expect.any(String)),
+      );
+      expect(
+        await screen.findByText('Stopping the publishing run. You can close this window.'),
+      ).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Retry captured candidate' })).toBeNull();
+    },
+  );
 
   it('retries the selected capture with a stable receipt instead of publishing the latest editor revision', async () => {
     const cancelled: StagingWorkflowSnapshot = {
@@ -267,7 +361,7 @@ describe('guided Staging publishing', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Cloud execution has not been confirmed stopped',
     );
-    expect(screen.queryByRole('button', { name: 'Cancel queued publication' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel publication' })).toBeNull();
   });
 
   it('cancels the queued job and can publish the same saved revision again', async () => {
@@ -286,8 +380,7 @@ describe('guided Staging publishing', () => {
       .mockResolvedValue({ recovered: true });
     renderPublish();
     fireEvent.click(await screen.findByRole('button', { name: 'Publish to Staging' }));
-    fireEvent.click(await screen.findByText('Cancel this publication'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel queued publication' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel publication' }));
     await waitFor(() =>
       expect(recover).toHaveBeenCalledWith(job.id, 'cancel', 6, expect.any(String)),
     );
@@ -307,7 +400,7 @@ describe('guided Staging publishing', () => {
       renderPublish();
       await screen.findByRole('heading', { name: 'Staging needs attention' });
       expect(screen.queryByRole('button', { name: 'Retry queued publication' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Cancel queued publication' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Cancel publication' })).toBeNull();
     },
   );
 

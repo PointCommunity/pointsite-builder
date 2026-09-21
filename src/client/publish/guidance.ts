@@ -236,13 +236,13 @@ export function getActionFailureGuidance(code: string): ActionFailureGuidance {
       return {
         title: 'Cloud execution has not been confirmed stopped',
         guidance:
-          'The publication is still running. Wait for the cloud run to finish, then check recovery again.',
+          'Builder could not confirm that execution stopped. Check status again before recovering it.',
       };
     case 'PUBLICATION_RECOVERY_CHANGED':
       return {
         title: 'Publication changed while you were recovering it',
         guidance:
-          'Builder refreshed the saved status. Check the current publication before choosing another recovery action.',
+          'Check status before choosing another recovery action. If the destination or authority changed, end the old attempt when cancellation is available, then check and deliberately publish a fresh version.',
       };
     case 'PUBLISH_IN_PROGRESS':
     case 'PUBLISH_SLOT_BUSY':

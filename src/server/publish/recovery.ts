@@ -4,6 +4,8 @@ import { MAX_DISPATCH_ATTEMPTS } from './dispatch';
 import { currentPromotion } from './promotion';
 import { publicationJson } from './build-proof';
 import { publicationDestination } from './destinations';
+import type { PublisherConfig } from './service';
+import { continueCancellation } from './cancellation';
 
 const TerminalRunSchema = z.object({
   purpose: z.enum(['verification', 'rollback']).optional(),
@@ -106,6 +108,7 @@ export async function recoverQueuedPublication(
   value: z.infer<typeof QueuedRecoverySchema>,
   fetcher: typeof fetch = fetch,
   builderOrigin?: string,
+  config?: PublisherConfig,
 ) {
   const input = QueuedRecoverySchema.parse(value);
   if (input.action === 'retry-captured' || input.action === 'verify-completed')
@@ -136,7 +139,11 @@ export async function recoverQueuedPublication(
     if (!(await authority.first())) throw new Error('PUBLISH_AUTHORITY_CHANGED');
     return true;
   };
-  if (await receipt()) return { recovered: true as const };
+  if (await receipt()) {
+    if (input.action === 'cancel')
+      await continueCancellation(database, input.jobId, config, fetcher);
+    return { recovered: true as const };
+  }
   const reserved =
     input.action === 'reconcile'
       ? await database
@@ -166,7 +173,9 @@ export async function recoverQueuedPublication(
         JOIN user_roles actor ON actor.email=? LEFT JOIN user_roles original ON original.email=j.requested_by
         JOIN drafts d ON d.id=pi.draft_id
         WHERE j.id=?
-          AND ((?!='reconcile' AND j.status='queued' AND j.result_sha IS NULL AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL) OR
+          AND ((?='cancel' AND (j.status IN ('queued','running') OR
+            (j.status='cancelled' AND json_extract(j.evidence_json,'$.cancellation.pending')=1)) AND pr.deploy_authorized_at IS NULL) OR
+            (?='retry' AND j.status='queued' AND j.result_sha IS NULL AND pr.run_id IS NULL AND pr.reserved_run_id IS NULL) OR
             (j.status IN ('queued','running') AND pr.reserved_run_id=? AND pr.reserved_run_attempt=?
               AND pr.deploy_authorized_at IS NULL))
           AND pr.dispatch_count=? AND actor.active=1
@@ -181,6 +190,7 @@ export async function recoverQueuedPublication(
         .bind(
           input.actor,
           input.jobId,
+          input.action,
           input.action,
           terminal?.run_id ?? null,
           terminal?.run_attempt ?? null,
@@ -210,10 +220,24 @@ export async function recoverQueuedPublication(
             database
               .prepare(
                 `UPDATE publish_jobs SET status='cancelled',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-          evidence_json=json_set(evidence_json,'$.failureCode','PUBLICATION_CANCELLED') WHERE id=?`,
+          evidence_json=json_set(evidence_json,'$.failureCode','PUBLICATION_CANCELLED',
+            '$.cancellation',json_object('pending',CASE WHEN ?=1 AND EXISTS(
+              SELECT 1 FROM publication_runs WHERE job_id=publish_jobs.id
+                AND (dispatch_count>0 OR reserved_run_id IS NOT NULL)) THEN 1 ELSE 0 END,'actor',?)) WHERE id=?`,
               )
-              .bind(input.jobId),
-            database.prepare('DELETE FROM publication_slots WHERE job_id=?').bind(input.jobId),
+              .bind(input.action === 'cancel' ? 1 : 0, input.actor, input.jobId),
+            database
+              .prepare(
+                `DELETE FROM publication_slots WHERE job_id=? AND
+              (?='reconcile' OR EXISTS(SELECT 1 FROM publication_runs WHERE job_id=? AND dispatch_count=0 AND reserved_run_id IS NULL))`,
+              )
+              .bind(input.jobId, input.action, input.jobId),
+            database
+              .prepare(
+                `UPDATE publication_runs SET dispatch_after=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+              WHERE job_id=? AND ?='cancel'`,
+              )
+              .bind(input.jobId, input.action),
           ]),
       database
         .prepare(
@@ -229,8 +253,8 @@ export async function recoverQueuedPublication(
         ),
     ]);
   } catch {
-    if (await receipt()) return { recovered: true as const };
-    throw new Error('PUBLICATION_RECOVERY_CHANGED');
+    if (!(await receipt())) throw new Error('PUBLICATION_RECOVERY_CHANGED');
   }
+  if (input.action === 'cancel') await continueCancellation(database, input.jobId, config, fetcher);
   return { recovered: true as const };
 }

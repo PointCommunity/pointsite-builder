@@ -242,7 +242,7 @@ it('holds captured cloud jobs across edits, bounded monitoring, and dispatch exh
     shouldPoll: false,
   });
   current.job!.dispatch = { attempts: 6, retryAt: new Date().toISOString(), needsAttention: true };
-  expect(derive(current)).toMatchObject({ phase: 'paused', canPublish: false, shouldPoll: false });
+  expect(derive(current)).toMatchObject({ phase: 'paused', canPublish: false, shouldPoll: true });
   delete current.job!.dispatch;
   current.job!.status = 'succeeded';
   current.job!.workflowRevision = 'a'.repeat(40);

@@ -31,6 +31,181 @@ import {
 } from '../../src/server/publish/renderer-contract';
 import { dispatchPendingPublication, dispatchPublication } from '../../src/server/publish/dispatch';
 import { publicationGitHubFixture } from '../fixtures/publication-github';
+import { publicationDestination } from '../../src/server/publish/destinations';
+
+it.each(['staging', 'production'] as const)(
+  'cancels %s native execution and retains its slot until terminal confirmation',
+  async (target) => {
+    const { database, repository, createInput } = await fixture();
+    const subject = 'github:12345';
+    await database
+      .prepare(
+        `INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by)
+    VALUES (?,'fixture-publisher','administrator',1,'fixture','fixture','fixture')`,
+      )
+      .bind(subject)
+      .run();
+    const draft = await repository.createDraft({ ...createInput, actor: subject });
+    const store = new D1PublishJobStore(database);
+    const captured = await store.captureStaging({
+      draft,
+      actor: subject,
+      workflowRevision: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      idempotencyKey: 'native-cancel-capture',
+      requestId: 'capture',
+    });
+    const destination = publicationDestination(target);
+    const job = { id: target === 'staging' ? captured.id : crypto.randomUUID() };
+    if (target === 'production')
+      await database.batch([
+        database
+          .prepare(
+            `INSERT INTO publish_jobs(id,idempotency_key,environment,status,candidate_json,candidate_checksum,repository,base_sha,requested_by,requested_at)
+      SELECT ?,'native-cancel-production','production-merge','running',candidate_json,candidate_checksum,'PointCommunity/pointsite',base_sha,requested_by,requested_at FROM publish_jobs WHERE id=?`,
+          )
+          .bind(job.id, captured.id),
+        database
+          .prepare(
+            'INSERT INTO publication_inputs(job_id,draft_id,revision_id,workflow_revision) SELECT ?,draft_id,revision_id,workflow_revision FROM publication_inputs WHERE job_id=?',
+          )
+          .bind(job.id, captured.id),
+        database
+          .prepare('INSERT INTO publication_runs(job_id,nonce,dispatch_revision) VALUES (?,?,?)')
+          .bind(job.id, 'd'.repeat(64), 'b'.repeat(40)),
+        database
+          .prepare("INSERT INTO publication_slots(target,job_id) VALUES ('production',?)")
+          .bind(job.id),
+      ]);
+    await database.batch([
+      database.prepare("UPDATE publish_jobs SET status='running' WHERE id=?").bind(job.id),
+      database
+        .prepare(
+          `UPDATE publication_runs SET dispatch_count=1,reserved_run_id='12345',reserved_run_attempt='1',reserved_check_run_id='23456',run_id='12345',run_attempt='1',check_run_id='34567',claimed_at='fixture' WHERE job_id=?`,
+        )
+        .bind(job.id),
+    ]);
+    const keys = await generateKeyPair('RS256', { extractable: true });
+    const config = {
+      appId: '123',
+      installationId: '456',
+      privateKey: await exportPKCS8(keys.privateKey),
+    };
+    let completed = false;
+    let wrongIdentity = false;
+    let rejectCancel = false;
+    const run = () => ({
+      id: 12345,
+      run_attempt: 1,
+      status: completed ? 'completed' : 'in_progress',
+      conclusion: completed ? 'cancelled' : null,
+      head_sha: 'b'.repeat(40),
+      head_branch: 'main',
+      event: 'repository_dispatch',
+      path: '.github/workflows/publish-candidate.yml',
+      display_title: `${target === 'staging' ? 'Publish Staging candidate' : 'Publish accepted public candidate'} ${wrongIdentity ? crypto.randomUUID() : job.id}`,
+      created_at: new Date().toISOString(),
+      repository: {
+        id: Number(destination.id),
+        full_name: `PointCommunity/${destination.repository}`,
+      },
+    });
+    const fetcher = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      if ((url instanceof Request ? url.url : url.toString()).endsWith('/access_tokens'))
+        return Response.json({ token: 'fixture-installation-token', expires_at: 'fixture' });
+      if ((url instanceof Request ? url.url : url.toString()).endsWith('/permission'))
+        return Response.json({ permission: 'admin', user: { id: 12345 } });
+      if ((url instanceof Request ? url.url : url.toString()).endsWith('/cancel')) {
+        expect(init?.method).toBe('POST');
+        expect(
+          await database
+            .prepare('SELECT status FROM publish_jobs WHERE id=?')
+            .bind(job.id)
+            .first('status'),
+        ).toBe('cancelled');
+        return new Response(null, { status: rejectCancel ? 403 : 202 });
+      }
+      return Response.json(
+        (url instanceof Request ? url.url : url.toString()).includes('?')
+          ? { total_count: 1, workflow_runs: [run()] }
+          : run(),
+      );
+    });
+    const input = {
+      jobId: job.id,
+      action: 'cancel' as const,
+      expectedAttempts: 1,
+      actor: subject,
+      idempotencyKey: 'native-cancel-request',
+      requestId: 'cancel',
+    };
+    await database
+      .prepare("UPDATE publication_runs SET deploy_authorized_at='fixture' WHERE job_id=?")
+      .bind(job.id)
+      .run();
+    await expect(
+      recoverQueuedPublication(database, input, fetcher, undefined, config),
+    ).rejects.toThrow('PUBLICATION_RECOVERY_CHANGED');
+    expect(fetcher).not.toHaveBeenCalled();
+    await database
+      .prepare('UPDATE publication_runs SET deploy_authorized_at=NULL WHERE job_id=?')
+      .bind(job.id)
+      .run();
+    expect(await store.dispatchStatus(job.id)).toMatchObject({ canCancel: true });
+    await recoverQueuedPublication(database, input, fetcher, undefined, config);
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        (url instanceof Request ? url.url : url.toString()).endsWith('/cancel'),
+      ),
+    ).toHaveLength(1);
+    expect(await store.dispatchStatus(job.id)).toMatchObject({
+      cancelling: true,
+      canRetryCaptured: false,
+    });
+    expect(
+      await database
+        .prepare('SELECT job_id FROM publication_slots WHERE job_id=?')
+        .bind(job.id)
+        .first('job_id'),
+    ).toBe(job.id);
+    const resume = async () => {
+      await database
+        .prepare("UPDATE publication_runs SET dispatch_after='2000-01-01T00:00:00Z' WHERE job_id=?")
+        .bind(job.id)
+        .run();
+      await dispatchPendingPublication(database, config, fetcher, true);
+    };
+    wrongIdentity = true;
+    await resume();
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        (url instanceof Request ? url.url : url.toString()).endsWith('/cancel'),
+      ),
+    ).toHaveLength(1);
+    expect(await store.dispatchStatus(job.id)).toMatchObject({
+      cancelling: true,
+      cancellationError: 'PUBLICATION_CANCELLATION_UNCONFIRMED',
+    });
+    wrongIdentity = false;
+    rejectCancel = true;
+    await resume();
+    expect(await store.dispatchStatus(job.id)).toMatchObject({ cancelling: true });
+    completed = true;
+    await resume();
+    expect(
+      await database
+        .prepare('SELECT job_id FROM publication_slots WHERE job_id=?')
+        .bind(job.id)
+        .first(),
+    ).toBeNull();
+    await recoverQueuedPublication(database, input, fetcher, undefined, config);
+    expect(
+      await database
+        .prepare("SELECT COUNT(*) n FROM audit_events WHERE action='publish.cancel-requested'")
+        .first('n'),
+    ).toBe(1);
+  },
+);
 
 const actor = 'editor@pointatx.org';
 const png = new Uint8Array(
@@ -264,6 +439,101 @@ afterEach(async () => {
   await miniflare?.dispose();
   miniflare = undefined;
   vi.restoreAllMocks();
+});
+
+it('surfaces unreserved zero-job failure without changing authority and hides stale captured retry', async () => {
+  const { database, repository, createInput } = await fixture();
+  const subject = 'github:12345';
+  await database
+    .prepare(
+      "INSERT INTO user_roles(email,github_login,role,active,created_at,updated_at,updated_by) VALUES (?,'fixture-publisher','publisher',1,'fixture','fixture','fixture')",
+    )
+    .bind(subject)
+    .run();
+  const draft = await repository.createDraft({ ...createInput, actor: subject });
+  const store = new D1PublishJobStore(database);
+  const job = await store.captureStaging({
+    draft,
+    actor: subject,
+    workflowRevision: 'a'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    idempotencyKey: 'status-startup-failure-84',
+    requestId: 'fixture',
+  });
+  const current = { baseSha: 'b'.repeat(40), workflowRevision: 'a'.repeat(40) };
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    startUnconfirmed: true,
+    needsAttention: false,
+  });
+  await database
+    .prepare("UPDATE publish_jobs SET requested_at='2026-01-01T00:00:00Z' WHERE id=?")
+    .bind(job.id)
+    .run();
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    startUnconfirmed: true,
+    needsAttention: true,
+  });
+  await database
+    .prepare('UPDATE publication_runs SET dispatch_count=1 WHERE job_id=?')
+    .bind(job.id)
+    .run();
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          (url instanceof Request ? url.url : url.toString()).includes('/jobs?')
+            ? { total_count: 0, jobs: [] }
+            : {
+                total_count: 1,
+                workflow_runs: [
+                  {
+                    id: 123,
+                    run_attempt: 1,
+                    status: 'completed',
+                    conclusion: 'startup_failure',
+                    head_sha: 'b'.repeat(40),
+                    head_branch: 'main',
+                    event: 'repository_dispatch',
+                    path: '.github/workflows/publish-candidate.yml',
+                    display_title: `Publish Staging candidate ${job.id}`,
+                    created_at: new Date().toISOString(),
+                    repository: { id: 1357847426, full_name: 'PointCommunity/pointsite-staging' },
+                  },
+                ],
+              },
+        ),
+      ),
+    ),
+  );
+  expect(await store.dispatchStatus(job.id, true, current)).toMatchObject({
+    needsAttention: true,
+    reserved: false,
+    actions: { run: { conclusion: 'startup_failure' }, jobs: [] },
+  });
+  expect((await store.getById(job.id))?.status).toBe('queued');
+  expect(
+    await database
+      .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")
+      .first('job_id'),
+  ).toBe(job.id);
+  await store.recoverQueued({
+    jobId: job.id,
+    action: 'cancel',
+    expectedAttempts: 1,
+    actor: subject,
+    idempotencyKey: 'status-startup-cancel-84',
+    requestId: 'fixture',
+  });
+  expect(await store.dispatchStatus(job.id, false, current)).toMatchObject({
+    canRetryCaptured: false,
+    cancelling: true,
+  });
+  const stale = await store.dispatchStatus(job.id, false, { ...current, baseSha: 'c'.repeat(40) });
+  expect(stale?.canRetryCaptured).toBe(false);
+  expect(stale?.cancelling).toBe(true);
+  expect(
+    await database.prepare("SELECT job_id FROM publication_slots WHERE target='staging'").first(),
+  ).toMatchObject({ job_id: job.id });
 });
 
 it.each(['staging', 'production'] as const)(
@@ -1268,6 +1538,38 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
     recoverQueuedPublication(database, cancel),
   ]);
   expect((await new D1PublishJobStore(database).getById(job.id))?.status).toBe('cancelled');
+  expect(await new D1PublishJobStore(database).cloudAvailability()).toEqual({
+    state: 'busy',
+    phase: 'recovery',
+  });
+  const terminal = {
+    id: 12345,
+    run_attempt: 1,
+    status: 'completed',
+    conclusion: 'cancelled',
+    head_sha: 'b'.repeat(40),
+    head_branch: 'main',
+    event: 'repository_dispatch',
+    path: '.github/workflows/publish-candidate.yml',
+    display_title: `Publish Staging candidate ${job.id}`,
+    created_at: new Date().toISOString(),
+    repository: { id: 1357847426, full_name: 'PointCommunity/pointsite-staging' },
+  };
+  const cancellationFetch: typeof fetch = (url, init) =>
+    (url instanceof Request ? url.url : url.toString()).includes('/actions/runs')
+      ? Promise.resolve(
+          Response.json(
+            (url instanceof Request ? url.url : url.toString()).includes('?')
+              ? { total_count: 1, workflow_runs: [terminal] }
+              : terminal,
+          ),
+        )
+      : fetcher(url, init);
+  await database
+    .prepare("UPDATE publication_runs SET dispatch_after='2000-01-01T00:00:00Z' WHERE job_id=?")
+    .bind(job.id)
+    .run();
+  await dispatchPendingPublication(database, config, cancellationFetch);
   expect(await new D1PublishJobStore(database).cloudAvailability()).toEqual({ state: 'available' });
   const runner = new D1PublicationRunner(database, () => Promise.resolve(keys.publicKey));
   const signed = (id: string, jobNonce: string) =>
@@ -1313,11 +1615,12 @@ it('dispatches one captured job with scoped credentials, fresh permission, bound
     runner.reserve(next.id, await signed(next.id, nextNonce!)),
     recoverQueuedPublication(database, nextCancel),
   ]);
-  expect(race.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+  expect(race[1].status).toBe('fulfilled');
+  await expect(runner.reserve(next.id, await signed(next.id, nextNonce!))).rejects.toThrow(
+    'PUBLISH_RUNNER_UNAUTHORIZED',
+  );
   if (race[0].status === 'fulfilled') {
-    await expect(recoverQueuedPublication(database, nextCancel)).rejects.toThrow(
-      'PUBLICATION_RECOVERY_CHANGED',
-    );
+    await recoverQueuedPublication(database, nextCancel);
     expect(
       await database
         .prepare("SELECT job_id FROM publication_slots WHERE target='staging'")

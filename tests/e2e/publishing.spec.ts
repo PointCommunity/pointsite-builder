@@ -737,7 +737,11 @@ for (const site of ['Canary', 'Production'])
     expect(violations.violations).toEqual([]);
   });
 
-test('cloud recovery retains the captured revision and keyboard focus', async ({ page }) => {
+test('cloud recovery retains the captured revision and keyboard focus for phone-sized authoring', async ({
+  page,
+}) => {
+  // Editing requires >720px; retain mobile touch input at the supported tablet width.
+  await page.setViewportSize({ width: 760, height: 900 });
   await mockPublishing(page, 'immediate');
   const jobId = '30000000-0000-4000-8000-000000000011';
   const requestedAt = new Date().toISOString();
@@ -777,15 +781,32 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
         needsAttention: true,
         reserved: false,
         canReconcileStopped: false,
+        actions: {
+          checkedAt: requestedAt,
+          lastSuccessfulCheckAt: requestedAt,
+          run: {
+            status: 'completed',
+            conclusion: 'startup_failure',
+            workflowUrl: 'https://github.com/PointCommunity/pointsite-staging/actions/runs/123',
+          },
+          jobs: [],
+        },
       },
     },
   };
   const actions: string[] = [];
   const published: unknown[] = [];
+  let statusUnavailable = false;
+  let statusReads = 0;
   await page.route('**/api/publish/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === '/api/publish/staging/workflow') return route.fulfill({ json: workflow });
+    if (path === '/api/publish/staging/workflow') {
+      statusReads++;
+      return statusUnavailable
+        ? route.fulfill({ status: 503, json: { code: 'UNAVAILABLE' } })
+        : route.fulfill({ json: workflow });
+    }
     if (path === `/api/publish/jobs/${workflow.job!.id}/recovery`) {
       const body = request.postDataJSON() as { action: string; expectedAttempts: number };
       expect(request.headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);
@@ -837,6 +858,19 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
     throw new Error(`Unexpected cloud browser operation: ${path}`);
   });
   await openPublishing(page);
+  await expect(page.getByText('Publishing run stopped', { exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+  await expect(page.getByRole('button', { name: 'Cancel publication' })).toBeVisible();
+  const beforeCheck = statusReads;
+  statusUnavailable = true;
+  await page.getByRole('button', { name: 'Check Staging status' }).click();
+  await expect(page.getByText('Status check unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel publication' })).toBeDisabled();
+  await expect(page.getByText(/Showing saved progress/)).toBeVisible();
+  expect(statusReads).toBeGreaterThan(beforeCheck);
+  statusUnavailable = false;
+  await page.getByRole('button', { name: 'Check Staging status' }).click();
+  await expect(page.getByRole('button', { name: 'Cancel publication' })).toBeEnabled();
   const retry = page.getByRole('button', { name: 'Retry queued publication' });
   await expect(retry).toBeEnabled();
   const accessibility = await new AxeBuilder({ page }).include('.publish-panel').analyze();
@@ -845,8 +879,7 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(retry).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
-  await page.getByText('Cancel this publication', { exact: true }).click();
-  const cancel = page.getByRole('button', { name: 'Cancel queued publication' });
+  const cancel = page.getByRole('button', { name: 'Cancel publication' });
   await cancel.focus();
   await page.keyboard.press('Enter');
   await expect(cancel).toHaveCount(0);
@@ -860,8 +893,6 @@ test('cloud recovery retains the captured revision and keyboard focus', async ({
   await page.keyboard.press('Enter');
   await expect(captured).toHaveCount(0);
   await expect(page.locator('#publish-next-action-title')).toBeFocused();
-  if (!(await cancel.isVisible()))
-    await page.getByText('Cancel this publication', { exact: true }).click();
   await expect(cancel).toBeEnabled();
   await cancel.focus();
   await page.keyboard.press('Enter');

@@ -87,7 +87,7 @@ export class StagingPublisher {
         await this.assertCloudRuntime(client, baseSha);
       });
     }
-    return this.jobs.recoverQueued(input);
+    return this.jobs.recoverQueued(input, this.config);
   }
 
   async workflowForDraft(draftId: string) {
@@ -129,7 +129,12 @@ export class StagingPublisher {
         ? {
             ...this.workflowJob(job, now),
             ...(job.candidate.publicationProtocol === 2
-              ? { dispatch: await this.jobs.dispatchStatus(job.id, true) }
+              ? {
+                  dispatch: await this.jobs.dispatchStatus(job.id, true, {
+                    baseSha: currentStagingSha,
+                    workflowRevision: this.config.workflowRevision!,
+                  }),
+                }
               : {}),
           }
         : null,

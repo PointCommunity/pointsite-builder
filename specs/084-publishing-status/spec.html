@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Issue 84: Accurate publication status</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        background: #101418;
+        color: #e7edf2;
+        font: 16px/1.6 system-ui;
+        max-width: 960px;
+        margin: 3rem auto;
+        padding: 0 2rem;
+      }
+      a {
+        color: #9bd5ff;
+      }
+      code {
+        color: #ffd693;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue 84: Accurate publication status</h1>
+    <p>
+      Specification, research, implementation plan and tasks. Scope follows
+      <a href="https://github.com/PointCommunity/pointsite-builder/issues/84">Issue 84</a>.
+      Baseline: 0d743077a3d459ce5f94886a7c49a3e56b0d4d57.
+    </p>
+    <h2>Evidence and source of truth</h2>
+    <ul>
+      <li>
+        dispatch.ts sends repository_dispatch, receives no run identity, and retries at most six
+        times with durable backoff. runner.ts reserves signed run identity before build, commit and
+        deployment authority. recovery.ts and retry.ts enforce slots, roles, identity, idempotency
+        and captured bases.
+      </li>
+      <li>
+        jobs.ts currently reads provider jobs only after reservation. progress.ts cannot see
+        run-level zero-job failures. PublicationProgress.tsx animates queued jobs. Both publishing
+        views hide manual refresh during normal polling and discard the previous snapshot on read
+        failure.
+      </li>
+      <li>
+        The live caller workflows use exact run titles “Publish Staging candidate &lt;job UUID&gt;”
+        and “Publish accepted public candidate &lt;job UUID&gt;”. GitHub's
+        <a href="https://docs.github.com/en/rest/actions/workflow-runs">workflow run API</a> exposes
+        run status, conclusion, display_title, event, repository, SHA, path and attempt
+        independently from jobs.
+      </li>
+      <li>
+        Durable Builder job state and signed milestones own completion and authority. Diagnostic
+        provider observations never authorize acceptance, deployment, success or slot release.
+        Cancellation separately fences authority and freshly verifies matching terminal native runs
+        before releasing its slot. A correlated stopped provider run overrides apparent progress and
+        offers guarded recovery.
+      </li>
+    </ul>
+    <h2>September 21 PM review: visual progress and native cancellation</h2>
+    <p>
+      PM screenshot and feedback require a progress bar and visual steps in the primary panel. Keep
+      timestamps, provider backoff and diagnostic explanations in the existing collapsed Technical
+      details section. The bar counts confirmed milestones, not elapsed-time estimates; stale or
+      stopped progress remains static. Retain concise status and available actions. When starting a
+      newer version, keep an earlier completed publication in Technical details; do not show its
+      completed bar or captured-version warning as the new publication's progress.
+    </p>
+    <p>
+      Both destinations must allow cancellation through queue, build and preparation, until the
+      runner atomically authorizes deployment. Fence runner authority first by cancelling the
+      captured job, retain its slot while cancellation is pending, then cancel every freshly
+      correlated GitHub run. GitHub's
+      <a href="https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run"
+        >cancel workflow run API</a
+      >
+      requires repository Actions write permission. HTTP 202 acknowledges a request; only a fresh
+      terminal run observation permits releasing the held slot. Unknown identity, provider failure
+      and concurrent deployment fail closed. Scheduled retries keep cancellation durable after the
+      browser closes. No live content cancellation from chat.
+    </p>
+    <ol>
+      <li>
+        Add regressions for milestone rendering, collapsed diagnostics, both cancellation surfaces,
+        native cancellation, authority races, idempotency and pending-slot recovery.
+      </li>
+      <li>
+        Reuse existing recovery receipts, job evidence, runner status guards and scheduled
+        dispatcher; add no database migration or dependency. Request repository-scoped Actions write
+        only for cancellation.
+      </li>
+      <li>
+        Implement shared visual progress and guarded cancellation, run focused tests, then all
+        sequential gates and hands-on browser checks. Publish a new immutable Canary candidate for
+        PM approval.
+      </li>
+    </ol>
+    <p>
+      After explicit PM approval on September 21, the pointsite-builder App and PointCommunity
+      installation both have Actions write, Contents write, Checks read and Metadata read, with
+      existing all-repository selection preserved. Live API verification minted a token restricted
+      to pointsite-staging-canary with Actions write and Contents read, then revoked it. Application
+      cancellation tokens remain restricted to the current destination repository. If this grant
+      becomes unavailable, cancellation fences publication but reports native cancellation as
+      unconfirmed and retains the slot.
+    </p>
+    <h2>Behavior contract</h2>
+    <ol>
+      <li>
+        Read exact recorded run attempts, including run-level outcomes with zero jobs. Before
+        reservation, search one bounded page of repository_dispatch runs at the captured SHA;
+        require exact job UUID title, repository identity, caller path, main branch, event and
+        request time. Ambiguous or missing matches mean unconfirmed, never guessed execution.
+      </li>
+      <li>
+        Show queued, running/building, preparing, deploying, verifying, completed, stopped/cancelled
+        and unavailable status distinctly. Without confirmation, say “Start not confirmed”; after
+        two minutes request attention. Never animate unconfirmed, stale, terminal or unavailable
+        status. Use a static milestone bar and visual steps without invented time percentages.
+      </li>
+      <li>
+        Show last successful Builder check and provider check separately, including provider
+        backoff. Cache/coalesce provider reads for at least sixty seconds and honor rate limits.
+        Poll at ten-second intervals with one read in flight; stop automatic monitoring after a read
+        failure or fifteen minutes of continuous monitoring. Manual check remains available and
+        starts a new bounded monitoring window.
+      </li>
+      <li>
+        Retain the last snapshot on read failure; disable mutations until fresh authority can be
+        read. Ignore reads belonging to a previous draft or unmounted view. Reopening reads durable
+        state. Keep cancellation and supported recovery in the main action area. Explain unavailable
+        retry, stale base, expired authority and post-deployment blockers.
+      </li>
+      <li>
+        Reuse existing cancel, reconcile, retry and verify endpoints. Cancellation before deployment
+        authorization invalidates late runner callbacks atomically. Retry never changes captured
+        inputs or bypasses current base/caller/role/slot checks. Provider observations never become
+        runner reservation credentials.
+      </li>
+      <li>
+        Staging and Production share presentation and diagnostic rules while retaining fixed
+        independent lane identities. Status actions are keyboard/touch accessible; action completion
+        focuses the heading; polite announcements report meaningful state. Reduced motion shows
+        static status.
+      </li>
+    </ol>
+    <h2>Structure, style and boundaries</h2>
+    <p>
+      Use existing strict TypeScript, React hooks, Zod schemas, D1 stores and Vitest/Playwright.
+      Source: src/server/publish and src/client/publish. Tests: tests/unit, tests/integration and
+      tests/e2e. Match existing single quotes and Prettier formatting, for example
+      <code>if (!current) throw new Error('PUBLICATION_RECOVERY_CHANGED');</code>. No new
+      dependency, schema migration, caller workflow change or public content operation is planned.
+      No live publication, cancellation or recovery from chat.
+    </p>
+    <h2>Ordered plan and tasks</h2>
+    <ol>
+      <li>
+        Write failing provider and UI regressions: zero jobs, correlation mismatch/ambiguity, queue,
+        failure, unavailable/rate limit, monitoring retention and visible actions.
+      </li>
+      <li>
+        Extend existing progress reader with validated run metadata, bounded discovery and
+        cache/backoff. Derive diagnostic attention in dispatchStatus without mutating publication
+        authority.
+      </li>
+      <li>
+        Correct shared presentation; preserve snapshots and guard read/action overlap and draft
+        generations in both views. Surface cancellation, check and retry waits. Keep server checks
+        authoritative.
+      </li>
+      <li>
+        Exercise existing recovery integration checks for stale bases, competing requests and late
+        callbacks; add missing cases. Run focused tests, then full sequential QA and hands-on local
+        browser checks.
+      </li>
+      <li>
+        Review final diff, commit/push, create PR with Refs #84, verify exact-head Quality, deploy
+        immutable Canary and verify. Obtain exact Canary approval before merge/Production.
+        Production completion remains a separate PM gate.
+      </li>
+    </ol>
+    <h2>Verification commands and acceptance</h2>
+    <p>
+      <code
+        >npm test -- tests/unit/publication-progress.test.ts
+        tests/unit/staging-publish.test.tsx</code
+      >; affected recovery integration and Production tests; <code>npm run check</code>, then
+      <code>npm run test:performance</code>, then <code>npm run test:e2e</code>,
+      <code>npm audit --audit-level=high</code>, <code>git diff --check</code>. Vitest four workers;
+      Playwright two. Run local-qa cleanup after stopping task-owned servers. Record actual results
+      and distinguish fixtures from authenticated evidence in the PR.
+    </p>
+    <p>
+      Acceptance maps Issue criteria 1–2 to provider and presentation tests, 3 and 6 to monitoring
+      tests, 4–5 to recovery tests, 7 to browser/accessibility checks, and 8 to the reproduced
+      unreserved queued fixture plus honestly scoped live evidence. No product clarification is
+      outstanding; the selected Issue defines the required behavior and gates.
+    </p>
+  </body>
+</html>

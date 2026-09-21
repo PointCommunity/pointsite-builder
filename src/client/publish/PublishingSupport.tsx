@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { supportJson } from '../../shared/publication-support';
 import { ClientApiError } from '../api';
+import { PublicationDiagnostics, type ProgressProps } from './PublicationProgress';
 
 const SupportContext = createContext<{
   records: Record<string, string>;
@@ -120,6 +121,9 @@ export function PublishingDetails() {
       {Object.entries(records).map(([name, value]) => (
         <section key={name}>
           <h4>{name}</h4>
+          {(JSON.parse(value) as { kind?: string })?.kind === 'progress' ? (
+            <PublicationDiagnostics {...(JSON.parse(value) as ProgressProps)} />
+          ) : null}
           <pre tabIndex={0} aria-label={`${name} technical details`}>
             {value}
           </pre>

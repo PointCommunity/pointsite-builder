@@ -46,7 +46,7 @@ const queued: ProductionWorkflowSnapshot = {
     completedAt: null,
     evidence: {},
     dispatch: {
-      attempts: 3,
+      attempts: 6,
       needsAttention: true,
       reserved: false,
       retryAt: '2026-09-13T00:00:00Z',
@@ -57,6 +57,27 @@ const queued: ProductionWorkflowSnapshot = {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+it('keeps checking and cancellation visible during polling and retains Production on read failure', async () => {
+  const active = structuredClone(queued);
+  if (!active.enabled || !active.job?.dispatch) throw new Error('fixture');
+  active.job.dispatch.needsAttention = false;
+  active.job.dispatch.attempts = 1;
+  const read = vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(active);
+  render(<ProductionPublish draftId="draft" approval={null} />);
+  const check = await screen.findByRole('button', { name: 'Check Site Production status' });
+  expect(screen.getByRole('button', { name: 'Cancel Site Production publication' })).toBeVisible();
+  read.mockRejectedValueOnce(new Error('offline'));
+  fireEvent.click(check);
+  await screen.findByText('Status check unavailable');
+  expect(screen.getByRole('button', { name: 'Cancel Site Production publication' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Cancel Site Production publication' }),
+    ).toBeEnabled(),
+  );
 });
 
 it('names the public Canary destination on both publish and rollback controls', async () => {
@@ -89,6 +110,35 @@ it('names the public Canary destination on both publish and rollback controls', 
   expect(screen.queryByText(/Site Production/)).toBeNull();
 });
 
+it.each(['building', 'preparing', 'deploying'])(
+  'keeps Production cancellation until deployment authorization: %s',
+  async (stage) => {
+    const running = structuredClone(queued);
+    if (!running.enabled || !running.job?.dispatch) throw new Error('fixture');
+    running.job.status = 'running';
+    Object.assign(running.job.dispatch, {
+      reserved: true,
+      stage,
+      canCancel: stage !== 'deploying',
+      needsAttention: false,
+    });
+    vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(running);
+    const recover = vi.spyOn(api, 'recoverProduction').mockResolvedValue({ recovered: true });
+    render(<ProductionPublish draftId="draft" approval={null} />);
+    await screen.findByRole('progressbar');
+    if (stage === 'deploying')
+      expect(
+        screen.queryByRole('button', { name: 'Cancel Site Production publication' }),
+      ).toBeNull();
+    else {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel Site Production publication' }));
+      await waitFor(() =>
+        expect(recover).toHaveBeenCalledWith('production', 'cancel', 6, expect.any(String)),
+      );
+    }
+  },
+);
+
 it('requires matching artifact evidence before describing a completed publication as verified', async () => {
   const completed = structuredClone(queued);
   if (!completed.enabled || !completed.job) throw new Error('fixture');
@@ -110,6 +160,23 @@ it('requires matching artifact evidence before describing a completed publicatio
   fireEvent.click(screen.getByRole('button', { name: 'Check Site Production status' }));
   expect(await screen.findByText('Publication completed and verified.')).toBeVisible();
   expect(publish).not.toHaveBeenCalled();
+});
+
+it('keeps earlier completed progress out of a newly accepted publication', async () => {
+  const completed = structuredClone(queued);
+  if (!completed.enabled || !completed.job) throw new Error('fixture');
+  completed.busy = false;
+  completed.job.status = 'succeeded';
+  completed.job.dispatch = undefined;
+  completed.job.evidence = {
+    verificationStatus: 'passed',
+    artifactDigest: completed.job.artifactDigest,
+  };
+  vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(completed);
+  render(<ProductionPublish draftId="draft" approval={{ ...approval, id: 'new-acceptance' }} />);
+  expect(await screen.findByRole('button', { name: 'Publish to Site Production' })).toBeVisible();
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByText('Publication completed')).toBeNull();
 });
 
 it('fails closed for disabled, unreadable and occupied Production state', async () => {
@@ -179,7 +246,7 @@ it('reopens saved progress and preserves recovery identity across lost replies',
   );
   fireEvent.click(screen.getByRole('button', { name: 'Retry queued publication' }));
   await waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
-  expect(recover.mock.calls[0]).toEqual(['production', 'retry', 3, expect.any(String)]);
+  expect(recover.mock.calls[0]).toEqual(['production', 'retry', 6, expect.any(String)]);
   expect(recover.mock.calls[1]).toEqual(recover.mock.calls[0]);
 });
 

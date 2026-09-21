@@ -1,6 +1,7 @@
 /** Export operational evidence only. Drafts, identities and credentials never belong in support. */
 const fields = new Set(
-  `id status code message requestId error phase stage checkedAt unavailable
+  `id status code message requestId error phase stage checkedAt unavailable lastSuccessfulCheckAt
+  run startUnconfirmed unconfirmed canRetryQueued retryBlocker kind stale paused canCancel cancelling cancellationError
   failureCode workflowUrl deploymentUrl commitUrl origin repository enabled busy destination
   draftId revisionId revisionChecksum sequence checksum candidateChecksum schemaVersion rendererVersion
   stagingBaseSha stagingCommitSha baseSha commitSha currentStagingSha requestedAt completedAt

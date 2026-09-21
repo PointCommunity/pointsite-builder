@@ -7,7 +7,7 @@ import {
   type ActionFailureGuidance,
   type PublishingRole,
 } from './guidance';
-import { deriveStagingWorkflow, type StagingWorkflowSnapshot } from './workflow';
+import { deriveStagingWorkflow } from './workflow';
 import { ProductionPublish } from './ProductionPublish';
 import { PublicationVerification } from './PublicationVerification';
 import { Question } from '@phosphor-icons/react';
@@ -19,6 +19,7 @@ import {
   usePublishingSupport,
 } from './PublishingSupport';
 import { PublicationProgress } from './PublicationProgress';
+import { usePublicationStatus } from './usePublicationStatus';
 
 const POLL_INTERVAL_MS = 10_000;
 const steps = [
@@ -59,40 +60,31 @@ export function StagingPublish({ role }: { role: PublishingRole }) {
 
 function StagingPublishingFlow({ role }: { role: PublishingRole }) {
   const { draft, saveState } = useEditor();
-  const [snapshot, setSnapshot] = useState<StagingWorkflowSnapshot | null | undefined>(undefined);
+  const readWorkflow = useCallback(() => api.getStagingWorkflow(draft.id), [draft.id]);
+  const status = usePublicationStatus(draft.id, readWorkflow);
+  const { snapshot, load: loadWorkflow } = status;
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [monitoringPaused, setMonitoringPaused] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [acting, setBusy] = useState(false);
+  const actionInFlight = useRef(false);
+  const busy = acting || status.checking;
   const [actionError, setActionError] = useState<DisplayActionFailure | null>(null);
   const publishRequest = useRef<{ scope: string; key: string } | null>(null);
   const recoveryRequest = useRef<{ scope: string; key: string } | null>(null);
   const nextActionHeading = useRef<HTMLHeadingElement>(null);
 
-  const loadWorkflow = useCallback(async () => {
-    try {
-      const restored = await api.getStagingWorkflow(draft.id);
-      setSnapshot(restored);
-      return restored;
-    } catch (error) {
-      setSnapshot(null);
-      setActionError(actionFailure(error));
-      return null;
-    }
-  }, [draft.id]);
   const refreshVerification = useCallback(
     async (focus = false) => {
-      await loadWorkflow();
+      await loadWorkflow(true);
       if (focus) nextActionHeading.current?.focus();
     },
     [loadWorkflow],
   );
 
   useEffect(() => {
-    setSnapshot(undefined);
     setMonitoringPaused(false);
     setActionError(null);
-    void loadWorkflow();
   }, [draft.revision.id, draft.revision.checksum, loadWorkflow]);
 
   const lifecycle = useMemo(
@@ -101,53 +93,61 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
         revisionId: draft.revision.id,
         revisionChecksum: draft.revision.checksum,
         snapshot,
-        monitoringPaused,
+        monitoringPaused: monitoringPaused || status.paused,
       }),
-    [draft.revision.checksum, draft.revision.id, monitoringPaused, snapshot],
+    [draft.revision.checksum, draft.revision.id, monitoringPaused, snapshot, status.paused],
   );
   const nextStep = getPublishingNextStep(lifecycle, role, draft.revision.sequence);
-  const refresh = useCallback(async () => {
-    setBusy(true);
-    setActionError(null);
-    try {
-      const currentJob = snapshot?.job;
-      if (
-        currentJob?.publicationProtocol !== 2 &&
-        (currentJob?.status === 'running' || currentJob?.status === 'queued')
-      )
-        await api.continueStagingPublication(currentJob.id);
-      if (
-        currentJob?.publicationProtocol !== 2 &&
-        lifecycle.phase !== 'waiting' &&
-        currentJob?.status === 'succeeded' &&
-        currentJob.evidence.verificationStatus !== 'passed'
-      )
-        await api.refreshStagingVerification(currentJob.id);
-      const restored = await loadWorkflow();
-      setMonitoringPaused(!restored);
-    } catch (error) {
-      setActionError(actionFailure(error));
-      setMonitoringPaused(true);
-    } finally {
-      setBusy(false);
-    }
-  }, [lifecycle.phase, loadWorkflow, snapshot?.job]);
+  const refresh = useCallback(
+    async (manual = false) => {
+      if (actionInFlight.current || status.checking) return;
+      actionInFlight.current = true;
+      setBusy(true);
+      setActionError(null);
+      try {
+        const currentJob = snapshot?.job;
+        if (
+          currentJob?.publicationProtocol !== 2 &&
+          (currentJob?.status === 'running' || currentJob?.status === 'queued')
+        )
+          await api.continueStagingPublication(currentJob.id);
+        if (
+          currentJob?.publicationProtocol !== 2 &&
+          lifecycle.phase !== 'waiting' &&
+          currentJob?.status === 'succeeded' &&
+          currentJob.evidence.verificationStatus !== 'passed'
+        )
+          await api.refreshStagingVerification(currentJob.id);
+        const restored = await loadWorkflow(manual);
+        setMonitoringPaused(!restored);
+        if (manual) nextActionHeading.current?.focus();
+      } catch (error) {
+        setActionError(actionFailure(error));
+        setMonitoringPaused(true);
+      } finally {
+        setBusy(false);
+        actionInFlight.current = false;
+      }
+    },
+    [lifecycle.phase, loadWorkflow, snapshot?.job, status.checking],
+  );
 
   useEffect(() => {
-    if (!lifecycle.shouldPoll || busy) return;
+    if (!lifecycle.shouldPoll || busy || status.paused) return;
     const timer = window.setTimeout(() => void refresh(), POLL_INTERVAL_MS);
     return () => window.clearTimeout(timer);
-  }, [busy, lifecycle.shouldPoll, refresh]);
+  }, [busy, lifecycle.shouldPoll, refresh, status.paused]);
 
   const publish = async () => {
-    if (!snapshot) return;
+    if (!snapshot || busy || status.stale || actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
     setActionError(null);
     try {
       let current = snapshot;
       if (current.preflight.state !== 'passed') {
         await api.preflightStaging(draft.id, draft.revision.id, draft.revision.checksum);
-        const refreshed = await loadWorkflow();
+        const refreshed = await loadWorkflow(true);
         if (!refreshed) return;
         current = refreshed;
       }
@@ -171,25 +171,28 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
       );
       publishRequest.current = null;
       setMonitoringPaused(false);
-      await loadWorkflow();
+      await loadWorkflow(true);
       nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
-      await loadWorkflow();
+      await loadWorkflow(true);
     } finally {
       setBusy(false);
+      actionInFlight.current = false;
     }
   };
 
   const recoverQueued = async (
     action: 'retry' | 'cancel' | 'reconcile' | 'retry-captured' | 'verify-completed',
   ) => {
+    if (busy || status.stale || actionInFlight.current) return;
     const job = snapshot?.job;
     if (
       !job ||
       job.publicationProtocol !== 2 ||
       !job.dispatch ||
       !(
+        (action === 'cancel' && job.dispatch.canCancel === true) ||
         (job.status === 'queued' && job.dispatch.reserved === false) ||
         (action === 'reconcile' && job.dispatch.canReconcileStopped === true) ||
         (action === 'retry-captured' && job.dispatch.canRetryCaptured === true) ||
@@ -197,6 +200,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
       )
     )
       return;
+    actionInFlight.current = true;
     const scope = JSON.stringify([job.id, action, job.dispatch.attempts, job.dispatch.retryAt]);
     if (recoveryRequest.current?.scope !== scope)
       recoveryRequest.current = { scope, key: crypto.randomUUID() };
@@ -211,19 +215,22 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
       );
       recoveryRequest.current = null;
       setMonitoringPaused(false);
-      await loadWorkflow();
+      await loadWorkflow(true);
       nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
-      await loadWorkflow();
+      await loadWorkflow(true);
     } finally {
       setBusy(false);
+      actionInFlight.current = false;
     }
   };
 
   const accept = async () => {
+    if (busy || status.stale || actionInFlight.current) return;
     const currentJob = snapshot?.job;
     if (!currentJob?.stagingCommitSha) return;
+    actionInFlight.current = true;
     setBusy(true);
     setActionError(null);
     try {
@@ -254,43 +261,48 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           snapshot?.approval?.id ?? null,
         );
       else await api.acceptStaging(currentJob.id, tuple, 'Protected Staging reviewed in Builder');
-      await loadWorkflow();
+      await loadWorkflow(true);
       nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
-      await loadWorkflow();
+      await loadWorkflow(true);
     } finally {
       setBusy(false);
+      actionInFlight.current = false;
     }
   };
 
   const revoke = async () => {
+    if (busy || status.stale || actionInFlight.current) return;
     const approval = snapshot?.approval;
     if (!approval?.tuple || approval.decision !== 'approved') return;
+    actionInFlight.current = true;
     setBusy(true);
     setActionError(null);
     try {
       await api.revokeStaging(approval.publishJobId, approval.tuple, approval.id);
-      await loadWorkflow();
+      await loadWorkflow(true);
       nextActionHeading.current?.focus();
     } catch (error) {
       setActionError(actionFailure(error));
-      await loadWorkflow();
+      await loadWorkflow(true);
     } finally {
       setBusy(false);
+      actionInFlight.current = false;
     }
   };
 
   const job = snapshot?.job;
   const dispatch = job?.dispatch;
   const accepted = lifecycle.phase === 'accepted';
+  const previousPublication = job?.status === 'succeeded' && lifecycle.canPublish;
   const canRevoke =
     snapshot?.approval?.decision === 'approved' &&
     job?.publicationProtocol === 2 &&
     Boolean(snapshot.approval.tuple);
   const verified = job?.status === 'succeeded' && job.evidence.verificationStatus === 'passed';
   const failed =
-    Boolean(actionError) ||
+    Boolean(actionError || status.error) ||
     (!verified &&
       (lifecycle.phase === 'failed' ||
         Boolean(dispatch?.needsAttention) ||
@@ -299,7 +311,11 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
             (job) => job.conclusion && !['success', 'skipped', 'neutral'].includes(job.conclusion),
           ),
         )));
-  const showRecovery = failed || !dispatch?.actions || Boolean(dispatch.actions.unavailable);
+  const showRecovery =
+    failed ||
+    !dispatch?.actions ||
+    Boolean(dispatch.actions.unavailable) ||
+    dispatch.actions.run?.status === 'completed';
   usePublishingSupport('Staging', {
     draftId: draft.id,
     revisionId: draft.revision.id,
@@ -368,11 +384,13 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           </ol>
           <section className="publish-next-action" aria-labelledby="publish-next-action-title">
             <h3 id="publish-next-action-title" ref={nextActionHeading} tabIndex={-1}>
-              {failed
-                ? 'Staging needs attention'
-                : lifecycle.phase === 'publishing'
-                  ? 'Publishing to Staging'
-                  : nextStep.title}
+              {dispatch?.cancelling
+                ? 'Cancelling Staging publication'
+                : failed
+                  ? 'Staging needs attention'
+                  : lifecycle.phase === 'publishing'
+                    ? 'Publishing to Staging'
+                    : nextStep.title}
             </h3>
             <p>
               {failed
@@ -387,13 +405,21 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                         ? 'Progress updates automatically. You can close this window and return later.'
                         : nextStep.guidance}
             </p>
-            {job?.publicationProtocol === 2 && job.revisionId !== draft.revision.id ? (
+            {!previousPublication &&
+            job?.publicationProtocol === 2 &&
+            job.revisionId !== draft.revision.id ? (
               <p>
                 <strong>Newer draft edits are not included.</strong> This publication uses the saved
                 version captured when it started.
               </p>
             ) : null}
-            <PublicationProgress job={job} />
+            <PublicationProgress
+              hidden={previousPublication}
+              job={job}
+              checkedAt={status.checkedAt}
+              stale={status.stale}
+              paused={status.paused || monitoringPaused}
+            />
             {lifecycle.phase === 'review-ready' ? (
               <div className="publish-actions">
                 <a className="button" href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
@@ -402,10 +428,18 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                 <button
                   className="button button--primary"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || status.stale}
                   onClick={() => void accept()}
                 >
                   {busy ? 'Accepting…' : 'Accept this Staging version'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void refresh(true)}
+                >
+                  Check Staging status
                 </button>
               </div>
             ) : (
@@ -414,29 +448,32 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                   <button
                     className="button button--primary"
                     type="button"
-                    disabled={busy || saveState !== 'saved'}
+                    disabled={busy || status.stale || saveState !== 'saved'}
                     onClick={() => void publish()}
                   >
                     {busy ? 'Starting publication…' : 'Publish to Staging'}
                   </button>
                 ) : null}
-                {lifecycle.canRefresh && !lifecycle.shouldPoll ? (
+                {lifecycle.canRefresh ? (
                   <button
                     className="button"
                     type="button"
                     disabled={busy}
-                    onClick={() => void refresh()}
+                    onClick={() => void refresh(true)}
                   >
                     {busy ? 'Checking…' : 'Check Staging status'}
                   </button>
                 ) : null}
               </div>
             )}
-            {job?.status === 'queued' && dispatch?.reserved === false && dispatch.needsAttention ? (
+            {job?.status === 'queued' &&
+            dispatch?.reserved === false &&
+            (dispatch.canRetryQueued ?? dispatch.attempts >= 6) &&
+            dispatch.failureCode !== 'PUBLISH_BASE_CHANGED' ? (
               <button
                 className="button"
                 type="button"
-                disabled={busy || Date.parse(dispatch.retryAt) > Date.now()}
+                disabled={busy || status.stale || !(Date.parse(dispatch.retryAt) <= Date.now())}
                 onClick={() => void recoverQueued('retry')}
               >
                 Retry queued publication
@@ -446,7 +483,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
               <button
                 className="button"
                 type="button"
-                disabled={busy}
+                disabled={busy || status.stale}
                 onClick={() => void recoverQueued('reconcile')}
               >
                 Recover stopped publication
@@ -456,7 +493,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
               <button
                 className="button"
                 type="button"
-                disabled={busy}
+                disabled={busy || status.stale}
                 onClick={() => void recoverQueued('retry-captured')}
               >
                 Retry captured candidate
@@ -466,7 +503,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
               <button
                 className="button"
                 type="button"
-                disabled={busy}
+                disabled={busy || status.stale}
                 onClick={() => void recoverQueued('verify-completed')}
               >
                 Verify completed deployment
@@ -478,7 +515,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                 target="staging"
                 jobId={job.id}
                 dispatchAttempts={dispatch.attempts}
-                disabled={busy}
+                disabled={busy || status.stale}
                 onRefresh={refreshVerification}
               />
             ) : null}
@@ -486,6 +523,34 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
               <p role="alert">
                 {actionError.title}. {actionError.guidance}
               </p>
+            ) : null}
+            {status.error ? (
+              <p role="alert">
+                Status could not be checked. The last known publication is saved. Check status to
+                try again.
+              </p>
+            ) : null}
+            {dispatch?.canCancel ||
+            (job?.status === 'queued' &&
+              dispatch?.reserved === false &&
+              dispatch.canCancel === undefined) ? (
+              <div className="publish-danger">
+                <p>Cancellation is available until publishing starts. Your draft stays saved.</p>
+                <button
+                  className="button button--danger"
+                  type="button"
+                  disabled={
+                    busy || status.stale || (dispatch?.cancelling && !dispatch.cancellationError)
+                  }
+                  onClick={() => void recoverQueued('cancel')}
+                >
+                  {dispatch?.cancelling
+                    ? dispatch.cancellationError
+                      ? 'Retry cancellation'
+                      : 'Cancelling publication…'
+                    : 'Cancel publication'}
+                </button>
+              </div>
             ) : null}
             {failed ? <CopyPublishingDetails /> : null}
           </section>
@@ -495,6 +560,15 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           <h3 ref={nextActionHeading} tabIndex={-1}>
             Staging accepted
           </h3>
+          <PublicationProgress job={job} checkedAt={status.checkedAt} stale={status.stale} />
+          <button
+            className="button"
+            type="button"
+            disabled={busy}
+            onClick={() => void refresh(true)}
+          >
+            Check Staging status
+          </button>
           <a href={snapshot?.reviewUrl} target="_blank" rel="noreferrer">
             Open accepted Staging site
           </a>
@@ -513,7 +587,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           key={draft.id}
           draftId={draft.id}
           stagingOrigin={snapshot?.reviewUrl}
-          stagingReady={accepted && saveState === 'saved'}
+          stagingReady={accepted && !status.stale && saveState === 'saved'}
           approval={
             accepted && snapshot?.job?.id === snapshot?.approval?.publishJobId
               ? (snapshot?.approval ?? null)
@@ -535,20 +609,6 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
           ) : null}
         </>
       )}
-      {job?.status === 'queued' && dispatch?.reserved === false ? (
-        <details className="publish-danger">
-          <summary>Cancel this publication</summary>
-          <p>This stops the queued publication before it starts. Your draft stays saved.</p>
-          <button
-            className="button button--danger"
-            type="button"
-            disabled={busy}
-            onClick={() => void recoverQueued('cancel')}
-          >
-            Cancel queued publication
-          </button>
-        </details>
-      ) : null}
       {helpOpen ? (
         <PublishingDialog title="Publishing help" onClose={() => setHelpOpen(false)}>
           <ol>
