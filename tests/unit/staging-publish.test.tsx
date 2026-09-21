@@ -156,6 +156,27 @@ const queuedCloud: StagingWorkflowSnapshot = {
 };
 
 describe('guided Staging publishing', () => {
+  it('keeps earlier completed progress out of a new publication', async () => {
+    vi.spyOn(api, 'getStagingWorkflow').mockResolvedValue({
+      ...ready,
+      preflight: { state: 'required', reason: 'revision-changed' },
+      job: {
+        ...job,
+        publicationProtocol: 2,
+        revisionId: 'earlier-revision',
+        evidence: { verificationStatus: 'passed' },
+      },
+      approval: accepted.approval,
+    });
+    renderPublish();
+    expect(await screen.findByRole('button', { name: 'Publish to Staging' })).toBeVisible();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByText('Publication completed')).toBeNull();
+    expect(screen.queryByText('Newer draft edits are not included.')).toBeNull();
+    fireEvent.click(screen.getByText('Technical details'));
+    expect(await screen.findByText(/Last successful status check:/)).toBeVisible();
+  });
+
   it('keeps check and cancel visible during polling and preserves a queued job after a read failure', async () => {
     const captured: StagingWorkflowSnapshot = {
       ...ready,

@@ -23,9 +23,10 @@ export function PublicationProgress({
   stale = false,
   paused = false,
   label = 'Staging',
-}: ProgressProps) {
+  hidden = false,
+}: ProgressProps & { hidden?: boolean }) {
   usePublishingSupport(`${label} progress`, { kind: 'progress', job, checkedAt, stale, paused });
-  if (!job) return null;
+  if (!job || hidden) return null;
   const dispatch = job.dispatch;
   const actions = dispatch?.actions;
   const failed = job.dispatch?.actions?.jobs?.some(

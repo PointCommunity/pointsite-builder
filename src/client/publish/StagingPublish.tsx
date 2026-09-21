@@ -295,6 +295,7 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
   const job = snapshot?.job;
   const dispatch = job?.dispatch;
   const accepted = lifecycle.phase === 'accepted';
+  const previousPublication = job?.status === 'succeeded' && lifecycle.canPublish;
   const canRevoke =
     snapshot?.approval?.decision === 'approved' &&
     job?.publicationProtocol === 2 &&
@@ -404,13 +405,16 @@ function StagingPublishingFlow({ role }: { role: PublishingRole }) {
                         ? 'Progress updates automatically. You can close this window and return later.'
                         : nextStep.guidance}
             </p>
-            {job?.publicationProtocol === 2 && job.revisionId !== draft.revision.id ? (
+            {!previousPublication &&
+            job?.publicationProtocol === 2 &&
+            job.revisionId !== draft.revision.id ? (
               <p>
                 <strong>Newer draft edits are not included.</strong> This publication uses the saved
                 version captured when it started.
               </p>
             ) : null}
             <PublicationProgress
+              hidden={previousPublication}
               job={job}
               checkedAt={status.checkedAt}
               stale={status.stale}

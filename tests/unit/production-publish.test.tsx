@@ -162,6 +162,23 @@ it('requires matching artifact evidence before describing a completed publicatio
   expect(publish).not.toHaveBeenCalled();
 });
 
+it('keeps earlier completed progress out of a newly accepted publication', async () => {
+  const completed = structuredClone(queued);
+  if (!completed.enabled || !completed.job) throw new Error('fixture');
+  completed.busy = false;
+  completed.job.status = 'succeeded';
+  completed.job.dispatch = undefined;
+  completed.job.evidence = {
+    verificationStatus: 'passed',
+    artifactDigest: completed.job.artifactDigest,
+  };
+  vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue(completed);
+  render(<ProductionPublish draftId="draft" approval={{ ...approval, id: 'new-acceptance' }} />);
+  expect(await screen.findByRole('button', { name: 'Publish to Site Production' })).toBeVisible();
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByText('Publication completed')).toBeNull();
+});
+
 it('fails closed for disabled, unreadable and occupied Production state', async () => {
   const read = vi.spyOn(api, 'getProductionWorkflow').mockResolvedValue({ enabled: false });
   const view = render(<ProductionPublish draftId="draft" approval={approval} />);

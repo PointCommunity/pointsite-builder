@@ -64,7 +64,9 @@
       PM screenshot and feedback require a progress bar and visual steps in the primary panel. Keep
       timestamps, provider backoff and diagnostic explanations in the existing collapsed Technical
       details section. The bar counts confirmed milestones, not elapsed-time estimates; stale or
-      stopped progress remains static. Retain concise status and available actions.
+      stopped progress remains static. Retain concise status and available actions. When starting a
+      newer version, keep an earlier completed publication in Technical details; do not show its
+      completed bar or captured-version warning as the new publication's progress.
     </p>
     <p>
       Both destinations must allow cancellation through queue, build and preparation, until the
@@ -96,11 +98,12 @@
       </li>
     </ol>
     <p>
-      Live installation readback on September 21: pointsite-builder has Contents write, Checks read
-      and Metadata read, with all organization repositories selected. Actions write is absent.
-      Enabling native cancellation therefore requires PM approval of the GitHub App permission
-      change; application tokens remain restricted to the current destination repository. Until that
-      prerequisite is applied, cancellation fences publication but reports native cancellation as
+      After explicit PM approval on September 21, the pointsite-builder App and PointCommunity
+      installation both have Actions write, Contents write, Checks read and Metadata read, with
+      existing all-repository selection preserved. Live API verification minted a token restricted
+      to pointsite-staging-canary with Actions write and Contents read, then revoked it. Application
+      cancellation tokens remain restricted to the current destination repository. If this grant
+      becomes unavailable, cancellation fences publication but reports native cancellation as
       unconfirmed and retains the slot.
     </p>
     <h2>Behavior contract</h2>

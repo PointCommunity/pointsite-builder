@@ -223,6 +223,7 @@ export function ProductionPublish({
                 <p>Publish and accept this saved version on Staging first.</p>
               )}
               <PublicationProgress
+                hidden={Boolean(verified && !currentVerified)}
                 label={label}
                 job={job}
                 checkedAt={status.checkedAt}
