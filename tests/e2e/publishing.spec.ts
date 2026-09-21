@@ -740,6 +740,8 @@ for (const site of ['Canary', 'Production'])
 test('cloud recovery retains the captured revision and keyboard focus for phone-sized authoring', async ({
   page,
 }) => {
+  // Editing requires >720px; retain mobile touch input at the supported tablet width.
+  await page.setViewportSize({ width: 760, height: 900 });
   await mockPublishing(page, 'immediate');
   const jobId = '30000000-0000-4000-8000-000000000011';
   const requestedAt = new Date().toISOString();
