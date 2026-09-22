@@ -201,6 +201,19 @@ describe('composed document compatibility', () => {
     expect(SiteDocumentSchema.safeParse(old).success).toBe(true);
   });
 
+  it('only accepts per-person media controls on version 12', () => {
+    const input = structuredClone(defaultSiteDocument);
+    input.collections.people[0].mediaFit = 'cover';
+    input.collections.people[0].mediaFrame = 'square';
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+    input.schemaVersion = 12;
+    input.rendererVersion = '12.0.0';
+    expect(SiteDocumentSchema.parse(input).collections.people[0]).toMatchObject({
+      mediaFit: 'cover',
+      mediaFrame: 'square',
+    });
+  });
+
   it('keeps newer drafts read only through repository writes', async () => {
     const repository = new InMemoryRepository();
     const actor = 'editor@example.com';

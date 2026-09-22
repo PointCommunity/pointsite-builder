@@ -170,6 +170,13 @@ describe('BlockInspector', () => {
         index === 0 ? { ...item, mediaFit: 'stretch' } : item,
       ),
     });
+    fireEvent.change(screen.getAllByLabelText('Image frame')[0], { target: { value: 'square' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFrame: 'square' } : item,
+      ),
+    });
   });
   it('selects a named design and routes edits to its stable identity in Navigation Designer', () => {
     const document = upgradeNavigation(defaultSiteDocument);

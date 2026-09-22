@@ -43,6 +43,59 @@ describe('controlled public renderer', () => {
       ),
     ).toEqual(['object-fit: cover;', 'object-fit: fill;', null]);
   });
+  it('applies independent card and person image frames and fit', () => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const people = allBlocks.find((block) => block.type === 'people')!;
+    const document = structuredClone(allBlocksDocument);
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    document.collections.people[0].mediaId = document.media[0].id;
+    document.collections.people[0].mediaFit = 'stretch';
+    document.collections.people[0].mediaFrame = 'square';
+    document.collections.people.push({
+      ...document.collections.people[0],
+      id: crypto.randomUUID(),
+      name: 'Second person',
+    });
+    document.collections.people[1].mediaFit = 'contain';
+    document.collections.people[1].mediaFrame = 'natural';
+    const cards = SiteElementSchema.parse({
+      ...source,
+      items: [
+        {
+          title: 'Wide',
+          body: '',
+          mediaId: document.media[0].id,
+          mediaFrame: 'landscape',
+          mediaFit: 'cover',
+        },
+        {
+          title: 'Square',
+          body: '',
+          mediaId: document.media[0].id,
+          mediaFrame: 'square',
+          mediaFit: 'stretch',
+        },
+      ],
+    });
+    const { container } = render(
+      <>
+        {renderBlock(cards, document)}
+        {renderBlock(
+          { ...people, personIds: document.collections.people.map((person) => person.id) },
+          document,
+        )}
+      </>,
+    );
+    const cardImages = [...container.querySelectorAll('img.point-card-media')];
+    expect(cardImages.map((image) => image.getAttribute('style'))).toEqual([
+      'object-fit: cover; aspect-ratio: 16 / 9;',
+      'object-fit: fill; aspect-ratio: 1 / 1;',
+    ]);
+    const personImages = [...container.querySelectorAll('.point-people img, .people-grid img')];
+    expect(personImages[0]).toHaveStyle({ objectFit: 'fill', aspectRatio: '1 / 1' });
+    expect(personImages[1]).toHaveStyle({ objectFit: 'contain', aspectRatio: 'auto' });
+  });
   it.each([
     'standard',
     'splitEditorial',

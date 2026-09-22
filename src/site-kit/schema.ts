@@ -13,6 +13,7 @@ const shortText = z.string().trim().min(1).max(120);
 const bodyText = z.string().trim().min(1).max(5_000);
 const editableShortText = z.string().trim().max(120);
 const editableBodyText = z.string().trim().max(5_000);
+const imageFrame = z.enum(['natural', 'portrait', 'square', 'landscape']);
 const optionalBodyText = z.string().trim().max(5_000).optional();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hexadecimal color');
 const responsiveHeroWidth = z.strictObject({
@@ -191,6 +192,7 @@ const CardsBlockSchema = z.strictObject({
         mediaId: uuid.optional(),
         mediaAlt: z.string().trim().max(300).optional(),
         mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
+        mediaFrame: imageFrame.optional(),
         href: SafeHrefSchema.optional(),
       }),
     )
@@ -618,6 +620,8 @@ const CollectionsSchema = z.strictObject({
       bio: bodyText,
       mediaId: uuid.optional(),
       mediaAlt: z.string().trim().min(1).max(300).optional(),
+      mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
+      mediaFrame: imageFrame.optional(),
     }),
   ),
   beliefs: z.array(
@@ -786,6 +790,15 @@ export const SiteDocumentSchema = z
         path: ['site', 'socialLinks'],
         message: 'Empty social link labels require schema version 12',
       });
+    if (
+      document.schemaVersion < 12 &&
+      document.collections.people.some((person) => person.mediaFit || person.mediaFrame)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['collections', 'people'],
+        message: 'Person media controls require schema version 12',
+      });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {
       if (designIds.has(design.id))
@@ -840,7 +853,9 @@ export const SiteDocumentSchema = z
             document.schemaVersion < 12 &&
             ((item.element.type === 'image' && item.element.fit === 'stretch') ||
               (item.element.type === 'cards' &&
-                item.element.items.some((card) => card.mediaFit !== undefined)))
+                item.element.items.some(
+                  (card) => card.mediaFit !== undefined || card.mediaFrame !== undefined,
+                )))
           )
             context.addIssue({
               code: 'custom',

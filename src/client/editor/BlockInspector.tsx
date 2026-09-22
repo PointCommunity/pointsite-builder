@@ -1034,23 +1034,49 @@ export function BlockInspector({
                   }
                 />
                 {document.schemaVersion >= 12 ? (
-                  <Select
-                    label="Image fit"
-                    value={item.mediaFit ?? 'contain'}
-                    options={[
-                      { label: 'Fit whole image', value: 'contain' },
-                      { label: 'Crop to fill', value: 'cover' },
-                      { label: 'Stretch', value: 'stretch' },
-                    ]}
-                    onChange={(mediaFit) =>
-                      onChange({
-                        ...block,
-                        items: block.items.map((candidate, itemIndex) =>
-                          itemIndex === index ? { ...candidate, mediaFit } : candidate,
-                        ),
-                      })
-                    }
-                  />
+                  <>
+                    <Select
+                      label="Image fit"
+                      value={item.mediaFit ?? 'contain'}
+                      options={[
+                        { label: 'Fit whole image', value: 'contain' },
+                        { label: 'Crop to fill', value: 'cover' },
+                        { label: 'Stretch', value: 'stretch' },
+                      ]}
+                      onChange={(mediaFit) =>
+                        onChange({
+                          ...block,
+                          items: block.items.map((candidate, itemIndex) =>
+                            itemIndex === index ? { ...candidate, mediaFit } : candidate,
+                          ),
+                        })
+                      }
+                    />
+                    <Select
+                      label="Image frame"
+                      value={item.mediaFrame ?? 'default'}
+                      options={[
+                        { label: 'Layout default', value: 'default' },
+                        { label: 'Natural', value: 'natural' },
+                        { label: 'Portrait 4:5', value: 'portrait' },
+                        { label: 'Square 1:1', value: 'square' },
+                        { label: 'Landscape 16:9', value: 'landscape' },
+                      ]}
+                      onChange={(frame) =>
+                        onChange({
+                          ...block,
+                          items: block.items.map((candidate, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...candidate,
+                                  mediaFrame: frame === 'default' ? undefined : frame,
+                                }
+                              : candidate,
+                          ),
+                        })
+                      }
+                    />
+                  </>
                 ) : null}
                 <Text
                   label="Image alternative text"

@@ -137,6 +137,55 @@ export function CollectionsEditor({
                   })
                 }
               />
+              {document.schemaVersion >= 12 ? (
+                <>
+                  <label>
+                    <span>Photo fit</span>
+                    <select
+                      value={person.mediaFit ?? ''}
+                      onChange={(event) =>
+                        onChange({
+                          ...collections,
+                          people: replace(collections.people, index, {
+                            ...person,
+                            mediaFit: event.target.value
+                              ? (event.target.value as NonNullable<typeof person.mediaFit>)
+                              : undefined,
+                          }),
+                        })
+                      }
+                    >
+                      <option value="">Layout default</option>
+                      <option value="contain">Fit whole photo</option>
+                      <option value="cover">Crop to frame</option>
+                      <option value="stretch">Stretch</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Photo frame</span>
+                    <select
+                      value={person.mediaFrame ?? ''}
+                      onChange={(event) =>
+                        onChange({
+                          ...collections,
+                          people: replace(collections.people, index, {
+                            ...person,
+                            mediaFrame: event.target.value
+                              ? (event.target.value as NonNullable<typeof person.mediaFrame>)
+                              : undefined,
+                          }),
+                        })
+                      }
+                    >
+                      <option value="">Layout default</option>
+                      <option value="natural">Natural</option>
+                      <option value="portrait">Portrait 4:5</option>
+                      <option value="square">Square 1:1</option>
+                      <option value="landscape">Landscape 16:9</option>
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <label>
                 <span>Photo alternative text</span>
                 <input

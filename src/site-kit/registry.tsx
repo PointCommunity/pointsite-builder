@@ -187,6 +187,13 @@ function HeroTextBox({
 
 type CardItem = Extract<SiteElement, { type: 'cards' }>['items'][number];
 
+const frameRatios = {
+  natural: 'auto',
+  portrait: '4 / 5',
+  square: '1',
+  landscape: '16 / 9',
+} as const;
+
 function CardMedia({
   item,
   document,
@@ -205,8 +212,13 @@ function CardMedia({
       width={1600}
       height={900}
       style={
-        item.mediaFit
-          ? { objectFit: item.mediaFit === 'stretch' ? 'fill' : item.mediaFit }
+        item.mediaFit || item.mediaFrame
+          ? {
+              ...(item.mediaFit
+                ? { objectFit: item.mediaFit === 'stretch' ? 'fill' : item.mediaFit }
+                : {}),
+              ...(item.mediaFrame ? { aspectRatio: frameRatios[item.mediaFrame] } : {}),
+            }
           : undefined
       }
     />
@@ -981,6 +993,21 @@ export function renderBlock(
                       width={block.variant === 'horizontal' ? 1600 : 500}
                       height={block.variant === 'horizontal' ? 900 : 625}
                       loading="lazy"
+                      style={
+                        person.mediaFit || person.mediaFrame
+                          ? {
+                              ...(person.mediaFit
+                                ? {
+                                    objectFit:
+                                      person.mediaFit === 'stretch' ? 'fill' : person.mediaFit,
+                                  }
+                                : {}),
+                              ...(person.mediaFrame
+                                ? { aspectRatio: frameRatios[person.mediaFrame] }
+                                : {}),
+                            }
+                          : undefined
+                      }
                     />
                   ) : (
                     <div className="person-placeholder" aria-hidden="true">
