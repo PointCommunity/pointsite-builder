@@ -355,6 +355,41 @@ const ElementPlacementSchema = z.strictObject({
   element: SiteElementSchema,
 });
 
+export const ComposedBlockSchema = z
+  .strictObject({
+    ...BlockBase,
+    type: z.literal('composition'),
+    name: z.string().trim().max(80),
+    items: z
+      .array(
+        z.strictObject({
+          ...ElementPlacementSchema.shape,
+          layer: z.number().int().min(-20).max(20),
+        }),
+      )
+      .max(60),
+  })
+  .superRefine((group, context) => {
+    const placementIds = new Set<string>();
+    const elementIds = new Set<string>();
+    group.items.forEach((item, index) => {
+      if (placementIds.has(item.id))
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'id'],
+          message: 'Duplicate placement ID',
+        });
+      if (elementIds.has(item.element.id))
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'element', 'id'],
+          message: 'Duplicate element ID',
+        });
+      placementIds.add(item.id);
+      elementIds.add(item.element.id);
+    });
+  });
+
 export const SectionBlockSchema = z
   .strictObject({
     ...BlockBase,
