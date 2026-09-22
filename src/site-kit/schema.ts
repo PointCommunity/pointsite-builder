@@ -7,6 +7,7 @@ import {
   isSafeInternalPath,
 } from './url-policy';
 import { isDirectVideoUrl, youtubeVideoId } from './linked-media';
+import { areasOverlap, GRID_BREAKPOINTS } from './grid-layout';
 
 const uuid = z.uuid();
 const shortText = z.string().trim().min(1).max(120);
@@ -551,65 +552,112 @@ const NavigationDesignSchema = z
     });
   });
 
-const FormSchema = z.strictObject({
-  id: uuid,
-  name: shortText,
-  recipientEmail: z.email(),
-  subject: z.string().trim().min(1).max(180),
-  submitLabel: z.string().trim().min(1).max(60),
-  heading: z.string().trim().max(180).optional(),
-  introduction: z.string().trim().max(1_000).optional(),
-  privacyNote: z.string().trim().max(500).optional(),
-  successMessage: z.string().trim().max(500).optional(),
-  layout: z.enum(['single', 'two-column']).default('two-column'),
-  density: z.enum(['comfortable', 'compact']).default('comfortable'),
-  fields: z
-    .array(
-      z
-        .strictObject({
-          id: uuid,
-          name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
-          label: shortText,
-          type: z.enum([
-            'text',
-            'email',
-            'tel',
-            'url',
-            'number',
-            'date',
-            'time',
-            'textarea',
-            'select',
-            'radio',
-            'checkbox',
-          ]),
-          required: z.boolean(),
-          options: z.array(shortText).min(1).max(30).optional(),
-          placeholder: z.string().trim().max(180).optional(),
-          helpText: z.string().trim().max(300).optional(),
-          width: z.enum(['half', 'full']).default('half'),
-        })
-        .superRefine((field, context) => {
-          const needsOptions = ['select', 'radio', 'checkbox'].includes(field.type);
-          if (needsOptions && !field.options) {
-            context.addIssue({
-              code: 'custom',
-              path: ['options'],
-              message: `${field.type} requires options`,
-            });
-          }
-          if (!needsOptions && field.options) {
-            context.addIssue({
-              code: 'custom',
-              path: ['options'],
-              message: `${field.type} cannot define options`,
-            });
-          }
-        }),
-    )
-    .min(1)
-    .max(30),
-});
+const FormSchema = z
+  .strictObject({
+    id: uuid,
+    name: shortText,
+    recipientEmail: z.email(),
+    subject: z.string().trim().min(1).max(180),
+    submitLabel: z.string().trim().min(1).max(60),
+    heading: z.string().trim().max(180).optional(),
+    introduction: z.string().trim().max(1_000).optional(),
+    privacyNote: z.string().trim().max(500).optional(),
+    successMessage: z.string().trim().max(500).optional(),
+    layout: z.enum(['single', 'two-column', 'grid']).default('two-column'),
+    density: z.enum(['comfortable', 'compact']).default('comfortable'),
+    fields: z
+      .array(
+        z
+          .strictObject({
+            id: uuid,
+            name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
+            label: shortText,
+            type: z.enum([
+              'text',
+              'email',
+              'tel',
+              'url',
+              'number',
+              'date',
+              'time',
+              'textarea',
+              'select',
+              'radio',
+              'checkbox',
+            ]),
+            required: z.boolean(),
+            options: z.array(shortText).min(1).max(30).optional(),
+            placeholder: z.string().trim().max(180).optional(),
+            helpText: z.string().trim().max(300).optional(),
+            width: z.enum(['half', 'full']).default('half'),
+            grid: ResponsiveGridAreaSchema.optional(),
+          })
+          .superRefine((field, context) => {
+            const needsOptions = ['select', 'radio', 'checkbox'].includes(field.type);
+            if (needsOptions && !field.options) {
+              context.addIssue({
+                code: 'custom',
+                path: ['options'],
+                message: `${field.type} requires options`,
+              });
+            }
+            if (!needsOptions && field.options) {
+              context.addIssue({
+                code: 'custom',
+                path: ['options'],
+                message: `${field.type} cannot define options`,
+              });
+            }
+          }),
+      )
+      .min(1)
+      .max(30),
+  })
+  .superRefine((form, context) => {
+    if (form.layout !== 'grid') {
+      if (form.fields.some((field) => field.grid))
+        context.addIssue({
+          code: 'custom',
+          path: ['fields'],
+          message: 'Field placements require a grid form',
+        });
+      return;
+    }
+    for (const [index, field] of form.fields.entries()) {
+      if (!field.grid) {
+        context.addIssue({
+          code: 'custom',
+          path: ['fields', index, 'grid'],
+          message: 'Grid forms require every field to be placed',
+        });
+        continue;
+      }
+      for (const breakpoint of GRID_BREAKPOINTS) {
+        const current = field.grid[breakpoint];
+        const previous = form.fields[index - 1]?.grid?.[breakpoint];
+        if (
+          previous &&
+          (current.row < previous.row ||
+            (current.row === previous.row && current.column < previous.column))
+        )
+          context.addIssue({
+            code: 'custom',
+            path: ['fields', index, 'grid', breakpoint],
+            message: 'Visual field order must follow keyboard order',
+          });
+        if (
+          form.fields
+            .slice(0, index)
+            .some((other) => other.grid && areasOverlap(current, other.grid[breakpoint]))
+        )
+          context.addIssue({
+            code: 'custom',
+            path: ['fields', index, 'grid', breakpoint],
+            message: 'Form fields cannot overlap',
+          });
+      }
+    }
+  });
 
 const CollectionsSchema = z.strictObject({
   people: z.array(
@@ -798,6 +846,17 @@ export const SiteDocumentSchema = z
         code: 'custom',
         path: ['collections', 'people'],
         message: 'Person media controls require schema version 12',
+      });
+    if (
+      document.schemaVersion < 12 &&
+      document.forms.some(
+        (form) => form.layout === 'grid' || form.fields.some((field) => field.grid),
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['forms'],
+        message: 'Form grids require schema version 12',
       });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {

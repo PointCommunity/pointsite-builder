@@ -235,8 +235,22 @@ function CardLink({ item }: { item: CardItem }) {
   ) : null;
 }
 
+function formGridStyle(
+  grid?: NonNullable<SiteDocument['forms'][number]['fields'][number]['grid']>,
+): CSSProperties | undefined {
+  if (!grid) return undefined;
+  return Object.fromEntries(
+    (['desktop', 'tablet', 'mobile'] as const).flatMap((breakpoint) => [
+      [`--point-form-column-${breakpoint}`, grid[breakpoint].column],
+      [`--point-form-row-${breakpoint}`, grid[breakpoint].row],
+      [`--point-form-span-${breakpoint}`, grid[breakpoint].columnSpan],
+      [`--point-form-height-${breakpoint}`, grid[breakpoint].rowSpan],
+    ]),
+  );
+}
+
 function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
-  return form.fields.map((field) => {
+  const fields = form.fields.map((field) => {
     const describedBy = field.helpText ? `${field.id}-help` : undefined;
     const label = (
       <>
@@ -246,7 +260,11 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     );
     if (field.type === 'textarea') {
       return (
-        <div className={`field field--textarea field--${field.width}`} key={field.id}>
+        <div
+          className={`field field--textarea field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+        >
           <label htmlFor={field.id}>{label}</label>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <textarea
@@ -262,7 +280,11 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     }
     if (field.type === 'select') {
       return (
-        <div className={`field field--${field.width}`} key={field.id}>
+        <div
+          className={`field field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+        >
           <label htmlFor={field.id}>{label}</label>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <select
@@ -284,7 +306,11 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     }
     if (field.type === 'radio' || field.type === 'checkbox') {
       return (
-        <fieldset className={`field field--${field.type} field--${field.width}`} key={field.id}>
+        <fieldset
+          className={`field field--${field.type} field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+        >
           <legend>{label}</legend>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <div className="choice-list">
@@ -305,7 +331,11 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
       );
     }
     return (
-      <div className={`field field--${field.width}`} key={field.id}>
+      <div
+        className={`field field--${field.width}`}
+        key={field.id}
+        style={formGridStyle(field.grid)}
+      >
         <label htmlFor={field.id}>{label}</label>
         {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
         <input
@@ -319,6 +349,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
       </div>
     );
   });
+  return form.layout === 'grid' ? <div className="point-form-grid">{fields}</div> : fields;
 }
 
 function FormPanel({

@@ -6,6 +6,7 @@ import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
+import { independentGridArea } from '../../src/site-kit/grid-layout';
 
 describe('controlled public renderer', () => {
   it('links an image to an internal page or safe external URL without linking its caption', () => {
@@ -95,6 +96,40 @@ describe('controlled public renderer', () => {
     const personImages = [...container.querySelectorAll('.point-people img, .people-grid img')];
     expect(personImages[0]).toHaveStyle({ objectFit: 'fill', aspectRatio: '1 / 1' });
     expect(personImages[1]).toHaveStyle({ objectFit: 'contain', aspectRatio: 'auto' });
+  });
+  it('renders ordered form fields on a responsive grid without changing input semantics', () => {
+    const source = allBlocks.find((block) => block.type === 'form')!;
+    const document = structuredClone(allBlocksDocument);
+    const form = document.forms[0];
+    form.layout = 'grid';
+    form.fields.push({
+      ...form.fields[0],
+      id: crypto.randomUUID(),
+      name: 'second',
+      label: 'Second',
+    });
+    form.fields.forEach((field, index) => {
+      field.grid = independentGridArea({
+        column: index ? 7 : 1,
+        row: 1,
+        columnSpan: 6,
+        rowSpan: 1,
+      });
+    });
+    const { container } = render(<>{renderBlock(source, document)}</>);
+    const fields = [...container.querySelectorAll('.point-form-grid > .field')];
+    expect(fields).toHaveLength(form.fields.length);
+    expect(fields[0]).toHaveAttribute(
+      'style',
+      expect.stringContaining('--point-form-column-desktop: 1'),
+    );
+    expect(fields[1]).toHaveAttribute(
+      'style',
+      expect.stringContaining('--point-form-column-desktop: 7'),
+    );
+    expect(
+      fields.map((field) => field.querySelector('input, textarea, select')?.getAttribute('name')),
+    ).toEqual(form.fields.map((field) => field.name));
   });
   it.each([
     'standard',

@@ -616,6 +616,8 @@ function Workspace({
           {editable ? (
             <FormsEditor
               forms={document.forms}
+              schemaVersion={document.schemaVersion}
+              siteEmail={document.site.email}
               usedFormIds={
                 new Set(
                   documentRegions(document).flatMap((page) =>

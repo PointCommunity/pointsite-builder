@@ -214,6 +214,27 @@ describe('composed document compatibility', () => {
     });
   });
 
+  it('keeps form field order and non-overlapping placement across all three grids', () => {
+    const input = structuredClone(defaultSiteDocument);
+    const form = input.forms[0];
+    form.layout = 'grid';
+    form.fields.forEach((field, index) => {
+      field.grid = independentGridArea({ column: 1, row: index + 1, columnSpan: 12, rowSpan: 1 });
+    });
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+    input.schemaVersion = 12;
+    input.rendererVersion = '12.0.0';
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(true);
+    form.fields[1].grid!.desktop.row = 1;
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+    form.fields[1].grid!.desktop.column = 7;
+    form.fields[1].grid!.desktop.columnSpan = 6;
+    form.fields[0].grid!.desktop.columnSpan = 6;
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(true);
+    form.fields[1].grid!.desktop.column = 1;
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+  });
+
   it('keeps newer drafts read only through repository writes', async () => {
     const repository = new InMemoryRepository();
     const actor = 'editor@example.com';
