@@ -310,6 +310,15 @@ let lastGridPointer:
     }
   | undefined;
 let lastSectionPointer: string | null = null;
+function sectionAtPointer(canvas: Document, x: number, y: number): string | null {
+  const section = Array.from(
+    canvas.querySelectorAll<HTMLElement>('[data-point-section-id]'),
+  ).findLast((candidate) => {
+    const bounds = candidate.getBoundingClientRect();
+    return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+  });
+  return section?.dataset.pointSectionId ?? null;
+}
 function defaultElement<T extends SiteElement['type']>(
   type: T,
   document: ReturnType<typeof useEditor>['document'],
@@ -883,6 +892,12 @@ function CanvasBreakpointReporter({
     const frame = canvasDocument?.defaultView?.frameElement;
     const canvasRoot = frame?.closest<HTMLElement>('#puck-canvas-root');
     if (!canvasDocument || !canvasRoot) return;
+    const locateSection = (event: globalThis.PointerEvent) => {
+      if (getDraggedElementType())
+        lastSectionPointer = sectionAtPointer(canvasDocument, event.clientX, event.clientY);
+    };
+    canvasDocument.addEventListener('pointermove', locateSection, true);
+    canvasDocument.addEventListener('pointerup', locateSection, true);
     const updateTargetSize = () => {
       const scale = new DOMMatrixReadOnly(canvasRoot.style.transform).a || 1;
       canvasDocument.documentElement.style.setProperty('--point-touch-target', `${44 / scale}px`);
@@ -891,7 +906,11 @@ function CanvasBreakpointReporter({
     updateTargetSize();
     const observer = new MutationObserver(updateTargetSize);
     observer.observe(canvasRoot, { attributes: true, attributeFilter: ['style'] });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      canvasDocument.removeEventListener('pointermove', locateSection, true);
+      canvasDocument.removeEventListener('pointerup', locateSection, true);
+    };
   }, []);
   return <span ref={marker} hidden />;
 }
@@ -910,13 +929,7 @@ function DrawerDragReporter() {
       const y =
         ((event.clientY - frameRect.top) * (frame.contentWindow?.innerHeight ?? 0)) /
         frameRect.height;
-      const section = Array.from(
-        canvas.querySelectorAll<HTMLElement>('[data-point-section-id]'),
-      ).findLast((candidate) => {
-        const bounds = candidate.getBoundingClientRect();
-        return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
-      });
-      lastSectionPointer = section?.dataset.pointSectionId ?? null;
+      lastSectionPointer = sectionAtPointer(canvas, x, y);
     };
     const track = (event: globalThis.PointerEvent) => {
       setGridDropIntent(null);
@@ -1034,12 +1047,12 @@ function VisualEditorImpl({
     pageId: string;
     selector: { zone: string; index: number };
   } | null>(null);
-  const pendingReroute = useRef<{
+  const pendingSelection = useRef<{
     pageId: string;
     selector: { zone: string; index: number };
   } | null>(null);
   useEffect(() => {
-    const pending = pendingReroute.current;
+    const pending = pendingSelection.current;
     if (!pending || pending.pageId !== pageId) return;
     const sections =
       pageId === 'footer'
@@ -1047,7 +1060,7 @@ function VisualEditorImpl({
         : document.pages.find((page) => page.id === pageId)?.blocks;
     const section = sections?.find((entry) => `${entry.id}:content` === pending.selector.zone);
     if (!section || section.items.length <= pending.selector.index) return;
-    pendingReroute.current = null;
+    pendingSelection.current = null;
     setInteractionRevision((value) => {
       remountSelection.current = { revision: value + 1, pageId, selector: pending.selector };
       return value + 1;
@@ -1474,8 +1487,7 @@ function VisualEditorImpl({
             }
 
             let content = nextState.data.content as ComponentData[];
-            let reroutedRoot = false;
-            let reroutedSelector: { zone: string; index: number } | null = null;
+            let insertSelector: { zone: string; index: number } | null = null;
             if (
               action.type === 'insert' &&
               action.destinationZone === 'root:default-zone' &&
@@ -1503,8 +1515,7 @@ function VisualEditorImpl({
                         }
                       : item,
                   );
-                reroutedRoot = true;
-                reroutedSelector = {
+                insertSelector = {
                   zone: `${documentComponentId(target)}:content`,
                   index: children.length,
                 };
@@ -1514,20 +1525,42 @@ function VisualEditorImpl({
             const hasRootElement = content.some(
               (item) => !sectionTypes.includes(item.type as (typeof sectionTypes)[number]),
             );
+            const previousSections = layoutSections(document, pageId) ?? [];
             const sections = content.map((item) =>
               sectionTypes.includes(item.type as (typeof sectionTypes)[number])
                 ? dataToSection(item)
-                : rootElementToSection(item, sectionDefaults('Section')),
+                : rootElementToSection(
+                    item,
+                    sectionDefaults('Section'),
+                    previousSections.find(
+                      (section) =>
+                        section.items.length === 1 &&
+                        section.items[0].id === documentComponentId(item),
+                    )?.id,
+                  ),
             );
+            if (
+              !insertSelector &&
+              (action.type === 'insert' || action.type === 'replace') &&
+              action.destinationZone === 'root:default-zone' &&
+              !sectionTypes.includes(
+                content[action.destinationIndex]?.type as (typeof sectionTypes)[number],
+              ) &&
+              (action.type === 'replace' ||
+                content[action.destinationIndex]?.type === action.componentType)
+            )
+              insertSelector = {
+                zone: `${sections[action.destinationIndex].id}:content`,
+                index: 0,
+              };
             const changed = structuredClone(document);
             replaceLayoutSections(changed, pageId, sections);
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);
               else {
-                if (reroutedRoot && reroutedSelector)
-                  pendingReroute.current = { pageId, selector: reroutedSelector };
-                if (!completeDocument(changed, mutation)) pendingReroute.current = null;
-                else if (!reroutedRoot && hasRootElement)
+                if (insertSelector) pendingSelection.current = { pageId, selector: insertSelector };
+                if (!completeDocument(changed, mutation)) pendingSelection.current = null;
+                else if (!insertSelector && hasRootElement)
                   setInteractionRevision((value) => value + 1);
               }
             });

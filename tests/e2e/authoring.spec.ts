@@ -747,6 +747,11 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
         steps: 4,
       });
       await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 16 });
+      const settled = await target.boundingBox();
+      expect(settled).not.toBeNull();
+      await page.mouse.move(settled!.x + settled!.width / 2, settled!.y + settled!.height / 2, {
+        steps: 4,
+      });
       await page.waitForTimeout(250);
       await page.mouse.up();
       try {
@@ -3822,7 +3827,6 @@ test('wraps an image dropped directly on an empty page in a resizable grid conta
   await page.mouse.up();
   const section = canvas.locator('section[aria-label="Blank section"]');
   await expect(section.locator('.point-image')).toBeVisible();
-  await section.locator('.point-image').click();
   const resize = canvas.getByRole('button', { name: 'Resize image from south east' });
   await expect(resize).toBeVisible();
   const original = Number(await page.getByLabel('desktop width in columns').last().inputValue());

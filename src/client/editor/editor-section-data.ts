@@ -105,9 +105,13 @@ export function dataToSection(item: ComponentData): SectionBlock {
   };
 }
 
-export function rootElementToSection(item: ComponentData, settings: SectionSettings): SectionBlock {
+export function rootElementToSection(
+  item: ComponentData,
+  settings: SectionSettings,
+  id: string = crypto.randomUUID(),
+): SectionBlock {
   return {
-    id: crypto.randomUUID(),
+    id,
     type: 'section',
     ...settings,
     items: [placementFromData(item, settings.layout)],
