@@ -1,0 +1,101 @@
+import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { independentGridArea, independentResponsiveValue } from '../../src/site-kit/grid-layout';
+import { migrateDocument } from '../../src/site-kit/migrations';
+import { SiteDocumentSchema } from '../../src/site-kit/schema';
+import { canEditDocument, supportsRenderer } from '../../src/site-kit/version';
+import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
+import { InMemoryRepository } from '../../src/server/repositories/memory';
+import { acquireDraftProof } from '../fixtures/draft-proof';
+
+function composedDocument() {
+  const document = structuredClone(defaultSiteDocument) as unknown as Record<string, unknown>;
+  document.schemaVersion = 12;
+  document.rendererVersion = '12.0.0';
+  const pages = document.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+  pages[0].blocks[1].items[0].element = {
+    id: '22222222-2222-4222-8222-222222222221',
+    type: 'composition',
+    name: 'Hero',
+    items: [
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        span: 6,
+        align: independentResponsiveValue('stretch'),
+        grid: independentGridArea({ column: 1, row: 1, columnSpan: 6, rowSpan: 3 }),
+        layer: 0,
+        element: {
+          id: '22222222-2222-4222-8222-222222222223',
+          type: 'text',
+          text: 'Welcome',
+          style: 'lead',
+          align: 'left',
+        },
+      },
+    ],
+  };
+  return document;
+}
+
+describe('composed document compatibility', () => {
+  it('reads version 12 without rewriting it', () => {
+    const input = composedDocument();
+    expect(SiteDocumentSchema.parse(input)).toEqual(input);
+    expect(migrateDocument(input)).toEqual({ document: input, applied: [] });
+    expect(supportsRenderer({ schemaVersion: 12, rendererVersion: '12.0.0' })).toBe(true);
+  });
+
+  it('does not write version 12 when reading existing version 11 drafts', () => {
+    const existing = structuredClone(defaultSiteDocument);
+    expect(migrateDocument(existing)).toEqual({ document: existing, applied: [] });
+    expect(canEditDocument(existing)).toBe(true);
+    expect(
+      canEditDocument(composedDocument() as { schemaVersion: number; rendererVersion: string }),
+    ).toBe(false);
+  });
+
+  it('does not allow composed content to be stored as a version 11 document', () => {
+    const invalid = composedDocument();
+    invalid.schemaVersion = 11;
+    invalid.rendererVersion = '11.0.0';
+    expect(SiteDocumentSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it('renders composed children from the shared site renderer', () => {
+    const document = SiteDocumentSchema.parse(composedDocument());
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }));
+    expect(html).toContain('aria-label="Hero"');
+    expect(html).toContain('Welcome');
+    expect(html).not.toContain('Point ATX</h1>');
+  });
+
+  it('keeps newer drafts read only through repository writes', async () => {
+    const repository = new InMemoryRepository();
+    const actor = 'editor@example.com';
+    const future = SiteDocumentSchema.parse(composedDocument());
+    const draft = await repository.createDraft({
+      name: 'Future document',
+      document: future,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'fixture',
+    });
+    expect((await repository.getDraft(draft.id)).document).toEqual(future);
+    const proof = await acquireDraftProof(repository, draft.id, actor);
+    const save = {
+      draftId: draft.id,
+      ...proof,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'edit',
+      action: { category: 'text-edit' as const, context: 'page-content' as const },
+    };
+    await expect(repository.saveDraft({ ...save, document: defaultSiteDocument })).rejects.toThrow(
+      'read only',
+    );
+    await expect(repository.saveDraft({ ...save, document: future })).rejects.toThrow('read only');
+    expect((await repository.getDraft(draft.id)).document).toEqual(future);
+  });
+});

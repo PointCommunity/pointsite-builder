@@ -2,6 +2,7 @@
 
 import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
+import { canEditDocument } from '../../site-kit/version';
 import { checkoutExpiry } from '../../shared/draft-checkout';
 import { createRequestHash, saveRequestHash } from './request-hash';
 import {
@@ -178,6 +179,8 @@ export class InMemoryRepository implements DraftRepository {
     if (!current) throw new NotFoundError(`Draft ${input.draftId} was not found`);
     this.#checkedCheckout(input.draftId, input.actor, checkoutHash);
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
+    if (!canEditDocument(current.document) || !canEditDocument(document))
+      throw new ConflictError('This document version is read only in this Builder');
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
     if (prior === null) throw new NotFoundError(`Draft ${input.draftId} was not found`);

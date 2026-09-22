@@ -1790,6 +1790,15 @@ body:has(.point-site) {
   grid-column: var(--point-grid-desktop-column) / span var(--point-grid-desktop-column-span);
   grid-row: var(--point-grid-desktop-row) / span var(--point-grid-desktop-row-span);
 }
+.point-site .point-composition {
+  width: 100%;
+  container-type: inline-size;
+}
+.point-site .point-composition__grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: max(1.5rem, calc(100cqi / 12));
+}
 .point-site .point-layout-section--grid .point-layout-item--grid > * {
   max-width: 100%;
 }

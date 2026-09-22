@@ -409,6 +409,7 @@ function defaultElement<T extends SiteElement['type']>(
       align: 'center',
       appearance: 'icons',
     },
+    composition: { id, type: 'composition', name: 'Group', items: [] },
   };
   return defaults[type] as Extract<SiteElement, { type: T }>;
 }
@@ -1001,6 +1002,9 @@ function VisualEditorImpl({
       inline: true,
       fields,
       ...(type === 'mediaEmbed' && document.linkedMedia.length === 0
+        ? { permissions: { insert: false } }
+        : {}),
+      ...(type === 'composition' && document.schemaVersion < 12
         ? { permissions: { insert: false } }
         : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {

@@ -297,7 +297,7 @@ function isSafePlainText(value: string): boolean {
   });
 }
 
-export const SiteElementSchema = z.discriminatedUnion('type', [
+export const PrimitiveSiteElementSchema = z.discriminatedUnion('type', [
   HeroBlockSchema,
   HeadingBlockSchema,
   RichTextBlockSchema,
@@ -347,12 +347,12 @@ const ResponsivePlacementAlignmentSchema = z.strictObject({
   mobile: z.enum(['start', 'center', 'end', 'stretch']),
 });
 
-const ElementPlacementSchema = z.strictObject({
+const PrimitiveElementPlacementSchema = z.strictObject({
   id: uuid,
   span: z.number().int().min(1).max(12),
   align: ResponsivePlacementAlignmentSchema,
   grid: ResponsiveGridAreaSchema,
-  element: SiteElementSchema,
+  element: PrimitiveSiteElementSchema,
 });
 
 export const ComposedBlockSchema = z
@@ -363,7 +363,7 @@ export const ComposedBlockSchema = z
     items: z
       .array(
         z.strictObject({
-          ...ElementPlacementSchema.shape,
+          ...PrimitiveElementPlacementSchema.shape,
           layer: z.number().int().min(-20).max(20),
         }),
       )
@@ -389,6 +389,16 @@ export const ComposedBlockSchema = z
       elementIds.add(item.element.id);
     });
   });
+
+export const SiteElementSchema = z.discriminatedUnion('type', [
+  ...PrimitiveSiteElementSchema.options,
+  ComposedBlockSchema,
+]);
+
+const ElementPlacementSchema = z.strictObject({
+  ...PrimitiveElementPlacementSchema.shape,
+  element: SiteElementSchema,
+});
 
 export const SectionBlockSchema = z
   .strictObject({
@@ -636,7 +646,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.union([z.literal(9), z.literal(10), z.literal(11)]),
+    schemaVersion: z.union([z.literal(9), z.literal(10), z.literal(11), z.literal(12)]),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,
@@ -740,7 +750,7 @@ export const SiteDocumentSchema = z
         });
     }
     if (
-      document.schemaVersion === 11 ? document.footer === undefined : document.footer !== undefined
+      document.schemaVersion >= 11 ? document.footer === undefined : document.footer !== undefined
     )
       context.addIssue({
         code: 'custom',
@@ -780,6 +790,12 @@ export const SiteDocumentSchema = z
           });
         section.items.forEach((item, itemIndex) => {
           const elementPath = [...sectionPath, 'items', itemIndex, 'element'];
+          if (document.schemaVersion < 12 && item.element.type === 'composition')
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Composed content requires schema version 12',
+            });
           if (
             document.schemaVersion < 11 &&
             (item.element.type === 'socialLinks' ||

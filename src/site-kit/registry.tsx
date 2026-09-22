@@ -33,6 +33,7 @@ export const blockDefinitions: Record<
   button: { label: 'Button', supportsMoveButtons: true },
   navigation: { label: 'Navigation', supportsMoveButtons: true },
   socialLinks: { label: 'Social links', supportsMoveButtons: true },
+  composition: { label: 'Group', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -1113,6 +1114,20 @@ export function renderBlock(
           </div>
         </section>
       );
+    case 'composition':
+      return (
+        <LayoutContext value={{ layout: 'grid', columns: 12 }}>
+          <section className="point-composition" aria-label={block.name || 'Content group'}>
+            <div className="point-composition__grid">
+              {block.items.map((item) => (
+                <LayoutItem placement={item} layer={item.layer} key={item.id}>
+                  {renderBlock(item.element, document, onNavigate)}
+                </LayoutItem>
+              ))}
+            </div>
+          </section>
+        </LayoutContext>
+      );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
   }
@@ -1135,10 +1150,12 @@ export function LayoutItem({
   placement,
   children,
   dragRef,
+  layer,
 }: {
   placement: Pick<ElementPlacement, 'grid' | 'align' | 'span'>;
   children: ReactNode;
   dragRef?: Ref<HTMLDivElement>;
+  layer?: number;
 }) {
   const section = useContext(LayoutContext);
   const flow = section.layout === 'flow';
@@ -1158,6 +1175,7 @@ export function LayoutItem({
       ];
     }),
   ) as CSSProperties;
+  if (layer !== undefined) style.zIndex = layer;
   return (
     <div
       ref={dragRef}
