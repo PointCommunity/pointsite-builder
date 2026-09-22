@@ -706,33 +706,69 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
   await page.getByRole('button', { name: 'Open editor' }).click();
   const canvas = page.locator('.visual-editor iframe').contentFrame();
   const drag = async (name: string, target: ReturnType<typeof page.locator>) => {
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
-    const source = page
-      .getByRole('button', { name, exact: true })
-      .and(page.locator(':not([inert])'));
-    let from = await source.boundingBox();
-    let to = await target.boundingBox();
-    // Puck replaces the section DOM after its settings change. Resolve fresh targets before dragging.
-    await expect(async () => {
-      await source.scrollIntoViewIfNeeded();
-      await target.scrollIntoViewIfNeeded();
-      from = await source.boundingBox();
-      to = await target.boundingBox();
-      expect(from).not.toBeNull();
-      expect(to).not.toBeNull();
-    }).toPass({ timeout: 5000 });
-    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
-      steps: 4,
-    });
-    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 6, { steps: 16 });
-    await page.waitForTimeout(250);
-    await page.mouse.up();
+    const selectedFooter = (await page.getByLabel('Choose page').inputValue()) === 'footer';
+    const sectionId =
+      name === 'Blank'
+        ? null
+        : await target.evaluate((element) =>
+            element
+              .closest<HTMLElement>('[data-point-section-id]')
+              ?.dataset.pointSectionId?.replace(/^Section-/, ''),
+          );
+    const blocks = () => {
+      const document = controls.saveRequests.at(-1)?.document;
+      return selectedFooter ? document?.footer : document?.pages[0].blocks;
+    };
+    const count = () =>
+      (name === 'Blank'
+        ? blocks()?.length
+        : blocks()?.find((section) => section.id === sectionId)?.items.length) ?? 0;
+    const before = count();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+      const beforeRequests = controls.saveRequests.length;
+      const source = page
+        .getByRole('button', { name, exact: true })
+        .and(page.locator(':not([inert])'));
+      let from = await source.boundingBox();
+      let to = await target.boundingBox();
+      // Puck replaces section DOM after settings changes; remeasure before each pointer gesture.
+      await expect(async () => {
+        await source.scrollIntoViewIfNeeded();
+        await target.scrollIntoViewIfNeeded();
+        from = await source.boundingBox();
+        to = await target.boundingBox();
+        expect(from).not.toBeNull();
+        expect(to).not.toBeNull();
+      }).toPass({ timeout: 5000 });
+      await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+        steps: 4,
+      });
+      await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 16 });
+      await page.waitForTimeout(250);
+      await page.mouse.up();
+      try {
+        await expect
+          .poll(() => controls.saveRequests.length, { timeout: 5_000 })
+          .toBeGreaterThan(beforeRequests);
+      } catch {
+        // Firefox occasionally drops a synthesized cross-frame pointer gesture with no insert action.
+        continue;
+      }
+      await expect.poll(count, { timeout: 5_000 }).toBe(before + 1);
+      return;
+    }
+    expect(count(), `${name} inserted into the intended section`).toBe(before + 1);
   };
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
-  const section = canvas.locator('section[aria-label="Blank section"]');
+  const sectionId = (await canvas
+    .locator('section[aria-label="Blank section"]')
+    .first()
+    .getAttribute('data-point-section-id'))!.replace(/^Section-/, '');
+  const section = canvas.locator(`[data-point-section-id$="${sectionId}"]`);
   await expect(section).toBeVisible();
   await page.getByRole('combobox', { name: 'Section layout', exact: true }).selectOption('flow');
   await page.getByRole('combobox', { name: 'Columns', exact: true }).selectOption('1');
@@ -770,6 +806,12 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
   await page.getByLabel('Choose page').selectOption('footer');
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
   await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
+  const footerId = (await canvas
+    .locator('.point-composed-footer section[aria-label="Blank section"]')
+    .first()
+    .getAttribute('data-point-section-id'))!.replace(/^Section-/, '');
+  const footerSection = canvas.locator(`[data-point-section-id$="${footerId}"]`);
+  await expect(footerSection).toHaveCount(1);
   await page.getByRole('combobox', { name: 'Section layout', exact: true }).selectOption('flow');
   await page.getByRole('combobox', { name: 'Columns', exact: true }).selectOption('3');
   await page.getByRole('combobox', { name: 'Stack columns on', exact: true }).selectOption('phone');
@@ -781,18 +823,18 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
     .getByRole('spinbutton', { name: 'Custom space above and below', exact: true })
     .fill('65');
   await page.getByRole('combobox', { name: 'Border', exact: true }).selectOption('top');
-  await drag('Rich text', section.locator('[data-puck-dropzone]'));
+  await drag('Rich text', footerSection.locator('[data-puck-dropzone]'));
   await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
   await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Service Times');
   await page.getByRole('textbox', { name: 'Paragraph', exact: true }).fill('Sunday at 10:30 AM');
-  await drag('Rich text', section.locator('[data-puck-dropzone]'));
+  await drag('Rich text', footerSection.locator('[data-puck-dropzone]'));
   await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
   await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Contact Info');
   await page.getByRole('combobox', { name: 'Content type', exact: true }).selectOption('address');
   await page
     .getByRole('textbox', { name: 'Address', exact: true })
     .fill('11300 Old San Antonio Road\nManchaca, TX 78652');
-  await drag('Social links', section.locator('[data-puck-dropzone]'));
+  await drag('Social links', footerSection.locator('[data-puck-dropzone]'));
   await page.getByRole('combobox', { name: 'Layout style', exact: true }).selectOption('footer');
   await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   await page.reload();
@@ -806,6 +848,8 @@ test('rebuilds identity, editorial text and footer content from Blocks on an emp
   ])
     await expect(preview.getByRole('heading', { name, exact: true })).toBeVisible();
   const saved = controls.saveRequests.at(-1)!.document;
+  expect(saved.pages[0].blocks).toHaveLength(1);
+  expect(saved.footer).toHaveLength(1);
   expect(
     saved.pages[0].blocks.flatMap((block) => block.items.map((item) => item.element.type)).sort(),
   ).toEqual(['cards', 'richText']);

@@ -74,6 +74,7 @@ import {
 import {
   childComponents,
   currentPuckData,
+  documentComponentId,
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
@@ -308,6 +309,7 @@ let lastGridPointer:
       cellSize: number;
     }
   | undefined;
+let lastSectionPointer: string | null = null;
 function defaultElement<T extends SiteElement['type']>(
   type: T,
   document: ReturnType<typeof useEditor>['document'],
@@ -860,10 +862,18 @@ function GroupComponent({
   );
 }
 
-function CanvasBreakpointReporter() {
+function CanvasBreakpointReporter({
+  restoreSelection,
+}: {
+  restoreSelection?: { zone: string; index: number };
+}) {
   const marker = useRef<HTMLSpanElement>(null);
   const width = usePointPuck((state) => state.appState.ui.viewports.current.width);
   const data = usePointPuck((state) => state.appState.data);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  useEffect(() => {
+    if (restoreSelection) dispatch({ type: 'setUi', ui: { itemSelector: restoreSelection } });
+  }, [dispatch, restoreSelection]);
   useEffect(() => rememberPuckData(data), [data]);
   useEffect(() => {
     if (typeof width === 'number') setGridBreakpoint(breakpointForWidth(width));
@@ -888,8 +898,29 @@ function CanvasBreakpointReporter() {
 
 function DrawerDragReporter() {
   useEffect(() => {
+    const locateSection = (event: globalThis.PointerEvent) => {
+      if (!getDraggedElementType()) return;
+      const frame = globalThis.document.querySelector<HTMLIFrameElement>('.visual-editor iframe');
+      const canvas = frame?.contentDocument;
+      const frameRect = frame?.getBoundingClientRect();
+      if (!canvas || !frameRect?.width || !frameRect.height) return;
+      const x =
+        ((event.clientX - frameRect.left) * (frame.contentWindow?.innerWidth ?? 0)) /
+        frameRect.width;
+      const y =
+        ((event.clientY - frameRect.top) * (frame.contentWindow?.innerHeight ?? 0)) /
+        frameRect.height;
+      const section = Array.from(
+        canvas.querySelectorAll<HTMLElement>('[data-point-section-id]'),
+      ).findLast((candidate) => {
+        const bounds = candidate.getBoundingClientRect();
+        return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+      });
+      lastSectionPointer = section?.dataset.pointSectionId ?? null;
+    };
     const track = (event: globalThis.PointerEvent) => {
       setGridDropIntent(null);
+      lastSectionPointer = null;
       const target = event.target as HTMLElement | null;
       const drawerItem = target?.closest<HTMLElement>('[data-testid^="drawer-item:"]');
       const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '') as
@@ -902,7 +933,13 @@ function DrawerDragReporter() {
       setDraggedElementType(type && elementTypes.includes(type) ? type : null);
     };
     globalThis.document.addEventListener('pointerdown', track, true);
-    return () => globalThis.document.removeEventListener('pointerdown', track, true);
+    globalThis.document.addEventListener('pointermove', locateSection, true);
+    globalThis.document.addEventListener('pointerup', locateSection, true);
+    return () => {
+      globalThis.document.removeEventListener('pointerdown', track, true);
+      globalThis.document.removeEventListener('pointermove', locateSection, true);
+      globalThis.document.removeEventListener('pointerup', locateSection, true);
+    };
   }, []);
   return null;
 }
@@ -992,6 +1029,30 @@ function VisualEditorImpl({
     [document, draftId],
   );
   const [interactionRevision, setInteractionRevision] = useState(0);
+  const remountSelection = useRef<{
+    revision: number;
+    pageId: string;
+    selector: { zone: string; index: number };
+  } | null>(null);
+  const pendingReroute = useRef<{
+    pageId: string;
+    selector: { zone: string; index: number };
+  } | null>(null);
+  useEffect(() => {
+    const pending = pendingReroute.current;
+    if (!pending || pending.pageId !== pageId) return;
+    const sections =
+      pageId === 'footer'
+        ? document.footer
+        : document.pages.find((page) => page.id === pageId)?.blocks;
+    const section = sections?.find((entry) => `${entry.id}:content` === pending.selector.zone);
+    if (!section || section.items.length <= pending.selector.index) return;
+    pendingReroute.current = null;
+    setInteractionRevision((value) => {
+      remountSelection.current = { revision: value + 1, pageId, selector: pending.selector };
+      return value + 1;
+    });
+  }, [document, pageId]);
   const [touchWorkspace, setTouchWorkspace] = useState(
     () => window.matchMedia('(pointer: coarse)').matches,
   );
@@ -1294,7 +1355,14 @@ function VisualEditorImpl({
       render: ({ children }: { children: ReactNode }) => (
         <>
           <style>{`${siteCss}\n${editorCanvasCss}`}</style>
-          <CanvasBreakpointReporter />
+          <CanvasBreakpointReporter
+            restoreSelection={
+              remountSelection.current?.revision === interactionRevision &&
+              remountSelection.current.pageId === pageId
+                ? remountSelection.current.selector
+                : undefined
+            }
+          />
           <SiteFrame
             document={displayDocument}
             page={page}
@@ -1347,7 +1415,13 @@ function VisualEditorImpl({
           key={`${pageId}:${structureRevision}:${interactionRevision}`}
           config={config}
           data={data}
-          ui={{ rightSideBarVisible: propertiesOpen }}
+          ui={{
+            rightSideBarVisible: propertiesOpen,
+            ...(remountSelection.current?.revision === interactionRevision &&
+            remountSelection.current.pageId === pageId
+              ? { itemSelector: remountSelection.current.selector }
+              : {}),
+          }}
           dnd={editorDnd}
           overrides={editorOverrides}
           plugins={editorPlugins}
@@ -1399,10 +1473,48 @@ function VisualEditorImpl({
               mutation = mutationForContext('page-content');
             }
 
-            const hasRootElement = nextState.data.content.some(
+            let content = nextState.data.content as ComponentData[];
+            let reroutedRoot = false;
+            let reroutedSelector: { zone: string; index: number } | null = null;
+            if (
+              action.type === 'insert' &&
+              action.destinationZone === 'root:default-zone' &&
+              lastSectionPointer
+            ) {
+              const inserted = content[action.destinationIndex];
+              const target = content.find(
+                (item) =>
+                  sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
+                  String(item.props.id) === lastSectionPointer &&
+                  (item.props.settings as SectionSettings).layout === 'flow',
+              );
+              if (inserted?.type === action.componentType && target) {
+                const children = (target.props.content ?? []) as ComponentData[];
+                content = content
+                  .filter((_, index) => index !== action.destinationIndex)
+                  .map((item) =>
+                    item === target
+                      ? {
+                          ...item,
+                          props: {
+                            ...item.props,
+                            content: [...children, inserted],
+                          },
+                        }
+                      : item,
+                  );
+                reroutedRoot = true;
+                reroutedSelector = {
+                  zone: `${documentComponentId(target)}:content`,
+                  index: children.length,
+                };
+              }
+            }
+            lastSectionPointer = null;
+            const hasRootElement = content.some(
               (item) => !sectionTypes.includes(item.type as (typeof sectionTypes)[number]),
             );
-            const sections = nextState.data.content.map((item) =>
+            const sections = content.map((item) =>
               sectionTypes.includes(item.type as (typeof sectionTypes)[number])
                 ? dataToSection(item)
                 : rootElementToSection(item, sectionDefaults('Section')),
@@ -1411,8 +1523,13 @@ function VisualEditorImpl({
             replaceLayoutSections(changed, pageId, sections);
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);
-              else if (completeDocument(changed, mutation) && hasRootElement)
-                setInteractionRevision((value) => value + 1);
+              else {
+                if (reroutedRoot && reroutedSelector)
+                  pendingReroute.current = { pageId, selector: reroutedSelector };
+                if (!completeDocument(changed, mutation)) pendingReroute.current = null;
+                else if (!reroutedRoot && hasRootElement)
+                  setInteractionRevision((value) => value + 1);
+              }
             });
           }}
           onPublish={undefined}
