@@ -71,6 +71,57 @@ describe('composed document compatibility', () => {
     expect(html).not.toContain('Point ATX</h1>');
   });
 
+  it('renders independent semantic text and treats an empty field as no text', () => {
+    const input = composedDocument();
+    const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+    const group = pages[0].blocks[1].items[0].element as {
+      items: Array<{ element: Record<string, unknown> }>;
+    };
+    group.items[0].element.semantic = 'h1';
+    let document = SiteDocumentSchema.parse(input);
+    expect(renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }))).toContain(
+      '<h1 class="point-text',
+    );
+    group.items[0].element.text = '';
+    document = SiteDocumentSchema.parse(input);
+    expect(
+      renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' })),
+    ).not.toContain('class="point-text');
+  });
+
+  it('rejects version-12 text semantics and image links mislabelled as version 11', () => {
+    const old = structuredClone(defaultSiteDocument) as unknown as Record<string, unknown>;
+    const pages = old.pages as Array<{
+      blocks: Array<{ items: Array<{ element: Record<string, unknown> }> }>;
+    }>;
+    pages[0].blocks[1].items[0].element = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      text: '',
+      style: 'body',
+      align: 'left',
+      semantic: 'h1',
+    };
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(false);
+    pages[0].blocks[1].items[0].element = {
+      id: crypto.randomUUID(),
+      type: 'image',
+      mediaId: defaultSiteDocument.media[0].id,
+      alt: 'Linked image',
+      aspect: 'natural',
+      fit: 'cover',
+      href: 'https://example.com',
+    };
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(false);
+    pages[0].blocks[1].items[0].element = {
+      id: crypto.randomUUID(),
+      type: 'cards',
+      columns: 2,
+      items: [{ title: 'Linked card', body: 'Description', mediaFit: 'stretch' }],
+    };
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(false);
+  });
+
   it('keeps newer drafts read only through repository writes', async () => {
     const repository = new InMemoryRepository();
     const actor = 'editor@example.com';

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { CanonicalRouteSchema, SafeHrefSchema, SafeHttpsUrlSchema } from './url-policy';
+import {
+  CanonicalRouteSchema,
+  SafeHrefSchema,
+  SafeHttpsUrlSchema,
+  isSafeExternalHttpUrl,
+  isSafeInternalPath,
+} from './url-policy';
 import { isDirectVideoUrl, youtubeVideoId } from './linked-media';
 
 const uuid = z.uuid();
@@ -104,9 +110,17 @@ const ImageBlockSchema = z.strictObject({
   mediaId: uuid,
   alt: z.string().trim().min(1).max(300),
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
-  fit: z.enum(['cover', 'contain']),
+  fit: z.enum(['cover', 'contain', 'stretch']),
   caption: z.string().trim().max(500).optional(),
   variant: z.enum(['standard', 'wide']).optional(),
+  href: z
+    .string()
+    .max(2048)
+    .refine(
+      (value) => isSafeInternalPath(value) || isSafeExternalHttpUrl(value),
+      'Image link must be an internal page or HTTP/HTTPS URL',
+    )
+    .optional(),
 });
 
 const MediaEmbedBlockSchema = z.strictObject({
@@ -164,6 +178,7 @@ const CardsBlockSchema = z.strictObject({
         supportingText: z.string().trim().max(500).optional(),
         mediaId: uuid.optional(),
         mediaAlt: z.string().trim().min(1).max(300).optional(),
+        mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
         href: SafeHrefSchema.optional(),
       }),
     )
@@ -255,9 +270,10 @@ const SpacerBlockSchema = z.strictObject({
 const TextBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('text'),
-  text: bodyText,
+  text: z.string().trim().max(5_000),
   style: z.enum(['body', 'lead', 'eyebrow', 'small']),
   align: z.enum(['left', 'center']),
+  semantic: z.enum(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']).optional(),
 });
 
 const ButtonBlockSchema = z.strictObject({
@@ -795,6 +811,28 @@ export const SiteDocumentSchema = z
               code: 'custom',
               path: elementPath,
               message: 'Composed content requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'text' &&
+              (item.element.semantic !== undefined || item.element.text.length === 0)) ||
+              (item.element.type === 'image' && item.element.href !== undefined))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Independent text and image links require schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'image' && item.element.fit === 'stretch') ||
+              (item.element.type === 'cards' &&
+                item.element.items.some((card) => card.mediaFit !== undefined)))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Custom image fit requires schema version 12',
             });
           if (
             document.schemaVersion < 11 &&

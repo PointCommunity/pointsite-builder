@@ -1278,8 +1278,15 @@ body:has(.point-site) {
 .point-site .point-linked-media {
   overflow: hidden;
 }
+.point-site .point-image-link {
+  display: block;
+}
 .point-site .point-image:not(.point-aspect--natural) > img,
+.point-site .point-image:not(.point-aspect--natural) > .point-image-link,
+.point-site .point-image:not(.point-aspect--natural) > .point-image-link > img,
 .point-site .wide-photo:not(.point-aspect--natural) > img,
+.point-site .wide-photo:not(.point-aspect--natural) > .point-image-link,
+.point-site .wide-photo:not(.point-aspect--natural) > .point-image-link > img,
 .point-site .point-linked-media:not(.point-aspect--natural) > :is(img, video, iframe) {
   width: 100%;
   height: 100%;
@@ -1318,6 +1325,9 @@ body:has(.point-site) {
 }
 .point-site .point-fit--contain {
   object-fit: contain;
+}
+.point-site .point-fit--stretch {
+  object-fit: fill;
 }
 .point-site .point-cta {
   display: flex;
@@ -1817,7 +1827,11 @@ body:has(.point-site) {
 .point-site .point-layout-item--grid > .wide-photo,
 .point-site .point-layout-item--grid > .point-linked-media,
 .point-site .point-layout-item--grid > .point-image > img,
+.point-site .point-layout-item--grid > .point-image > .point-image-link,
+.point-site .point-layout-item--grid > .point-image > .point-image-link > img,
 .point-site .point-layout-item--grid > .wide-photo > img,
+.point-site .point-layout-item--grid > .wide-photo > .point-image-link,
+.point-site .point-layout-item--grid > .wide-photo > .point-image-link > img,
 .point-site .point-layout-item--grid > .point-linked-media > :is(img, video, iframe) {
   width: 100%;
   height: 100%;

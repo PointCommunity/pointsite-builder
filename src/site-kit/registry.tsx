@@ -202,6 +202,11 @@ function CardMedia({
       loading="lazy"
       width={1600}
       height={900}
+      style={
+        item.mediaFit
+          ? { objectFit: item.mediaFit === 'stretch' ? 'fill' : item.mediaFit }
+          : undefined
+      }
     />
   ) : reserve ? (
     <span className="point-card-media" aria-hidden="true" />
@@ -573,28 +578,33 @@ export function renderBlock(
       );
     case 'image': {
       const media = mediaRecord(document, block.mediaId);
+      const image = (
+        <img
+          src={media.sourcePath}
+          alt={block.alt}
+          width={block.variant === 'wide' ? '1000' : undefined}
+          height={block.variant === 'wide' ? '668' : undefined}
+          loading="lazy"
+          className={`point-fit--${block.fit}`}
+        />
+      );
+      const visual = block.href ? (
+        <a className="point-image-link" href={block.href} {...linkAttributes(block.href)}>
+          {image}
+        </a>
+      ) : (
+        image
+      );
       return block.variant === 'wide' ? (
         <section
           className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}`}
         >
-          <img
-            src={media.sourcePath}
-            alt={block.alt}
-            width="1000"
-            height="668"
-            loading="lazy"
-            className={`point-fit--${block.fit}`}
-          />
+          {visual}
           {block.caption ? <p>{block.caption}</p> : null}
         </section>
       ) : (
         <figure className={`point-image point-aspect--${block.aspect.replace(':', '-')}`}>
-          <img
-            src={media.sourcePath}
-            alt={block.alt}
-            loading="lazy"
-            className={`point-fit--${block.fit}`}
-          />
+          {visual}
           {block.caption ? <figcaption>{block.caption}</figcaption> : null}
         </figure>
       );
@@ -1070,12 +1080,17 @@ export function renderBlock(
       );
     case 'spacer':
       return <div className={`point-spacer point-spacer--${block.size}`} aria-hidden="true" />;
-    case 'text':
+    case 'text': {
+      if (!block.text) return null;
+      const TextElement: ElementType = block.semantic ?? 'p';
       return (
-        <p className={`point-text point-text--${block.style} point-align--${block.align}`}>
+        <TextElement
+          className={`point-text point-text--${block.style} point-align--${block.align}`}
+        >
           {block.text}
-        </p>
+        </TextElement>
       );
+    }
     case 'button':
       return (
         <div

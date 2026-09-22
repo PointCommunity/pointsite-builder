@@ -607,8 +607,11 @@ export function BlockInspector({
             label="Image fit"
             value={block.fit}
             options={[
-              { label: 'Cover', value: 'cover' },
-              { label: 'Contain', value: 'contain' },
+              { label: 'Crop to fill', value: 'cover' },
+              { label: 'Fit whole image', value: 'contain' },
+              ...(document.schemaVersion >= 12
+                ? [{ label: 'Stretch', value: 'stretch' as const }]
+                : []),
             ]}
             onChange={(fit) => onChange({ ...block, fit })}
           />
@@ -617,6 +620,34 @@ export function BlockInspector({
             value={block.caption}
             onChange={(caption) => onChange({ ...block, caption })}
           />
+          {document.schemaVersion >= 12 ? (
+            <>
+              <label className="inspector-field">
+                <span>Link image</span>
+                <input
+                  type="checkbox"
+                  checked={block.href !== undefined}
+                  onChange={(event) => {
+                    if (event.target.checked)
+                      onChange({ ...block, href: document.pages[0]?.route ?? '/' });
+                    else {
+                      const next = { ...block };
+                      delete next.href;
+                      onChange(next);
+                    }
+                  }}
+                />
+              </label>
+              {block.href !== undefined ? (
+                <LinkDestinationField
+                  label="Image link"
+                  value={block.href}
+                  pages={document.pages}
+                  onChange={(href) => onChange({ ...block, href })}
+                />
+              ) : null}
+            </>
+          ) : null}
         </div>
       );
     case 'mediaEmbed':
@@ -862,8 +893,8 @@ export function BlockInspector({
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <p className="inspector-hint">
-            Images use 16:9 frames and fit fully without cropping. Missing images reserve the same
-            space when other cards have images. Text-only collections have no image frames.
+            Images use 16:9 frames. Missing images reserve the same space when other cards have
+            images. Text-only collections have no image frames.
           </p>
           {block.variant !== 'splitEditorial' && block.variant !== 'splitEditorialTone' ? (
             <>
@@ -969,6 +1000,25 @@ export function BlockInspector({
                     })
                   }
                 />
+                {document.schemaVersion >= 12 ? (
+                  <Select
+                    label="Image fit"
+                    value={item.mediaFit ?? 'contain'}
+                    options={[
+                      { label: 'Fit whole image', value: 'contain' },
+                      { label: 'Crop to fill', value: 'cover' },
+                      { label: 'Stretch', value: 'stretch' },
+                    ]}
+                    onChange={(mediaFit) =>
+                      onChange({
+                        ...block,
+                        items: block.items.map((candidate, itemIndex) =>
+                          itemIndex === index ? { ...candidate, mediaFit } : candidate,
+                        ),
+                      })
+                    }
+                  />
+                ) : null}
                 <Text
                   label="Image alternative text"
                   value={item.mediaAlt}
@@ -1301,8 +1351,27 @@ export function BlockInspector({
             label="Text"
             value={block.text}
             area
-            onChange={(text) => text && onChange({ ...block, text })}
+            onChange={(text) =>
+              (text !== undefined || document.schemaVersion >= 12) &&
+              onChange({ ...block, text: text ?? '' })
+            }
           />
+          {document.schemaVersion >= 12 ? (
+            <Select
+              label="Text type"
+              value={block.semantic ?? 'p'}
+              options={[
+                { label: 'Paragraph', value: 'p' },
+                { label: 'Heading 1', value: 'h1' },
+                { label: 'Heading 2', value: 'h2' },
+                { label: 'Heading 3', value: 'h3' },
+                { label: 'Heading 4', value: 'h4' },
+                { label: 'Heading 5', value: 'h5' },
+                { label: 'Heading 6', value: 'h6' },
+              ]}
+              onChange={(semantic) => onChange({ ...block, semantic })}
+            />
+          ) : null}
           <Select
             label="Text style"
             value={block.style}

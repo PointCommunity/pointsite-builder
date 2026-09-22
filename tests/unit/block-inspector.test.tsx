@@ -13,6 +13,74 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
+  it('offers optional internal and external destinations for a version-12 image', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'image')!;
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <BlockInspector block={block} document={document} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Link image' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: '/' });
+    rerender(
+      <BlockInspector block={{ ...block, href: '/' }} document={document} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText('Internal page'), {
+      target: { value: document.pages[1].route },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: document.pages[1].route });
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'external' } });
+    fireEvent.change(screen.getByLabelText('External URL'), {
+      target: { value: 'https://example.com/visit' },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: 'https://example.com/visit' });
+    rerender(
+      <BlockInspector
+        block={{ ...block, href: 'https://example.com/visit' }}
+        document={document}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Link image' }));
+    expect(onChange).toHaveBeenLastCalledWith(block);
+  });
+
+  it('allows a version-12 text field to be cleared and assigned H1 semantics', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'text')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, text: '' });
+    fireEvent.change(screen.getByLabelText('Text type'), { target: { value: 'h1' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, semantic: 'h1' });
+  });
+
+  it('sets fit independently for each card image in version 12', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'cards')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText('Image fit')[0], { target: { value: 'stretch' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFit: 'stretch' } : item,
+      ),
+    });
+  });
   it('selects a named design and routes edits to its stable identity in Navigation Designer', () => {
     const document = upgradeNavigation(defaultSiteDocument);
     const first = document.navigationDesigns![0];

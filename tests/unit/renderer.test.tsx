@@ -8,6 +8,41 @@ import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
 
 describe('controlled public renderer', () => {
+  it('links an image to an internal page or safe external URL without linking its caption', () => {
+    const source = allBlocks.find((block) => block.type === 'image')!;
+    for (const href of ['/who-we-are', 'https://example.com/photos']) {
+      const block = SiteElementSchema.parse({ ...source, href });
+      const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+      const link = container.querySelector('a.point-image-link');
+      expect(link).toHaveAttribute('href', href);
+      expect(link?.querySelector('img')).toBeTruthy();
+      if (href.startsWith('/')) expect(link).not.toHaveAttribute('target');
+      else expect(link).toHaveAttribute('target', '_blank');
+      expect(link).not.toContainElement(container.querySelector('figcaption'));
+    }
+    expect(SiteElementSchema.safeParse({ ...source, href: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+  });
+
+  it('applies image fit per card without changing legacy card images', () => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const mediaId = allBlocksDocument.media[0].id;
+    const block = SiteElementSchema.parse({
+      ...source,
+      items: [
+        { title: 'Crop', body: 'One', mediaId, mediaFit: 'cover' },
+        { title: 'Stretch', body: 'Two', mediaId, mediaFit: 'stretch' },
+        { title: 'Fit', body: 'Three', mediaId },
+      ],
+    });
+    const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+    expect(
+      [...container.querySelectorAll('img.point-card-media')].map((image) =>
+        image.getAttribute('style'),
+      ),
+    ).toEqual(['object-fit: cover;', 'object-fit: fill;', null]);
+  });
   it.each([
     'standard',
     'splitEditorial',
