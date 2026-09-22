@@ -39,23 +39,32 @@ function Select<T extends string | number>({
   value,
   options,
   onChange,
+  schemaVersion = 11,
 }: {
   label: string;
   value: T;
   options: readonly { label: string; value: T }[];
   onChange: (value: T) => void;
+  schemaVersion?: number;
 }) {
+  const visibleOptions =
+    schemaVersion >= 12
+      ? options.map((option) => ({
+          ...option,
+          label: option.label.replace(/^Point (.)/, (_, initial: string) => initial.toUpperCase()),
+        }))
+      : options;
   return (
     <label className="inspector-field">
       <span>{label}</span>
       <select
         value={value}
         onChange={(event) => {
-          const next = options.find((option) => String(option.value) === event.target.value);
+          const next = visibleOptions.find((option) => String(option.value) === event.target.value);
           if (next) onChange(next.value);
         }}
       >
-        {options.map((option) => (
+        {visibleOptions.map((option) => (
           <option key={String(option.value)} value={option.value}>
             {option.label}
           </option>
@@ -196,6 +205,7 @@ export function BlockInspector({
               { label: 'Point homepage hero', value: 'homeHero' },
               { label: 'Point page hero', value: 'pageHero' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -290,6 +300,7 @@ export function BlockInspector({
               { label: 'Standard heading', value: 'standard' },
               { label: 'Point homepage introduction', value: 'homeIntro' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -395,6 +406,7 @@ export function BlockInspector({
                 ? [{ label: 'Footer information', value: 'footer' as const }]
                 : []),
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -606,6 +618,7 @@ export function BlockInspector({
               { label: 'Standard image', value: 'standard' },
               { label: 'Point wide photo', value: 'wide' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Media
@@ -736,6 +749,7 @@ export function BlockInspector({
               { label: 'Point image and text', value: 'splitFeature' },
               { label: 'Point content image split', value: 'imageSplit' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -871,6 +885,7 @@ export function BlockInspector({
               { label: 'Standard call to action', value: 'standard' },
               { label: 'Point wide callout', value: 'rental' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -921,6 +936,7 @@ export function BlockInspector({
               { label: 'Point neighborhood groups', value: 'groups' },
               { label: 'Point giving options', value: 'giving' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <p className="inspector-hint">
@@ -1186,6 +1202,7 @@ export function BlockInspector({
               { label: 'Standard questions', value: 'standard' },
               { label: 'Point questions section', value: 'groups' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -1287,6 +1304,7 @@ export function BlockInspector({
               { label: 'Point standalone form', value: 'standalone' },
               { label: 'Point contact and form', value: 'contact' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <label className="inspector-field">
@@ -1346,6 +1364,7 @@ export function BlockInspector({
               { label: 'Standard map', value: 'standard' },
               { label: 'Point gathering section', value: 'gathering' },
             ]}
+            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text

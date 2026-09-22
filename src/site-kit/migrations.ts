@@ -1,7 +1,7 @@
 import { SiteDocumentSchema, SiteElementSchema } from './schema';
 import { independentGridArea, independentResponsiveValue, legacyGridAreas } from './grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from './types';
-import { MAX_SUPPORTED_SCHEMA_VERSION } from './version';
+import { MAX_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION } from './version';
 import { createEditableHeaderSection, derivedUuid } from './editable-header';
 import { createEditablePageHeroSection, type LegacyPageHero } from './editable-page-hero';
 import { createEditableFooterSection } from './editable-footer';
@@ -319,6 +319,7 @@ export function migrateDocument(input: unknown): MigrationResult {
   apply(9, migrateEightToNine);
   apply(10, migrateNineToTen);
   apply(11, migrateTenToEleven);
+  if (SCHEMA_VERSION >= 12) apply(12, migrateElevenToTwelve);
 
   return { document: SiteDocumentSchema.parse(current), applied };
 }
@@ -326,6 +327,12 @@ export function migrateDocument(input: unknown): MigrationResult {
 /** Kept for callers that explicitly prepare a Navigation document. */
 export function upgradeNavigation(input: unknown): SiteDocument {
   return migrateDocument(input).document;
+}
+
+/** Explicit preparation; the reader baseline does not rewrite older drafts. */
+export function upgradeComposition(input: unknown): SiteDocument {
+  const document = migrateDocument(input).document;
+  return document.schemaVersion === 12 ? document : migrateElevenToTwelve(document);
 }
 
 function migrateNineToTen(input: object): SiteDocument {
@@ -378,4 +385,9 @@ function migrateTenToEleven(input: object): SiteDocument {
     })),
     footer: [createEditableFooterSection(document.site)],
   });
+}
+
+function migrateElevenToTwelve(input: object): SiteDocument {
+  const document = SiteDocumentSchema.parse(input);
+  return SiteDocumentSchema.parse({ ...document, schemaVersion: 12, rendererVersion: '12.0.0' });
 }

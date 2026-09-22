@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { independentGridArea, independentResponsiveValue } from '../../src/site-kit/grid-layout';
-import { migrateDocument } from '../../src/site-kit/migrations';
+import { migrateDocument, upgradeComposition } from '../../src/site-kit/migrations';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { canEditDocument, supportsRenderer } from '../../src/site-kit/version';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
@@ -55,6 +55,20 @@ describe('composed document compatibility', () => {
     expect(
       canEditDocument(composedDocument() as { schemaVersion: number; rendererVersion: string }),
     ).toBe(false);
+  });
+
+  it('prepares version 11 as version 12 deterministically without changing legacy content', () => {
+    const old = structuredClone(defaultSiteDocument);
+    const upgraded = upgradeComposition(old);
+    expect(upgraded).toEqual({ ...old, schemaVersion: 12, rendererVersion: '12.0.0' });
+    expect(upgradeComposition(upgraded)).toEqual(upgraded);
+    for (const route of ['/', '/who-we-are', '/contact']) {
+      const oldHtml = renderToStaticMarkup(createElement(SiteRenderer, { document: old, route }));
+      const newHtml = renderToStaticMarkup(
+        createElement(SiteRenderer, { document: upgraded, route }),
+      );
+      expect(newHtml).toBe(oldHtml);
+    }
   });
 
   it('does not allow composed content to be stored as a version 11 document', () => {

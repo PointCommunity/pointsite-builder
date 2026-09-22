@@ -320,7 +320,7 @@ function defaultElement<T extends SiteElement['type']>(
     hero: {
       id,
       type: 'hero',
-      heading: 'Welcome to Point',
+      heading: 'Welcome',
       body: 'Add a short welcome.',
       align: 'left',
       surface: 'primary',
@@ -404,7 +404,7 @@ function defaultElement<T extends SiteElement['type']>(
       ...(document.schemaVersion >= 10
         ? { navigationDesignId: document.navigationDesigns?.[0]?.id }
         : {}),
-      label: 'Church navigation',
+      label: 'Site navigation',
       orientation: 'responsive',
       align: 'right',
       surface: 'transparent',

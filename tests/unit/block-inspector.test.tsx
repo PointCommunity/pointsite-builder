@@ -303,6 +303,32 @@ describe('BlockInspector', () => {
     expect(screen.getByRole('option', { name: 'Point page hero' })).toBeInTheDocument();
   });
 
+  it('offers brand-neutral Hero alternatives in a version-12 document', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const hero = allBlocks.find((item) => item.type === 'hero')!;
+    const { rerender } = render(
+      <BlockInspector block={hero} document={document} onChange={vi.fn()} />,
+    );
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).not.toEqual(
+      expect.arrayContaining(['Point page hero', 'Point homepage hero']),
+    );
+    expect(screen.getByRole('option', { name: 'Homepage hero' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Page hero' })).toBeInTheDocument();
+    rerender(
+      <BlockInspector
+        block={{ ...hero, variant: 'pageHero' }}
+        document={document}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Layout style')).toHaveValue('pageHero');
+    expect(screen.getByRole('option', { name: 'Page hero' })).toBeInTheDocument();
+  });
+
   it('uses page-aware destinations for action and standalone button links', () => {
     const actionBlock = allBlocks.find((item) => item.type === 'cta')!;
     const { rerender } = render(
