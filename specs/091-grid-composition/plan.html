@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 91 · Implementation plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+        background: #0b100d;
+        color: #eef3ec;
+      }
+      body {
+        max-width: 1040px;
+        margin: auto;
+        padding: 48px 24px 96px;
+      }
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 2.5rem;
+        color: #c3e4ae;
+      }
+      a {
+        color: #b9dafd;
+      }
+      code {
+        color: #f1d394;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.65rem;
+        border: 1px solid #354438;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #18231b;
+      }
+      aside {
+        padding: 1rem 1.25rem;
+        background: #18231b;
+        border-left: 4px solid #a2d782;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Issue #91 · Implementation plan</h1>
+      <p>
+        Plan for the <a href="./spec.html">approved specification</a> and
+        <a href="https://github.com/PointCommunity/pointsite-builder/issues/91"
+          >Issue acceptance criteria</a
+        >. This is a proposed architecture for review, not implementation evidence.
+      </p>
+
+      <h2>Decision and dependency order</h2>
+      <ol>
+        <li>
+          <strong>Inventory and parity baseline.</strong> Capture representative v9–v11 documents,
+          every registered legacy variant, header/footer and screenshot layouts in tests. Separate
+          authored content from hard-coded renderer styles. The baseline is the regression oracle.
+        </li>
+        <li>
+          <strong>One shared composition contract.</strong> Add bounded nested groups and stable
+          child IDs to the site document. A group arranges reusable semantic leaves on responsive
+          grids: text, image, link/button, form, navigation, map/media and interactive/list content
+          as needed for the full inventory. Reuse existing <code>GridArea</code>, breakpoints, media
+          references, safe destinations and shared rendering. Keep logical order separate from
+          visual layer order. Do not duplicate specialized Hero/Card/Contact renderers as new
+          Point-only presets.
+        </li>
+        <li>
+          <strong>Read-compatible baseline.</strong> Add versioned parsing/migration and composed
+          rendering while legacy rendering remains unchanged. Keep new authoring disabled until a
+          Production rollback image can parse and safely render the new contract. Exercise old
+          documents and a composed fixture in a local native upgrade/rollback rehearsal. If a
+          simpler verified dual-read strategy meets the same property, use it.
+        </li>
+        <li>
+          <strong>Authoring slices.</strong> First make a generic composed section editable using
+          existing Puck slots and grid actions. Then add semantic text, independent media, image
+          links and fit, forms, card/person composition, header/navigation/footer, and brand-neutral
+          presets. Legacy variants remain readable and convert through Builder controls to
+          equivalent editable content; they are no longer offered as Point-specific new-layout
+          choices.
+        </li>
+        <li>
+          <strong>Placement feedback.</strong> Use the same prospective element data and grid
+          geometry for the translucent phantom and committed drop. Add root-page Image insertion
+          that creates the future grid section at the intended location and selects its child. Keep
+          invalid/cancel paths non-mutating.
+        </li>
+        <li>
+          <strong>Parity and release.</strong> Shared site-kit output drives Layout, Preview and
+          publication. Synchronize the reviewed renderer contract with its governed publication
+          counterpart without initiating public publication. Full local QA and exact-head Quality
+          precede Canary; each Production promotion requires approval of its exact Canary candidate.
+          Production Showcase and Issue closure need separate PM testing and approval.
+        </li>
+      </ol>
+
+      <h2>Vertical slices and checkpoints</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Slice</th>
+            <th>Visible outcome</th>
+            <th>Verification checkpoint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>0. Baseline</td>
+            <td>
+              Legacy pages and block variants have a documented inventory and render fixtures.
+            </td>
+            <td>Existing renderer, migration and full-site fixture tests pass unchanged.</td>
+          </tr>
+          <tr>
+            <td>1. Compatible reader</td>
+            <td>
+              Legacy documents render unchanged; bounded composed data renders and survives
+              round-trip.
+            </td>
+            <td>
+              Schema/migration, native repository, revision, publish preflight and previous-image
+              rehearsal. Release a reader-capable baseline before any v12 write in Production.
+            </td>
+          </tr>
+          <tr>
+            <td>2. One composed region</td>
+            <td>
+              Blank page or footer accepts two independent semantic text leaves, moves/resizes them
+              on each breakpoint, saves and reopens.
+            </td>
+            <td>Focused schema/grid/renderer/UI tests; browser placement, undo/redo and parity.</td>
+          </tr>
+          <tr>
+            <td>3. Media and links</td>
+            <td>
+              Images resize independently, layer and fit/crop/position as authored; optional safe
+              page/URL link works. Cards and People choose per-image treatment.
+            </td>
+            <td>
+              Rendered link safety, alt/accessibility, aspect-ratio fixtures, responsive browser
+              checks.
+            </td>
+          </tr>
+          <tr>
+            <td>4. Forms and repeaters</td>
+            <td>
+              Contact area composes freely; Form Designer field grid preserves labels, validation,
+              submission and keyboard order. Cards/People/FAQ can be rebuilt from reusable
+              primitives and collection bindings where applicable.
+            </td>
+            <td>Form submission and collection tests, isolated browser reconstruction.</td>
+          </tr>
+          <tr>
+            <td>5. Palette and feedback</td>
+            <td>
+              Neutral Hero/layout presets remain fully editable. Direct-page Image drop creates and
+              selects its container. Every Block drop displays actual translucent content at final
+              snapped geometry.
+            </td>
+            <td>
+              Pointer, keyboard, touch, occupied/invalid/cancel tests; phantom-to-drop comparisons.
+            </td>
+          </tr>
+          <tr>
+            <td>6. Full acceptance</td>
+            <td>
+              All twelve Issue criteria hold across pages, global regions and supported widths.
+            </td>
+            <td>
+              Sequential <code>npm run check</code>, <code>npm run test:performance</code>,
+              <code>npm run test:e2e -- --workers=2</code>, 200% zoom, audit, exact-tree Quality,
+              Canary handoff.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Risk controls</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Risk</th>
+            <th>Control</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Strict v11 parser rejects new document nodes.</td>
+            <td>
+              Reader-capable baseline before v12 writes; no bulk Production rewrite; retained prior
+              digest and native upgrade/rollback tests.
+            </td>
+          </tr>
+          <tr>
+            <td>New grid geometry breaks legacy appearance or published parity.</td>
+            <td>
+              Keep legacy rendering path untouched until explicit conversion; golden route/viewport
+              fixtures; compare same revision in Layout, Preview and generated output.
+            </td>
+          </tr>
+          <tr>
+            <td>Intentional overlap clips content or changes reading order.</td>
+            <td>
+              Bound layer values and nesting depth; expose source-order controls; CSS grid with
+              explicit overflow rules; keyboard/focus and 200% zoom checks.
+            </td>
+          </tr>
+          <tr>
+            <td>Empty labels create inaccessible controls.</td>
+            <td>
+              Allow deletion in Properties; omit empty visual text, provide required nonvisual names
+              or an actionable publish preflight for controls/linked images.
+            </td>
+          </tr>
+          <tr>
+            <td>Palette drag preview differs from dropped output.</td>
+            <td>
+              Render a read-only clone of prospective data with shared renderer; derive preview and
+              insertion from one intent; test pointer movement, viewport, invalid and cancellation.
+            </td>
+          </tr>
+          <tr>
+            <td>Form/custom collection binding loses behavior.</td>
+            <td>
+              Retain existing form submission contract and stable source IDs; edit visual field
+              placement separately; test validation and revision recovery.
+            </td>
+          </tr>
+          <tr>
+            <td>Large feature destabilizes editor autosave.</td>
+            <td>
+              Small red/green slices; no Puck fork or new dependency unless existing APIs prove
+              insufficient; verify action history, checkout and autosave after each checkpoint.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Boundaries and next gate</h2>
+      <p>
+        No database table migration is assumed: document JSON versioning is the current path.
+        Reassess if source investigation disproves this. Do not change Issue body without approval,
+        drop legacy support, silently disable accessibility checks, deploy an unreviewed tree, or
+        publish public content. Break each slice into tasks touching at most five files, with
+        explicit RED/GREEN tests and dependencies. The approved Issue and work selection authorize
+        proceeding through these planning artifacts without a separate spec approval; unresolved
+        material decisions still require PM direction.
+      </p>
+    </main>
+  </body>
+</html>

@@ -50,6 +50,7 @@
 - Keep Status, Priority, Impact, Effort, governed labels, assignee, Issue state, branch, and PR reference aligned. Active Issues are assigned only to `brimdor`; Backlog Issues are open and unassigned.
 - With no requested Issue and no active Issue, rank and recommend the top three Backlog Issues, then wait for PM selection.
 - A request to work an Issue authorizes implementation, agent QA and Builder Canary deployment. Explicit PM approval of the exact healthy Canary source/tree, image digest and GitOps configuration is required before merge and Production promotion. PM testing of the production Showcase and completion approval remain mandatory before Done and closure.
+- The approved GitHub Issue is the approved requirements specification. When the PM selects it for work, write the repository spec, plan, and tasks as needed, then continue implementation without stopping for a second spec approval. Ask only when evidence cannot resolve a material decision or the proposed work departs from the approved Issue; preserve the separate Canary and completion approval gates.
 
 ## Required workflow
 
