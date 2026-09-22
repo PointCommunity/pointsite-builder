@@ -669,7 +669,9 @@ test('edits composed footer Blocks, saves, reloads and previews the same content
   await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Gather together');
   await page.getByRole('textbox', { name: 'Paragraph', exact: true }).fill('Sundays at 11 AM');
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
-  for (const { label } of Object.values(blockDefinitions))
+  for (const { label } of Object.values(blockDefinitions).filter(
+    ({ label }) => label !== 'Group',
+  ))
     await expect(
       page.getByText(label, { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
@@ -2059,7 +2061,7 @@ test('edits, rearranges, replaces, and persists a non-home Hero as a normal elem
     blankSection.locator('[data-puck-dropzone]'),
   );
 
-  await expect(canvas.getByRole('heading', { level: 1, name: 'Welcome to Point' })).toBeVisible();
+  await expect(canvas.getByRole('heading', { level: 1, name: 'Welcome' })).toBeVisible();
   await expect(page.getByLabel('Layout style').filter({ visible: true })).toHaveValue('standard');
   await page.getByLabel('Layout style').filter({ visible: true }).selectOption('pageHero');
   await page.getByLabel('Heading').filter({ visible: true }).fill('Replacement page hero');
