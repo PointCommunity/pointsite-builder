@@ -53,6 +53,7 @@ describe('controlled public renderer', () => {
     document.collections.people[0].mediaId = document.media[0].id;
     document.collections.people[0].mediaFit = 'stretch';
     document.collections.people[0].mediaFrame = 'square';
+    document.collections.people[0].mediaFocal = { x: 20, y: 40 };
     document.collections.people.push({
       ...document.collections.people[0],
       id: crypto.randomUUID(),
@@ -94,8 +95,51 @@ describe('controlled public renderer', () => {
       'object-fit: fill; aspect-ratio: 1 / 1;',
     ]);
     const personImages = [...container.querySelectorAll('.point-people img, .people-grid img')];
-    expect(personImages[0]).toHaveStyle({ objectFit: 'fill', aspectRatio: '1 / 1' });
+    expect(personImages[0]).toHaveStyle({
+      objectFit: 'fill',
+      aspectRatio: '1 / 1',
+      objectPosition: '20% 40%',
+    });
     expect(personImages[1]).toHaveStyle({ objectFit: 'contain', aspectRatio: 'auto' });
+  });
+  it('positions the crop on independent, Hero and Card images', () => {
+    const image = allBlocks.find((block) => block.type === 'image')!;
+    const hero = allBlocks.find((block) => block.type === 'hero')!;
+    const cards = allBlocks.find((block) => block.type === 'cards')!;
+    const document = structuredClone(allBlocksDocument);
+    const { container } = render(
+      <>
+        {renderBlock({ ...image, focal: { x: 10, y: 80 } }, document)}
+        {renderBlock(
+          {
+            ...hero,
+            mediaId: document.media[0].id,
+            surface: 'image',
+            mediaFocal: { x: 20, y: 40 },
+          },
+          document,
+        )}
+        {renderBlock(
+          {
+            ...cards,
+            items: [
+              {
+                title: 'Image',
+                body: '',
+                mediaId: document.media[0].id,
+                mediaFocal: { x: 70, y: 30 },
+              },
+            ],
+          },
+          document,
+        )}
+      </>,
+    );
+    expect(container.querySelector('.point-image img')).toHaveStyle({ objectPosition: '10% 80%' });
+    expect(container.querySelector('.point-hero__image')).toHaveStyle({
+      objectPosition: '20% 40%',
+    });
+    expect(container.querySelector('.point-card-media')).toHaveStyle({ objectPosition: '70% 30%' });
   });
   it('renders ordered form fields on a responsive grid without changing input semantics', () => {
     const source = allBlocks.find((block) => block.type === 'form')!;

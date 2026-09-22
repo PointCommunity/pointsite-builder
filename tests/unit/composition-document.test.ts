@@ -60,7 +60,16 @@ describe('composed document compatibility', () => {
   it('prepares version 11 as version 12 deterministically without changing legacy content', () => {
     const old = structuredClone(defaultSiteDocument);
     const upgraded = upgradeComposition(old);
-    expect(upgraded).toEqual({ ...old, schemaVersion: 12, rendererVersion: '12.0.0' });
+    const withoutLegacyMarker = structuredClone(upgraded);
+    for (const section of [
+      ...withoutLegacyMarker.pages.flatMap((page) => page.blocks),
+      ...(withoutLegacyMarker.footer ?? []),
+    ]) {
+      for (const item of section.items) {
+        if (item.element.type === 'form') delete item.element.legacyChrome;
+      }
+    }
+    expect(withoutLegacyMarker).toEqual({ ...old, schemaVersion: 12, rendererVersion: '12.0.0' });
     expect(upgradeComposition(upgraded)).toEqual(upgraded);
     for (const route of ['/', '/who-we-are', '/contact']) {
       const oldHtml = renderToStaticMarkup(createElement(SiteRenderer, { document: old, route }));
@@ -219,12 +228,14 @@ describe('composed document compatibility', () => {
     const input = structuredClone(defaultSiteDocument);
     input.collections.people[0].mediaFit = 'cover';
     input.collections.people[0].mediaFrame = 'square';
+    input.collections.people[0].mediaFocal = { x: 20, y: 40 };
     expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
     input.schemaVersion = 12;
     input.rendererVersion = '12.0.0';
     expect(SiteDocumentSchema.parse(input).collections.people[0]).toMatchObject({
       mediaFit: 'cover',
       mediaFrame: 'square',
+      mediaFocal: { x: 20, y: 40 },
     });
   });
 
@@ -247,6 +258,24 @@ describe('composed document compatibility', () => {
     expect(SiteDocumentSchema.safeParse(input).success).toBe(true);
     form.fields[1].grid!.desktop.column = 1;
     expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+  });
+
+  it('stores empty form text in version 12 while preserving accessible controls', () => {
+    const input = structuredClone(defaultSiteDocument);
+    const form = input.forms[0];
+    form.name = '';
+    form.subject = '';
+    form.submitLabel = '';
+    form.fields[0].label = '';
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+    input.schemaVersion = 12;
+    input.rendererVersion = '12.0.0';
+    const document = SiteDocumentSchema.parse(input);
+    expect(document.forms[0].fields[0].label).toBe('');
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/contact' }));
+    expect(html).not.toContain('<h2></h2>');
+    expect(html).toContain('aria-label="Form field 1"');
+    expect(html).toContain('aria-label="Submit form"');
   });
 
   it('keeps newer drafts read only through repository writes', async () => {

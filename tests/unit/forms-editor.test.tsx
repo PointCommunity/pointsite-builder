@@ -83,3 +83,18 @@ it('offers a version-12 form grid with collision-safe, keyboard-ordered field co
   expect(moved[0].fields.map((field) => field.label)).toEqual(['Second', 'Message']);
   expect(moved[0].fields.map((field) => field.grid?.desktop.row)).toEqual([1, 2]);
 });
+
+it('keeps a cleared version-12 form name, submit label and question label editable', () => {
+  const forms = structuredClone(defaultSiteDocument.forms);
+  const onChange = vi.fn();
+  const { rerender } = render(<FormsEditor forms={forms} schemaVersion={12} onChange={onChange} />);
+  fireEvent.change(screen.getAllByLabelText('Question or label')[0], { target: { value: '' } });
+  const cleared = onChange.mock.calls.at(-1)?.[0] as typeof forms;
+  expect(cleared[0].fields[0].label).toBe('');
+  rerender(<FormsEditor forms={cleared} schemaVersion={12} onChange={onChange} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Form details' }));
+  fireEvent.change(screen.getByLabelText('Form name'), { target: { value: '' } });
+  expect((onChange.mock.calls.at(-1)?.[0] as typeof forms)[0].name).toBe('');
+  fireEvent.change(screen.getByLabelText('Submit button label'), { target: { value: '' } });
+  expect((onChange.mock.calls.at(-1)?.[0] as typeof forms)[0].submitLabel).toBe('');
+});

@@ -162,7 +162,9 @@ describe('BlockInspector', () => {
     };
     const block = allBlocks.find((item) => item.type === 'cards')!;
     const onChange = vi.fn();
-    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    const { rerender } = render(
+      <BlockInspector block={block} document={document} onChange={onChange} />,
+    );
     fireEvent.change(screen.getAllByLabelText('Image fit')[0], { target: { value: 'stretch' } });
     expect(onChange).toHaveBeenCalledWith({
       ...block,
@@ -175,6 +177,22 @@ describe('BlockInspector', () => {
       ...block,
       items: block.items.map((item, index) =>
         index === 0 ? { ...item, mediaFrame: 'square' } : item,
+      ),
+    });
+    const withImage = {
+      ...block,
+      items: block.items.map((item, index) =>
+        index ? item : { ...item, mediaId: document.media[0].id },
+      ),
+    };
+    rerender(<BlockInspector block={withImage} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText('Horizontal focus (%)')[0], {
+      target: { value: '25' },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      ...withImage,
+      items: withImage.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFocal: { x: 25, y: 50 } } : item,
       ),
     });
   });

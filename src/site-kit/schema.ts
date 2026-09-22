@@ -15,6 +15,10 @@ const bodyText = z.string().trim().min(1).max(5_000);
 const editableShortText = z.string().trim().max(120);
 const editableBodyText = z.string().trim().max(5_000);
 const imageFrame = z.enum(['natural', 'portrait', 'square', 'landscape']);
+const focalPoint = z.strictObject({
+  x: z.number().int().min(0).max(100),
+  y: z.number().int().min(0).max(100),
+});
 const optionalBodyText = z.string().trim().max(5_000).optional();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hexadecimal color');
 const responsiveHeroWidth = z.strictObject({
@@ -59,6 +63,7 @@ const HeroBlockSchema = z.strictObject({
   heading: z.string().trim().max(180),
   body: optionalBodyText,
   mediaId: uuid.optional(),
+  mediaFocal: focalPoint.optional(),
   align: z.enum(['left', 'center']),
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
@@ -122,6 +127,7 @@ const ImageBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('image'),
   mediaId: uuid,
+  focal: focalPoint.optional(),
   alt: z.string().trim().max(300),
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
   fit: z.enum(['cover', 'contain', 'stretch']),
@@ -153,6 +159,7 @@ const SplitFeatureBlockSchema = z.strictObject({
   heading: z.string().trim().max(180),
   body: editableBodyText,
   mediaId: uuid,
+  mediaFocal: focalPoint.optional(),
   mediaAlt: z.string().trim().max(300).optional(),
   mediaSide: z.enum(['left', 'right']),
   proportion: z.enum(['half', 'mediaWide', 'contentWide']),
@@ -194,6 +201,7 @@ const CardsBlockSchema = z.strictObject({
         mediaAlt: z.string().trim().max(300).optional(),
         mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
         mediaFrame: imageFrame.optional(),
+        mediaFocal: focalPoint.optional(),
         href: SafeHrefSchema.optional(),
       }),
     )
@@ -250,6 +258,7 @@ const FormBlockSchema = z.strictObject({
   linkLabel: z.string().trim().max(80).optional(),
   linkHref: SafeHrefSchema.optional(),
   variant: z.enum(['standard', 'panel', 'standalone', 'contact']).optional(),
+  legacyChrome: z.boolean().optional(),
 });
 
 const MapBlockSchema = z.strictObject({
@@ -555,10 +564,10 @@ const NavigationDesignSchema = z
 const FormSchema = z
   .strictObject({
     id: uuid,
-    name: shortText,
+    name: editableShortText,
     recipientEmail: z.email(),
-    subject: z.string().trim().min(1).max(180),
-    submitLabel: z.string().trim().min(1).max(60),
+    subject: z.string().trim().max(180),
+    submitLabel: z.string().trim().max(60),
     heading: z.string().trim().max(180).optional(),
     introduction: z.string().trim().max(1_000).optional(),
     privacyNote: z.string().trim().max(500).optional(),
@@ -571,7 +580,7 @@ const FormSchema = z
           .strictObject({
             id: uuid,
             name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
-            label: shortText,
+            label: editableShortText,
             type: z.enum([
               'text',
               'email',
@@ -586,7 +595,7 @@ const FormSchema = z
               'checkbox',
             ]),
             required: z.boolean(),
-            options: z.array(shortText).min(1).max(30).optional(),
+            options: z.array(editableShortText).min(1).max(30).optional(),
             placeholder: z.string().trim().max(180).optional(),
             helpText: z.string().trim().max(300).optional(),
             width: z.enum(['half', 'full']).default('half'),
@@ -670,6 +679,7 @@ const CollectionsSchema = z.strictObject({
       mediaAlt: z.string().trim().min(1).max(300).optional(),
       mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
       mediaFrame: imageFrame.optional(),
+      mediaFocal: focalPoint.optional(),
     }),
   ),
   beliefs: z.array(
@@ -840,7 +850,9 @@ export const SiteDocumentSchema = z
       });
     if (
       document.schemaVersion < 12 &&
-      document.collections.people.some((person) => person.mediaFit || person.mediaFrame)
+      document.collections.people.some(
+        (person) => person.mediaFit || person.mediaFrame || person.mediaFocal,
+      )
     )
       context.addIssue({
         code: 'custom',
@@ -857,6 +869,21 @@ export const SiteDocumentSchema = z
         code: 'custom',
         path: ['forms'],
         message: 'Form grids require schema version 12',
+      });
+    if (
+      document.schemaVersion < 12 &&
+      document.forms.some(
+        (form) =>
+          !form.name ||
+          !form.subject ||
+          !form.submitLabel ||
+          form.fields.some((field) => !field.label || field.options?.some((option) => !option)),
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['forms'],
+        message: 'Empty form text requires schema version 12',
       });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {
@@ -899,6 +926,16 @@ export const SiteDocumentSchema = z
             });
           if (
             document.schemaVersion < 12 &&
+            item.element.type === 'form' &&
+            item.element.legacyChrome !== undefined
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Legacy form marker requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
             ((item.element.type === 'text' &&
               (item.element.semantic !== undefined || item.element.text.length === 0)) ||
               (item.element.type === 'image' && item.element.href !== undefined))
@@ -913,13 +950,27 @@ export const SiteDocumentSchema = z
             ((item.element.type === 'image' && item.element.fit === 'stretch') ||
               (item.element.type === 'cards' &&
                 item.element.items.some(
-                  (card) => card.mediaFit !== undefined || card.mediaFrame !== undefined,
+                  (card) =>
+                    card.mediaFit !== undefined ||
+                    card.mediaFrame !== undefined ||
+                    card.mediaFocal !== undefined,
                 )))
           )
             context.addIssue({
               code: 'custom',
               path: elementPath,
               message: 'Custom image fit requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'image' && item.element.focal) ||
+              (item.element.type === 'hero' && item.element.mediaFocal) ||
+              (item.element.type === 'splitFeature' && item.element.mediaFocal))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Image focal points require schema version 12',
             });
           if (document.schemaVersion < 12) {
             const element = item.element;

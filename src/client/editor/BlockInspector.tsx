@@ -102,6 +102,42 @@ function Media({
   );
 }
 
+type FocalPoint = { x: number; y: number };
+function FocalFields({
+  value,
+  onChange,
+}: {
+  value?: FocalPoint;
+  onChange: (value?: FocalPoint) => void;
+}) {
+  return (
+    <fieldset className="inspector-grid">
+      <legend>Image crop focus</legend>
+      {(['x', 'y'] as const).map((axis) => (
+        <label className="inspector-field" key={axis}>
+          <span>{axis === 'x' ? 'Horizontal focus (%)' : 'Vertical focus (%)'}</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={value?.[axis] ?? 50}
+            onChange={(event) => {
+              const next = event.target.valueAsNumber;
+              if (Number.isInteger(next) && next >= 0 && next <= 100)
+                onChange({ x: value?.x ?? 50, y: value?.y ?? 50, [axis]: next });
+            }}
+          />
+        </label>
+      ))}
+      {value ? (
+        <button type="button" className="button" onClick={() => onChange(undefined)}>
+          Reset crop focus
+        </button>
+      ) : null}
+    </fieldset>
+  );
+}
+
 type Action = Extract<SiteElement, { type: 'hero' }>['actions'][number];
 type RichNode = Extract<SiteElement, { type: 'richText' }>['content'][number];
 function ActionEditor({
@@ -232,6 +268,12 @@ export function BlockInspector({
             optional
             onChange={(mediaId) => onChange({ ...block, mediaId })}
           />
+          {document.schemaVersion >= 12 && block.mediaId ? (
+            <FocalFields
+              value={block.mediaFocal}
+              onChange={(mediaFocal) => onChange({ ...block, mediaFocal })}
+            />
+          ) : null}
           <Select
             label="Alignment"
             value={block.align}
@@ -656,6 +698,9 @@ export function BlockInspector({
             ]}
             onChange={(fit) => onChange({ ...block, fit })}
           />
+          {document.schemaVersion >= 12 ? (
+            <FocalFields value={block.focal} onChange={(focal) => onChange({ ...block, focal })} />
+          ) : null}
           <Text
             label="Caption"
             value={block.caption}
@@ -782,6 +827,12 @@ export function BlockInspector({
             document={document}
             onChange={(mediaId) => mediaId && onChange({ ...block, mediaId })}
           />
+          {document.schemaVersion >= 12 ? (
+            <FocalFields
+              value={block.mediaFocal}
+              onChange={(mediaFocal) => onChange({ ...block, mediaFocal })}
+            />
+          ) : null}
           <Text
             label="Image alternative text"
             value={block.mediaAlt}
@@ -1106,6 +1157,19 @@ export function BlockInspector({
                     })
                   }
                 />
+                {document.schemaVersion >= 12 && item.mediaId ? (
+                  <FocalFields
+                    value={item.mediaFocal}
+                    onChange={(mediaFocal) =>
+                      onChange({
+                        ...block,
+                        items: block.items.map((candidate, itemIndex) =>
+                          itemIndex === index ? { ...candidate, mediaFocal } : candidate,
+                        ),
+                      })
+                    }
+                  />
+                ) : null}
                 <Text
                   label="Link"
                   value={item.href}
@@ -1315,7 +1379,7 @@ export function BlockInspector({
             >
               {document.forms.map((form) => (
                 <option value={form.id} key={form.id}>
-                  {form.name}
+                  {form.name || 'Untitled form'}
                 </option>
               ))}
             </select>
@@ -1323,6 +1387,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
+            allowEmpty={document.schemaVersion >= 12}
             onChange={(heading) => onChange({ ...block, heading })}
           />
           <Text

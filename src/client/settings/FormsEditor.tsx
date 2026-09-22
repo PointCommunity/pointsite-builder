@@ -238,7 +238,7 @@ export function FormsEditor({
                 aria-current={selectedId === form.id ? 'true' : undefined}
                 onClick={() => navigate(() => setSelectedId(form.id))}
               >
-                <strong>{form.name}</strong>
+                <strong>{form.name || 'Untitled form'}</strong>
                 <span>
                   {form.fields.length} {form.fields.length === 1 ? 'field' : 'fields'}
                 </span>
@@ -315,7 +315,7 @@ export function FormsEditor({
                 <label>
                   <span>Form name</span>
                   <input
-                    required
+                    required={schemaVersion < 12}
                     value={selected.name}
                     onChange={(event) =>
                       updateForm((form) => {
@@ -362,7 +362,7 @@ export function FormsEditor({
                 <label>
                   <span>Email subject</span>
                   <input
-                    required
+                    required={schemaVersion < 12}
                     value={selected.subject}
                     onChange={(event) =>
                       updateForm((form) => {
@@ -374,7 +374,7 @@ export function FormsEditor({
                 <label>
                   <span>Submit button label</span>
                   <input
-                    required
+                    required={schemaVersion < 12}
                     value={selected.submitLabel}
                     onChange={(event) =>
                       updateForm((form) => {
@@ -560,7 +560,7 @@ export function FormsEditor({
                       key={field.id}
                     >
                       <legend>
-                        {index + 1}. {field.label}
+                        {index + 1}. {field.label || 'Untitled question'}
                       </legend>
                       {selected.layout === 'grid' && field.grid ? (
                         <>
@@ -607,7 +607,7 @@ export function FormsEditor({
                         <label>
                           <span>Question or label</span>
                           <input
-                            required
+                            required={schemaVersion < 12}
                             value={field.label}
                             onChange={(event) =>
                               updateField(index, (target) => {
@@ -683,9 +683,8 @@ export function FormsEditor({
                               onChange={(event) =>
                                 updateField(index, (target) => {
                                   target.options = event.target.value
-                                    .split('\n')
-                                    .map((item) => item.trim())
-                                    .filter(Boolean);
+                                    ? event.target.value.split('\n').map((item) => item.trim())
+                                    : [''];
                                 })
                               }
                             />

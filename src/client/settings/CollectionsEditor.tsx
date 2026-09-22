@@ -184,6 +184,51 @@ export function CollectionsEditor({
                       <option value="landscape">Landscape 16:9</option>
                     </select>
                   </label>
+                  {(['x', 'y'] as const).map((axis) => (
+                    <label key={axis}>
+                      <span>
+                        {axis === 'x' ? 'Horizontal photo focus (%)' : 'Vertical photo focus (%)'}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={person.mediaFocal?.[axis] ?? 50}
+                        onChange={(event) => {
+                          const next = event.target.valueAsNumber;
+                          if (!Number.isInteger(next) || next < 0 || next > 100) return;
+                          onChange({
+                            ...collections,
+                            people: replace(collections.people, index, {
+                              ...person,
+                              mediaFocal: {
+                                x: person.mediaFocal?.x ?? 50,
+                                y: person.mediaFocal?.y ?? 50,
+                                [axis]: next,
+                              },
+                            }),
+                          });
+                        }}
+                      />
+                    </label>
+                  ))}
+                  {person.mediaFocal ? (
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() =>
+                        onChange({
+                          ...collections,
+                          people: replace(collections.people, index, {
+                            ...person,
+                            mediaFocal: undefined,
+                          }),
+                        })
+                      }
+                    >
+                      Reset photo focus
+                    </button>
+                  ) : null}
                 </>
               ) : null}
               <label>

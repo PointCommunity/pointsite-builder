@@ -145,6 +145,10 @@ function mediaRecord(document: SiteDocument, id: string) {
   return media;
 }
 
+function focalStyle(point?: { x: number; y: number }): CSSProperties | undefined {
+  return point ? { objectPosition: `${point.x}% ${point.y}%` } : undefined;
+}
+
 function TextLines({ text }: { text: string }) {
   if (!text) return null;
   return text.split(/\n{2,}/).map((line, index) => (
@@ -212,12 +216,13 @@ function CardMedia({
       width={1600}
       height={900}
       style={
-        item.mediaFit || item.mediaFrame
+        item.mediaFit || item.mediaFrame || item.mediaFocal
           ? {
               ...(item.mediaFit
                 ? { objectFit: item.mediaFit === 'stretch' ? 'fill' : item.mediaFit }
                 : {}),
               ...(item.mediaFrame ? { aspectRatio: frameRatios[item.mediaFrame] } : {}),
+              ...(item.mediaFocal ? focalStyle(item.mediaFocal) : {}),
             }
           : undefined
       }
@@ -250,7 +255,7 @@ function formGridStyle(
 }
 
 function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
-  const fields = form.fields.map((field) => {
+  const fields = form.fields.map((field, index) => {
     const describedBy = field.helpText ? `${field.id}-help` : undefined;
     const label = (
       <>
@@ -270,6 +275,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
           <textarea
             id={field.id}
             name={field.name}
+            aria-label={field.label ? undefined : `Form field ${index + 1}`}
             required={field.required}
             placeholder={field.placeholder}
             aria-describedby={describedBy}
@@ -290,6 +296,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
           <select
             id={field.id}
             name={field.name}
+            aria-label={field.label ? undefined : `Form field ${index + 1}`}
             required={field.required}
             aria-describedby={describedBy}
             defaultValue=""
@@ -310,6 +317,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
           className={`field field--${field.type} field--${field.width}`}
           key={field.id}
           style={formGridStyle(field.grid)}
+          aria-label={field.label ? undefined : `Form field ${index + 1}`}
         >
           <legend>{label}</legend>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
@@ -320,6 +328,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
                   type={field.type}
                   name={field.name}
                   value={option}
+                  aria-label={option ? undefined : `Choice ${index + 1}`}
                   required={field.required && field.type === 'radio'}
                   aria-describedby={describedBy}
                 />
@@ -342,6 +351,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
           id={field.id}
           type={field.type}
           name={field.name}
+          aria-label={field.label ? undefined : `Form field ${index + 1}`}
           required={field.required}
           placeholder={field.placeholder}
           aria-describedby={describedBy}
@@ -356,23 +366,25 @@ function FormPanel({
   form,
   heading,
   supportingText,
+  legacyChrome,
 }: {
   form: SiteDocument['forms'][number];
   heading?: string;
   supportingText?: string;
+  legacyChrome: boolean;
 }) {
   const action = `mailto:${form.recipientEmail}?subject=${encodeURIComponent(form.subject)}`;
   const [status, setStatus] = useState('');
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const lines = form.fields.flatMap((field) => {
+    const lines = form.fields.flatMap((field, index) => {
       const values = data
         .getAll(field.name)
         .map((value) => (typeof value === 'string' ? value : value.name))
         .filter(Boolean)
         .join(', ');
-      return values ? [`${field.label}: ${values}`] : [];
+      return values ? [`${field.label || `Form field ${index + 1}`}: ${values}`] : [];
     });
     setStatus(form.successMessage ?? 'Your email app is opening with this request ready to send.');
     const emailLink = globalThis.document.createElement('a');
@@ -385,8 +397,10 @@ function FormPanel({
   return (
     <section className="form-panel">
       <div className="form-heading">
-        <p className="eyebrow">Get connected</p>
-        <h2>{heading ?? form.heading ?? form.name}</h2>
+        {legacyChrome ? <p className="eyebrow">Get connected</p> : null}
+        {(heading ?? form.heading ?? form.name) ? (
+          <h2>{heading ?? form.heading ?? form.name}</h2>
+        ) : null}
         {supportingText || form.introduction ? <p>{supportingText ?? form.introduction}</p> : null}
       </div>
       <form
@@ -397,13 +411,21 @@ function FormPanel({
         onSubmit={submit}
       >
         <FormFields form={form} />
-        <button className="button button--dark" type="submit">
+        <button
+          className="button button--dark"
+          type="submit"
+          aria-label={form.submitLabel ? undefined : 'Submit form'}
+        >
           {form.submitLabel}
         </button>
-        <p className="form-note">
-          {form.privacyNote ??
-            'Submitting opens your email app so you can review the message before sending it directly to Point ATX.'}
-        </p>
+        {form.privacyNote !== '' ? (
+          <p className="form-note">
+            {form.privacyNote ??
+              (legacyChrome
+                ? 'Submitting opens your email app so you can review the message before sending it directly to Point ATX.'
+                : 'Submitting opens your email app so you can review the message before sending it.')}
+          </p>
+        ) : null}
         <p className="form-status" role="status" aria-live="polite">
           {status}
         </p>
@@ -489,7 +511,9 @@ export function renderBlock(
           <section
             className={`page-hero page-hero--${block.surface}${hasImage ? ' page-hero--image' : ''} point-align--${block.align}`}
           >
-            {hasImage ? <img src={media?.sourcePath} alt="" /> : null}
+            {hasImage ? (
+              <img src={media?.sourcePath} alt="" style={focalStyle(block.mediaFocal)} />
+            ) : null}
             {hasImage ? <div className="hero-shade" aria-hidden="true" /> : null}
             <div className="shell page-hero-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
@@ -520,7 +544,7 @@ export function renderBlock(
         return (
           <section className={`home-hero home-hero--${block.align} home-hero--${block.surface}`}>
             {media && block.surface === 'image' ? (
-              <img src={media.sourcePath} alt={media.alt} />
+              <img src={media.sourcePath} alt={media.alt} style={focalStyle(block.mediaFocal)} />
             ) : null}
             {block.surface === 'image' ? <div className="hero-shade" /> : null}
             <div className="home-hero-copy shell">
@@ -552,7 +576,12 @@ export function renderBlock(
           className={`point-hero point-surface--${block.surface} point-align--${block.align}`}
         >
           {media && block.surface === 'image' ? (
-            <img src={media.sourcePath} alt={media.alt} className="point-hero__image" />
+            <img
+              src={media.sourcePath}
+              alt={media.alt}
+              className="point-hero__image"
+              style={focalStyle(block.mediaFocal)}
+            />
           ) : null}
           {block.surface === 'image' ? <div className="point-overlay" aria-hidden="true" /> : null}
           <div className="shell point-hero__content">
@@ -642,6 +671,7 @@ export function renderBlock(
           height={block.variant === 'wide' ? '668' : undefined}
           loading="lazy"
           className={`point-fit--${block.fit}`}
+          style={focalStyle(block.focal)}
         />
       );
       const visual = block.href ? (
@@ -705,7 +735,12 @@ export function renderBlock(
           <section
             className={`home-feature home-feature--photo point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
           >
-            <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+            <img
+              src={media.sourcePath}
+              alt={block.mediaAlt ?? media.alt}
+              loading="lazy"
+              style={focalStyle(block.mediaFocal)}
+            />
             <div className="feature-shade" />
             <div className="feature-copy shell">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
@@ -732,7 +767,12 @@ export function renderBlock(
             className={`home-feature home-feature--split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface} shell`}
           >
             <div className="feature-image">
-              <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+              <img
+                src={media.sourcePath}
+                alt={block.mediaAlt ?? media.alt}
+                loading="lazy"
+                style={focalStyle(block.mediaFocal)}
+              />
             </div>
             <div className="feature-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
@@ -765,6 +805,7 @@ export function renderBlock(
                 width="500"
                 height="624"
                 loading="lazy"
+                style={focalStyle(block.mediaFocal)}
               />
             </div>
             <div>
@@ -800,7 +841,12 @@ export function renderBlock(
           className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
         >
           <div className="point-feature__media">
-            <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+            <img
+              src={media.sourcePath}
+              alt={block.mediaAlt ?? media.alt}
+              loading="lazy"
+              style={focalStyle(block.mediaFocal)}
+            />
           </div>
           <div className="point-feature__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
@@ -1025,7 +1071,7 @@ export function renderBlock(
                       height={block.variant === 'horizontal' ? 900 : 625}
                       loading="lazy"
                       style={
-                        person.mediaFit || person.mediaFrame
+                        person.mediaFit || person.mediaFrame || person.mediaFocal
                           ? {
                               ...(person.mediaFit
                                 ? {
@@ -1036,6 +1082,7 @@ export function renderBlock(
                               ...(person.mediaFrame
                                 ? { aspectRatio: frameRatios[person.mediaFrame] }
                                 : {}),
+                              ...(person.mediaFocal ? focalStyle(person.mediaFocal) : {}),
                             }
                           : undefined
                       }
@@ -1109,11 +1156,21 @@ export function renderBlock(
                 </a>
               ) : null}
             </div>
-            <FormPanel form={form} heading={form.name} supportingText={block.supportingText} />
+            <FormPanel
+              form={form}
+              heading={form.name}
+              supportingText={block.supportingText}
+              legacyChrome={block.legacyChrome === true || document.schemaVersion < 12}
+            />
           </section>
         );
       const panel = (
-        <FormPanel form={form} heading={block.heading} supportingText={block.supportingText} />
+        <FormPanel
+          form={form}
+          heading={block.heading}
+          supportingText={block.supportingText}
+          legacyChrome={block.legacyChrome === true || document.schemaVersion < 12}
+        />
       );
       return (
         <section

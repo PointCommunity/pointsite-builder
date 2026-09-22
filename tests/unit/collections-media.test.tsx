@@ -25,4 +25,13 @@ it('edits one person photo without changing sibling media choices', () => {
       index ? person : { ...person, mediaFrame: 'square' },
     ),
   });
+  fireEvent.change(screen.getAllByLabelText('Horizontal photo focus (%)')[0], {
+    target: { value: '20' },
+  });
+  expect(onChange).toHaveBeenCalledWith({
+    ...document.collections,
+    people: document.collections.people.map((person, index) =>
+      index ? person : { ...person, mediaFocal: { x: 20, y: 50 } },
+    ),
+  });
 });

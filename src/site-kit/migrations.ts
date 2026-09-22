@@ -389,5 +389,20 @@ function migrateTenToEleven(input: object): SiteDocument {
 
 function migrateElevenToTwelve(input: object): SiteDocument {
   const document = SiteDocumentSchema.parse(input);
-  return SiteDocumentSchema.parse({ ...document, schemaVersion: 12, rendererVersion: '12.0.0' });
+  const preserveForms = (blocks: SectionBlock[]) =>
+    blocks.map((section) => ({
+      ...section,
+      items: section.items.map((item) =>
+        item.element.type === 'form'
+          ? { ...item, element: { ...item.element, legacyChrome: true } }
+          : item,
+      ),
+    }));
+  return SiteDocumentSchema.parse({
+    ...document,
+    schemaVersion: 12,
+    rendererVersion: '12.0.0',
+    pages: document.pages.map((page) => ({ ...page, blocks: preserveForms(page.blocks) })),
+    footer: document.footer ? preserveForms(document.footer) : undefined,
+  });
 }
