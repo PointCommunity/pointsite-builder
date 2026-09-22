@@ -669,9 +669,7 @@ test('edits composed footer Blocks, saves, reloads and previews the same content
   await page.getByRole('textbox', { name: 'Section heading', exact: true }).fill('Gather together');
   await page.getByRole('textbox', { name: 'Paragraph', exact: true }).fill('Sundays at 11 AM');
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
-  for (const { label } of Object.values(blockDefinitions).filter(
-    ({ label }) => label !== 'Group',
-  ))
+  for (const { label } of Object.values(blockDefinitions).filter(({ label }) => label !== 'Group'))
     await expect(
       page.getByText(label, { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
