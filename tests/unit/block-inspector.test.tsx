@@ -64,6 +64,96 @@ describe('BlockInspector', () => {
     expect(onChange).toHaveBeenCalledWith({ ...block, semantic: 'h1' });
   });
 
+  it.each([
+    ['hero', 'Heading', 'heading'],
+    ['heading', 'Heading', 'text'],
+    ['image', 'Alternative text', 'alt'],
+    ['splitFeature', 'Heading', 'heading'],
+    ['cta', 'Heading', 'heading'],
+    ['button', 'Button label', 'label'],
+    ['navigation', 'Navigation label', 'label'],
+    ['map', 'Title', 'title'],
+  ] as const)('clears %s Properties text without a minimum character', (type, label, key) => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === type)!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, [key]: '' });
+  });
+
+  it('clears individual card title and body text without removing the card', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'cards')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText('Title')[0], { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) => (index ? item : { ...item, title: '' })),
+    });
+    fireEvent.change(screen.getAllByLabelText('Body')[0], { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) => (index ? item : { ...item, body: '' })),
+    });
+  });
+
+  it('clears FAQ, social, and rich-text copy in version 12', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    for (const [type, label, field] of [
+      ['faq', 'Question', 'question'],
+      ['socialLinks', 'Link label', 'label'],
+      ['richText', 'Paragraph', 'text'],
+    ] as const) {
+      const block: SiteElement =
+        type === 'socialLinks'
+          ? {
+              id: crypto.randomUUID(),
+              type,
+              links: [{ platform: 'other', label: 'Website', url: 'https://example.com' }],
+              align: 'left',
+              appearance: 'labels',
+            }
+          : allBlocks.find((item) => item.type === type)!;
+      const onChange = vi.fn();
+      const { unmount } = render(
+        <BlockInspector block={block} document={document} onChange={onChange} />,
+      );
+      fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value: '' } });
+      if (block.type === 'richText')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          content: block.content.map((item, index) =>
+            index ? item : { type: 'paragraph', children: [{ text: '' }] },
+          ),
+        });
+      else if (block.type === 'faq')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          items: block.items.map((item, index) => (index ? item : { ...item, [field]: '' })),
+        });
+      else if (block.type === 'socialLinks')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          links: block.links.map((item, index) => (index ? item : { ...item, [field]: '' })),
+        });
+      unmount();
+    }
+  });
+
   it('sets fit independently for each card image in version 12', () => {
     const document = {
       ...defaultSiteDocument,

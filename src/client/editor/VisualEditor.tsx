@@ -598,7 +598,7 @@ function SectionComponent({
     )
       .filter(
         (item) =>
-          item.parentElement === gridRef.current &&
+          !item.closest('.point-composition__grid') &&
           !item.closest('[data-dnd-dragging]') &&
           !item.closest('[data-dnd-placeholder]'),
       )
@@ -1356,8 +1356,11 @@ function VisualEditorImpl({
             if (action.type === 'setUi' && nextState.ui.rightSideBarVisible !== propertiesOpen)
               queueMicrotask(() => onPropertiesChange(nextState.ui.rightSideBarVisible));
             if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
+            const dropIntent = getGridDropIntent();
             const rejectedInsert =
-              (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
+              (action.type === 'insert' &&
+                dropIntent?.valid === false &&
+                action.destinationZone === `${dropIntent.sectionId}:content`) ||
               (action.type === 'replace' && action.data.props.gridDropRejected === true);
             if (rejectedInsert) {
               setGridDropIntent(null);

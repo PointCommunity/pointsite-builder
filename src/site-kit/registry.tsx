@@ -49,6 +49,7 @@ function ActionLink({
   action: { label: string; href: string; style: string };
   className?: string;
 }) {
+  if (!action.label) return null;
   return (
     <a
       className={`button point-button point-button--${action.style} ${className}`.trim()}
@@ -96,7 +97,7 @@ function NavigationBlock({
         className={
           open ? 'point-navigation__menu point-navigation__menu--open' : 'point-navigation__menu'
         }
-        aria-label={block.label}
+        aria-label={block.label || 'Site navigation'}
         onClick={() => setOpen(false)}
       >
         {navigation.map((item) => (
@@ -145,6 +146,7 @@ function mediaRecord(document: SiteDocument, id: string) {
 }
 
 function TextLines({ text }: { text: string }) {
+  if (!text) return null;
   return text.split(/\n{2,}/).map((line, index) => (
     <p key={`${line.slice(0, 24)}-${index}`}>
       {line.split('\n').map((part, partIndex) => (
@@ -370,6 +372,19 @@ function FormPanel({
 function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
   return block.content.map((node, index) => {
     const key = `${node.type}-${index}`;
+    if (node.type === 'paragraph' && node.children.every((child) => !child.text)) return null;
+    if (
+      (node.type === 'bulletedList' || node.type === 'numberedList') &&
+      node.items.every((item) => !item)
+    )
+      return null;
+    if (
+      node.type !== 'paragraph' &&
+      node.type !== 'bulletedList' &&
+      node.type !== 'numberedList' &&
+      !node.text
+    )
+      return null;
     if (node.type === 'paragraph')
       return (
         <p key={key}>
@@ -389,17 +404,13 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
     if (node.type === 'bulletedList')
       return (
         <ul key={key}>
-          {node.items.map((item, itemIndex) => (
-            <li key={itemIndex}>{item}</li>
-          ))}
+          {node.items.map((item, itemIndex) => (item ? <li key={itemIndex}>{item}</li> : null))}
         </ul>
       );
     if (node.type === 'numberedList')
       return (
         <ol key={key}>
-          {node.items.map((item, itemIndex) => (
-            <li key={itemIndex}>{item}</li>
-          ))}
+          {node.items.map((item, itemIndex) => (item ? <li key={itemIndex}>{item}</li> : null))}
         </ol>
       );
     if (node.type === 'quote')
@@ -444,7 +455,7 @@ export function renderBlock(
                 width={block.headingWidth}
                 resizeHandle={heroResizeHandle}
               >
-                <h1>{block.heading}</h1>
+                {block.heading ? <h1>{block.heading}</h1> : null}
               </HeroTextBox>
               {block.body ? (
                 <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -476,7 +487,7 @@ export function renderBlock(
                 width={block.headingWidth}
                 resizeHandle={heroResizeHandle}
               >
-                <h1>{block.heading}</h1>
+                {block.heading ? <h1>{block.heading}</h1> : null}
               </HeroTextBox>
               {block.body ? (
                 <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -504,7 +515,7 @@ export function renderBlock(
           <div className="shell point-hero__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <HeroTextBox kind="heading" width={block.headingWidth} resizeHandle={heroResizeHandle}>
-              <h1>{block.heading}</h1>
+              {block.heading ? <h1>{block.heading}</h1> : null}
             </HeroTextBox>
             {block.body ? (
               <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -528,14 +539,16 @@ export function renderBlock(
             className={`home-intro home-intro--${block.width} point-align--${block.align} shell`}
           >
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <Heading>
-              {block.text.split('\n').map((line, index) => (
-                <Fragment key={index}>
-                  {index ? ' ' : null}
-                  <span>{line}</span>
-                </Fragment>
-              ))}
-            </Heading>
+            {block.text ? (
+              <Heading>
+                {block.text.split('\n').map((line, index) => (
+                  <Fragment key={index}>
+                    {index ? ' ' : null}
+                    <span>{line}</span>
+                  </Fragment>
+                ))}
+              </Heading>
+            ) : null}
             {block.supportingText ? <p>{block.supportingText}</p> : null}
             <div className="button-row">
               {block.actions?.map((action, index) => (
@@ -549,7 +562,7 @@ export function renderBlock(
           className={`content-section point-heading point-heading--${block.width} point-align--${block.align}`}
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-          <Heading>{block.text}</Heading>
+          {block.text ? <Heading>{block.text}</Heading> : null}
           {block.supportingText ? <p>{block.supportingText}</p> : null}
           {block.actions?.length ? (
             <div className="point-actions">
@@ -589,7 +602,12 @@ export function renderBlock(
         />
       );
       const visual = block.href ? (
-        <a className="point-image-link" href={block.href} {...linkAttributes(block.href)}>
+        <a
+          className="point-image-link"
+          href={block.href}
+          aria-label={block.alt ? undefined : block.caption || media.alt || 'Image link'}
+          {...linkAttributes(block.href)}
+        >
           {image}
         </a>
       ) : (
@@ -648,8 +666,8 @@ export function renderBlock(
             <div className="feature-shade" />
             <div className="feature-copy shell">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>{block.heading}</h2>
-              <p>{block.body}</p>
+              {block.heading ? <h2>{block.heading}</h2> : null}
+              {block.body ? <p>{block.body}</p> : null}
               {block.note ? (
                 <p>
                   <small>{block.note}</small>
@@ -675,7 +693,7 @@ export function renderBlock(
             </div>
             <div className="feature-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>{block.heading}</h2>
+              {block.heading ? <h2>{block.heading}</h2> : null}
               <TextLines text={block.body} />
               {block.note ? (
                 <p>
@@ -708,14 +726,16 @@ export function renderBlock(
             </div>
             <div>
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>
-                {block.heading.split('\n').map((line, index) => (
-                  <Fragment key={line}>
-                    {index ? <br /> : null}
-                    {line}
-                  </Fragment>
-                ))}
-              </h2>
+              {block.heading ? (
+                <h2>
+                  {block.heading.split('\n').map((line, index) => (
+                    <Fragment key={line}>
+                      {index ? <br /> : null}
+                      {line}
+                    </Fragment>
+                  ))}
+                </h2>
+              ) : null}
               <TextLines text={block.body} />
               {block.note ? (
                 <p>
@@ -741,7 +761,7 @@ export function renderBlock(
           </div>
           <div className="point-feature__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <h2>{block.heading}</h2>
+            {block.heading ? <h2>{block.heading}</h2> : null}
             <TextLines text={block.body} />
             {block.note ? (
               <p>
@@ -770,7 +790,7 @@ export function renderBlock(
         >
           <div>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <h2>{block.heading}</h2>
+            {block.heading ? <h2>{block.heading}</h2> : null}
             {block.body ? <p>{block.body}</p> : null}
           </div>
           <ActionLink action={block.action} />
@@ -788,7 +808,7 @@ export function renderBlock(
               <div key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} reserve={reserveMedia} />
-                <h2>{item.title}</h2>
+                {item.title ? <h2>{item.title}</h2> : null}
                 <TextLines text={item.body} />
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
                 <CardLink item={item} />
@@ -806,8 +826,12 @@ export function renderBlock(
                 <p key={index}>
                   {item.eyebrow ? <span className="eyebrow">{item.eyebrow}</span> : null}
                   <CardMedia item={item} document={document} reserve={reserveMedia} />
-                  <strong>{item.title}</strong>
-                  <br />
+                  {item.title ? (
+                    <>
+                      <strong>{item.title}</strong>
+                      <br />
+                    </>
+                  ) : null}
                   {item.body}
                   {item.supportingText ? (
                     <>
@@ -838,8 +862,8 @@ export function renderBlock(
                   <div>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                     <CardMedia item={item} document={document} reserve={reserveMedia} />
-                    <h2>{item.title}</h2>
-                    <p>{item.body}</p>
+                    {item.title ? <h2>{item.title}</h2> : null}
+                    {item.body ? <p>{item.body}</p> : null}
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
                     <CardLink item={item} />
                   </div>
@@ -863,12 +887,14 @@ export function renderBlock(
                   <article key={index}>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                     <CardMedia item={item} document={document} reserve={reserveMedia} />
-                    <h2>{item.title}</h2>
-                    <p className="group-time">{schedule}</p>
-                    <p>{location}</p>
-                    <p>
-                      <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
-                    </p>
+                    {item.title ? <h2>{item.title}</h2> : null}
+                    {schedule ? <p className="group-time">{schedule}</p> : null}
+                    {location ? <p>{location}</p> : null}
+                    {leaders ? (
+                      <p>
+                        <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
+                      </p>
+                    ) : null}
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
                     <CardLink item={item} />
                   </article>
@@ -891,8 +917,8 @@ export function renderBlock(
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                   <CardMedia item={item} document={document} reserve={reserveMedia} />
-                  <h2>{item.title}</h2>
-                  <p>{item.body}</p>
+                  {item.title ? <h2>{item.title}</h2> : null}
+                  {item.body ? <p>{item.body}</p> : null}
                   {item.supportingText ? <small>{item.supportingText}</small> : null}
                   {item.href ? (
                     <a
@@ -917,8 +943,8 @@ export function renderBlock(
               <article className="point-card" key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} reserve={reserveMedia} />
-                <h3>{item.title}</h3>
-                <p>{item.body}</p>
+                {item.title ? <h3>{item.title}</h3> : null}
+                {item.body ? <p>{item.body}</p> : null}
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
                 {item.href ? (
                   <a href={item.href} {...linkAttributes(item.href)}>
@@ -978,12 +1004,14 @@ export function renderBlock(
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
-          {block.items.map((item, index) => (
-            <details key={index} open={item.initiallyOpen}>
-              <summary>{item.question}</summary>
-              <p>{item.answer}</p>
-            </details>
-          ))}
+          {block.items.map((item, index) =>
+            item.question ? (
+              <details key={index} open={item.initiallyOpen}>
+                <summary>{item.question}</summary>
+                {item.answer ? <p>{item.answer}</p> : null}
+              </details>
+            ) : null,
+          )}
         </section>
       );
     case 'form': {
@@ -994,14 +1022,16 @@ export function renderBlock(
           <section className="content-section contact-grid">
             <div>
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>
-                {block.heading?.split('\n').map((line, index) => (
-                  <Fragment key={index}>
-                    {index ? <br /> : null}
-                    {line}
-                  </Fragment>
-                ))}
-              </h2>
+              {block.heading ? (
+                <h2>
+                  {block.heading?.split('\n').map((line, index) => (
+                    <Fragment key={index}>
+                      {index ? <br /> : null}
+                      {line}
+                    </Fragment>
+                  ))}
+                </h2>
+              ) : null}
               {block.body
                 ? block.body
                     .split('\n')
@@ -1049,12 +1079,14 @@ export function renderBlock(
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
             {block.body ? <TextLines text={block.body} /> : null}
-            <iframe
-              title={block.title}
-              src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
+            {block.query ? (
+              <iframe
+                title={block.title || 'Map'}
+                src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            ) : null}
           </div>
         </section>
       ) : (
@@ -1062,12 +1094,14 @@ export function renderBlock(
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
           {block.body ? <TextLines text={block.body} /> : null}
-          <iframe
-            title={block.title}
-            src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
+          {block.query ? (
+            <iframe
+              title={block.title || 'Map'}
+              src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          ) : null}
         </section>
       );
     case 'divider':
@@ -1112,7 +1146,12 @@ export function renderBlock(
             className={`point-social__links point-social__links--${block.appearance} point-social__links--${block.align}`}
           >
             {block.links.map((link, index) => (
-              <a key={index} href={link.url} {...linkAttributes(link.url)} aria-label={link.label}>
+              <a
+                key={index}
+                href={link.url}
+                {...linkAttributes(link.url)}
+                aria-label={link.label || link.platform}
+              >
                 {block.appearance === 'labels' ? (
                   link.label
                 ) : (

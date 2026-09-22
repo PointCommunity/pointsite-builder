@@ -11,6 +11,8 @@ import { isDirectVideoUrl, youtubeVideoId } from './linked-media';
 const uuid = z.uuid();
 const shortText = z.string().trim().min(1).max(120);
 const bodyText = z.string().trim().min(1).max(5_000);
+const editableShortText = z.string().trim().max(120);
+const editableBodyText = z.string().trim().max(5_000);
 const optionalBodyText = z.string().trim().max(5_000).optional();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hexadecimal color');
 const responsiveHeroWidth = z.strictObject({
@@ -36,7 +38,7 @@ function contrastRatio(a: string, b: string): number {
 }
 
 const ActionSchema = z.strictObject({
-  label: z.string().trim().min(1).max(60),
+  label: z.string().trim().max(60),
   href: SafeHrefSchema,
   style: z.enum(['primary', 'secondary', 'quiet']),
 });
@@ -44,7 +46,7 @@ const ActionSchema = z.strictObject({
 const BlockBase = { id: uuid } as const;
 const SocialLinkSchema = z.strictObject({
   platform: z.enum(['facebook', 'instagram', 'youtube', 'x', 'other']),
-  label: shortText,
+  label: editableShortText,
   url: SafeHttpsUrlSchema,
 });
 
@@ -52,7 +54,7 @@ const HeroBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('hero'),
   eyebrow: z.string().trim().max(80).optional(),
-  heading: z.string().trim().min(1).max(180),
+  heading: z.string().trim().max(180),
   body: optionalBodyText,
   mediaId: uuid.optional(),
   align: z.enum(['left', 'center']),
@@ -66,7 +68,7 @@ const HeroBlockSchema = z.strictObject({
 const HeadingBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('heading'),
-  text: z.string().trim().min(1).max(240),
+  text: z.string().trim().max(240),
   level: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   align: z.enum(['left', 'center']),
   width: z.enum(['narrow', 'wide']),
@@ -77,7 +79,7 @@ const HeadingBlockSchema = z.strictObject({
 });
 
 const InlineTextSchema = z.strictObject({
-  text: z.string().min(1).max(2_000),
+  text: z.string().max(2_000),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
 });
@@ -87,11 +89,21 @@ const RichTextNodeSchema = z.discriminatedUnion('type', [
     type: z.literal('paragraph'),
     children: z.array(InlineTextSchema).min(1).max(30),
   }),
-  z.strictObject({ type: z.literal('bulletedList'), items: z.array(shortText).min(1).max(30) }),
-  z.strictObject({ type: z.literal('numberedList'), items: z.array(shortText).min(1).max(30) }),
-  z.strictObject({ type: z.literal('quote'), text: bodyText, attribution: shortText.optional() }),
-  z.strictObject({ type: z.literal('address'), text: bodyText }),
-  z.strictObject({ type: z.literal('link'), text: shortText, href: SafeHrefSchema }),
+  z.strictObject({
+    type: z.literal('bulletedList'),
+    items: z.array(editableShortText).min(1).max(30),
+  }),
+  z.strictObject({
+    type: z.literal('numberedList'),
+    items: z.array(editableShortText).min(1).max(30),
+  }),
+  z.strictObject({
+    type: z.literal('quote'),
+    text: editableBodyText,
+    attribution: editableShortText.optional(),
+  }),
+  z.strictObject({ type: z.literal('address'), text: editableBodyText }),
+  z.strictObject({ type: z.literal('link'), text: editableShortText, href: SafeHrefSchema }),
 ]);
 
 const RichTextBlockSchema = z.strictObject({
@@ -108,7 +120,7 @@ const ImageBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('image'),
   mediaId: uuid,
-  alt: z.string().trim().min(1).max(300),
+  alt: z.string().trim().max(300),
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
   fit: z.enum(['cover', 'contain', 'stretch']),
   caption: z.string().trim().max(500).optional(),
@@ -136,10 +148,10 @@ const SplitFeatureBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('splitFeature'),
   eyebrow: z.string().trim().max(80).optional(),
-  heading: z.string().trim().min(1).max(180),
-  body: bodyText,
+  heading: z.string().trim().max(180),
+  body: editableBodyText,
   mediaId: uuid,
-  mediaAlt: z.string().trim().min(1).max(300).optional(),
+  mediaAlt: z.string().trim().max(300).optional(),
   mediaSide: z.enum(['left', 'right']),
   proportion: z.enum(['half', 'mediaWide', 'contentWide']),
   align: z.enum(['start', 'center', 'end']),
@@ -155,7 +167,7 @@ const SplitFeatureBlockSchema = z.strictObject({
 const CtaBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('cta'),
-  heading: z.string().trim().min(1).max(180),
+  heading: z.string().trim().max(180),
   body: optionalBodyText,
   action: ActionSchema,
   surface: z.enum(['canvas', 'surface', 'primary']),
@@ -173,11 +185,11 @@ const CardsBlockSchema = z.strictObject({
     .array(
       z.strictObject({
         eyebrow: z.string().trim().max(80).optional(),
-        title: shortText,
-        body: bodyText,
+        title: editableShortText,
+        body: editableBodyText,
         supportingText: z.string().trim().max(500).optional(),
         mediaId: uuid.optional(),
-        mediaAlt: z.string().trim().min(1).max(300).optional(),
+        mediaAlt: z.string().trim().max(300).optional(),
         mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
         href: SafeHrefSchema.optional(),
       }),
@@ -213,8 +225,8 @@ const FaqBlockSchema = z.strictObject({
   items: z
     .array(
       z.strictObject({
-        question: shortText,
-        answer: bodyText,
+        question: editableShortText,
+        answer: editableBodyText,
         initiallyOpen: z.boolean().optional(),
       }),
     )
@@ -240,13 +252,8 @@ const FormBlockSchema = z.strictObject({
 const MapBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('map'),
-  query: z
-    .string()
-    .trim()
-    .min(3)
-    .max(300)
-    .refine(isSafePlainText, 'Map query contains unsafe content'),
-  title: z.string().trim().min(1).max(180),
+  query: z.string().trim().max(300).refine(isSafePlainText, 'Map query contains unsafe content'),
+  title: z.string().trim().max(180),
   eyebrow: z.string().trim().max(80).optional(),
   heading: z.string().trim().max(180).optional(),
   body: optionalBodyText,
@@ -279,7 +286,7 @@ const TextBlockSchema = z.strictObject({
 const ButtonBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('button'),
-  label: z.string().trim().min(1).max(60),
+  label: z.string().trim().max(60),
   href: SafeHrefSchema,
   style: z.enum(['primary', 'secondary', 'quiet']),
   width: z.enum(['fit', 'full']),
@@ -290,7 +297,7 @@ const NavigationBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('navigation'),
   navigationDesignId: uuid.optional(),
-  label: z.string().trim().min(1).max(80),
+  label: z.string().trim().max(80),
   orientation: z.enum(['responsive', 'horizontal', 'vertical']),
   align: z.enum(['left', 'center', 'right']),
   surface: z.enum(['transparent', 'canvas', 'primary']),
@@ -773,6 +780,12 @@ export const SiteDocumentSchema = z
         path: ['footer'],
         message: 'Editable footers require schema 11 and an explicit section list',
       });
+    if (document.schemaVersion < 12 && document.site.socialLinks.some((link) => !link.label))
+      context.addIssue({
+        code: 'custom',
+        path: ['site', 'socialLinks'],
+        message: 'Empty social link labels require schema version 12',
+      });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {
       if (designIds.has(design.id))
@@ -834,6 +847,63 @@ export const SiteDocumentSchema = z
               path: elementPath,
               message: 'Custom image fit requires schema version 12',
             });
+          if (document.schemaVersion < 12) {
+            const element = item.element;
+            const required = (() => {
+              switch (element.type) {
+                case 'hero':
+                  return [element.heading, ...element.actions.map((action) => action.label)];
+                case 'heading':
+                  return [element.text, ...(element.actions ?? []).map((action) => action.label)];
+                case 'image':
+                  return [element.alt];
+                case 'splitFeature':
+                  return [
+                    element.heading,
+                    element.body,
+                    ...(element.mediaAlt === undefined ? [] : [element.mediaAlt]),
+                    ...(element.action ? [element.action.label] : []),
+                  ];
+                case 'cta':
+                  return [element.heading, element.action.label];
+                case 'cards':
+                  return element.items.flatMap((card) => [
+                    card.title,
+                    card.body,
+                    ...(card.mediaAlt === undefined ? [] : [card.mediaAlt]),
+                  ]);
+                case 'faq':
+                  return element.items.flatMap((faq) => [faq.question, faq.answer]);
+                case 'map':
+                  return [element.query.length >= 3 ? element.query : '', element.title];
+                case 'button':
+                case 'navigation':
+                  return [element.label];
+                case 'socialLinks':
+                  return element.links.map((link) => link.label);
+                case 'richText':
+                  return element.content.flatMap((node) => {
+                    if (node.type === 'paragraph') return [];
+                    if (node.type === 'bulletedList' || node.type === 'numberedList')
+                      return node.items;
+                    if (node.type === 'quote')
+                      return [
+                        node.text,
+                        ...(node.attribution === undefined ? [] : [node.attribution]),
+                      ];
+                    return [node.text];
+                  });
+                default:
+                  return [];
+              }
+            })();
+            if (required.some((value) => !value))
+              context.addIssue({
+                code: 'custom',
+                path: elementPath,
+                message: 'Empty required legacy text requires schema version 12',
+              });
+          }
           if (
             document.schemaVersion < 11 &&
             (item.element.type === 'socialLinks' ||

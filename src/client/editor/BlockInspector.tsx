@@ -7,16 +7,24 @@ function Text({
   value,
   onChange,
   area = false,
+  allowEmpty = false,
 }: {
   label: string;
   value?: string;
   onChange: (value: string | undefined) => void;
   area?: boolean;
+  allowEmpty?: boolean;
 }) {
   const control = area ? (
-    <textarea value={value ?? ''} onChange={(event) => onChange(event.target.value || undefined)} />
+    <textarea
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value || (allowEmpty ? '' : undefined))}
+    />
   ) : (
-    <input value={value ?? ''} onChange={(event) => onChange(event.target.value || undefined)} />
+    <input
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value || (allowEmpty ? '' : undefined))}
+    />
   );
   return (
     <label className="inspector-field">
@@ -101,7 +109,8 @@ function ActionEditor({
       <Text
         label="Button label"
         value={action.label}
-        onChange={(label) => label && onChange({ ...action, label })}
+        allowEmpty={document.schemaVersion >= 12}
+        onChange={(label) => label !== undefined && onChange({ ...action, label })}
       />
       <LinkDestinationField
         label="Button link"
@@ -197,7 +206,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
@@ -290,7 +300,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.text}
-            onChange={(text) => text && onChange({ ...block, text })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(text) => text !== undefined && onChange({ ...block, text })}
           />
           <Select
             label="Level"
@@ -455,8 +466,9 @@ export function BlockInspector({
                   label="Paragraph"
                   value={node.children.map((child) => child.text).join('')}
                   area
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(text) =>
-                    text &&
+                    text !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
@@ -471,8 +483,9 @@ export function BlockInspector({
                   label="Address"
                   value={node.text}
                   area
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(text) =>
-                    text &&
+                    text !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
@@ -487,13 +500,14 @@ export function BlockInspector({
                   label="Items (one per line)"
                   value={node.items.join('\n')}
                   area
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(value) =>
-                    value &&
+                    value !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
                         itemIndex === index
-                          ? { ...node, items: value.split('\n').filter(Boolean) }
+                          ? { ...node, items: value ? value.split('\n').filter(Boolean) : [''] }
                           : item,
                       ),
                     })
@@ -506,8 +520,9 @@ export function BlockInspector({
                     label="Quote"
                     value={node.text}
                     area
+                    allowEmpty={document.schemaVersion >= 12}
                     onChange={(text) =>
-                      text &&
+                      text !== undefined &&
                       onChange({
                         ...block,
                         content: block.content.map((item, itemIndex) =>
@@ -535,8 +550,9 @@ export function BlockInspector({
                   <Text
                     label="Link text"
                     value={node.text}
+                    allowEmpty={document.schemaVersion >= 12}
                     onChange={(text) =>
-                      text &&
+                      text !== undefined &&
                       onChange({
                         ...block,
                         content: block.content.map((item, itemIndex) =>
@@ -601,7 +617,8 @@ export function BlockInspector({
           <Text
             label="Alternative text"
             value={block.alt}
-            onChange={(alt) => alt && onChange({ ...block, alt })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(alt) => alt !== undefined && onChange({ ...block, alt })}
           />
           <Select
             label="Aspect ratio"
@@ -729,13 +746,15 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
             value={block.body}
             area
-            onChange={(body) => body && onChange({ ...block, body })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(body) => body !== undefined && onChange({ ...block, body })}
           />
           <Text
             label="Small note"
@@ -862,7 +881,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
@@ -961,8 +981,9 @@ export function BlockInspector({
                 <Text
                   label="Title"
                   value={item.title}
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(title) =>
-                    title &&
+                    title !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -975,8 +996,9 @@ export function BlockInspector({
                   label="Body"
                   value={item.body}
                   area
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(body) =>
-                    body &&
+                    body !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -1166,8 +1188,9 @@ export function BlockInspector({
                 <Text
                   label="Question"
                   value={item.question}
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(question) =>
-                    question &&
+                    question !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -1180,8 +1203,9 @@ export function BlockInspector({
                   label="Answer"
                   value={item.answer}
                   area
+                  allowEmpty={document.schemaVersion >= 12}
                   onChange={(answer) =>
-                    answer &&
+                    answer !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -1317,12 +1341,14 @@ export function BlockInspector({
           <Text
             label="Title"
             value={block.title}
-            onChange={(title) => title && onChange({ ...block, title })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(title) => title !== undefined && onChange({ ...block, title })}
           />
           <Text
             label="Location or search"
             value={block.query}
-            onChange={(query) => query && onChange({ ...block, query })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(query) => query !== undefined && onChange({ ...block, query })}
           />
         </div>
       );
@@ -1411,7 +1437,8 @@ export function BlockInspector({
           <Text
             label="Button label"
             value={block.label}
-            onChange={(label) => label && onChange({ ...block, label })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <LinkDestinationField
             label="Button link"
@@ -1514,8 +1541,9 @@ export function BlockInspector({
               <Text
                 label="Link label"
                 value={link.label}
+                allowEmpty={document.schemaVersion >= 12}
                 onChange={(label) =>
-                  label &&
+                  label !== undefined &&
                   onChange({
                     ...block,
                     links: block.links.map((item, position) =>
@@ -1575,7 +1603,8 @@ export function BlockInspector({
           <Text
             label="Navigation label"
             value={block.label}
-            onChange={(label) => label && onChange({ ...block, label })}
+            allowEmpty={document.schemaVersion >= 12}
+            onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <Select
             label="Navigation layout"

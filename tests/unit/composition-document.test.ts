@@ -7,6 +7,7 @@ import { migrateDocument } from '../../src/site-kit/migrations';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { canEditDocument, supportsRenderer } from '../../src/site-kit/version';
 import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
+import { allBlocks } from '../fixtures/block-data';
 import { InMemoryRepository } from '../../src/server/repositories/memory';
 import { acquireDraftProof } from '../fixtures/draft-proof';
 
@@ -120,6 +121,84 @@ describe('composed document compatibility', () => {
       items: [{ title: 'Linked card', body: 'Description', mediaFit: 'stretch' }],
     };
     expect(SiteDocumentSchema.safeParse(old).success).toBe(false);
+  });
+
+  it.each([
+    ['hero', 'heading'],
+    ['heading', 'text'],
+    ['image', 'alt'],
+    ['splitFeature', 'heading'],
+    ['cta', 'heading'],
+    ['button', 'label'],
+    ['navigation', 'label'],
+    ['map', 'title'],
+  ] as const)('stores an empty %s %s only in version 12', (type, field) => {
+    const element = allBlocks.find((block) => block.type === type)!;
+    const old = structuredClone(defaultSiteDocument) as unknown as Record<string, unknown>;
+    const pages = old.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+    pages[0].blocks[1].items[0].element = {
+      ...element,
+      ...(type === 'navigation'
+        ? { navigationDesignId: defaultSiteDocument.navigationDesigns?.[0]?.id }
+        : {}),
+      [field]: '',
+    };
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(false);
+    old.schemaVersion = 12;
+    old.rendererVersion = '12.0.0';
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(true);
+  });
+
+  it('keeps blank card copy as empty text, without dropping the card', () => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const input = composedDocument();
+    const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+    pages[0].blocks[1].items[0].element = {
+      ...source,
+      items: [{ title: '', body: '' }],
+    };
+    const document = SiteDocumentSchema.parse(input);
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }));
+    expect(html).not.toContain('<h3></h3>');
+    expect(document.pages[0].blocks[1].items[0].element).toMatchObject({
+      items: [{ title: '', body: '' }],
+    });
+  });
+
+  it('allows blank rich text nodes in version 12 and omits their markup', () => {
+    const input = composedDocument();
+    const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+    pages[0].blocks[1].items[0].element = {
+      id: crypto.randomUUID(),
+      type: 'richText',
+      content: [
+        { type: 'paragraph', children: [{ text: '' }] },
+        { type: 'bulletedList', items: [''] },
+        { type: 'quote', text: '' },
+        { type: 'link', text: '', href: '/' },
+      ],
+    };
+    const document = SiteDocumentSchema.parse(input);
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }));
+    expect(html).not.toContain('<li></li>');
+    expect(html).not.toContain('<blockquote>');
+    expect(html).not.toContain('href="/"');
+    input.schemaVersion = 11;
+    input.rendererVersion = '11.0.0';
+    expect(SiteDocumentSchema.safeParse(input).success).toBe(false);
+  });
+
+  it('retains the previously valid empty inline paragraph on version 11', () => {
+    const old = structuredClone(defaultSiteDocument);
+    const element = old.pages
+      .flatMap((page) =>
+        page.blocks.flatMap((section) => section.items.map((item) => item.element)),
+      )
+      .find((block) => block.type === 'richText');
+    expect(element?.type).toBe('richText');
+    if (element?.type !== 'richText') return;
+    element.content = [{ type: 'paragraph', children: [{ text: '' }] }];
+    expect(SiteDocumentSchema.safeParse(old).success).toBe(true);
   });
 
   it('keeps newer drafts read only through repository writes', async () => {
