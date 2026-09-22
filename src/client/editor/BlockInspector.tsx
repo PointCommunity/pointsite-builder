@@ -165,6 +165,17 @@ export function BlockInspector({
   onEditNavigation?: (designId: string) => void;
 }) {
   switch (block.type) {
+    case 'composition':
+      return (
+        <div className="block-inspector">
+          <Text
+            label="Group name"
+            value={block.name}
+            onChange={(name) => onChange({ ...block, name: name ?? '' })}
+          />
+          <p className="field-help">Drag elements into this group and position them on its grid.</p>
+        </div>
+      );
     case 'hero':
       return (
         <div className="block-inspector">

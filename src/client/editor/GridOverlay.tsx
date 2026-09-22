@@ -243,7 +243,9 @@ export function GridOverlay({
     event.stopPropagation();
     const ownerDocument = event.currentTarget.ownerDocument;
     const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
-    const surface = source?.closest<HTMLElement>('.point-layout-section__grid');
+    const surface = source?.closest<HTMLElement>(
+      '.point-composition__grid, .point-layout-section__grid',
+    );
     if (!surface) return;
     const rect = surface.getBoundingClientRect();
     const computed = ownerDocument.defaultView?.getComputedStyle(surface);

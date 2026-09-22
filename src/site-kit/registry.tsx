@@ -1131,17 +1131,15 @@ export function renderBlock(
       );
     case 'composition':
       return (
-        <LayoutContext value={{ layout: 'grid', columns: 12 }}>
-          <section className="point-composition" aria-label={block.name || 'Content group'}>
-            <div className="point-composition__grid">
-              {block.items.map((item) => (
-                <LayoutItem placement={item} layer={item.layer} key={item.id}>
-                  {renderBlock(item.element, document, onNavigate)}
-                </LayoutItem>
-              ))}
-            </div>
-          </section>
-        </LayoutContext>
+        <CompositionFrame name={block.name}>
+          <div className="point-composition__grid">
+            {block.items.map((item) => (
+              <LayoutItem placement={item} layer={item.layer} key={item.id}>
+                {renderBlock(item.element, document, onNavigate)}
+              </LayoutItem>
+            ))}
+          </div>
+        </CompositionFrame>
       );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
@@ -1160,6 +1158,16 @@ const LayoutContext = createContext<Pick<SectionBlock, 'layout' | 'columns'>>({
   layout: 'compatibility',
   columns: 1,
 });
+
+export function CompositionFrame({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <LayoutContext value={{ layout: 'grid', columns: 12 }}>
+      <section className="point-composition" aria-label={name || 'Content group'}>
+        {children}
+      </section>
+    </LayoutContext>
+  );
+}
 
 export function LayoutItem({
   placement,

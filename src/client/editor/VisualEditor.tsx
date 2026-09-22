@@ -22,7 +22,13 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
-import { blockDefinitions, LayoutItem, LayoutSection, renderBlock } from '../../site-kit/registry';
+import {
+  blockDefinitions,
+  CompositionFrame,
+  LayoutItem,
+  LayoutSection,
+  renderBlock,
+} from '../../site-kit/registry';
 import { SiteElementSchema } from '../../site-kit/schema';
 import {
   areaForBreakpoint,
@@ -68,10 +74,10 @@ import {
 import {
   childComponents,
   currentPuckData,
-  documentComponentId,
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
+import { dataToSection, rootElementToSection, sectionToData } from './editor-section-data';
 import { adjustHeroTextWidth, clampHeroTextWidth, heroTextWidthFromDrag } from './hero-text-resize';
 
 type ElementProps = {
@@ -79,6 +85,8 @@ type ElementProps = {
   span: number;
   align: SectionBlock['items'][number]['align'];
   grid: SectionBlock['items'][number]['grid'];
+  layer?: number;
+  content?: (props?: Record<string, unknown>) => ReactNode;
 };
 type SectionProps = {
   settings: SectionSettings;
@@ -472,6 +480,46 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   };
 }
 
+type DropPreview = {
+  type: SiteElement['type'];
+  label: string;
+  valid: boolean;
+  style: CSSProperties;
+};
+
+function DropPhantom({
+  preview,
+  document,
+}: {
+  preview: DropPreview;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  return (
+    <div
+      className={`point-grid-drop-preview point-grid-drop-preview--${preview.valid ? 'valid' : 'invalid'}`}
+      data-drop-valid={preview.valid}
+      style={preview.style}
+      aria-hidden="true"
+    >
+      <div className="point-grid-drop-preview__content">
+        {preview.type === 'map' || preview.type === 'mediaEmbed' ? (
+          <div className="point-grid-drop-preview__media">
+            {blockDefinitions[preview.type].label}
+          </div>
+        ) : (preview.type === 'image' || preview.type === 'splitFeature') &&
+          !document.media.length ? (
+          <div className="point-grid-drop-preview__media">Image</div>
+        ) : preview.type === 'form' && !document.forms.length ? (
+          <div className="point-grid-drop-preview__media">Form</div>
+        ) : (
+          renderBlock(defaultElement(preview.type, document), document)
+        )}
+      </div>
+      <span>{preview.label}</span>
+    </div>
+  );
+}
+
 function SectionComponent({
   id,
   kind,
@@ -487,11 +535,7 @@ function SectionComponent({
   const isGridInteracting = useGridInteraction(id);
   const breakpoint = useGridBreakpoint();
   const gridRef = useRef<HTMLElement | null>(null);
-  const [dropPreview, setDropPreview] = useState<{
-    label: string;
-    valid: boolean;
-    style: CSSProperties;
-  } | null>(null);
+  const [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
   const [dropAnnouncement, setDropAnnouncement] = useState('');
   const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearDropPreview = () => {
@@ -510,6 +554,20 @@ function SectionComponent({
       clientY >= rect.top &&
       clientY <= rect.bottom;
     if (!withinGrid) {
+      clearDropPreview();
+      return;
+    }
+    if (
+      Array.from(gridRef.current.querySelectorAll('.point-composition')).some((group) => {
+        const bounds = group.getBoundingClientRect();
+        return (
+          clientX >= bounds.left &&
+          clientX <= bounds.right &&
+          clientY >= bounds.top &&
+          clientY <= bounds.bottom
+        );
+      })
+    ) {
       clearDropPreview();
       return;
     }
@@ -539,7 +597,10 @@ function SectionComponent({
       gridRef.current.querySelectorAll<HTMLElement>('.point-layout-item--grid'),
     )
       .filter(
-        (item) => !item.closest('[data-dnd-dragging]') && !item.closest('[data-dnd-placeholder]'),
+        (item) =>
+          item.parentElement === gridRef.current &&
+          !item.closest('[data-dnd-dragging]') &&
+          !item.closest('[data-dnd-placeholder]'),
       )
       .map((item) => {
         const rendered = getComputedStyle(item);
@@ -567,6 +628,7 @@ function SectionComponent({
     setGridDropIntent(intent);
     const sectionRect = gridRef.current.closest('section')?.getBoundingClientRect() ?? rect;
     setDropPreview({
+      type: draggedType,
       label: intent.label,
       valid: intent.valid,
       style: {
@@ -657,14 +719,7 @@ function SectionComponent({
       controls={
         <>
           {isDragging && dropPreview ? (
-            <div
-              className={`point-grid-drop-preview point-grid-drop-preview--${dropPreview.valid ? 'valid' : 'invalid'}`}
-              data-drop-valid={dropPreview.valid}
-              style={dropPreview.style}
-              aria-hidden="true"
-            >
-              <span>{dropPreview.label}</span>
-            </div>
+            <DropPhantom preview={dropPreview} document={document} />
           ) : null}
           <p className="sr-only" role="status" aria-live="polite">
             {dropAnnouncement}
@@ -672,6 +727,136 @@ function SectionComponent({
         </>
       }
     />
+  );
+}
+
+function GroupComponent({
+  id,
+  name,
+  content: Content,
+  document,
+}: {
+  id: string;
+  name: string;
+  content: NonNullable<ElementProps['content']>;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
+  const breakpoint = useGridBreakpoint();
+  const gridRef = useRef<HTMLElement | null>(null);
+  const [preview, setPreview] = useState<DropPreview | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const clear = () => {
+    setPreview(null);
+    setAnnouncement('');
+    if (gridRef.current) setPointerFeedbackHidden(gridRef.current.ownerDocument, false);
+  };
+  const track = (clientX: number, clientY: number) => {
+    const grid = gridRef.current;
+    if (!id || !grid || !isDragging) return;
+    const bounds = grid.getBoundingClientRect();
+    if (
+      clientX < bounds.left ||
+      clientX > bounds.right ||
+      clientY < bounds.top ||
+      clientY > bounds.bottom
+    ) {
+      clear();
+      return;
+    }
+    const type = getDraggedElementType();
+    if (!type || type === 'composition') return;
+    const computed = getComputedStyle(grid);
+    const columnGap = Number.parseFloat(computed.columnGap) || 0;
+    const rowGap = Number.parseFloat(computed.rowGap) || 0;
+    const cellSize = Math.max(24, (bounds.width - columnGap * 11) / 12);
+    const intent = deriveGridDropIntent({
+      type,
+      label: blockDefinitions[type].label,
+      sectionId: id,
+      breakpoint,
+      metrics: {
+        x: clientX - bounds.left,
+        y: clientY - bounds.top,
+        width: bounds.width,
+        columnGap,
+        rowGap,
+        cellSize,
+      },
+      columnSpan: 6,
+      rowSpan: defaultRowSpan(type),
+      occupied: childComponents(currentPuckData(), id)
+        .map((child) => child.props.grid as SectionBlock['items'][number]['grid'])
+        .filter(Boolean)
+        .map((area) => areaForBreakpoint(area, breakpoint)),
+    });
+    setGridDropIntent(intent);
+    const frame = grid.closest('section')?.getBoundingClientRect() ?? bounds;
+    setPreview({
+      type,
+      label: intent.label,
+      valid: intent.valid,
+      style: {
+        left: bounds.left - frame.left + intent.bounds.left,
+        top: bounds.top - frame.top + intent.bounds.top,
+        width: intent.bounds.width,
+        height: intent.bounds.height,
+      },
+    });
+    setAnnouncement(intent.label);
+    setPointerFeedbackHidden(grid.ownerDocument, true);
+  };
+  const forwardPointer = useEffectEvent(track);
+  useEffect(() => {
+    if (!isDragging) {
+      if (gridRef.current) setPointerFeedbackHidden(gridRef.current.ownerDocument, false);
+    }
+  }, [isDragging]);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !isDragging) return;
+    const frameWindow = grid.ownerDocument.defaultView;
+    const frame = frameWindow?.frameElement as HTMLIFrameElement | null;
+    const hostDocument = frame?.ownerDocument;
+    if (!frameWindow || !frame || !hostDocument || hostDocument === grid.ownerDocument) return;
+    const forward = (event: globalThis.PointerEvent) => {
+      const frameRect = frame.getBoundingClientRect();
+      const scale = frameRect.width ? frameWindow.innerWidth / frameRect.width : 1;
+      forwardPointer(
+        (event.clientX - frameRect.left) * scale,
+        (event.clientY - frameRect.top) * scale,
+      );
+    };
+    hostDocument.addEventListener('pointermove', forward, true);
+    return () => hostDocument.removeEventListener('pointermove', forward, true);
+  }, [isDragging]);
+  return (
+    <CompositionFrame name={name}>
+      <Content
+        ref={gridRef}
+        className="point-composition__grid"
+        data-grid-drop-preview={preview ? 'true' : undefined}
+        minEmptyHeight={96}
+        onPointerMoveCapture={(event: PointerEvent<HTMLElement>) =>
+          track(event.clientX, event.clientY)
+        }
+        onPointerLeave={(event: PointerEvent<HTMLElement>) => {
+          const bounds = gridRef.current?.getBoundingClientRect();
+          if (
+            bounds &&
+            (event.clientX < bounds.left ||
+              event.clientX > bounds.right ||
+              event.clientY < bounds.top ||
+              event.clientY > bounds.bottom)
+          )
+            clear();
+        }}
+      />
+      {isDragging && preview ? <DropPhantom preview={preview} document={document} /> : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {isDragging ? announcement : ''}
+      </p>
+    </CompositionFrame>
   );
 }
 
@@ -776,94 +961,6 @@ function GridAlignmentField({
       </select>
     </label>
   );
-}
-
-function sectionToData(section: SectionBlock): ComponentData {
-  return {
-    type: 'Section',
-    props: {
-      id: section.id,
-      settings: {
-        name: section.name,
-        layout: section.layout,
-        position: section.position,
-        columns: section.columns,
-        gap: section.gap,
-        width: section.width,
-        surface: section.surface,
-        padding: section.padding,
-        minRows: section.minRows,
-        ...(section.gapPixels === undefined ? {} : { gapPixels: section.gapPixels }),
-        ...(section.paddingPixels === undefined ? {} : { paddingPixels: section.paddingPixels }),
-        ...(section.border === undefined ? {} : { border: section.border }),
-        ...(section.stackAt === undefined ? {} : { stackAt: section.stackAt }),
-        ...(section.backgroundMediaId ? { backgroundMediaId: section.backgroundMediaId } : {}),
-        backgroundPosition: section.backgroundPosition,
-        overlay: section.overlay,
-      },
-      content: section.items.map((placement) => ({
-        type: placement.element.type,
-        props: {
-          id: placement.id,
-          block: placement.element,
-          span:
-            section.layout === 'grid' ? Math.min(placement.span, section.columns) : placement.span,
-          align: placement.align,
-          grid: placement.grid,
-        },
-      })),
-    },
-  };
-}
-
-function dataToSection(item: ComponentData): SectionBlock {
-  const settings = item.props.settings as SectionSettings;
-  const content = (item.props.content ?? []) as ComponentData[];
-  return {
-    id: documentComponentId(item),
-    type: 'section',
-    ...settings,
-    items: content.map((child) => ({
-      id: documentComponentId(child),
-      span: Number(
-        settings.layout === 'flow'
-          ? (child.props.span ?? 1)
-          : ((child.props.grid as SectionBlock['items'][number]['grid'])?.desktop.columnSpan ??
-              child.props.span ??
-              12),
-      ),
-      align: (child.props.align ??
-        independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
-      grid: (child.props.grid ??
-        independentGridArea({
-          column: 1,
-          row: 1,
-          columnSpan: 12,
-          rowSpan: 4,
-        })) as SectionBlock['items'][number]['grid'],
-      element: SiteElementSchema.parse(child.props.block),
-    })),
-  };
-}
-
-function rootElementToSection(item: ComponentData): SectionBlock {
-  return {
-    id: crypto.randomUUID(),
-    type: 'section',
-    ...sectionDefaults('Section'),
-    items: [
-      {
-        id: documentComponentId(item),
-        span: Number(item.props.span ?? 12),
-        align: (item.props.align ??
-          independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
-        grid:
-          (item.props.grid as SectionBlock['items'][number]['grid']) ??
-          independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 4 }),
-        element: SiteElementSchema.parse(item.props.block),
-      },
-    ],
-  };
 }
 
 function VisualEditorImpl({
@@ -996,11 +1093,26 @@ function VisualEditorImpl({
           onChange: (value: SectionBlock['items'][number]['align']) => void;
         }) => <GridAlignmentField value={value} onChange={onChange} />,
       },
+      layer: {
+        type: 'select',
+        label: 'Layer',
+        options: Array.from({ length: 41 }, (_, index) => ({
+          label: String(index - 20),
+          value: index - 20,
+        })),
+      },
+      content: {
+        type: 'slot',
+        allow: elementTypes.filter((candidate) => candidate !== 'composition'),
+      },
     };
     components[type] = {
       label: blockDefinitions[type].label,
       inline: true,
-      fields,
+      fields:
+        type === 'composition'
+          ? fields
+          : { block: fields.block, span: fields.span, grid: fields.grid, align: fields.align },
       ...(type === 'mediaEmbed' && document.linkedMedia.length === 0
         ? { permissions: { insert: false } }
         : {}),
@@ -1008,13 +1120,16 @@ function VisualEditorImpl({
         ? { permissions: { insert: false } }
         : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {
+        const groupFields = type === 'composition' ? { content: fields.content } : {};
+        const layerFields = parent?.type === 'composition' ? { layer: fields.layer } : {};
         const parentProps = parent
           ? (parent.props as unknown as Record<string, unknown>)
           : undefined;
         const parentSettings = parentProps?.settings as Partial<SectionSettings> | undefined;
-        if (parentSettings?.layout === 'compatibility') return { block: fields.block };
+        if (parentSettings?.layout === 'compatibility')
+          return { block: fields.block, ...groupFields };
         if (parentSettings?.layout === 'flow' && document.schemaVersion < 11)
-          return { block: fields.block, align: fields.align };
+          return { block: fields.block, align: fields.align, ...groupFields };
         if (parentSettings?.layout === 'flow') {
           return {
             block: fields.block,
@@ -1030,12 +1145,15 @@ function VisualEditorImpl({
               })),
             },
             align: fields.align,
+            ...groupFields,
           };
         }
         return {
           block: fields.block,
           grid: fields.grid,
           align: fields.align,
+          ...groupFields,
+          ...layerFields,
         };
       },
       defaultProps: {
@@ -1048,6 +1166,10 @@ function VisualEditorImpl({
           columnSpan: 12,
           rowSpan: defaultRowSpan(type),
         }),
+        ...(type === 'composition'
+          ? { settings: { layout: 'grid', columns: 12 }, content: [] }
+          : {}),
+        layer: 0,
       },
       resolveData: (
         data: { props: ElementProps },
@@ -1067,7 +1189,11 @@ function VisualEditorImpl({
             grid: item.props.grid as SectionBlock['items'][number]['grid'],
           }));
         const defaultSpan =
-          parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
+          parent?.type === 'TwoColumnSection' || parent?.type === 'composition'
+            ? 6
+            : parent?.type === 'ThreeColumnSection'
+              ? 4
+              : 12;
         const startingGrid = {
           desktop: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'desktop'),
           tablet: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'tablet'),
@@ -1103,22 +1229,33 @@ function VisualEditorImpl({
         align,
         grid,
         span,
+        layer,
+        content: Content,
         puck,
       }: ElementProps & { id: string; puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
         const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
         return (
-          <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }}>
+          <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }} layer={layer}>
             {parsed.success ? (
-              renderBlock(
-                parsed.data,
-                displayDocument,
-                undefined,
-                hero
-                  ? (kind) => (
-                      <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
-                    )
-                  : undefined,
+              parsed.data.type === 'composition' && Content ? (
+                <GroupComponent
+                  id={id}
+                  name={parsed.data.name}
+                  content={Content}
+                  document={displayDocument}
+                />
+              ) : (
+                renderBlock(
+                  parsed.data,
+                  displayDocument,
+                  undefined,
+                  hero
+                    ? (kind) => (
+                        <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
+                      )
+                    : undefined,
+                )
               )
             ) : (
               <p>Configure this element.</p>
@@ -1146,7 +1283,10 @@ function VisualEditorImpl({
       },
       collections: { title: 'Lists and people', components: ['cards', 'people'] },
       engagement: { title: 'Interactive', components: ['faq', 'form', 'map'] },
-      spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },
+      spacing: {
+        title: 'Layout helpers',
+        components: ['divider', 'spacer', ...(document.schemaVersion >= 12 ? ['composition'] : [])],
+      },
       other: { visible: false },
     },
     components,
@@ -1256,16 +1396,20 @@ function VisualEditorImpl({
               mutation = mutationForContext('page-content');
             }
 
+            const hasRootElement = nextState.data.content.some(
+              (item) => !sectionTypes.includes(item.type as (typeof sectionTypes)[number]),
+            );
             const sections = nextState.data.content.map((item) =>
               sectionTypes.includes(item.type as (typeof sectionTypes)[number])
                 ? dataToSection(item)
-                : rootElementToSection(item),
+                : rootElementToSection(item, sectionDefaults('Section')),
             );
             const changed = structuredClone(document);
             replaceLayoutSections(changed, pageId, sections);
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);
-              else completeDocument(changed, mutation);
+              else if (completeDocument(changed, mutation) && hasRootElement)
+                setInteractionRevision((value) => value + 1);
             });
           }}
           onPublish={undefined}

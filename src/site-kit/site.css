@@ -1765,20 +1765,38 @@ body:has(.point-site) {
 .point-grid-drop-preview {
   position: absolute;
   z-index: 90;
-  display: grid;
-  place-items: center;
+  display: block;
   min-width: 0;
   overflow: hidden;
   border: 3px solid #567f37;
   border-radius: 0.35rem;
-  background: rgb(184 222 149 / 0.72);
+  background: rgb(255 255 255 / 0.45);
   color: #162012;
   pointer-events: none;
   box-shadow:
     inset 0 0 0 2px rgb(255 255 255 / 0.7),
     0 5px 18px rgb(22 32 18 / 0.28);
 }
+.point-grid-drop-preview__content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  opacity: 0.65;
+}
+.point-grid-drop-preview__content > * {
+  max-width: 100%;
+}
+.point-grid-drop-preview__media {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  background: var(--point-surface);
+}
 .point-grid-drop-preview span {
+  position: absolute;
+  bottom: 0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
   max-width: calc(100% - 0.5rem);
   overflow: hidden;
   padding: 0.2rem 0.45rem;
@@ -1801,6 +1819,7 @@ body:has(.point-site) {
   grid-row: var(--point-grid-desktop-row) / span var(--point-grid-desktop-row-span);
 }
 .point-site .point-composition {
+  position: relative;
   width: 100%;
   container-type: inline-size;
 }

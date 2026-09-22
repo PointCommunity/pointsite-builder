@@ -1,6 +1,7 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SCHEMA_VERSION } from '../../src/site-kit/version';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
 import { legacyFooterDocument } from '../fixtures/legacy-footer';
@@ -3673,6 +3674,8 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   await page.mouse.move(to!.x + 24, to!.y + 24, { steps: 16 });
   const phantom = canvas.locator('.point-grid-drop-preview');
   await expect(phantom).toContainText('Heading');
+  await expect(phantom.locator('.point-heading h2')).toHaveText('Section heading');
+  await expect(phantom.locator('.point-grid-drop-preview__content')).toHaveCSS('opacity', '0.65');
   await expect(phantom).toHaveAttribute('data-drop-valid', 'true');
   const first = await phantom.boundingBox();
   await page.mouse.move(to!.x + to!.width * 0.6, to!.y + 24, { steps: 8 });
@@ -3742,6 +3745,145 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   });
   expect(eastHitArea.width).toBeGreaterThanOrEqual(16);
   expect(eastHitArea.height).toBeGreaterThanOrEqual(24);
+});
+
+test('wraps an image dropped directly on an empty page in a resizable grid container', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Puck cross-frame drags are unreliable in Playwright WebKit.',
+  );
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.pages[0].blocks = [];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const source = page.getByRole('button', { name: 'Image', exact: true });
+  const target = canvas.locator('[data-puck-dropzone]').first();
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+  expect(from).not.toBeNull();
+  expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+    steps: 4,
+  });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 6, { steps: 16 });
+  await page.mouse.up();
+  const section = canvas.locator('section[aria-label="Blank section"]');
+  await expect(section.locator('.point-image')).toBeVisible();
+  await section.locator('.point-image').click();
+  const resize = canvas.getByRole('button', { name: 'Resize image from south east' });
+  await expect(resize).toBeVisible();
+  const original = Number(await page.getByLabel('desktop width in columns').last().inputValue());
+  await resize.press('ArrowLeft');
+  await expect(page.getByLabel('desktop width in columns').last()).toHaveValue(
+    String(original - 1),
+  );
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const saved = controls.saveRequests.at(-1)!.document.pages[0].blocks;
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ layout: 'grid', items: [{ element: { type: 'image' } }] });
+  expect(saved[0].items[0].grid.desktop.columnSpan).toBe(original - 1);
+  await page.reload();
+  const reopened = page.locator('.visual-editor iframe').contentFrame();
+  await expect(reopened.locator('section[aria-label="Blank section"] .point-image')).toBeVisible();
+});
+
+test('composes text inside a nested grid and persists its placement', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    SCHEMA_VERSION < 12,
+    'Version-12 authoring activates after the reader baseline is released.',
+  );
+  test.skip(
+    browserName === 'webkit',
+    'Puck cross-frame drags are unreliable in Playwright WebKit.',
+  );
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    document.pages[0].blocks = [];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const drag = async (name: string, target: ReturnType<typeof page.locator>, center = false) => {
+    const source = page.getByRole('button', { name, exact: true });
+    let from = await source.boundingBox();
+    let to = await target.boundingBox();
+    await expect(async () => {
+      await source.scrollIntoViewIfNeeded();
+      await target.scrollIntoViewIfNeeded();
+      [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+      expect(from).not.toBeNull();
+      expect(to).not.toBeNull();
+    }).toPass({ timeout: 5000 });
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(
+      to!.x + to!.width / 2,
+      center ? to!.y + to!.height / 2 : to!.y + to!.height - 6,
+      { steps: 16 },
+    );
+    const settled = await target.boundingBox();
+    expect(settled).not.toBeNull();
+    await page.mouse.move(settled!.x + settled!.width / 2, settled!.y + settled!.height / 2, {
+      steps: 4,
+    });
+    if (center) {
+      await expect(target.locator('xpath=..').locator('.point-grid-drop-preview')).toHaveAttribute(
+        'data-drop-valid',
+        'true',
+      );
+    }
+    await page.waitForTimeout(200);
+    await page.mouse.up();
+  };
+  await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
+  const section = canvas.locator('section[aria-label="Blank section"]');
+  await drag('Group', section.locator('[data-puck-dropzone]'));
+  const group = section.locator('section[aria-label="Group"]');
+  await expect(group).toBeVisible();
+  await drag('Text', group.locator('[data-puck-dropzone]'), true);
+  await expect(group.locator('.point-text')).toHaveText('Add your text here.');
+  await page.getByLabel('Text type').filter({ visible: true }).last().selectOption('h2');
+  await page
+    .getByRole('textbox', { name: 'Text', exact: true })
+    .filter({ visible: true })
+    .last()
+    .fill('Independent heading');
+  await expect(group.getByRole('heading', { name: 'Independent heading', level: 2 })).toBeVisible();
+  await page.getByLabel('Layer').filter({ visible: true }).last().selectOption('2');
+  await canvas.getByRole('button', { name: 'Resize text from south east' }).press('ArrowLeft');
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const composed = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0].element;
+  expect(composed).toMatchObject({
+    type: 'composition',
+    items: [{ element: { type: 'text', semantic: 'h2', text: 'Independent heading' } }],
+  });
+  if (composed.type !== 'composition') throw new Error('Expected a group');
+  expect(composed.items[0].grid.desktop).toMatchObject({ column: 7, columnSpan: 5 });
+  expect(composed.items[0].layer).toBe(2);
+  await page.reload();
+  await expect(
+    page
+      .locator('.visual-editor iframe')
+      .contentFrame()
+      .getByRole('heading', { name: 'Independent heading', level: 2 }),
+  ).toBeVisible();
 });
 
 test('ships the logo and menu as independently editable grid elements', async ({ page }) => {
