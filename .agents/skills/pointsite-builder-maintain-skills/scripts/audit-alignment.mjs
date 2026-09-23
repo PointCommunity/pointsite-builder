@@ -73,8 +73,8 @@ requireText(policy, 'Pull request merged', policyPath);
 requireText(policy, 'is disabled', policyPath);
 requireText(policy, 'Homelab Production at', policyPath);
 requireText(policy, 'Exact Canary approval permits Production promotion', policyPath);
-requireText(policy, 'Production Showcase and PM acceptance', policyPath);
-requireText(policy, 'Approved to complete Issue #&lt;number&gt;', policyPath);
+requireText(policy, 'Canary PM acceptance and Production Showcase', policyPath);
+requireText(policy, 'Showcase is a report, not an approval gate', policyPath);
 requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
 requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
 requireText(agents, 'https://builder-canary.eaglepass.io', 'AGENTS.md');
@@ -83,10 +83,12 @@ requireText(agents, 'promote the exact approved Canary digest without rebuilding
 requireText(agents, 'explicit approval of the exact Canary candidate', 'AGENTS.md');
 requireText(
   agents,
-  'Agent QA and live verification never substitute for PM review and testing',
+  'Agent QA and live verification never substitute for PM testing of Canary',
   'AGENTS.md',
 );
-requireText(agents, 'Approved to complete Issue #<number>', 'AGENTS.md');
+requireText(agents, 'sole product-work approval gate', 'AGENTS.md');
+if (agents.includes('Approved to complete Issue #<number>'))
+  errors.push('AGENTS.md must not request a second completion approval');
 requireText(agents, 'Do not create or open a standalone acceptance report', 'AGENTS.md');
 requireText(policy, 'Lean completion evidence', policyPath);
 requireText(policy, 'Do not create or open a standalone acceptance', policyPath);
@@ -124,8 +126,8 @@ for (const [skillName, contract] of Object.entries(leanCloseoutContracts)) {
 
 const showcaseContracts = {
   'pointsite-builder-review-issue': 'Production Showcase',
-  'pointsite-builder-close-issue': 'Approved to complete Issue #<number>',
-  'pointsite-builder-release-production': 'production health does not replace PM testing',
+  'pointsite-builder-close-issue': 'The sole PM approval follows Canary testing',
+  'pointsite-builder-release-production': 'The Showcase needs no second approval',
 };
 for (const [skillName, contract] of Object.entries(showcaseContracts)) {
   requireText(

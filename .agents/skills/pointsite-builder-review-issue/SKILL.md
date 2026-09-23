@@ -1,6 +1,6 @@
 ---
 name: pointsite-builder-review-issue
-description: 'Perform complete agent QA for the active PointSite Builder Issue, remediate findings, deploy the exact candidate, and prepare the production Showcase for PM testing.'
+description: 'Perform complete agent QA for the active PointSite Builder Issue, deploy Canary, and present the exact candidate for PM testing and approval.'
 ---
 
 # Review a PointSite Builder Issue
@@ -16,9 +16,8 @@ Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole act
 5. Ensure the PR is current with `main`, ready for review, and the exact committed head passes every GitHub Quality job. Record the Issue, PR URL, head commit, head tree, test evidence, and Quality run.
 6. As the agent-owned Project transition, move the Issue to In Review and immediately read back the card, assignment, metadata, and sole-active count.
 7. Unless the PM requested an earlier stop, build clean pushed source locally for linux/amd64, publish its immutable Zot digest and deploy only Canary through canonical homelab Gitea GitOps. Verify Argo, health, readiness, assets, persistence and affected authenticated behavior. Present `https://builder-canary.eaglepass.io` with exact source/tree, image digest, Canary configuration commit and change-specific PM tests. Require explicit approval of this exact candidate before invoking `pointsite-builder-close-issue` to merge and promote the same image without rebuilding.
-8. After verified production, present a `Production Showcase` that links directly to `https://builder.eaglepass.io`. Include the exact released source/tree, image digest and GitOps revision plus numbered `PM testing steps` derived from the actual diff: prerequisites, exact actions, expected results, and relevant baseline/regression checks.
-9. End the Showcase with `Approved to complete Issue #<number>` in its own standalone fenced code block for direct copying. Wait for that exact approval for the unchanged released candidate; agent testing, CI, deployment, silence, or an earlier approval is not PM acceptance.
+8. After verified Production, present a `Production Showcase` that links directly to `https://builder.eaglepass.io`. Include the exact released source/tree, image digest, GitOps revision, verified behavior, and any remaining Issue scope. Do not ask for another PM approval.
 
 Use the PR or Issue and concise chat updates for review evidence. Do not create or open a standalone acceptance report or duplicate QA summary unless the PM explicitly requested that artifact.
 
-PM findings are blocking even after production deployment: move the card back to In Progress before remediation, create and deploy a new reviewed candidate, and present a replacement Showcase. Never reuse approval after the released candidate changes.
+PM findings require same-Issue remediation: move the card back to In Progress, create and deploy a new reviewed Canary candidate, and obtain approval for that changed candidate before another Production promotion. Never reuse approval after the candidate changes.

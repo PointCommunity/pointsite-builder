@@ -84,8 +84,10 @@
         The product lifecycle below remains authoritative for application Issues. Full application,
         browser and performance QA runs locally on the configured Mac; GitHub Quality runs
         lightweight pipeline and security checks only. Its success never substitutes for complete
-        local evidence. Product releases require exact Canary approval before Production promotion;
-        final product acceptance remains the Production Showcase.
+        local evidence. Product work has one PM approval gate:
+        <code>Approved to merge and deploy production</code>, after healthy Canary deployment and PM
+        testing, before merge and Production promotion. Production Showcase needs no second
+        approval.
       </p>
     </aside>
     <h1>PointSite Builder Development Pipeline</h1>
@@ -147,8 +149,8 @@
         <td>Completion automation</td>
         <td>
           Pull request merged → Done is disabled. Item closed → Done and Done → close Issue remain
-          enabled; the agent sets Done only after verified production plus PM testing and exact
-          approval of the current Showcase candidate.
+          enabled; the agent sets Done only after exact Canary approval, verified Production, and
+          full Issue acceptance. No second Production approval is required.
         </td>
       </tr>
     </table>
@@ -232,25 +234,23 @@
       </li>
       <li>
         The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
-        relevant live behavior, records release evidence, and presents a linked production Showcase
-        with numbered, change-specific PM testing steps. The Issue remains open, assigned, and In
-        Review.
+        relevant live behavior, records release evidence, and presents a linked Production Showcase.
+        If full Issue acceptance remains incomplete, the Issue stays open and active for same-Issue
+        work.
       </li>
       <li>
-        The PM tests the production Showcase. Findings return the Issue to In Progress and require a
-        new remediation, QA, merge, deployment, and Showcase cycle. Only
-        <code>Approved to complete Issue #&lt;number&gt;</code> for the unchanged released candidate
-        authorizes the agent to move the card to Done, verify closure, unassign it, and confirm the
-        active slot is empty.
+        After verified Production, the agent moves a fully accepted Issue to Done, verifies closure,
+        unassigns it, and confirms the active slot is empty without another PM approval. PM findings
+        on incomplete or released work return the Issue to In Progress for same-Issue remediation.
       </li>
     </ol>
 
     <h2>Agent-owned Project movement</h2>
     <p>
       The PM never has to drag a card, select a Status, or repair Project metadata. Human Issue
-      approval, work selection, pause or resume requests, findings, and requested stopping points
-      are decision gates; the agent performs and immediately verifies the corresponding Project
-      transition.
+      intake authorization, work selection, pause or resume requests, findings, and requested
+      stopping points control scope; only tested Canary approval gates merge and Production. The
+      agent performs and immediately verifies each corresponding Project transition.
     </p>
     <table>
       <tr>
@@ -285,19 +285,22 @@
       </tr>
       <tr>
         <td>Production verifies healthy</td>
-        <td>Keep open, assigned, and In Review; present the linked production Showcase.</td>
-        <td>Released identity, live evidence, PM steps, and sole active card.</td>
+        <td>Present the linked Production Showcase; keep incomplete Issues active.</td>
+        <td>
+          Released identity, live evidence, remaining scope, and sole active card if incomplete.
+        </td>
       </tr>
       <tr>
-        <td>PM reports a Showcase finding</td>
+        <td>PM reports a post-release finding</td>
         <td>Set In Progress before remediation.</td>
-        <td>Earlier approval and Showcase invalidated; new candidate required.</td>
+        <td>New remediation candidate required before further promotion.</td>
       </tr>
       <tr>
-        <td>PM approves the unchanged Showcase candidate</td>
+        <td>Full Issue acceptance verified after Production</td>
         <td>Close, unassign, and set Done.</td>
         <td>
-          Exact PM approval, released identity, closed state, Done metadata, and zero active cards.
+          Exact Canary approval, released identity, closed state, Done metadata, and zero active
+          cards.
         </td>
       </tr>
     </table>
@@ -365,25 +368,25 @@
       evidence, and GitHub Quality run. A released candidate adds the main merge commit and tree,
       exact-main Quality run, previous and new image digests, GitOps revision, migration evidence,
       deployment result, and live-verification result. The merge tree must equal the reviewed tree.
-      PM completion approval applies only to this full released tuple and is invalid after any
-      source, tree, dependency, migration, image, deployment configuration, or behavior change.
+      PM Canary approval applies only to the tested source/tree, image digest, and Canary GitOps
+      configuration. Any subsequent candidate change invalidates that approval.
     </p>
 
-    <h2>Production Showcase and PM acceptance</h2>
+    <h2>Canary PM acceptance and Production Showcase</h2>
     <p>
       Canary at
       <a href="https://builder-canary.eaglepass.io">https://builder-canary.eaglepass.io</a>
-      is the pre-promotion PM testing target. Production at
+      is the PM testing and sole approval target. Production at
       <a href="https://builder.eaglepass.io">https://builder.eaglepass.io</a> is the final Builder
-      Showcase. After agent QA, exact-head and exact-main Quality, deployment, and live
-      verification, the agent presents that hyperlink with prerequisites, numbered actions, expected
-      results, and focused regression checks derived from the actual change. Agent QA and production
-      health do not substitute for PM review and testing. The Issue remains In Review until the PM
-      states <code>Approved to complete Issue #&lt;number&gt;</code> for the current candidate.
+      Showcase. Before merge, the agent presents Canary with prerequisites, numbered actions,
+      expected results, and focused regression checks derived from the actual change. Agent QA and
+      Canary health do not substitute for PM testing. After the PM approves that exact Canary
+      candidate, the agent merges, promotes its digest, verifies Production, and reports the linked
+      Showcase without another approval request.
     </p>
     <p>
-      Exact Canary approval permits Production promotion; separate Production Showcase approval
-      permits Issue completion.
+      Exact Canary approval permits Production promotion. Verified Production and full Issue
+      acceptance permit Issue completion; the Showcase is a report, not an approval gate.
     </p>
 
     <h2>Lean completion evidence</h2>
@@ -463,8 +466,8 @@
       <li>Never request credentials, expose secrets, or weaken authentication for evidence.</li>
       <li>Never deploy or publish the public PointSite from this pipeline.</li>
       <li>
-        Never close an Issue after merge or verified production alone; PM Showcase approval is
-        completion.
+        Never close an Issue after merge alone or while approved scope remains incomplete. Verified
+        Production plus full acceptance of the Canary-approved Issue permits completion.
       </li>
       <li>Never generate or open a redundant closeout report for routine Issue completion.</li>
     </ul>

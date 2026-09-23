@@ -1,6 +1,6 @@
 ---
 name: pointsite-builder-close-issue
-description: 'Merge and deploy a verified PointSite Builder candidate, then complete the Issue only after PM testing and approval of the production Showcase.'
+description: 'Merge and deploy a PM-approved PointSite Builder Canary candidate, then close fully accepted Issues after Production verification.'
 ---
 
 # Close a PointSite Builder Issue
@@ -13,9 +13,8 @@ Read `AGENTS.md`, `.agents/pointsite-builder-pipeline-policy.html`, the sole act
 2. Require explicit PM approval of the exact healthy Canary source/tree, image digest and GitOps configuration commit. Record the reviewed PR head commit and tree, then squash-merge and delete the feature branch when safe. Confirm the resulting `origin/main` tree exactly equals the reviewed image source tree; a changed tree invalidates approval and requires a new Canary candidate before Production.
 3. Update local `main` without discarding any user-owned work. Require a clean checkout at the exact remote merge commit and wait for every GitHub Quality job on that `main` commit to succeed.
 4. Invoke `pointsite-builder-release-production` with the Issue, PR, reviewed head/tree, merge commit/tree, Quality evidence, exact Canary approval, image digest and GitOps configuration. Promote the approved image without rebuilding; do not copy Canary storage, secrets or approvals into Production.
-5. After production deployment and live verification succeed, add concise release evidence, keep the Issue open, assigned, and In Review, and return to `pointsite-builder-review-issue` for the linked production Showcase and PM testing steps. Do not create or open a standalone acceptance report or duplicate closeout document unless the PM explicitly requested that artifact.
-6. On a later invocation, require the exact phrase `Approved to complete Issue #<number>` from the PM for the currently deployed, unchanged Showcase candidate. Re-read source/tree, deployment identity, live health, Issue, and card; any changed candidate invalidates approval.
-7. Only after that readback succeeds, perform the agent-owned Project transition to Done, verify the enabled automation closes the Issue (or close it directly if the automation does not), remove its assignment, read the Issue and card back, and verify no active Issue remains.
-8. PM findings require In Progress and same-Issue remediation through a new PR and full review/deploy/Showcase cycle. If merge succeeds but deployment fails, keep the Issue open and assigned, restore In Review if needed, verify application rollback, and use a reviewable revert or remediation; never rewrite `main` history.
+5. After Production deployment and live verification succeed, add concise release evidence and return to `pointsite-builder-review-issue` for the linked Production Showcase. Do not create or open a standalone acceptance report or duplicate closeout document unless the PM explicitly requested that artifact.
+6. Re-read source/tree, deployment identity, live health, Issue, and card. If the approved Issue is fully accepted, perform the agent-owned Project transition to Done, verify the enabled automation closes the Issue (or close it directly if the automation does not), remove its assignment, read the Issue and card back, and verify no active Issue remains. Do not ask for separate Production Showcase or completion approval.
+7. If Issue scope remains incomplete, keep it open, assigned, and active for same-Issue work. PM findings require In Progress and a new reviewed Canary candidate before further promotion. If merge succeeds but deployment fails, keep the Issue open and assigned, restore In Review if needed, verify application rollback, and use a reviewable revert or remediation; never rewrite `main` history.
 
-A merged and healthy production release is not completion. Never close the Issue before PM testing and exact approval of its current production Showcase.
+A merged release alone is not completion. The sole PM approval follows Canary testing; close only after verified Production and full approved Issue acceptance.
