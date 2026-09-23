@@ -3707,6 +3707,32 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   const grid = canvas
     .locator('section[aria-label="Two column section"]')
     .locator('[data-puck-dropzone]');
+  for (const [name, rendered] of [
+    ['Image', '.point-image img'],
+    ['Form', '.point-form-wrapper form'],
+    ['Map', '.point-map iframe'],
+  ] as const) {
+    const item = page.getByRole('button', { name, exact: true });
+    let start: Awaited<ReturnType<typeof item.boundingBox>> = null;
+    let destination: Awaited<ReturnType<typeof grid.boundingBox>> = null;
+    await expect(async () => {
+      await item.scrollIntoViewIfNeeded();
+      await grid.scrollIntoViewIfNeeded();
+      [start, destination] = await Promise.all([item.boundingBox(), grid.boundingBox()]);
+      expect(start).not.toBeNull();
+      expect(destination).not.toBeNull();
+    }).toPass({ timeout: 5000 });
+    await page.mouse.move(start!.x + start!.width / 2, start!.y + start!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start!.x + start!.width / 2 + 8, start!.y + start!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(destination!.x + 24, destination!.y + 24, { steps: 16 });
+    await expect(canvas.locator('.point-grid-drop-preview').locator(rendered)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(canvas.locator('.point-grid-drop-preview')).toHaveCount(0);
+  }
   const source = page
     .getByRole('button', { name: 'Heading', exact: true })
     .filter({ visible: true });
@@ -3744,6 +3770,10 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
     .filter({ has: canvas.getByRole('heading', { name: 'Section heading' }) });
   const occupiedBox = await occupiedHeading.boundingBox();
   expect(occupiedBox).not.toBeNull();
+  expect(occupiedBox!.x).toBeCloseTo(second!.x, 0);
+  expect(occupiedBox!.y).toBeCloseTo(second!.y, 0);
+  expect(occupiedBox!.width).toBeCloseTo(second!.width, 0);
+  expect(occupiedBox!.height).toBeCloseTo(second!.height, 0);
   await expect(occupiedHeading.locator('xpath=ancestor::section[1]')).toHaveAttribute(
     'aria-label',
     'Two column section',
@@ -3842,6 +3872,50 @@ test('wraps an image dropped directly on an empty page in a resizable grid conta
   await page.reload();
   const reopened = page.locator('.visual-editor iframe').contentFrame();
   await expect(reopened.locator('section[aria-label="Blank section"] .point-image')).toBeVisible();
+});
+
+test('drops the rendered Map phantom into an empty grid', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Puck cross-frame drags require Chromium for this flow.');
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.pages[0].blocks = [];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const drag = async (name: string, target: ReturnType<typeof page.locator>) => {
+    const source = page.getByRole('button', { name, exact: true });
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    const [from, to] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 16 });
+    const settled = await target.boundingBox();
+    expect(settled).not.toBeNull();
+    await page.mouse.move(settled!.x + settled!.width / 2, settled!.y + settled!.height / 2, {
+      steps: 4,
+    });
+  };
+  await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
+  await page.mouse.up();
+  const grid = canvas.locator('section[aria-label="Blank section"] [data-puck-dropzone]');
+  await expect(grid).toBeVisible();
+  await drag('Map', grid);
+  const phantom = canvas.locator('.point-grid-drop-preview');
+  await expect(phantom).toHaveAttribute('data-drop-valid', 'true');
+  await expect(phantom.locator('.point-map iframe')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(grid.locator('.point-map iframe')).toHaveCount(1);
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(controls.saveRequests.at(-1)!.document.pages[0].blocks[0]).toMatchObject({
+    items: [{ element: { type: 'map' } }],
+  });
 });
 
 test('composes text inside a nested grid and persists its placement', async ({

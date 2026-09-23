@@ -513,12 +513,7 @@ function DropPhantom({
       aria-hidden="true"
     >
       <div className="point-grid-drop-preview__content">
-        {preview.type === 'map' || preview.type === 'mediaEmbed' ? (
-          <div className="point-grid-drop-preview__media">
-            {blockDefinitions[preview.type].label}
-          </div>
-        ) : (preview.type === 'image' || preview.type === 'splitFeature') &&
-          !document.media.length ? (
+        {(preview.type === 'image' || preview.type === 'splitFeature') && !document.media.length ? (
           <div className="point-grid-drop-preview__media">Image</div>
         ) : preview.type === 'form' && !document.forms.length ? (
           <div className="point-grid-drop-preview__media">Form</div>
