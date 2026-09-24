@@ -321,7 +321,7 @@ describe('BlockInspector', () => {
     expect(screen.getByRole('option', { name: 'Point page hero' })).toBeInTheDocument();
   });
 
-  it('offers brand-neutral Hero alternatives in a version-12 document', () => {
+  it('hides Point-only choices in version 12 while displaying an existing legacy selection', () => {
     const document = {
       ...defaultSiteDocument,
       schemaVersion: 12 as const,
@@ -331,11 +331,11 @@ describe('BlockInspector', () => {
     const { rerender } = render(
       <BlockInspector block={hero} document={document} onChange={vi.fn()} />,
     );
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).not.toEqual(
-      expect.arrayContaining(['Point page hero', 'Point homepage hero']),
-    );
-    expect(screen.getByRole('option', { name: 'Homepage hero' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Page hero' })).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('Layout style'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Standard hero']);
     rerender(
       <BlockInspector
         block={{ ...hero, variant: 'pageHero' }}
@@ -344,7 +344,7 @@ describe('BlockInspector', () => {
       />,
     );
     expect(screen.getByLabelText('Layout style')).toHaveValue('pageHero');
-    expect(screen.getByRole('option', { name: 'Page hero' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Legacy: page hero' })).toBeDisabled();
   });
 
   it('uses page-aware destinations for action and standalone button links', () => {

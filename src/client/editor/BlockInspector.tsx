@@ -49,10 +49,7 @@ function Select<T extends string | number>({
 }) {
   const visibleOptions =
     schemaVersion >= 12
-      ? options.map((option) => ({
-          ...option,
-          label: option.label.replace(/^Point (.)/, (_, initial: string) => initial.toUpperCase()),
-        }))
+      ? options.filter((option) => !option.label.startsWith('Point ') || option.value === value)
       : options;
   return (
     <label className="inspector-field">
@@ -65,8 +62,14 @@ function Select<T extends string | number>({
         }}
       >
         {visibleOptions.map((option) => (
-          <option key={String(option.value)} value={option.value}>
-            {option.label}
+          <option
+            key={String(option.value)}
+            value={option.value}
+            disabled={schemaVersion >= 12 && option.label.startsWith('Point ')}
+          >
+            {schemaVersion >= 12 && option.label.startsWith('Point ')
+              ? `Legacy: ${option.label.slice(6)}`
+              : option.label}
           </option>
         ))}
       </select>
