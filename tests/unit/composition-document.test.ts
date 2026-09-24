@@ -48,13 +48,13 @@ describe('composed document compatibility', () => {
     expect(supportsRenderer({ schemaVersion: 12, rendererVersion: '12.0.0' })).toBe(true);
   });
 
-  it('does not write version 12 when reading existing version 11 drafts', () => {
+  it('edits version 12 documents after reader compatibility is established', () => {
     const existing = structuredClone(defaultSiteDocument);
     expect(migrateDocument(existing)).toEqual({ document: existing, applied: [] });
     expect(canEditDocument(existing)).toBe(true);
     expect(
       canEditDocument(composedDocument() as { schemaVersion: number; rendererVersion: string }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('prepares version 11 as version 12 deterministically without changing legacy content', () => {
@@ -278,7 +278,7 @@ describe('composed document compatibility', () => {
     expect(html).toContain('aria-label="Submit form"');
   });
 
-  it('keeps newer drafts read only through repository writes', async () => {
+  it('accepts version 12 edits but rejects a downgrade to version 11', async () => {
     const repository = new InMemoryRepository();
     const actor = 'editor@example.com';
     const future = SiteDocumentSchema.parse(composedDocument());
@@ -300,9 +300,11 @@ describe('composed document compatibility', () => {
       action: { category: 'text-edit' as const, context: 'page-content' as const },
     };
     await expect(repository.saveDraft({ ...save, document: defaultSiteDocument })).rejects.toThrow(
-      'read only',
+      'downgraded',
     );
-    await expect(repository.saveDraft({ ...save, document: future })).rejects.toThrow('read only');
-    expect((await repository.getDraft(draft.id)).document).toEqual(future);
+    const edited = structuredClone(future);
+    edited.site.shortName = 'Edited composition';
+    const saved = await repository.saveDraft({ ...save, document: edited });
+    expect(saved.document).toEqual(edited);
   });
 });

@@ -490,6 +490,8 @@ export class D1DraftRepository implements DraftRepository {
     const document = migrateDocument(input.document).document;
     if (!canEditDocument(current.document) || !canEditDocument(document))
       throw new ConflictError('This document version is read only in this Builder');
+    if (document.schemaVersion < current.document.schemaVersion)
+      throw new ConflictError('A composed document cannot be downgraded');
     const checksum = await checksumDocument(document);
     const now = new Date().toISOString();
     const checkoutHash = await hashToken(input.checkoutToken);

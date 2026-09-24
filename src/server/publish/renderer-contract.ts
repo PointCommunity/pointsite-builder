@@ -21,7 +21,7 @@ export const STAGING_RENDERER_CONTRACT = Object.freeze({
   'tokens.ts': '8ff9fdad08fa333d3e192408fd4b4a228460df94',
   'types.ts': '32d9441a49bea07132287d8e32643f977b4bb13f',
   'url-policy.ts': 'd0f49d5513bd3790764d3dc804c49c314a63daea',
-  'version.ts': '39cf2cf28d0761367dde026b9716d5deac475be5',
+  'version.ts': '684a9c9e1307c4a1ea6dbbca3ab16d1b67b8501f',
 } satisfies Record<string, string>);
 
 export type StagingRendererContract = Record<string, string>;

@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 11 as const;
 export const RENDERER_VERSION = '11.0.0' as const;
-// The reader baseline accepts version 12 without authoring it until activation.
+// Existing drafts stay on version 11 until an explicit composition upgrade.
 export const MAX_SUPPORTED_SCHEMA_VERSION = 12 as const;
 
 export function supportsRenderer(identity: {
@@ -19,7 +19,7 @@ export function canEditDocument(identity: {
   schemaVersion: number;
   rendererVersion: string;
 }): boolean {
-  return identity.schemaVersion <= SCHEMA_VERSION && supportsRenderer(identity);
+  return supportsRenderer(identity);
 }
 
 export interface RendererIdentity {

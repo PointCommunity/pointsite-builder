@@ -71,7 +71,7 @@ test.each(['legacy', 'compact-v1'] as const)(
 );
 
 test.each(['legacy', 'compact-v1'] as const)(
-  'native %s storage reads composed version-12 content but the reader cannot overwrite it',
+  'native %s storage edits composed version-12 content without downgrading it',
   async (format) => {
     const directory = await mkdtemp(join(tmpdir(), 'builder-composition-91-'));
     let database = new SqliteDatabase(join(directory, 'workspace.sqlite'));
@@ -151,11 +151,11 @@ test.each(['legacy', 'compact-v1'] as const)(
         requestId: 'edit',
         action: { category: 'text-edit' as const, context: 'page-content' as const },
       };
-      await expect(repository.saveDraft({ ...save, document })).rejects.toThrow('read only');
-      await expect(repository.saveDraft({ ...save, document: future })).rejects.toThrow(
-        'read only',
-      );
-      expect((await repository.getDraft(draft.id)).document).toEqual(future);
+      await expect(repository.saveDraft({ ...save, document })).rejects.toThrow('downgraded');
+      const edited = structuredClone(future);
+      edited.site.shortName = 'Edited composition';
+      const saved = await repository.saveDraft({ ...save, document: edited });
+      expect((await repository.getDraft(draft.id)).document).toEqual(saved.document);
       expect(await database.prepare('PRAGMA integrity_check').first('integrity_check')).toBe('ok');
     } finally {
       database.close();

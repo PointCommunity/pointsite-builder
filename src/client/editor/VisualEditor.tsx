@@ -30,6 +30,7 @@ import {
   renderBlock,
 } from '../../site-kit/registry';
 import { SiteElementSchema } from '../../site-kit/schema';
+import { upgradeComposition } from '../../site-kit/migrations';
 import {
   areaForBreakpoint,
   defaultRowSpan,
@@ -1185,9 +1186,6 @@ function VisualEditorImpl({
       ...(type === 'mediaEmbed' && document.linkedMedia.length === 0
         ? { permissions: { insert: false } }
         : {}),
-      ...(type === 'composition' && document.schemaVersion < 12
-        ? { permissions: { insert: false } }
-        : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {
         const groupFields = type === 'composition' ? { content: fields.content } : {};
         const layerFields = parent?.type === 'composition' ? { layer: fields.layer } : {};
@@ -1354,7 +1352,7 @@ function VisualEditorImpl({
       engagement: { title: 'Interactive', components: ['faq', 'form', 'map'] },
       spacing: {
         title: 'Layout helpers',
-        components: ['divider', 'spacer', ...(document.schemaVersion >= 12 ? ['composition'] : [])],
+        components: ['divider', 'spacer', 'composition'],
       },
       other: { visible: false },
     },
@@ -1548,7 +1546,12 @@ function VisualEditorImpl({
                 zone: `${sections[action.destinationIndex].id}:content`,
                 index: 0,
               };
-            const changed = structuredClone(document);
+            const changed =
+              document.schemaVersion < 12 &&
+              action.type === 'insert' &&
+              action.componentType === 'composition'
+                ? upgradeComposition(document)
+                : structuredClone(document);
             replaceLayoutSections(changed, pageId, sections);
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);

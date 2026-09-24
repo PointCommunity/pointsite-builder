@@ -82,9 +82,10 @@
         <li>
           <strong>Read-compatible baseline.</strong> Add versioned parsing/migration and composed
           rendering while legacy rendering remains unchanged. Keep new authoring disabled until a
-          Production rollback image can parse and safely render the new contract. Exercise old
-          documents and a composed fixture in a local native upgrade/rollback rehearsal. If a
-          simpler verified dual-read strategy meets the same property, use it.
+          retained rollback image can parse and safely render the new contract. Keep the tested
+          reader-capable Canary digest as the recovery image when the current Production digest
+          cannot parse version 12. Exercise old documents and a composed fixture in a local native
+          upgrade/rollback rehearsal.
         </li>
         <li>
           <strong>Authoring slices.</strong> First make a generic composed section editable using
@@ -104,8 +105,9 @@
           <strong>Parity and release.</strong> Shared site-kit output drives Layout, Preview and
           publication. Synchronize the reviewed renderer contract with its governed publication
           counterpart without initiating public publication. Full local QA and exact-head Quality
-          precede Canary; each Production promotion requires approval of its exact Canary candidate.
-          Production Showcase and Issue closure need separate PM testing and approval.
+          precede Canary; each Production promotion requires PM testing and approval of its exact
+          healthy Canary candidate. Production Showcase and Issue closure require verification and
+          full Issue acceptance, not a second approval.
         </li>
       </ol>
 
@@ -134,7 +136,8 @@
             </td>
             <td>
               Schema/migration, native repository, revision, publish preflight and previous-image
-              rehearsal. Release a reader-capable baseline before any v12 write in Production.
+              rehearsal. Retain the reader-capable Canary image for recovery before any v12 write in
+              Production; do not add a separate PM approval gate.
             </td>
           </tr>
           <tr>
@@ -202,8 +205,8 @@
           <tr>
             <td>Strict v11 parser rejects new document nodes.</td>
             <td>
-              Reader-capable baseline before v12 writes; no bulk Production rewrite; retained prior
-              digest and native upgrade/rollback tests.
+              Reader-capable recovery image before v12 writes; no bulk Production rewrite; record
+              the prior Production digest and use the retained reader image if it cannot parse v12.
             </td>
           </tr>
           <tr>

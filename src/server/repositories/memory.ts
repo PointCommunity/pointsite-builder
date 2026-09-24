@@ -181,6 +181,8 @@ export class InMemoryRepository implements DraftRepository {
     if (current.status !== 'active') throw new ConflictError('Only active drafts can be saved');
     if (!canEditDocument(current.document) || !canEditDocument(document))
       throw new ConflictError('This document version is read only in this Builder');
+    if (document.schemaVersion < current.document.schemaVersion)
+      throw new ConflictError('A composed document cannot be downgraded');
     const operationKey = `draft.save:${input.actor}:${input.idempotencyKey}`;
     const prior = this.#idempotency.get(operationKey);
     if (prior === null) throw new NotFoundError(`Draft ${input.draftId} was not found`);

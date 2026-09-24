@@ -151,8 +151,8 @@
       </section>
       <p class="checkpoint">
         <strong>Checkpoint A:</strong> legacy parity, migration and native rollback tests pass.
-        Complete local quality and governed Canary/Production gates for reader baseline before any
-        new format is writable in Production.
+        Qualify and retain the reader-capable Canary image before any new format is writable in
+        Production. The complete candidate still has one PM approval gate after testable Canary.
       </p>
 
       <h2>Composed authoring</h2>
@@ -426,8 +426,8 @@
           <code>npm run check</code>, <code>npm run test:performance</code>,
           <code>npm run test:e2e -- --workers=2</code>; <code>npm run pipeline:health</code>;
           <code>git diff --check</code>; <code>node scripts/local-qa.mjs cleanup</code> even on
-          failure. Governed PR and exact-candidate Canary approval remain separate from Production
-          Showcase completion.
+          failure. The sole PM approval follows testing of the exact healthy Canary candidate;
+          Production Showcase completion needs no second approval.
         </p>
         <p>
           <strong>Depends:</strong> T01–T19. <strong>Files:</strong> no additional application files
@@ -436,8 +436,8 @@
       </section>
       <p class="checkpoint">
         <strong>Completion gate:</strong> agent QA is not PM acceptance. Preserve the sole active
-        Issue through exact Canary approval, Production promotion and PM Showcase; close only after
-        the configured final approval.
+        Issue through exact Canary approval, Production promotion and PM Showcase; close after
+        verified Production and full Issue acceptance without another approval.
       </p>
     </main>
   </body>

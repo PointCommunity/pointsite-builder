@@ -1,7 +1,6 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { draftAssetFixture, imageFixture as previewPng } from './draft-asset-fixture';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
-import { SCHEMA_VERSION } from '../../src/site-kit/version';
 import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
 import { legacyFooterDocument } from '../fixtures/legacy-footer';
@@ -291,6 +290,8 @@ async function installApi(
           sequence: draft.revision.sequence + 1,
           checksum: 'c'.repeat(64),
           document: input.document,
+          schemaVersion: input.document.schemaVersion,
+          rendererVersion: input.document.rendererVersion,
           actionCategory: input.action.category,
           actionContext: input.action.context,
         };
@@ -3923,16 +3924,10 @@ test('composes text inside a nested grid and persists its placement', async ({
   browserName,
 }) => {
   test.skip(
-    SCHEMA_VERSION < 12,
-    'Version-12 authoring activates after the reader baseline is released.',
-  );
-  test.skip(
     browserName === 'webkit',
     'Puck cross-frame drags are unreliable in Playwright WebKit.',
   );
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
-    document.schemaVersion = 12;
-    document.rendererVersion = '12.0.0';
     document.pages[0].blocks = [];
   });
   await page.goto('/');
@@ -3976,9 +3971,16 @@ test('composes text inside a nested grid and persists its placement', async ({
   };
   await drag('Blank', canvas.locator('[data-puck-dropzone]').first());
   const section = canvas.locator('section[aria-label="Blank section"]');
+  await expect(section.locator('[data-puck-dropzone]')).toBeVisible();
+  await expect(page.getByText('All changes saved')).toBeVisible();
   await drag('Group', section.locator('[data-puck-dropzone]'));
   const group = section.locator('section[aria-label="Group"]');
   await expect(group).toBeVisible();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(controls.saveRequests.at(-1)?.document).toMatchObject({
+    schemaVersion: 12,
+    rendererVersion: '12.0.0',
+  });
   await drag('Text', group.locator('[data-puck-dropzone]'), true);
   await expect(group.locator('.point-text')).toHaveText('Add your text here.');
   await page.getByLabel('Text type').filter({ visible: true }).last().selectOption('h2');
