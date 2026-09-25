@@ -29,18 +29,21 @@ import {
   LayoutSection,
   renderBlock,
 } from '../../site-kit/registry';
-import { SiteElementSchema } from '../../site-kit/schema';
+import { SiteDocumentSchema, SiteElementSchema } from '../../site-kit/schema';
 import { upgradeComposition } from '../../site-kit/migrations';
 import {
   areaForBreakpoint,
   defaultRowSpan,
   GRID_COLUMNS,
+  GRID_BREAKPOINTS,
   independentGridArea,
   independentResponsiveValue,
   nextGridArea,
+  requiredSectionRows,
   updateGridArea,
+  type GridBreakpoint,
 } from '../../site-kit/grid-layout';
-import type { SectionBlock, SiteElement } from '../../site-kit/types';
+import type { SectionBlock, SiteDocument, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
 import {
   documentRegions,
@@ -79,7 +82,17 @@ import {
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
-import { dataToSection, rootElementToSection, sectionToData } from './editor-section-data';
+import {
+  dataToSection,
+  placementToData,
+  rootElementToSection,
+  sectionToData,
+} from './editor-section-data';
+import {
+  compositionPreset,
+  compositionPresetNames,
+  type CompositionPresetName,
+} from './composition-presets';
 import { adjustHeroTextWidth, clampHeroTextWidth, heroTextWidthFromDrag } from './hero-text-resize';
 
 type ElementProps = {
@@ -90,6 +103,7 @@ type ElementProps = {
   layer?: number;
   content?: (props?: Record<string, unknown>) => ReactNode;
 };
+type ElementDataProps = Omit<ElementProps, 'content'> & { content?: ComponentData[] };
 type SectionProps = {
   settings: SectionSettings;
   content: (props?: Record<string, unknown>) => ReactNode;
@@ -285,6 +299,13 @@ const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
   FullWidthSection: 'Full-Width',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
+const presetComponents = compositionPresetNames.map((name) => ({
+  name,
+  key: `Preset${name.replaceAll(' ', '')}`,
+}));
+const presetNameByKey = new Map(presetComponents.map(({ key, name }) => [key, name]));
+const paletteTypes = [...elementTypes, ...presetComponents.map(({ key }) => key)];
+let draggedPresetName: CompositionPresetName | null = null;
 const editorViewports: Viewports = Object.values(siteViewports);
 const editorDnd = { behavior: 'auto' as const };
 const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
@@ -434,6 +455,23 @@ function defaultElement<T extends SiteElement['type']>(
   return defaults[type] as Extract<SiteElement, { type: T }>;
 }
 
+function draggedPreviewElement(type: SiteElement['type'], document: SiteDocument): SiteElement {
+  return type === 'composition' && draggedPresetName
+    ? compositionPreset(draggedPresetName, document)
+    : defaultElement(type, document);
+}
+
+function draggedPreviewRows(
+  type: SiteElement['type'],
+  document: SiteDocument,
+  breakpoint: GridBreakpoint,
+): number {
+  const block = draggedPreviewElement(type, document);
+  return block.type === 'composition'
+    ? Math.max(defaultRowSpan(type), requiredSectionRows(1, block.items, breakpoint))
+    : defaultRowSpan(type);
+}
+
 function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   if (kind === 'TwoColumnSection')
     return {
@@ -519,11 +557,118 @@ function DropPhantom({
         ) : preview.type === 'form' && !document.forms.length ? (
           <div className="point-grid-drop-preview__media">Form</div>
         ) : (
-          renderBlock(defaultElement(preview.type, document), document)
+          renderBlock(draggedPreviewElement(preview.type, document), document)
         )}
       </div>
       <span>{preview.label}</span>
     </div>
+  );
+}
+
+function RootDropPhantom({ document }: { document: ReturnType<typeof useEditor>['document'] }) {
+  const marker = useRef<HTMLSpanElement>(null);
+  const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
+  const [preview, setPreview] = useState<{
+    type: SiteElement['type'];
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isDragging) return;
+    const owner = marker.current?.ownerDocument;
+    const view = owner?.defaultView;
+    if (!owner || !view) return;
+    const root = owner.querySelector<HTMLElement>('[data-puck-dropzone="root:default-zone"]');
+    const host = view.frameElement?.ownerDocument;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const type = getDraggedElementType();
+      const line = root?.querySelector<HTMLElement>('[data-puck-line-placeholder]');
+      if (
+        !type ||
+        !line ||
+        !root ||
+        lastSectionPointer ||
+        host?.documentElement.hasAttribute('data-point-grid-preview')
+      ) {
+        setPreview(null);
+        return;
+      }
+      const target =
+        marker.current?.closest<HTMLElement>('.page-body.shell')?.getBoundingClientRect() ??
+        root.getBoundingClientRect();
+      const top = line.getBoundingClientRect().top;
+      setPreview((previous) =>
+        previous?.type === type &&
+        previous.top === top &&
+        previous.left === target.left &&
+        previous.width === target.width
+          ? previous
+          : { type, top, left: target.left, width: target.width },
+      );
+    };
+    const schedule = () => {
+      if (!frame) frame = view.requestAnimationFrame(measure);
+    };
+    const observer = new MutationObserver(schedule);
+    if (root)
+      observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    owner.addEventListener('pointermove', schedule, true);
+    host?.addEventListener('pointermove', schedule, true);
+    schedule();
+    return () => {
+      observer.disconnect();
+      owner.removeEventListener('pointermove', schedule, true);
+      host?.removeEventListener('pointermove', schedule, true);
+      if (frame) view.cancelAnimationFrame(frame);
+    };
+  }, [isDragging]);
+  const type = preview?.type;
+  const block = type ? draggedPreviewElement(type, document) : null;
+  return (
+    <>
+      <span ref={marker} hidden />
+      {isDragging && preview && block ? (
+        <div
+          className="point-root-drop-preview"
+          style={{ top: preview.top, left: preview.left, width: preview.width }}
+          aria-hidden="true"
+        >
+          <LayoutSection section={sectionDefaults('Section')} document={document}>
+            <LayoutItem
+              placement={{
+                grid: independentGridArea({
+                  column: 1,
+                  row: 1,
+                  columnSpan: 12,
+                  rowSpan: draggedPreviewRows(type!, document, getGridBreakpoint()),
+                }),
+                align: independentResponsiveValue('stretch'),
+                span: 12,
+              }}
+            >
+              {(type === 'image' || type === 'splitFeature') && !document.media.length ? (
+                <div className="point-grid-drop-preview__media">Image</div>
+              ) : type === 'form' && !document.forms.length ? (
+                <div className="point-grid-drop-preview__media">Form</div>
+              ) : (
+                renderBlock(block, document)
+              )}
+            </LayoutItem>
+          </LayoutSection>
+        </div>
+      ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {preview ? `${blockDefinitions[preview.type].label} will land in a new grid section.` : ''}
+      </p>
+    </>
   );
 }
 
@@ -772,14 +917,14 @@ function GroupComponent({
       return;
     }
     const type = getDraggedElementType();
-    if (!type || type === 'composition') return;
+    if (!type) return;
     const computed = getComputedStyle(grid);
     const columnGap = Number.parseFloat(computed.columnGap) || 0;
     const rowGap = Number.parseFloat(computed.rowGap) || 0;
     const cellSize = Math.max(24, (bounds.width - columnGap * 11) / 12);
     const intent = deriveGridDropIntent({
       type,
-      label: blockDefinitions[type].label,
+      label: draggedPresetName ?? blockDefinitions[type].label,
       sectionId: id,
       breakpoint,
       metrics: {
@@ -791,7 +936,7 @@ function GroupComponent({
         cellSize,
       },
       columnSpan: 6,
-      rowSpan: defaultRowSpan(type),
+      rowSpan: draggedPreviewRows(type, document, breakpoint),
       occupied: childComponents(currentPuckData(), id)
         .map((child) => child.props.grid as SectionBlock['items'][number]['grid'])
         .filter(Boolean)
@@ -932,14 +1077,19 @@ function DrawerDragReporter() {
       lastSectionPointer = null;
       const target = event.target as HTMLElement | null;
       const drawerItem = target?.closest<HTMLElement>('[data-testid^="drawer-item:"]');
-      const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '') as
-        SiteElement['type'] | undefined;
+      const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '');
       const buttonLabel = target?.closest('button')?.textContent?.trim();
+      draggedPresetName =
+        presetNameByKey.get(testedType ?? '') ??
+        compositionPresetNames.find((name) => name === buttonLabel) ??
+        null;
       const labeledType = elementTypes.find(
         (candidate) => blockDefinitions[candidate].label === buttonLabel,
       );
-      const type = testedType ?? labeledType;
-      setDraggedElementType(type && elementTypes.includes(type) ? type : null);
+      const type = draggedPresetName
+        ? 'composition'
+        : (elementTypes.find((candidate) => candidate === testedType) ?? labeledType);
+      setDraggedElementType(type ?? null);
     };
     globalThis.document.addEventListener('pointerdown', track, true);
     globalThis.document.addEventListener('pointermove', locateSection, true);
@@ -980,7 +1130,14 @@ function GridPlacementField({
     .filter((item) => String(item.props.id) !== componentId)
     .map((item) => item.props.grid as SectionBlock['items'][number]['grid'])
     .filter(Boolean);
-  return <GridPlacementInspector value={value} occupied={occupied} onChange={onChange} />;
+  return (
+    <GridPlacementInspector
+      value={value}
+      occupied={occupied}
+      allowOverlap={Number(selectedProps?.layer ?? 0) !== 0}
+      onChange={onChange}
+    />
+  );
 }
 
 function GridAlignmentField({
@@ -1006,6 +1163,71 @@ function GridAlignmentField({
         ))}
       </select>
     </label>
+  );
+}
+
+function GroupPresetControls({
+  block,
+  document,
+}: {
+  block: Extract<SiteElement, { type: 'composition' }>;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const selectedItem = usePointPuck((state) => state.selectedItem) as ComponentData | null;
+  const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  const componentId = String(selectedItem?.props.id ?? '');
+  const empty = ((selectedItem?.props.content ?? []) as ComponentData[]).length === 0;
+  if (!empty) return null;
+  return (
+    <fieldset className="inspector-group">
+      <legend>Starting layouts</legend>
+      <p className="field-help">Add independent grid elements. Every part stays editable.</p>
+      {compositionPresetNames.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className="button"
+          onClick={() => {
+            const selector = getSelectorForId(componentId);
+            if (!selectedItem || !selector?.zone) return;
+            const preset = compositionPreset(name, document);
+            const currentGrid = selectedItem.props.grid as SectionBlock['items'][number]['grid'];
+            const expandedGrid = GRID_BREAKPOINTS.reduce(
+              (grid, breakpoint) =>
+                updateGridArea(grid, breakpoint, {
+                  rowSpan: Math.max(
+                    areaForBreakpoint(grid, breakpoint).rowSpan,
+                    requiredSectionRows(1, preset.items, breakpoint),
+                  ),
+                }),
+              currentGrid,
+            );
+            setPuckActionIntent({ category: 'add', context: 'page-content' });
+            dispatch({
+              type: 'replace',
+              destinationIndex: selector.index,
+              destinationZone: selector.zone,
+              data: {
+                ...selectedItem,
+                props: {
+                  ...selectedItem.props,
+                  block: { ...preset, id: block.id },
+                  grid: expandedGrid,
+                  content: preset.items.map((item) => {
+                    const child = placementToData(item, 12);
+                    return { ...child, props: { ...child.props, layer: item.layer } };
+                  }),
+                },
+              },
+              recordHistory: true,
+            });
+          }}
+        >
+          {name}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 
@@ -1102,7 +1324,7 @@ function VisualEditorImpl({
             onChange: (value: SectionSettings) => void;
           }) => <SectionInspector settings={value} document={document} onChange={onChange} />,
         },
-        content: { type: 'slot', allow: elementTypes },
+        content: { type: 'slot', allow: paletteTypes },
       },
       defaultProps: {
         settings: sectionDefaults(kind),
@@ -1125,12 +1347,17 @@ function VisualEditorImpl({
           value: SiteElement;
           onChange: (value: SiteElement) => void;
         }) => (
-          <BlockInspector
-            block={value}
-            document={document}
-            onChange={onChange}
-            onEditNavigation={onEditNavigation}
-          />
+          <>
+            <BlockInspector
+              block={value}
+              document={document}
+              onChange={onChange}
+              onEditNavigation={onEditNavigation}
+            />
+            {value.type === 'composition' ? (
+              <GroupPresetControls block={value} document={document} />
+            ) : null}
+          </>
         ),
       },
       span: {
@@ -1188,7 +1415,13 @@ function VisualEditorImpl({
         : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {
         const groupFields = type === 'composition' ? { content: fields.content } : {};
-        const layerFields = parent?.type === 'composition' ? { layer: fields.layer } : {};
+        const layerFields =
+          document.schemaVersion >= 12 &&
+          (parent?.type === 'composition' ||
+            presetNameByKey.has(parent?.type ?? '') ||
+            (parent?.props.settings as Partial<SectionSettings> | undefined)?.layout === 'grid')
+            ? { layer: fields.layer }
+            : {};
         const parentProps = parent
           ? (parent.props as unknown as Record<string, unknown>)
           : undefined;
@@ -1236,13 +1469,18 @@ function VisualEditorImpl({
         ...(type === 'composition'
           ? { settings: { layout: 'grid', columns: 12 }, content: [] }
           : {}),
-        layer: 0,
+        ...(document.schemaVersion >= 12 ? { layer: 0 } : {}),
       },
       resolveData: (
         data: { props: ElementProps },
         { trigger, parent }: { trigger: string; parent: ComponentData | null },
       ) => {
         if (trigger !== 'insert') return data;
+        if ((data.props as ElementProps & { presetPlacement?: boolean }).presetPlacement) {
+          const props = { ...data.props } as ElementProps & { presetPlacement?: boolean };
+          delete props.presetPlacement;
+          return { props };
+        }
         const parentSettings = parent?.props.settings as Partial<SectionSettings> | undefined;
         const parentId = String(parent?.props.id ?? '');
         const storedParentItems = childComponents(currentPuckData(), parentId);
@@ -1256,7 +1494,9 @@ function VisualEditorImpl({
             grid: item.props.grid as SectionBlock['items'][number]['grid'],
           }));
         const defaultSpan =
-          parent?.type === 'TwoColumnSection' || parent?.type === 'composition'
+          parent?.type === 'TwoColumnSection' ||
+          parent?.type === 'composition' ||
+          presetNameByKey.has(parent?.type ?? '')
             ? 6
             : parent?.type === 'ThreeColumnSection'
               ? 4
@@ -1333,6 +1573,59 @@ function VisualEditorImpl({
     };
   }
 
+  const groupComponent = components.composition as Record<string, unknown> & {
+    defaultProps: ElementDataProps;
+    resolveData: (
+      data: { props: ElementDataProps },
+      context: { trigger: string; parent: ComponentData | null },
+    ) => { props: ElementDataProps };
+  };
+  for (const { key, name } of presetComponents) {
+    const initial = compositionPreset(name, document);
+    const presetData = (item: (typeof initial.items)[number]) => {
+      const data = placementToData(item, 12);
+      return { ...data, props: { ...data.props, presetPlacement: true } };
+    };
+    components[key] = {
+      ...groupComponent,
+      label: name,
+      defaultProps: {
+        ...groupComponent.defaultProps,
+        block: initial,
+        content: initial.items.map(presetData),
+      },
+      resolveData: (
+        data: { props: ElementDataProps },
+        context: { trigger: string; parent: ComponentData | null },
+      ) => {
+        if (context.trigger !== 'insert') return groupComponent.resolveData(data, context);
+        const preset = compositionPreset(name, document);
+        const resolved = groupComponent.resolveData(
+          {
+            ...data,
+            props: {
+              ...data.props,
+              block: preset,
+              content: preset.items.map(presetData),
+            },
+          },
+          context,
+        );
+        const grid = GRID_BREAKPOINTS.reduce(
+          (current, breakpoint) =>
+            updateGridArea(current, breakpoint, {
+              rowSpan: Math.max(
+                areaForBreakpoint(current, breakpoint).rowSpan,
+                requiredSectionRows(1, preset.items, breakpoint),
+              ),
+            }),
+          resolved.props.grid,
+        );
+        return { ...resolved, props: { ...resolved.props, grid } };
+      },
+    };
+  }
+
   const config = {
     categories: {
       sections: { title: 'Sections', components: [...sectionTypes] },
@@ -1342,14 +1635,28 @@ function VisualEditorImpl({
       },
       content: {
         title: 'Text and buttons',
-        components: ['hero', 'heading', 'text', 'richText', 'button', 'cta'],
+        components: [
+          ...presetComponents.slice(0, 3).map(({ key }) => key),
+          'hero',
+          'heading',
+          'text',
+          'richText',
+          'button',
+          'cta',
+        ],
       },
       media: {
         title: 'Images and media',
         components: ['image', 'mediaEmbed', 'splitFeature'],
       },
-      collections: { title: 'Lists and people', components: ['cards', 'people'] },
-      engagement: { title: 'Interactive', components: ['faq', 'form', 'map'] },
+      collections: {
+        title: 'Lists and people',
+        components: [...presetComponents.slice(3, 6).map(({ key }) => key), 'cards', 'people'],
+      },
+      engagement: {
+        title: 'Interactive',
+        components: [presetComponents[6].key, 'faq', 'form', 'map'],
+      },
       spacing: {
         title: 'Layout helpers',
         components: ['divider', 'spacer', 'composition'],
@@ -1374,9 +1681,21 @@ function VisualEditorImpl({
             page={page}
             editing
             onEditFooter={editingFooter ? undefined : onEditFooter}
-            footerContent={editingFooter ? children : undefined}
+            footerContent={
+              editingFooter ? (
+                <>
+                  {children}
+                  <RootDropPhantom document={displayDocument} />
+                </>
+              ) : undefined
+            }
           >
-            {editingFooter ? null : children}
+            {editingFooter ? null : (
+              <>
+                {children}
+                <RootDropPhantom document={displayDocument} />
+              </>
+            )}
           </SiteFrame>
         </>
       ),
@@ -1546,13 +1865,18 @@ function VisualEditorImpl({
                 zone: `${sections[action.destinationIndex].id}:content`,
                 index: 0,
               };
-            const changed =
+            let changed =
               document.schemaVersion < 12 &&
               action.type === 'insert' &&
               action.componentType === 'composition'
                 ? upgradeComposition(document)
                 : structuredClone(document);
             replaceLayoutSections(changed, pageId, sections);
+            if (changed.schemaVersion < 12 && !SiteDocumentSchema.safeParse(changed).success) {
+              const upgraded = upgradeComposition(document);
+              replaceLayoutSections(upgraded, pageId, sections);
+              if (SiteDocumentSchema.safeParse(upgraded).success) changed = upgraded;
+            }
             queueMicrotask(() => {
               if (mutation.transient) stageDocument(changed, mutation);
               else {

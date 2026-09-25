@@ -263,6 +263,31 @@ describe('BlockInspector', () => {
     expect(screen.queryByLabelText(/json/i)).not.toBeInTheDocument();
   });
 
+  it('lets a legacy draft clear required Hero copy in Properties', () => {
+    const document = structuredClone(defaultSiteDocument);
+    const hero = document.pages[0].blocks
+      .flatMap((section) => section.items.map((item) => item.element))
+      .find((item) => item.type === 'hero')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={hero} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Heading'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ heading: '' }));
+  });
+
+  it('lets a legacy draft clear an independent Text element', () => {
+    const block: SiteElement = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      text: 'Remove me',
+      style: 'body',
+      align: 'left',
+    };
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={defaultSiteDocument} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ text: '' }));
+  });
+
   it('adds a FAQ item without drag and drop', () => {
     const document = structuredClone(defaultSiteDocument);
     const block = document.pages
@@ -314,11 +339,22 @@ describe('BlockInspector', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ align: 'end' }));
   });
 
-  it('offers the Point page hero style on the existing Hero element', () => {
+  it('does not offer Point-only styles even before a legacy draft upgrades', () => {
     const hero = allBlocks.find((item) => item.type === 'hero')!;
-    render(<BlockInspector block={hero} document={defaultSiteDocument} onChange={vi.fn()} />);
+    const { rerender } = render(
+      <BlockInspector block={hero} document={defaultSiteDocument} onChange={vi.fn()} />,
+    );
 
-    expect(screen.getByRole('option', { name: 'Point page hero' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Layout style')).toHaveTextContent('Standard hero');
+    expect(screen.queryByRole('option', { name: 'Point page hero' })).not.toBeInTheDocument();
+    rerender(
+      <BlockInspector
+        block={{ ...hero, variant: 'pageHero' }}
+        document={defaultSiteDocument}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('option', { name: 'Legacy: page hero' })).toBeDisabled();
   });
 
   it('hides Point-only choices in version 12 while displaying an existing legacy selection', () => {
@@ -397,21 +433,17 @@ describe('BlockInspector', () => {
   });
 
   it.each([
-    ['hero', 'Layout style', 'homeHero', 'variant'],
-    ['heading', 'Layout style', 'homeIntro', 'variant'],
-    ['richText', 'Layout style', 'prose', 'variant'],
-    ['image', 'Layout style', 'wide', 'variant'],
-    ['splitFeature', 'Layout style', 'imageSplit', 'variant'],
-    ['cta', 'Layout style', 'rental', 'variant'],
-    ['cards', 'Layout style', 'identity', 'variant'],
+    ['hero', 'Alignment', 'center', 'align'],
+    ['heading', 'Width', 'narrow', 'width'],
+    ['richText', 'Text alignment', 'center', 'align'],
+    ['image', 'Image fit', 'contain', 'fit'],
+    ['splitFeature', 'Horizontal alignment', 'right', 'textAlign'],
+    ['cta', 'Background', 'primary', 'surface'],
     ['people', 'Layout style', 'leadership', 'variant'],
-    ['faq', 'Layout style', 'groups', 'variant'],
-    ['form', 'Layout style', 'panel', 'variant'],
-    ['map', 'Layout style', 'gathering', 'variant'],
     ['divider', 'Divider style', 'space', 'style'],
     ['spacer', 'Space size', 'small', 'size'],
   ] as const)(
-    'edits the %s module through its primary presentation control',
+    'edits the %s module through a brand-neutral presentation control',
     (type, label, value, property) => {
       const block = allBlocks.find((item) => item.type === type)!;
       const onChange = vi.fn();
@@ -423,6 +455,21 @@ describe('BlockInspector', () => {
       unmount();
     },
   );
+
+  it.each([
+    ['faq', 'Section heading', 'New section heading', 'heading'],
+    ['form', 'Heading', 'Contact', 'heading'],
+    ['map', 'Title', 'Location', 'title'],
+  ] as const)('edits the %s module without a Point-only style', (type, label, value, property) => {
+    const block = allBlocks.find((item) => item.type === type)!;
+    const onChange = vi.fn();
+    const { unmount } = render(
+      <BlockInspector block={block} document={defaultSiteDocument} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ [property]: value }));
+    unmount();
+  });
 
   it('hides controls that do not apply to fixed editorial presets', () => {
     const photoBanner = {

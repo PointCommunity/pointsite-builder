@@ -215,7 +215,11 @@ export function GridOverlay({
       .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
       .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
     const previous = areaForBreakpoint(currentProps.grid, breakpoint);
-    const resolved = resolveGridArea(nextArea, previous, siblings);
+    const resolved = resolveGridArea(
+      nextArea,
+      previous,
+      Number(currentProps.layer ?? 0) ? [] : siblings,
+    );
     if (resolved.rejected) {
       setStatus('Move blocked because elements cannot overlap.');
       return;
@@ -329,12 +333,18 @@ export function GridOverlay({
       <div className="point-grid-controls" data-grid-controls={componentType}>
         <button
           type="button"
-          className="point-grid-move-surface"
+          className={`point-grid-move-surface${componentType === 'composition' ? ' point-grid-move-surface--group' : ''}`}
           aria-label={`Move ${componentType} on ${breakpoint} grid`}
-          title="Drag anywhere inside the selected box. Arrow keys move one grid square."
+          title={
+            componentType === 'composition'
+              ? 'Drag this handle or use arrow keys to move the group.'
+              : 'Drag anywhere inside the selected box. Arrow keys move one grid square.'
+          }
           onPointerDown={(event) => begin(event, 'move')}
           onKeyDown={(event) => keyMove(event, 'move')}
-        ></button>
+        >
+          {componentType === 'composition' ? 'Move group' : null}
+        </button>
         {resizeHandles.map((edge) => (
           <button
             type="button"

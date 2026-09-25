@@ -95,6 +95,41 @@ describe('composed document compatibility', () => {
     expect(html).not.toContain('Point ATX</h1>');
   });
 
+  it('persists and renders a page-level image behind text without changing legacy documents', () => {
+    const input = composedDocument();
+    const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ layer?: number }> }> }>;
+    pages[0].blocks[1].items[0].layer = -1;
+    const document = SiteDocumentSchema.parse(input);
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }));
+    expect(html).toContain('z-index:-1');
+    const legacy = structuredClone(defaultSiteDocument) as unknown as Record<string, unknown>;
+    const legacyPages = legacy.pages as Array<{
+      blocks: Array<{ items: Array<{ layer?: number }> }>;
+    }>;
+    legacyPages[0].blocks[1].items[0].layer = -1;
+    expect(SiteDocumentSchema.safeParse(legacy).success).toBe(false);
+  });
+
+  it('renders a v12 image overlay while preserving its optional link', () => {
+    const input = composedDocument();
+    const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;
+    const mediaId = defaultSiteDocument.media[0].id;
+    pages[0].blocks[1].items[0].element = {
+      id: crypto.randomUUID(),
+      type: 'image',
+      mediaId,
+      alt: 'Decorative backdrop',
+      aspect: '16:9',
+      fit: 'cover',
+      overlay: 'dark',
+      href: '/',
+    };
+    const document = SiteDocumentSchema.parse(input);
+    const html = renderToStaticMarkup(createElement(SiteRenderer, { document, route: '/' }));
+    expect(html).toContain('point-image--overlay-dark');
+    expect(html).toContain('class="point-image-link" href="/"');
+  });
+
   it('renders independent semantic text and treats an empty field as no text', () => {
     const input = composedDocument();
     const pages = input.pages as Array<{ blocks: Array<{ items: Array<{ element: unknown }> }> }>;

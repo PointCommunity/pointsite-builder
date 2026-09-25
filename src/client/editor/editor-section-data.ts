@@ -1,11 +1,18 @@
 import type { ComponentData } from '@puckeditor/core';
 import type { ElementPlacement, SectionBlock, SiteElement } from '../../site-kit/types';
 import { SiteElementSchema } from '../../site-kit/schema';
-import { independentGridArea, independentResponsiveValue } from '../../site-kit/grid-layout';
+import {
+  areaForBreakpoint,
+  GRID_BREAKPOINTS,
+  independentGridArea,
+  independentResponsiveValue,
+  requiredSectionRows,
+  updateGridArea,
+} from '../../site-kit/grid-layout';
 import { documentComponentId } from './puck-grid-data';
 import type { SectionSettings } from './SectionInspector';
 
-function placementToData(placement: ElementPlacement, columns: number): ComponentData {
+export function placementToData(placement: ElementPlacement, columns: number): ComponentData {
   const block = placement.element;
   return {
     type: block.type,
@@ -15,6 +22,7 @@ function placementToData(placement: ElementPlacement, columns: number): Componen
       span: Math.min(placement.span, columns),
       align: placement.align,
       grid: placement.grid,
+      ...(placement.layer === undefined ? {} : { layer: placement.layer }),
       ...(block.type === 'composition'
         ? {
             settings: { layout: 'grid', columns: 12 },
@@ -42,25 +50,39 @@ function elementFromData(child: ComponentData): SiteElement {
 }
 
 function placementFromData(child: ComponentData, layout: SectionBlock['layout']): ElementPlacement {
+  const element = elementFromData(child);
+  const originalGrid = (child.props.grid ??
+    independentGridArea({
+      column: 1,
+      row: 1,
+      columnSpan: 12,
+      rowSpan: 4,
+    })) as ElementPlacement['grid'];
+  const grid =
+    element.type === 'composition'
+      ? GRID_BREAKPOINTS.reduce(
+          (current, breakpoint) =>
+            updateGridArea(current, breakpoint, {
+              rowSpan: Math.max(
+                areaForBreakpoint(current, breakpoint).rowSpan,
+                requiredSectionRows(1, element.items, breakpoint),
+              ),
+            }),
+          originalGrid,
+        )
+      : originalGrid;
   return {
     id: documentComponentId(child),
     span: Number(
       layout === 'flow'
         ? (child.props.span ?? 1)
-        : ((child.props.grid as ElementPlacement['grid'])?.desktop.columnSpan ??
-            child.props.span ??
-            12),
+        : (grid.desktop.columnSpan ?? child.props.span ?? 12),
     ),
     align: (child.props.align ??
       independentResponsiveValue('stretch')) as ElementPlacement['align'],
-    grid: (child.props.grid ??
-      independentGridArea({
-        column: 1,
-        row: 1,
-        columnSpan: 12,
-        rowSpan: 4,
-      })) as ElementPlacement['grid'],
-    element: elementFromData(child),
+    grid,
+    ...(typeof child.props.layer === 'number' ? { layer: child.props.layer } : {}),
+    element,
   };
 }
 

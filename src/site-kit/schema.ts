@@ -131,6 +131,7 @@ const ImageBlockSchema = z.strictObject({
   alt: z.string().trim().max(300),
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
   fit: z.enum(['cover', 'contain', 'stretch']),
+  overlay: z.enum(['none', 'light', 'dark']).optional(),
   caption: z.string().trim().max(500).optional(),
   variant: z.enum(['standard', 'wide']).optional(),
   href: z
@@ -408,6 +409,16 @@ export const ComposedBlockSchema = z
     const placementIds = new Set<string>();
     const elementIds = new Set<string>();
     group.items.forEach((item, index) => {
+      if (
+        GRID_BREAKPOINTS.some(
+          (breakpoint) => item.grid[breakpoint].row + item.grid[breakpoint].rowSpan - 1 > 100,
+        )
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'grid'],
+          message: 'Group content must fit within 100 grid rows',
+        });
       if (placementIds.has(item.id))
         context.addIssue({
           code: 'custom',
@@ -432,6 +443,7 @@ export const SiteElementSchema = z.discriminatedUnion('type', [
 
 const ElementPlacementSchema = z.strictObject({
   ...PrimitiveElementPlacementSchema.shape,
+  layer: z.number().int().min(-20).max(20).optional(),
   element: SiteElementSchema,
 });
 
@@ -918,6 +930,12 @@ export const SiteDocumentSchema = z
           });
         section.items.forEach((item, itemIndex) => {
           const elementPath = [...sectionPath, 'items', itemIndex, 'element'];
+          if (document.schemaVersion < 12 && item.layer !== undefined)
+            context.addIssue({
+              code: 'custom',
+              path: [...sectionPath, 'items', itemIndex, 'layer'],
+              message: 'Page-level layers require schema version 12',
+            });
           if (document.schemaVersion < 12 && item.element.type === 'composition')
             context.addIssue({
               code: 'custom',
@@ -938,7 +956,8 @@ export const SiteDocumentSchema = z
             document.schemaVersion < 12 &&
             ((item.element.type === 'text' &&
               (item.element.semantic !== undefined || item.element.text.length === 0)) ||
-              (item.element.type === 'image' && item.element.href !== undefined))
+              (item.element.type === 'image' &&
+                (item.element.href !== undefined || item.element.overlay !== undefined)))
           )
             context.addIssue({
               code: 'custom',

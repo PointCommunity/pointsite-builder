@@ -688,13 +688,15 @@ export function renderBlock(
       );
       return block.variant === 'wide' ? (
         <section
-          className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}`}
+          className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}${block.overlay && block.overlay !== 'none' ? ` point-image--overlay-${block.overlay}` : ''}`}
         >
           {visual}
           {block.caption ? <p>{block.caption}</p> : null}
         </section>
       ) : (
-        <figure className={`point-image point-aspect--${block.aspect.replace(':', '-')}`}>
+        <figure
+          className={`point-image point-aspect--${block.aspect.replace(':', '-')}${block.overlay && block.overlay !== 'none' ? ` point-image--overlay-${block.overlay}` : ''}`}
+        >
           {visual}
           {block.caption ? <figcaption>{block.caption}</figcaption> : null}
         </figure>
@@ -1442,7 +1444,7 @@ export function renderSection(
   return (
     <LayoutSection section={section} document={document}>
       {items.map((placement) => (
-        <LayoutItem placement={placement} key={placement.id}>
+        <LayoutItem placement={placement} layer={placement.layer} key={placement.id}>
           {renderBlock(placement.element, document, onNavigate)}
         </LayoutItem>
       ))}

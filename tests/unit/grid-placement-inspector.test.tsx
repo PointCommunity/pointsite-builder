@@ -41,4 +41,33 @@ describe('GridPlacementInspector', () => {
     expect(changed?.mobile).toEqual(desktop);
     expect(screen.queryByRole('button', { name: 'Reset to desktop' })).not.toBeInTheDocument();
   });
+
+  it('permits intentional overlap only after selecting a nonzero layer', () => {
+    const occupied = [independentGridArea({ column: 4, row: 3, columnSpan: 3, rowSpan: 4 })];
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <GridPlacementInspector
+        value={independentGridArea(desktop)}
+        occupied={occupied}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('desktop column'), { target: { value: '4' } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('overlaps another element');
+    rerender(
+      <GridPlacementInspector
+        value={independentGridArea(desktop)}
+        occupied={occupied}
+        allowOverlap
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('desktop column'), { target: { value: '4' } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        desktop: { column: 4, row: 3, columnSpan: 6, rowSpan: 4 },
+      }),
+    );
+  });
 });

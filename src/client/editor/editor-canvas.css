@@ -58,3 +58,11 @@
     bottom: calc(-1 * var(--point-touch-target, 44px));
   }
 }
+.point-root-drop-preview {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.55;
+  outline: 3px dashed #567f37;
+  outline-offset: -3px;
+}

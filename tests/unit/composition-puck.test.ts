@@ -72,5 +72,11 @@ describe('Puck composition round trip', () => {
         },
       ],
     });
+    (child.props.grid as { mobile: { row: number; rowSpan: number } }).mobile = {
+      ...(child.props.grid as { mobile: { row: number; rowSpan: number } }).mobile,
+      row: 9,
+      rowSpan: 4,
+    };
+    expect(dataToSection(data).items[0].grid.mobile.rowSpan).toBe(12);
   });
 });

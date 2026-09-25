@@ -39,18 +39,15 @@ function Select<T extends string | number>({
   value,
   options,
   onChange,
-  schemaVersion = 11,
 }: {
   label: string;
   value: T;
   options: readonly { label: string; value: T }[];
   onChange: (value: T) => void;
-  schemaVersion?: number;
 }) {
-  const visibleOptions =
-    schemaVersion >= 12
-      ? options.filter((option) => !option.label.startsWith('Point ') || option.value === value)
-      : options;
+  const visibleOptions = options.filter(
+    (option) => !option.label.startsWith('Point ') || option.value === value,
+  );
   return (
     <label className="inspector-field">
       <span>{label}</span>
@@ -65,11 +62,9 @@ function Select<T extends string | number>({
           <option
             key={String(option.value)}
             value={option.value}
-            disabled={schemaVersion >= 12 && option.label.startsWith('Point ')}
+            disabled={option.label.startsWith('Point ')}
           >
-            {schemaVersion >= 12 && option.label.startsWith('Point ')
-              ? `Legacy: ${option.label.slice(6)}`
-              : option.label}
+            {option.label.startsWith('Point ') ? `Legacy: ${option.label.slice(6)}` : option.label}
           </option>
         ))}
       </select>
@@ -157,7 +152,7 @@ function ActionEditor({
       <Text
         label="Button label"
         value={action.label}
-        allowEmpty={document.schemaVersion >= 12}
+        allowEmpty
         onChange={(label) => label !== undefined && onChange({ ...action, label })}
       />
       <LinkDestinationField
@@ -244,7 +239,6 @@ export function BlockInspector({
               { label: 'Point homepage hero', value: 'homeHero' },
               { label: 'Point page hero', value: 'pageHero' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -255,7 +249,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
@@ -345,7 +339,6 @@ export function BlockInspector({
               { label: 'Standard heading', value: 'standard' },
               { label: 'Point homepage introduction', value: 'homeIntro' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -356,7 +349,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.text}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(text) => text !== undefined && onChange({ ...block, text })}
           />
           <Select
@@ -451,7 +444,6 @@ export function BlockInspector({
                 ? [{ label: 'Footer information', value: 'footer' as const }]
                 : []),
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -523,7 +515,7 @@ export function BlockInspector({
                   label="Paragraph"
                   value={node.children.map((child) => child.text).join('')}
                   area
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(text) =>
                     text !== undefined &&
                     onChange({
@@ -540,7 +532,7 @@ export function BlockInspector({
                   label="Address"
                   value={node.text}
                   area
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(text) =>
                     text !== undefined &&
                     onChange({
@@ -557,7 +549,7 @@ export function BlockInspector({
                   label="Items (one per line)"
                   value={node.items.join('\n')}
                   area
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(value) =>
                     value !== undefined &&
                     onChange({
@@ -577,7 +569,7 @@ export function BlockInspector({
                     label="Quote"
                     value={node.text}
                     area
-                    allowEmpty={document.schemaVersion >= 12}
+                    allowEmpty
                     onChange={(text) =>
                       text !== undefined &&
                       onChange({
@@ -607,7 +599,7 @@ export function BlockInspector({
                   <Text
                     label="Link text"
                     value={node.text}
-                    allowEmpty={document.schemaVersion >= 12}
+                    allowEmpty
                     onChange={(text) =>
                       text !== undefined &&
                       onChange({
@@ -663,7 +655,6 @@ export function BlockInspector({
               { label: 'Standard image', value: 'standard' },
               { label: 'Point wide photo', value: 'wide' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Media
@@ -675,7 +666,7 @@ export function BlockInspector({
           <Text
             label="Alternative text"
             value={block.alt}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(alt) => alt !== undefined && onChange({ ...block, alt })}
           />
           <Select
@@ -703,6 +694,18 @@ export function BlockInspector({
           />
           {document.schemaVersion >= 12 ? (
             <FocalFields value={block.focal} onChange={(focal) => onChange({ ...block, focal })} />
+          ) : null}
+          {document.schemaVersion >= 12 ? (
+            <Select
+              label="Image overlay"
+              value={block.overlay ?? 'none'}
+              options={[
+                { label: 'None', value: 'none' },
+                { label: 'Light', value: 'light' },
+                { label: 'Dark', value: 'dark' },
+              ]}
+              onChange={(overlay) => onChange({ ...block, overlay })}
+            />
           ) : null}
           <Text
             label="Caption"
@@ -797,7 +800,6 @@ export function BlockInspector({
               { label: 'Point image and text', value: 'splitFeature' },
               { label: 'Point content image split', value: 'imageSplit' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -808,14 +810,14 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
             value={block.body}
             area
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(body) => body !== undefined && onChange({ ...block, body })}
           />
           <Text
@@ -939,7 +941,6 @@ export function BlockInspector({
               { label: 'Standard call to action', value: 'standard' },
               { label: 'Point wide callout', value: 'rental' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -950,7 +951,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
@@ -990,7 +991,6 @@ export function BlockInspector({
               { label: 'Point neighborhood groups', value: 'groups' },
               { label: 'Point giving options', value: 'giving' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <p className="inspector-hint">
@@ -1051,7 +1051,7 @@ export function BlockInspector({
                 <Text
                   label="Title"
                   value={item.title}
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(title) =>
                     title !== undefined &&
                     onChange({
@@ -1066,7 +1066,7 @@ export function BlockInspector({
                   label="Body"
                   value={item.body}
                   area
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(body) =>
                     body !== undefined &&
                     onChange({
@@ -1269,7 +1269,6 @@ export function BlockInspector({
               { label: 'Standard questions', value: 'standard' },
               { label: 'Point questions section', value: 'groups' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -1298,7 +1297,7 @@ export function BlockInspector({
                 <Text
                   label="Question"
                   value={item.question}
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(question) =>
                     question !== undefined &&
                     onChange({
@@ -1313,7 +1312,7 @@ export function BlockInspector({
                   label="Answer"
                   value={item.answer}
                   area
-                  allowEmpty={document.schemaVersion >= 12}
+                  allowEmpty
                   onChange={(answer) =>
                     answer !== undefined &&
                     onChange({
@@ -1371,7 +1370,6 @@ export function BlockInspector({
               { label: 'Point standalone form', value: 'standalone' },
               { label: 'Point contact and form', value: 'contact' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <label className="inspector-field">
@@ -1390,7 +1388,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(heading) => onChange({ ...block, heading })}
           />
           <Text
@@ -1432,7 +1430,6 @@ export function BlockInspector({
               { label: 'Standard map', value: 'standard' },
               { label: 'Point gathering section', value: 'gathering' },
             ]}
-            schemaVersion={document.schemaVersion}
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <Text
@@ -1454,13 +1451,13 @@ export function BlockInspector({
           <Text
             label="Title"
             value={block.title}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(title) => title !== undefined && onChange({ ...block, title })}
           />
           <Text
             label="Location or search"
             value={block.query}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(query) => query !== undefined && onChange({ ...block, query })}
           />
         </div>
@@ -1501,10 +1498,8 @@ export function BlockInspector({
             label="Text"
             value={block.text}
             area
-            onChange={(text) =>
-              (text !== undefined || document.schemaVersion >= 12) &&
-              onChange({ ...block, text: text ?? '' })
-            }
+            allowEmpty
+            onChange={(text) => onChange({ ...block, text: text ?? '' })}
           />
           {document.schemaVersion >= 12 ? (
             <Select
@@ -1550,7 +1545,7 @@ export function BlockInspector({
           <Text
             label="Button label"
             value={block.label}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <LinkDestinationField
@@ -1654,7 +1649,7 @@ export function BlockInspector({
               <Text
                 label="Link label"
                 value={link.label}
-                allowEmpty={document.schemaVersion >= 12}
+                allowEmpty
                 onChange={(label) =>
                   label !== undefined &&
                   onChange({
@@ -1716,7 +1711,7 @@ export function BlockInspector({
           <Text
             label="Navigation label"
             value={block.label}
-            allowEmpty={document.schemaVersion >= 12}
+            allowEmpty
             onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <Select

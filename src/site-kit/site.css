@@ -1298,6 +1298,29 @@ body:has(.point-site) {
 .point-site .point-linked-media {
   overflow: hidden;
 }
+.point-site .point-image--overlay-light,
+.point-site .point-image--overlay-dark {
+  position: relative;
+  isolation: isolate;
+}
+.point-site .point-image--overlay-light::after,
+.point-site .point-image--overlay-dark::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+}
+.point-site .point-image--overlay-light::after {
+  background: rgb(255 255 255 / 0.35);
+}
+.point-site .point-image--overlay-dark::after {
+  background: rgb(0 0 0 / 0.45);
+}
+.point-site .point-image--overlay-light :is(figcaption, p),
+.point-site .point-image--overlay-dark :is(figcaption, p) {
+  position: relative;
+  z-index: 1;
+}
 .point-site .point-image-link {
   display: block;
 }
@@ -1982,6 +2005,14 @@ body:has(.point-site) {
   background: transparent !important;
   color: transparent !important;
   cursor: move;
+}
+.point-grid-move-surface--group {
+  inset: 0 auto auto 0;
+  width: 6.5rem;
+  height: 2rem;
+  background: #b8de95 !important;
+  color: #162012 !important;
+  font: 700 0.72rem/1 sans-serif;
 }
 .point-grid-move-surface > span {
   position: absolute;
