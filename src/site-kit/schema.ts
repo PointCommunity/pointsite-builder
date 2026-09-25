@@ -129,7 +129,7 @@ const ImageBlockSchema = z.strictObject({
   mediaId: uuid,
   focal: focalPoint.optional(),
   alt: z.string().trim().max(300),
-  aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
+  aspect: z.enum(['natural', '1:1', '4:3', '4:5', '16:9']),
   fit: z.enum(['cover', 'contain', 'stretch']),
   wrap: z.boolean().optional(),
   overlay: z.enum(['none', 'light', 'dark']).optional(),
@@ -292,7 +292,7 @@ const TextBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('text'),
   text: z.string().trim().max(5_000),
-  style: z.enum(['body', 'lead', 'eyebrow', 'small']),
+  style: z.enum(['body', 'lead', 'eyebrow', 'small', 'title', 'display']),
   align: z.enum(['left', 'center']),
   semantic: z.enum(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']).optional(),
 });
@@ -397,6 +397,7 @@ export const ComposedBlockSchema = z
     ...BlockBase,
     type: z.literal('composition'),
     name: z.string().trim().max(80),
+    surface: z.enum(['transparent', 'canvas', 'surface', 'primary']).optional(),
     items: z
       .array(
         z.strictObject({
@@ -404,7 +405,7 @@ export const ComposedBlockSchema = z
           layer: z.number().int().min(-20).max(20),
         }),
       )
-      .max(60),
+      .max(100),
   })
   .superRefine((group, context) => {
     const placementIds = new Set<string>();

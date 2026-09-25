@@ -1288,7 +1288,7 @@ export function renderBlock(
       );
     case 'composition':
       return (
-        <CompositionFrame name={block.name}>
+        <CompositionFrame name={block.name} surface={block.surface}>
           <div className="point-composition__grid">
             {block.items.map((item) => (
               <LayoutItem
@@ -1321,10 +1321,21 @@ const LayoutContext = createContext<Pick<SectionBlock, 'layout' | 'columns'>>({
   columns: 1,
 });
 
-export function CompositionFrame({ name, children }: { name: string; children: ReactNode }) {
+export function CompositionFrame({
+  name,
+  surface = 'transparent',
+  children,
+}: {
+  name: string;
+  surface?: Extract<SiteElement, { type: 'composition' }>['surface'];
+  children: ReactNode;
+}) {
   return (
     <LayoutContext value={{ layout: 'grid', columns: 12 }}>
-      <section className="point-composition" aria-label={name || 'Content group'}>
+      <section
+        className={`point-composition point-surface--${surface}`}
+        aria-label={name || 'Content group'}
+      >
         {children}
       </section>
     </LayoutContext>

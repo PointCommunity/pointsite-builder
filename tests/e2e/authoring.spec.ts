@@ -4387,6 +4387,78 @@ test('starts a neutral Hero layout with independently editable children', async 
   ).toBeVisible();
 });
 
+test('converts a legacy Hero only on request and saves its independent image and copy', async ({
+  page,
+}) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    const section = structuredClone(document.pages[0].blocks[1]);
+    section.layout = 'grid';
+    section.columns = 12;
+    section.minRows = 14;
+    section.items = [
+      {
+        id: crypto.randomUUID(),
+        span: 12,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 14 },
+          tablet: { column: 1, row: 1, columnSpan: 12, rowSpan: 14 },
+          mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 14 },
+        },
+        element: {
+          id: crypto.randomUUID(),
+          type: 'hero',
+          eyebrow: 'About',
+          heading: 'Point Community Church',
+          body: 'Legacy introduction',
+          mediaId: document.media[0].id,
+          align: 'center',
+          surface: 'image',
+          actions: [],
+          headingWidth: { desktop: 100, tablet: 100, mobile: 100 },
+          bodyWidth: { desktop: 100, tablet: 100, mobile: 100 },
+        },
+      },
+    ];
+    document.pages[0].blocks = [section];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.getByRole('heading', { name: 'Point Community Church' }).click();
+  await expect(page.getByRole('button', { name: 'Convert to editable grid' })).toBeVisible();
+  await page.getByRole('button', { name: 'Convert to editable grid' }).click();
+  await expect(canvas.locator('section[aria-label="Hero content"] img')).toBeVisible();
+  await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const group = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0].element;
+  expect(controls.saveRequests.at(-1)!.document.schemaVersion).toBe(12);
+  expect(group.type).toBe('composition');
+  if (group.type !== 'composition') throw new Error('Expected a group');
+  expect(group.items.map((item) => item.element.type)).toContain('image');
+  expect(group.items.filter((item) => item.element.type === 'text').length).toBe(3);
+  await page.reload();
+  await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await canvas.locator('html').evaluate((element) => {
+    element.style.fontSize = '200%';
+  });
+  const heading = canvas.getByRole('heading', { name: 'Point Community Church' });
+  const geometry = await heading.evaluate((element) => ({
+    textHeight: element.getBoundingClientRect().height,
+    gridHeight: element.parentElement!.getBoundingClientRect().height,
+    groupHeight: element.closest('.point-composition')!.getBoundingClientRect().height,
+    sectionItemHeight: element
+      .closest('.point-composition')!
+      .closest('.point-layout-item--grid')!
+      .getBoundingClientRect().height,
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  expect(geometry.textHeight).toBeLessThanOrEqual(geometry.gridHeight + 1);
+  expect(geometry.groupHeight).toBeLessThanOrEqual(geometry.sectionItemHeight + 1);
+  expect(geometry.overflow).toBe(0);
+});
+
 test('builds a contact area with independent text and a reusable form', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.schemaVersion = 12;

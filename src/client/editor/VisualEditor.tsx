@@ -94,6 +94,7 @@ import {
   compositionPresetNames,
   type CompositionPresetName,
 } from './composition-presets';
+import { canConvertLegacy, compositionFromLegacy } from './legacy-composition';
 import { adjustHeroTextWidth, clampHeroTextWidth, heroTextWidthFromDrag } from './hero-text-resize';
 
 type ElementProps = {
@@ -886,11 +887,13 @@ function SectionComponent({
 function GroupComponent({
   id,
   name,
+  surface,
   content: Content,
   document,
 }: {
   id: string;
   name: string;
+  surface?: Extract<SiteElement, { type: 'composition' }>['surface'];
   content: NonNullable<ElementProps['content']>;
   document: ReturnType<typeof useEditor>['document'];
 }) {
@@ -984,7 +987,7 @@ function GroupComponent({
     return () => hostDocument.removeEventListener('pointermove', forward, true);
   }, [isDragging]);
   return (
-    <CompositionFrame name={name}>
+    <CompositionFrame name={name} surface={surface}>
       <Content
         ref={gridRef}
         className="point-composition__grid"
@@ -1236,6 +1239,72 @@ function GroupPresetControls({
   );
 }
 
+function LegacyConversionControls({
+  block,
+  document,
+}: {
+  block: SiteElement;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const selectedItem = usePointPuck((state) => state.selectedItem) as ComponentData | null;
+  const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  if (!canConvertLegacy(block)) return null;
+  return (
+    <fieldset className="inspector-group">
+      <legend>Editable grid</legend>
+      <p className="field-help">
+        Convert this block to independently movable text, images, and controls. The original stays
+        unchanged until you convert it.
+        {block.type === 'people'
+          ? ' Person details become editable copies and stop syncing with the People collection.'
+          : null}
+      </p>
+      <button
+        type="button"
+        className="button"
+        onClick={() => {
+          const selector = getSelectorForId(String(selectedItem?.props.id ?? ''));
+          if (!selectedItem || !selector?.zone) return;
+          const group = compositionFromLegacy(block, document);
+          if (!group) return;
+          const currentGrid = selectedItem.props.grid as SectionBlock['items'][number]['grid'];
+          const expandedGrid = GRID_BREAKPOINTS.reduce(
+            (grid, breakpoint) =>
+              updateGridArea(grid, breakpoint, {
+                rowSpan: Math.max(
+                  areaForBreakpoint(grid, breakpoint).rowSpan,
+                  requiredSectionRows(1, group.items, breakpoint),
+                ),
+              }),
+            currentGrid,
+          );
+          setPuckActionIntent({ category: 'replace', context: 'element-settings' });
+          dispatch({
+            type: 'replace',
+            destinationIndex: selector.index,
+            destinationZone: selector.zone,
+            data: {
+              ...selectedItem,
+              type: 'composition',
+              props: {
+                ...selectedItem.props,
+                block: group,
+                grid: expandedGrid,
+                settings: { layout: 'grid', columns: 12 },
+                content: group.items.map((item) => placementToData(item, 12)),
+              },
+            },
+            recordHistory: true,
+          });
+        }}
+      >
+        Convert to editable grid
+      </button>
+    </fieldset>
+  );
+}
+
 function EditorTextLayoutItem({
   id,
   block,
@@ -1399,7 +1468,9 @@ function VisualEditorImpl({
             />
             {value.type === 'composition' ? (
               <GroupPresetControls block={value} document={document} />
-            ) : null}
+            ) : (
+              <LegacyConversionControls block={value} document={document} />
+            )}
           </>
         ),
       },
@@ -1590,6 +1661,7 @@ function VisualEditorImpl({
             <GroupComponent
               id={id}
               name={parsed.data.name}
+              surface={parsed.data.surface}
               content={Content}
               document={displayDocument}
             />

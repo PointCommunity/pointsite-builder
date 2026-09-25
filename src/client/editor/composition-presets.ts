@@ -34,7 +34,7 @@ function place(
 function text(
   value: string,
   semantic: 'h1' | 'h2' | 'h3' | 'p',
-  style: 'lead' | 'body' | 'eyebrow',
+  style: 'lead' | 'body' | 'eyebrow' | 'title' | 'display',
   align: 'left' | 'center',
 ): Child['element'] {
   return { id: crypto.randomUUID(), type: 'text', text: value, semantic, style, align };
@@ -81,18 +81,18 @@ export function compositionPreset(name: CompositionPresetName, document: SiteDoc
   if (name === 'Standard Hero') {
     items.push(
       place(
-        text('Your headline', 'h1', 'lead', 'center'),
+        text('Your headline', 'h1', 'display', 'center'),
         grid(1, 1, 12, 3),
         grid(1, 1, 12, 3),
-        grid(1, 1, 12, 3),
+        grid(1, 1, 12, 5),
       ),
       place(
         text('Add a short introduction.', 'p', 'body', 'center'),
         grid(2, 4, 10, 2),
         grid(2, 4, 10, 2),
-        grid(1, 4, 12, 3),
+        grid(1, 7, 12, 3),
       ),
-      place(button(), grid(5, 7, 4, 2), grid(5, 7, 4, 2), grid(3, 8, 8, 2)),
+      place(button(), grid(5, 7, 4, 2), grid(5, 7, 4, 2), grid(3, 11, 8, 2)),
     );
   } else if (name === 'Split Hero' || name === 'Editorial Hero') {
     const editorial = name === 'Editorial Hero';
@@ -101,23 +101,23 @@ export function compositionPreset(name: CompositionPresetName, document: SiteDoc
     const heading = editorial ? 'Tell your story' : 'A place to begin';
     items.push(
       place(
-        text(heading, 'h1', 'lead', 'left'),
+        text(heading, 'h1', 'display', 'left'),
         grid(textColumn, 1, 6, 3),
         grid(textColumn, 1, 6, 3),
-        grid(1, 1, 12, 3),
+        grid(1, 1, 12, 6),
       ),
       place(
         text('Add a short introduction.', 'p', 'body', 'left'),
         grid(textColumn, 4, 6, 2),
         grid(textColumn, 4, 6, 2),
-        grid(1, 4, 12, 3),
+        grid(1, 8, 12, 3),
       ),
-      place(button(), grid(textColumn, 7, 4, 2), grid(textColumn, 7, 4, 2), grid(1, 8, 8, 2)),
+      place(button(), grid(textColumn, 7, 4, 2), grid(textColumn, 7, 4, 2), grid(1, 12, 8, 2)),
     );
     const image = media(document);
     if (image)
       items.push(
-        place(image, grid(imageColumn, 1, 5, 8), grid(imageColumn, 1, 5, 8), grid(1, 11, 12, 8)),
+        place(image, grid(imageColumn, 1, 5, 8), grid(imageColumn, 1, 5, 8), grid(1, 15, 12, 8)),
       );
   } else if (name === 'Image Card' || name === 'Person Card') {
     const person = name === 'Person Card' ? document.collections.people[0] : undefined;

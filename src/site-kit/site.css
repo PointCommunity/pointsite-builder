@@ -1360,6 +1360,9 @@ body:has(.point-site) {
 .point-site .point-aspect--4-3 {
   aspect-ratio: 4 / 3;
 }
+.point-site .point-aspect--4-5 {
+  aspect-ratio: 4 / 5;
+}
 .point-site .point-aspect--16-9 {
   aspect-ratio: 16 / 9;
 }
@@ -1863,6 +1866,7 @@ body:has(.point-site) {
 }
 .point-site .point-composition {
   position: relative;
+  isolation: isolate;
   width: 100%;
   container-type: inline-size;
 }
@@ -1917,6 +1921,17 @@ body:has(.point-site) {
 .point-site .point-text--lead {
   font-size: clamp(1.05rem, calc(2 * var(--point-layout-vw)), 1.35rem);
   line-height: 1.55;
+}
+.point-site .point-text--title {
+  font-size: clamp(2rem, calc(3.4 * var(--point-layout-vw)), 3.25rem);
+  line-height: 1.15;
+}
+.point-site .point-text--display {
+  font-size: clamp(3rem, calc(5.6 * var(--point-layout-vw)), 5.6rem);
+  line-height: 1.08;
+}
+.point-site .point-composition.point-surface--primary .point-text--eyebrow {
+  color: var(--point-on-primary);
 }
 .point-site .point-text--eyebrow {
   color: var(--point-primary);
@@ -2232,6 +2247,9 @@ body:has(.point-site) {
   }
 }
 @media (max-width: 520px) {
+  .point-site .point-composition__grid {
+    --point-grid-cell: max(2.25rem, calc(100cqi / 12));
+  }
   .point-site .point-layout-item--text-wrap > .point-text::before {
     float: var(--point-wrap-mobile-side, none);
     width: var(--point-wrap-mobile-width, 0px);

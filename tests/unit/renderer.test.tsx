@@ -8,8 +8,22 @@ import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
 import { independentGridArea } from '../../src/site-kit/grid-layout';
 import { compositionPreset } from '../../src/client/editor/composition-presets';
+import { compositionFromLegacy } from '../../src/client/editor/legacy-composition';
 
 describe('controlled public renderer', () => {
+  it('renders a converted Hero with independent display text over an authored image', () => {
+    const source = allBlocks.find((block) => block.type === 'hero')!;
+    if (source.type !== 'hero') throw new Error('Expected Hero fixture');
+    const block = compositionFromLegacy(
+      { ...source, surface: 'image', mediaId: allBlocksDocument.media[0].id },
+      allBlocksDocument,
+    )!;
+    const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+    expect(container.querySelector('.point-composition.point-surface--primary')).toBeTruthy();
+    expect(container.querySelector('.point-text--display')).toHaveTextContent(source.heading);
+    expect(container.querySelector('.point-image--overlay-dark img')).toBeTruthy();
+  });
+
   it('renders the neutral FAQ starter as an interactive disclosure', () => {
     const block = compositionPreset('FAQ Item', defaultSiteDocument);
     const { container } = render(<>{renderBlock(block, defaultSiteDocument)}</>);

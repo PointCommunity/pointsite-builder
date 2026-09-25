@@ -225,6 +225,12 @@ export function BlockInspector({
             value={block.name}
             onChange={(name) => onChange({ ...block, name: name ?? '' })}
           />
+          <Select
+            label="Background"
+            value={block.surface ?? 'transparent'}
+            options={[{ label: 'Transparent', value: 'transparent' }, ...surfaceOptions]}
+            onChange={(surface) => onChange({ ...block, surface })}
+          />
           <p className="field-help">Drag elements into this group and position them on its grid.</p>
         </div>
       );
@@ -676,6 +682,7 @@ export function BlockInspector({
               { label: 'Natural', value: 'natural' },
               { label: 'Square', value: '1:1' },
               { label: '4:3', value: '4:3' },
+              { label: 'Portrait 4:5', value: '4:5' },
               { label: '16:9', value: '16:9' },
             ]}
             onChange={(aspect) => onChange({ ...block, aspect })}
@@ -1537,6 +1544,8 @@ export function BlockInspector({
             options={[
               { label: 'Body', value: 'body' },
               { label: 'Lead', value: 'lead' },
+              { label: 'Title', value: 'title' },
+              { label: 'Display', value: 'display' },
               { label: 'Eyebrow', value: 'eyebrow' },
               { label: 'Small', value: 'small' },
             ]}
