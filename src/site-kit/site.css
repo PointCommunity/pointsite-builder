@@ -1779,8 +1779,9 @@ body:has(.point-site) {
   --point-grid-inline-size: min(48rem, calc(100cqi - 3rem));
 }
 .point-site .point-layout-section--grid .point-layout-section__grid {
+  --point-grid-min-cell: 1.5rem;
   --point-grid-cell: max(
-    1.5rem,
+    var(--point-grid-min-cell),
     calc((var(--point-grid-inline-size) - var(--point-section-total-gap, 16.5rem)) / 12)
   );
   position: relative;
@@ -2235,6 +2236,11 @@ body:has(.point-site) {
   }
 }
 @media (max-width: 600px) {
+  .point-site .point-layout-section--grid .point-layout-section__grid,
+  .point-site .point-composition__grid {
+    --point-grid-min-cell: 2rem;
+    --point-grid-cell: max(var(--point-grid-min-cell), calc(100cqi / 12));
+  }
   .point-site .point-form-grid > .field {
     grid-column: var(--point-form-column-mobile) / span var(--point-form-span-mobile);
     grid-row: var(--point-form-row-mobile) / span var(--point-form-height-mobile);
@@ -2247,8 +2253,10 @@ body:has(.point-site) {
   }
 }
 @media (max-width: 520px) {
+  .point-site .point-layout-section--grid .point-layout-section__grid,
   .point-site .point-composition__grid {
-    --point-grid-cell: max(2.25rem, calc(100cqi / 12));
+    --point-grid-min-cell: 2.25rem;
+    --point-grid-cell: max(var(--point-grid-min-cell), calc(100cqi / 12));
   }
   .point-site .point-layout-item--text-wrap > .point-text::before {
     float: var(--point-wrap-mobile-side, none);

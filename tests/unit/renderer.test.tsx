@@ -11,6 +11,14 @@ import { compositionPreset } from '../../src/client/editor/composition-presets';
 import { compositionFromLegacy } from '../../src/client/editor/legacy-composition';
 
 describe('controlled public renderer', () => {
+  it('keeps an unnamed Section accessible without rendering its fallback as content', () => {
+    const section = structuredClone(defaultSiteDocument.pages[0].blocks[0]);
+    section.name = '';
+    const { container } = render(<>{renderSection(section, defaultSiteDocument)}</>);
+    expect(container.querySelector('section[aria-label="Content section"]')).toBeTruthy();
+    expect(container).not.toHaveTextContent('Content section');
+  });
+
   it('renders a converted Hero with independent display text over an authored image', () => {
     const source = allBlocks.find((block) => block.type === 'hero')!;
     if (source.type !== 'hero') throw new Error('Expected Hero fixture');

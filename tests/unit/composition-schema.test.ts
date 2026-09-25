@@ -76,3 +76,11 @@ it('permits image wrapping only in version-12 documents', () => {
   legacy.rendererVersion = '12.0.0';
   expect(SiteDocumentSchema.safeParse(legacy).success).toBe(true);
 });
+
+it('permits an empty authored Section name', () => {
+  const document = structuredClone(defaultSiteDocument);
+  document.schemaVersion = 12;
+  document.rendererVersion = '12.0.0';
+  document.pages[0].blocks[0].name = '';
+  expect(SiteDocumentSchema.safeParse(document).success).toBe(true);
+});

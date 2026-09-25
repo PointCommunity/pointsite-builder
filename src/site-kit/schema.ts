@@ -453,7 +453,7 @@ export const SectionBlockSchema = z
   .strictObject({
     ...BlockBase,
     type: z.literal('section'),
-    name: z.string().trim().min(1).max(80),
+    name: z.string().trim().max(80),
     layout: z.enum(['compatibility', 'flow', 'grid']),
     position: z.enum(['flow', 'overlay']),
     columns: z.union([

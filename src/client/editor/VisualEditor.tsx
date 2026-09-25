@@ -803,8 +803,15 @@ function SectionComponent({
     let animationFrame = 0;
     let lastCell = 0;
     const measure = () => {
-      const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
-      const cell = Math.max(24, (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+      const computed = getComputedStyle(element);
+      const gap = Number.parseFloat(computed.columnGap) || 0;
+      const minRem = Number.parseFloat(computed.getPropertyValue('--point-grid-min-cell')) || 1.5;
+      const rootFontSize =
+        Number.parseFloat(getComputedStyle(element.ownerDocument.documentElement).fontSize) || 16;
+      const cell = Math.max(
+        minRem * rootFontSize,
+        (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS,
+      );
       if (Math.abs(cell - lastCell) < 0.01) return;
       lastCell = cell;
       element.style.setProperty('--point-grid-cell', `${cell}px`);
@@ -817,9 +824,16 @@ function SectionComponent({
       animationFrame = requestAnimationFrame(measure);
     });
     observer.observe(element);
+    const MutationObserverClass = element.ownerDocument.defaultView?.MutationObserver;
+    const rootObserver = MutationObserverClass ? new MutationObserverClass(measure) : null;
+    rootObserver?.observe(element.ownerDocument.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    });
     return () => {
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      rootObserver?.disconnect();
     };
   }, [settings.gap, settings.gapPixels, settings.layout]);
   useEffect(() => {

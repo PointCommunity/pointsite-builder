@@ -4129,6 +4129,35 @@ test('links a selected Image to internal and external destinations, then removes
   await expect(reopened.locator('.point-image-link')).toHaveCount(0);
 });
 
+test('keeps an emptied Section name empty after autosave and reload', async ({ page }) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    const section = structuredClone(document.pages[0].blocks[0]);
+    section.name = 'Editable section';
+    section.position = 'flow';
+    document.pages[0].blocks = [section];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas
+    .locator('section[aria-label="Editable section"]')
+    .locator('xpath=ancestor-or-self::*[@data-puck-component][1]')
+    .click({ position: { x: 8, y: 8 } });
+  await page.getByLabel('Section name').filter({ visible: true }).fill('');
+  await expect(canvas.locator('section[aria-label="Content section"]')).toBeVisible();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  expect(controls.saveRequests.at(-1)?.document.pages[0].blocks[0].name).toBe('');
+  await page.reload();
+  const reopened = page.locator('.visual-editor iframe').contentFrame();
+  await reopened
+    .locator('section[aria-label="Content section"]')
+    .locator('xpath=ancestor-or-self::*[@data-puck-component][1]')
+    .click({ position: { x: 8, y: 8 } });
+  await expect(page.getByLabel('Section name').filter({ visible: true })).toHaveValue('');
+});
+
 test('wraps text around an independently placed image and persists the setting', async ({
   page,
 }) => {
@@ -4440,6 +4469,7 @@ test('converts a legacy Hero only on request and saves its independent image and
   await page.reload();
   await expect(canvas.getByRole('heading', { name: 'Point Community Church' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(360);
   await canvas.locator('html').evaluate((element) => {
     element.style.fontSize = '200%';
   });

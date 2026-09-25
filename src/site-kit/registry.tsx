@@ -1440,7 +1440,7 @@ export function LayoutSection({
         style={
           section.paddingPixels === undefined ? undefined : { paddingBlock: section.paddingPixels }
         }
-        aria-label={section.name}
+        aria-label={section.name || 'Content section'}
         data-point-section-id={sectionId}
         {...interaction}
       >

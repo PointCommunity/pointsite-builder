@@ -162,6 +162,7 @@ function migrateFiveToSix(input: object): unknown {
 
 function migrateSixToSeven(input: object): unknown {
   const legacy = input as {
+    site?: { name?: string };
     media?: Array<{ id?: string; sourcePath?: string }>;
     pages?: Array<Record<string, unknown>>;
   };
@@ -187,6 +188,7 @@ function migrateSixToSeven(input: object): unknown {
                 String(page.id),
                 logoMediaId,
                 isHome ? 'overlay' : 'flow',
+                legacy.site?.name || 'Site logo',
               ),
               ...blocks,
             ]

@@ -2,8 +2,15 @@ import type { SiteDocument } from '../../site-kit/types';
 import { documentRegions, FOOTER_REGION } from '../../site-kit/document-sections';
 import { createEditableHeaderSection } from '../../site-kit/editable-header';
 import { createEditablePageHeroSection } from '../../site-kit/editable-page-hero';
+import {
+  GRID_BREAKPOINTS,
+  independentGridArea,
+  requiredSectionRows,
+} from '../../site-kit/grid-layout';
+import { upgradeComposition } from '../../site-kit/migrations';
 import { useEditor } from './EditorProvider';
 import { mutationForContext } from './action-attribution';
+import { compositionFromLegacy } from './legacy-composition';
 
 // This colocated pure helper keeps page creation and its tests bound to the UI behavior.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -59,33 +66,54 @@ export function PageManager({
     const id = crypto.randomUUID();
     updateDocument(
       (next) => {
-        const logo = next.media.find((item) => item.sourcePath.endsWith('/point-logo.png'));
-        const header = createEditableHeaderSection(id, logo?.id);
+        const upgraded = upgradeComposition(next);
+        const existingHeader = upgraded.pages
+          .flatMap((item) => item.blocks)
+          .find((section) => section.items.some(({ element }) => element.type === 'navigation'));
+        const existingLogo = existingHeader?.items.find(({ element }) => element.type === 'image');
+        const header = createEditableHeaderSection(
+          id,
+          existingLogo?.element.type === 'image' ? existingLogo.element.mediaId : undefined,
+          'flow',
+          upgraded.site.name,
+        );
         for (const { element } of header.items) {
-          if (element.type === 'navigation' && next.schemaVersion >= 10)
-            element.navigationDesignId = next.navigationDesigns?.[0]?.id;
+          if (element.type === 'navigation')
+            element.navigationDesignId = upgraded.navigationDesigns?.[0]?.id;
         }
-        next.pages.push({
+        const hero = createEditablePageHeroSection({
+          id,
+          title,
+          intro: 'Add a short introduction for this page.',
+        });
+        const group = compositionFromLegacy(hero.items[0].element, upgraded);
+        if (!group) throw new Error('PAGE_HERO_CONVERSION_FAILED');
+        group.name = 'Page hero';
+        const rows = Math.max(
+          ...GRID_BREAKPOINTS.map((breakpoint) => requiredSectionRows(1, group.items, breakpoint)),
+        );
+        hero.layout = 'grid';
+        hero.columns = 12;
+        hero.items[0].element = group;
+        hero.items[0].grid = independentGridArea({
+          column: 1,
+          row: 1,
+          columnSpan: 12,
+          rowSpan: rows,
+        });
+        upgraded.pages.push({
           id,
           title,
           route: availableRoute(
             title,
-            next.pages.map((item) => item.route),
+            upgraded.pages.map((item) => item.route),
           ),
           status: 'draft',
           template: 'standard',
           metadata: { title, description: 'Add a short description for this page.' },
-          blocks: [
-            createEditablePageHeroSection({
-              id,
-              title,
-              eyebrow: 'New page',
-              intro: 'Add a short introduction for this page.',
-            }),
-            header,
-          ],
+          blocks: [hero, header],
         });
-        return next;
+        return upgraded;
       },
       mutationForContext('page-structure', 'add'),
     );
@@ -114,7 +142,18 @@ export function PageManager({
           items: section.items.map((placement) => ({
             ...placement,
             id: crypto.randomUUID(),
-            element: { ...placement.element, id: crypto.randomUUID() },
+            element:
+              placement.element.type === 'composition'
+                ? {
+                    ...placement.element,
+                    id: crypto.randomUUID(),
+                    items: placement.element.items.map((item) => ({
+                      ...item,
+                      id: crypto.randomUUID(),
+                      element: { ...item.element, id: crypto.randomUUID() },
+                    })),
+                  }
+                : { ...placement.element, id: crypto.randomUUID() },
           })),
         }));
         next.pages.splice(next.pages.indexOf(source) + 1, 0, copy);
