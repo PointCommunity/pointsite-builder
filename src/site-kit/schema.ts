@@ -131,6 +131,7 @@ const ImageBlockSchema = z.strictObject({
   alt: z.string().trim().max(300),
   aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
   fit: z.enum(['cover', 'contain', 'stretch']),
+  wrap: z.boolean().optional(),
   overlay: z.enum(['none', 'light', 'dark']).optional(),
   caption: z.string().trim().max(500).optional(),
   variant: z.enum(['standard', 'wide']).optional(),
@@ -957,7 +958,9 @@ export const SiteDocumentSchema = z
             ((item.element.type === 'text' &&
               (item.element.semantic !== undefined || item.element.text.length === 0)) ||
               (item.element.type === 'image' &&
-                (item.element.href !== undefined || item.element.overlay !== undefined)))
+                (item.element.href !== undefined ||
+                  item.element.overlay !== undefined ||
+                  item.element.wrap !== undefined)))
           )
             context.addIssue({
               code: 'custom',

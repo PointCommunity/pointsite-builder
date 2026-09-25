@@ -215,11 +215,10 @@ export function GridOverlay({
       .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
       .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
     const previous = areaForBreakpoint(currentProps.grid, breakpoint);
-    const resolved = resolveGridArea(
-      nextArea,
-      previous,
-      Number(currentProps.layer ?? 0) ? [] : siblings,
-    );
+    const block = currentProps.block as { type?: string; wrap?: boolean } | undefined;
+    const allowOverlap =
+      Number(currentProps.layer ?? 0) !== 0 || (block?.type === 'image' && block.wrap === true);
+    const resolved = resolveGridArea(nextArea, previous, allowOverlap ? [] : siblings);
     if (resolved.rejected) {
       setStatus('Move blocked because elements cannot overlap.');
       return;

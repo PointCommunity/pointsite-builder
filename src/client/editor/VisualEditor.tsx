@@ -40,6 +40,7 @@ import {
   independentResponsiveValue,
   nextGridArea,
   requiredSectionRows,
+  textWrapForItem,
   updateGridArea,
   type GridBreakpoint,
 } from '../../site-kit/grid-layout';
@@ -1114,6 +1115,7 @@ function GridPlacementField({
   const data = usePointPuck((state) => state.appState.data);
   const selectedItem = usePointPuck((state) => state.selectedItem);
   const selectedProps = selectedItem?.props as unknown as Record<string, unknown> | undefined;
+  const selectedBlock = selectedProps?.block as { type?: string; wrap?: boolean } | undefined;
   const rawComponentId = selectedProps?.id;
   const componentId =
     typeof rawComponentId === 'string' || typeof rawComponentId === 'number'
@@ -1134,7 +1136,10 @@ function GridPlacementField({
     <GridPlacementInspector
       value={value}
       occupied={occupied}
-      allowOverlap={Number(selectedProps?.layer ?? 0) !== 0}
+      allowOverlap={
+        Number(selectedProps?.layer ?? 0) !== 0 ||
+        (selectedBlock?.type === 'image' && selectedBlock.wrap === true)
+      }
       onChange={onChange}
     />
   );
@@ -1228,6 +1233,44 @@ function GroupPresetControls({
         </button>
       ))}
     </fieldset>
+  );
+}
+
+function EditorTextLayoutItem({
+  id,
+  block,
+  grid,
+  align,
+  span,
+  layer,
+  dragRef,
+  children,
+}: {
+  id: string;
+  block: Extract<SiteElement, { type: 'text' }>;
+  grid: ElementProps['grid'];
+  align: ElementProps['align'];
+  span: number;
+  layer?: number;
+  dragRef: Ref<HTMLDivElement>;
+  children: ReactNode;
+}) {
+  const data = usePointPuck((state) => state.appState.data);
+  const siblings = siblingComponents(data, id).flatMap((item) => {
+    const parsed = SiteElementSchema.safeParse(item.props.block);
+    return parsed.success
+      ? [{ grid: item.props.grid as ElementProps['grid'], element: parsed.data }]
+      : [];
+  });
+  return (
+    <LayoutItem
+      dragRef={dragRef}
+      placement={{ grid, align, span }}
+      layer={layer}
+      wrap={textWrapForItem({ grid, element: block }, siblings)}
+    >
+      {children}
+    </LayoutItem>
   );
 }
 
@@ -1542,31 +1585,42 @@ function VisualEditorImpl({
       }: ElementProps & { id: string; puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
         const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
-        return (
+        const content = parsed.success ? (
+          parsed.data.type === 'composition' && Content ? (
+            <GroupComponent
+              id={id}
+              name={parsed.data.name}
+              content={Content}
+              document={displayDocument}
+            />
+          ) : (
+            renderBlock(
+              parsed.data,
+              displayDocument,
+              undefined,
+              hero
+                ? (kind) => <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
+                : undefined,
+            )
+          )
+        ) : (
+          <p>Configure this element.</p>
+        );
+        return parsed.success && parsed.data.type === 'text' ? (
+          <EditorTextLayoutItem
+            id={id}
+            block={parsed.data}
+            grid={grid}
+            align={align}
+            span={span}
+            layer={layer}
+            dragRef={puck.dragRef}
+          >
+            {content}
+          </EditorTextLayoutItem>
+        ) : (
           <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }} layer={layer}>
-            {parsed.success ? (
-              parsed.data.type === 'composition' && Content ? (
-                <GroupComponent
-                  id={id}
-                  name={parsed.data.name}
-                  content={Content}
-                  document={displayDocument}
-                />
-              ) : (
-                renderBlock(
-                  parsed.data,
-                  displayDocument,
-                  undefined,
-                  hero
-                    ? (kind) => (
-                        <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
-                      )
-                    : undefined,
-                )
-              )
-            ) : (
-              <p>Configure this element.</p>
-            )}
+            {content}
           </LayoutItem>
         );
       },

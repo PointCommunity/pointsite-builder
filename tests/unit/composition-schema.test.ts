@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ComposedBlockSchema } from '../../src/site-kit/schema';
+import { ComposedBlockSchema, SiteDocumentSchema } from '../../src/site-kit/schema';
 import { independentGridArea, independentResponsiveValue } from '../../src/site-kit/grid-layout';
+import { defaultSiteDocument } from '../../src/site-kit/default-site';
 
 const placement = (id: string, elementId: string) => ({
   id,
@@ -61,4 +62,17 @@ describe('composed block contract', () => {
     };
     expect(ComposedBlockSchema.safeParse(nested).success).toBe(false);
   });
+});
+
+it('permits image wrapping only in version-12 documents', () => {
+  const legacy = structuredClone(defaultSiteDocument);
+  const image = legacy.pages[0]?.blocks
+    .flatMap((section) => section.items)
+    .find((item) => item.element.type === 'image');
+  if (!image || image.element.type !== 'image') throw new Error('Expected image fixture');
+  image.element.wrap = true;
+  expect(SiteDocumentSchema.safeParse(legacy).success).toBe(false);
+  legacy.schemaVersion = 12;
+  legacy.rendererVersion = '12.0.0';
+  expect(SiteDocumentSchema.safeParse(legacy).success).toBe(true);
 });

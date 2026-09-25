@@ -49,6 +49,19 @@ describe('BlockInspector', () => {
     expect(onChange).toHaveBeenLastCalledWith(block);
   });
 
+  it('toggles text wrap for a version-12 image', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'image')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap nearby text' }));
+    expect(onChange).toHaveBeenCalledWith({ ...block, wrap: true });
+  });
+
   it('allows a version-12 text field to be cleared and assigned H1 semantics', () => {
     const document = {
       ...defaultSiteDocument,

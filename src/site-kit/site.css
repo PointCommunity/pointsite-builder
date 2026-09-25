@@ -1869,7 +1869,9 @@ body:has(.point-site) {
 .point-site .point-composition__grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-rows: max(1.5rem, calc(100cqi / 12));
+  --point-grid-cell: max(1.5rem, calc(100cqi / 12));
+  --point-section-gap: 0px;
+  grid-auto-rows: var(--point-grid-cell);
 }
 .point-site .point-layout-section--grid .point-layout-item--grid > * {
   max-width: 100%;
@@ -1901,6 +1903,16 @@ body:has(.point-site) {
 .point-site .point-text {
   margin: 0;
   white-space: pre-line;
+}
+.point-site .point-layout-item--text-wrap > .point-text::before {
+  display: block;
+  float: var(--point-wrap-desktop-side, none);
+  width: var(--point-wrap-desktop-width, 0px);
+  height: calc(
+    var(--point-wrap-desktop-rows, 0) * var(--point-grid-cell) +
+      (var(--point-wrap-desktop-rows, 0) - 1) * var(--point-section-gap)
+  );
+  content: '';
 }
 .point-site .point-text--lead {
   font-size: clamp(1.05rem, calc(2 * var(--point-layout-vw)), 1.35rem);
@@ -2137,6 +2149,14 @@ body:has(.point-site) {
   height: 2.5rem;
 }
 @media (max-width: 900px) {
+  .point-site .point-layout-item--text-wrap > .point-text::before {
+    float: var(--point-wrap-tablet-side, none);
+    width: var(--point-wrap-tablet-width, 0px);
+    height: calc(
+      var(--point-wrap-tablet-rows, 0) * var(--point-grid-cell) +
+        (var(--point-wrap-tablet-rows, 0) - 1) * var(--point-section-gap)
+    );
+  }
   .point-site .point-hero-text-box {
     --point-hero-text-width: var(--point-hero-text-width-tablet, 100%);
   }
@@ -2212,6 +2232,14 @@ body:has(.point-site) {
   }
 }
 @media (max-width: 520px) {
+  .point-site .point-layout-item--text-wrap > .point-text::before {
+    float: var(--point-wrap-mobile-side, none);
+    width: var(--point-wrap-mobile-width, 0px);
+    height: calc(
+      var(--point-wrap-mobile-rows, 0) * var(--point-grid-cell) +
+        (var(--point-wrap-mobile-rows, 0) - 1) * var(--point-section-gap)
+    );
+  }
   .point-site .point-hero-text-box {
     --point-hero-text-width: var(--point-hero-text-width-mobile, 100%);
   }

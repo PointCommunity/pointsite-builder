@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { CSSProperties, HTMLAttributes, Ref } from 'react';
 import type { ElementPlacement, SectionBlock, SiteDocument, SiteElement } from './types';
+import { textWrapForItem, type TextWrapFootprint } from './grid-layout';
 import { youtubeEmbedUrl } from './linked-media';
 
 export const blockDefinitions: Record<
@@ -1290,7 +1291,12 @@ export function renderBlock(
         <CompositionFrame name={block.name}>
           <div className="point-composition__grid">
             {block.items.map((item) => (
-              <LayoutItem placement={item} layer={item.layer} key={item.id}>
+              <LayoutItem
+                placement={item}
+                layer={item.layer}
+                wrap={textWrapForItem(item, block.items)}
+                key={item.id}
+              >
                 {renderBlock(item.element, document, onNavigate)}
               </LayoutItem>
             ))}
@@ -1330,11 +1336,13 @@ export function LayoutItem({
   children,
   dragRef,
   layer,
+  wrap,
 }: {
   placement: Pick<ElementPlacement, 'grid' | 'align' | 'span'>;
   children: ReactNode;
   dragRef?: Ref<HTMLDivElement>;
   layer?: number;
+  wrap?: TextWrapFootprint;
 }) {
   const section = useContext(LayoutContext);
   const flow = section.layout === 'flow';
@@ -1355,10 +1363,23 @@ export function LayoutItem({
     }),
   ) as CSSProperties;
   if (layer !== undefined) style.zIndex = layer;
+  for (const breakpoint of ['desktop', 'tablet', 'mobile'] as const) {
+    const footprint = wrap?.[breakpoint];
+    if (!footprint) continue;
+    const variables = style as CSSProperties & Record<string, string>;
+    variables[`--point-wrap-${breakpoint}-side`] = footprint.side;
+    const widthPercent = ((footprint.columns / footprint.textColumns) * 100).toFixed(6);
+    const gapShare = ((footprint.textColumns - footprint.columns) / footprint.textColumns).toFixed(
+      6,
+    );
+    variables[`--point-wrap-${breakpoint}-width`] =
+      `calc(${widthPercent}% - ${gapShare} * var(--point-section-gap))`;
+    variables[`--point-wrap-${breakpoint}-rows`] = String(footprint.rows);
+  }
   return (
     <div
       ref={dragRef}
-      className={`point-layout-item point-layout-item--grid${flow ? ` point-layout-item--flow point-layout-item--span-${Math.min(placement.span, section.columns)}` : ''}`}
+      className={`point-layout-item point-layout-item--grid${flow ? ` point-layout-item--flow point-layout-item--span-${Math.min(placement.span, section.columns)}` : ''}${wrap ? ' point-layout-item--text-wrap' : ''}`}
       style={style}
     >
       {children}
@@ -1444,7 +1465,12 @@ export function renderSection(
   return (
     <LayoutSection section={section} document={document}>
       {items.map((placement) => (
-        <LayoutItem placement={placement} layer={placement.layer} key={placement.id}>
+        <LayoutItem
+          placement={placement}
+          layer={placement.layer}
+          wrap={textWrapForItem(placement, items)}
+          key={placement.id}
+        >
           {renderBlock(placement.element, document, onNavigate)}
         </LayoutItem>
       ))}

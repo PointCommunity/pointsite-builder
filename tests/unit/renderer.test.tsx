@@ -7,8 +7,75 @@ import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
 import { independentGridArea } from '../../src/site-kit/grid-layout';
+import { compositionPreset } from '../../src/client/editor/composition-presets';
 
 describe('controlled public renderer', () => {
+  it('renders the neutral FAQ starter as an interactive disclosure', () => {
+    const block = compositionPreset('FAQ Item', defaultSiteDocument);
+    const { container } = render(<>{renderBlock(block, defaultSiteDocument)}</>);
+    expect(container.querySelector('details > summary')).toHaveTextContent('Add a question');
+    expect(container.querySelector('details > p')).toHaveTextContent('Add an answer.');
+  });
+
+  it('reserves a responsive footprint for an independently gridded wrapping image', () => {
+    const text = SiteElementSchema.parse({
+      id: crypto.randomUUID(),
+      type: 'text',
+      text: 'Words beside the photo. '.repeat(20),
+      style: 'body',
+      align: 'left',
+    });
+    const image = SiteElementSchema.parse({
+      ...allBlocks.find((block) => block.type === 'image')!,
+      wrap: true,
+    });
+    const section: SectionBlock = {
+      id: crypto.randomUUID(),
+      type: 'section',
+      name: 'Text wrap',
+      layout: 'grid',
+      position: 'flow',
+      columns: 12,
+      gap: 'medium',
+      width: 'site',
+      surface: 'canvas',
+      padding: 'none',
+      minRows: 8,
+      backgroundPosition: 'center',
+      overlay: 'none',
+      items: [
+        {
+          id: crypto.randomUUID(),
+          span: 12,
+          align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+          grid: independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 8 }),
+          element: text,
+        },
+        {
+          id: crypto.randomUUID(),
+          span: 4,
+          align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+          grid: {
+            desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 4 },
+            tablet: { column: 9, row: 1, columnSpan: 4, rowSpan: 4 },
+            mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
+          },
+          element: image,
+        },
+      ],
+    };
+    const { container } = render(<>{renderSection(section, allBlocksDocument)}</>);
+    const textItem = container.querySelector('.point-layout-item--text-wrap');
+    expect(textItem).toHaveStyle({
+      '--point-wrap-desktop-side': 'left',
+      '--point-wrap-desktop-width': 'calc(33.333333% - 0.666667 * var(--point-section-gap))',
+      '--point-wrap-desktop-rows': '4',
+      '--point-wrap-tablet-side': 'right',
+    });
+    expect(textItem).not.toHaveStyle('--point-wrap-mobile-side: left');
+    expect(textItem?.querySelector('.point-text')).toHaveTextContent('Words beside the photo.');
+  });
+
   it('links an image to an internal page or safe external URL without linking its caption', () => {
     const source = allBlocks.find((block) => block.type === 'image')!;
     for (const href of ['/who-we-are', 'https://example.com/photos']) {

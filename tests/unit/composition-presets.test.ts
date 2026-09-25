@@ -55,7 +55,7 @@ describe('brand-neutral composition presets', () => {
     const cases = [
       ['Image Card', 'image'],
       ['Person Card', 'image'],
-      ['FAQ Item', 'text'],
+      ['FAQ Item', 'faq'],
       ['Contact Area', 'form'],
     ] as const;
     for (const [name, kind] of cases) {
@@ -65,6 +65,15 @@ describe('brand-neutral composition presets', () => {
         group.items.filter((item) => item.element.type === 'text').length,
       ).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it('keeps a composed FAQ item interactive', () => {
+    const group = compositionPreset('FAQ Item', defaultSiteDocument);
+    const faq = group.items.find((item) => item.element.type === 'faq')?.element;
+    expect(faq).toMatchObject({
+      type: 'faq',
+      items: [{ question: 'Add a question', answer: 'Add an answer.' }],
+    });
   });
 
   it('does not substitute an unrelated photo when a Person has none', () => {

@@ -707,6 +707,20 @@ export function BlockInspector({
               onChange={(overlay) => onChange({ ...block, overlay })}
             />
           ) : null}
+          {document.schemaVersion >= 12 ? (
+            <label className="inspector-field">
+              <span>Wrap nearby text</span>
+              <input
+                type="checkbox"
+                aria-label="Wrap nearby text"
+                checked={block.wrap ?? false}
+                onChange={(event) => onChange({ ...block, wrap: event.target.checked })}
+              />
+              <small>
+                Place this image at a text element’s left or right edge on the same grid row.
+              </small>
+            </label>
+          ) : null}
           <Text
             label="Caption"
             value={block.caption}

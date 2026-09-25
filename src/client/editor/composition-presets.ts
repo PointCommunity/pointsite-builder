@@ -162,16 +162,20 @@ export function compositionPreset(name: CompositionPresetName, document: SiteDoc
         grid(1, 1, 12, 2),
       ),
       place(
-        text('Add a question', 'h3', 'body', 'left'),
+        text('Add context for this question.', 'p', 'body', 'left'),
         grid(1, 3, 12, 2),
         grid(1, 3, 12, 2),
         grid(1, 3, 12, 2),
       ),
       place(
-        text('Add an answer.', 'p', 'body', 'left'),
-        grid(1, 5, 12, 3),
-        grid(1, 5, 12, 3),
-        grid(1, 5, 12, 3),
+        {
+          id: crypto.randomUUID(),
+          type: 'faq',
+          items: [{ question: 'Add a question', answer: 'Add an answer.' }],
+        },
+        grid(1, 5, 12, 4),
+        grid(1, 5, 12, 4),
+        grid(1, 5, 12, 4),
       ),
     );
   } else {

@@ -4129,6 +4129,71 @@ test('links a selected Image to internal and external destinations, then removes
   await expect(reopened.locator('.point-image-link')).toHaveCount(0);
 });
 
+test('wraps text around an independently placed image and persists the setting', async ({
+  page,
+}) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    const section = structuredClone(document.pages[0].blocks[1]);
+    section.name = 'Wrap test';
+    section.layout = 'grid';
+    section.columns = 12;
+    section.minRows = 8;
+    section.items = [
+      {
+        id: crypto.randomUUID(),
+        span: 12,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 8 },
+          tablet: { column: 1, row: 1, columnSpan: 12, rowSpan: 8 },
+          mobile: { column: 1, row: 5, columnSpan: 12, rowSpan: 8 },
+        },
+        element: {
+          id: crypto.randomUUID(),
+          type: 'text',
+          text: 'Words wrap beside this photo. '.repeat(30),
+          semantic: 'p',
+          style: 'body',
+          align: 'left',
+        },
+      },
+      {
+        id: crypto.randomUUID(),
+        span: 4,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 4 },
+          tablet: { column: 9, row: 1, columnSpan: 4, rowSpan: 4 },
+          mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
+        },
+        element: {
+          id: crypto.randomUUID(),
+          type: 'image',
+          mediaId: document.media[0].id,
+          alt: document.media[0].alt,
+          aspect: 'natural',
+          fit: 'cover',
+        },
+      },
+    ];
+    document.pages[0].blocks = [section];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.locator('section[aria-label="Wrap test"] .point-image img').click();
+  await page.getByRole('checkbox', { name: 'Wrap nearby text' }).check();
+  await expect(canvas.locator('.point-layout-item--text-wrap > .point-text')).toHaveCount(1);
+  await expect
+    .poll(() => controls.saveRequests.at(-1)?.document.pages[0].blocks[0].items[1].element)
+    .toMatchObject({ type: 'image', wrap: true });
+  await page.reload();
+  const reopened = page.locator('.visual-editor iframe').contentFrame();
+  await expect(reopened.locator('.point-layout-item--text-wrap > .point-text')).toHaveCount(1);
+});
+
 test('drops the rendered Map phantom into an empty grid', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Puck cross-frame drags require Chromium for this flow.');
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
