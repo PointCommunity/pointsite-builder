@@ -82,10 +82,10 @@
         <li>
           <strong>Read-compatible baseline.</strong> Add versioned parsing/migration and composed
           rendering while legacy rendering remains unchanged. Keep new authoring disabled until a
-          retained rollback image can parse and safely render the new contract. Keep the tested
-          reader-capable Canary digest as the recovery image when the current Production digest
-          cannot parse version 12. Exercise old documents and a composed fixture in a local native
-          upgrade/rollback rehearsal.
+          retained recovery source can parse and safely render the new contract. Record the tested
+          reader-capable Canary source/tree and its Linode-buildable revision before any version-12
+          Production write. The old Linode image may not parse version 12. Exercise old documents
+          and a composed fixture in a local native upgrade/rollback rehearsal.
         </li>
         <li>
           <strong>Authoring slices.</strong> First make a generic composed section editable using
@@ -105,9 +105,10 @@
           <strong>Parity and release.</strong> Shared site-kit output drives Layout, Preview and
           publication. Synchronize the reviewed renderer contract with its governed publication
           counterpart without initiating public publication. Full local QA and exact-head Quality
-          precede Canary; each Production promotion requires PM testing and approval of its exact
-          healthy Canary candidate. Production Showcase and Issue closure require verification and
-          full Issue acceptance, not a second approval.
+          precede Canary; the sole PM approval follows testing of the exact healthy Canary
+          source/tree and inspected Linode baseline. Production builds that approved source/tree on
+          Linode and may have a different image ID or digest. Production Showcase and Issue closure
+          require verification and full Issue acceptance, not a second approval.
         </li>
       </ol>
 
@@ -135,8 +136,8 @@
               round-trip.
             </td>
             <td>
-              Schema/migration, native repository, revision, publish preflight and previous-image
-              rehearsal. Retain the reader-capable Canary image for recovery before any v12 write in
+              Schema/migration, native repository, revision, publish preflight and recovery
+              rehearsal. Retain a Linode-buildable reader-capable revision before any v12 write in
               Production; do not add a separate PM approval gate.
             </td>
           </tr>
@@ -205,8 +206,9 @@
           <tr>
             <td>Strict v11 parser rejects new document nodes.</td>
             <td>
-              Reader-capable recovery image before v12 writes; no bulk Production rewrite; record
-              the prior Production digest and use the retained reader image if it cannot parse v12.
+              Reader-capable recovery revision before v12 writes; no bulk Production rewrite;
+              record the prior Linode image tag and wrapper. If that image cannot parse v12,
+              recover with the retained reader-capable revision and preserved native data.
             </td>
           </tr>
           <tr>
