@@ -99,8 +99,8 @@
     <p>
       The agent carries one PM-selected GitHub Issue from an approved draft through specification,
       implementation, review, exact-revision deployment, live verification, and closure. The PM is
-      GitHub user <code>brimdor</code>. Repository instructions and live GitHub/Gitea/Argo state
-      take precedence over stale assumptions.
+      GitHub user <code>brimdor</code>. Repository instructions and live GitHub, Gitea, Argo, and
+      Linode state take precedence over stale assumptions.
     </p>
 
     <h2>GitHub Project schema</h2>
@@ -164,14 +164,14 @@
         <td><code>PointCommunity/pointsite-builder</code>, default branch <code>main</code></td>
       </tr>
       <tr>
-        <td>Builder runtime</td>
-        <td>Homelab Production at <code>https://builder.eaglepass.io</code></td>
+        <td>Builder Production</td>
+        <td>Linode <code>pointsite-builder</code> at <code>https://builder.eaglepass.io</code></td>
       </tr>
       <tr>
         <td>Builder Canary</td>
         <td>
-          <code>https://builder-canary.eaglepass.io</code>; independent persistent storage and
-          sessions
+          Homelab Canary at <code>https://builder-canary.eaglepass.io</code>; independent persistent
+          storage and sessions
         </td>
       </tr>
       <tr>
@@ -226,9 +226,9 @@
       <li>
         Explicit PM approval of the exact healthy Canary candidate is required before merge and
         Production promotion. Prove the merge tree equals the reviewed image source tree, wait for
-        exact-main Quality, record the previous Production image/configuration and promote the same
-        approved digest without rebuilding. Verify Argo reconciliation and independent Production
-        data.
+        exact-main Quality, record the previous Linode image tag and wrapper, make a fresh native
+        backup, and deploy the approved source/tree through systemd-managed Podman. Verify service,
+        storage, recovery, both public routes, and independent Production data.
       </li>
       <li>
         The agent verifies <code>/api/health</code>, cache-busted HTML and derived assets, and
@@ -340,8 +340,10 @@
       <tr>
         <td>Production deployment</td>
         <td>
-          Explicit exact-candidate approval; same image digest through Gitea GitOps, without
-          rebuilding
+          Inspect the Linode baseline with <code>npm run release:inspect</code>, obtain explicit
+          exact-Canary approval, then use <code>npm run release:production</code> to build the
+          reviewed tree on Linode, pin its Podman image tag, and verify the systemd service, fresh
+          native backups, and both routes. The legacy homelab Production action fails closed.
         </td>
       </tr>
       <tr>
@@ -353,8 +355,9 @@
       <tr>
         <td>Application rollback</td>
         <td>
-          Restore the recorded previous image/configuration through Gitea, reconcile with Argo, and
-          verify recovery. Retain the previous digest; do not infer permission to restore data.
+          Restore the previous Linode image reference in the saved runtime wrapper, restart the
+          service, and verify recovery. Retain the previous image and backups; do not infer
+          permission to restore data or reroute Canary.
         </td>
       </tr>
     </table>
@@ -363,10 +366,11 @@
     <p>
       A reviewed candidate is the tuple of Issue, PR URL, exact PR head commit and tree, test
       evidence, and GitHub Quality run. A released candidate adds the main merge commit and tree,
-      exact-main Quality run, previous and new image digests, GitOps revision, migration evidence,
-      deployment result, and live-verification result. The merge tree must equal the reviewed tree.
-      PM completion approval applies only to this full released tuple and is invalid after any
-      source, tree, dependency, migration, image, deployment configuration, or behavior change.
+      exact-main Quality run, approved Canary digest and GitOps revision, previous and new Linode
+      image tags/IDs, migration and backup evidence, deployment result, and live-verification
+      result. The merge tree must equal the reviewed tree. PM completion approval applies only to
+      this full released tuple and is invalid after any source, tree, dependency, migration, image,
+      deployment configuration, or behavior change.
     </p>
 
     <h2>Production Showcase and PM acceptance</h2>
@@ -395,26 +399,35 @@
       verification are the authoritative evidence; do not duplicate them into another document.
     </p>
 
-    <h2>Immutable promotion and recovery</h2>
+    <h2>Exact-source release and recovery</h2>
     <p>
       Builder application work goes to Canary after agent QA and exact-head CI. Production requires
       explicit approval of the exact source/tree, image digest and Canary GitOps configuration.
-      Promote the same digest without rebuilding. Preserve independent Production host, secrets,
-      sessions and persistent storage; never promote Canary drafts or approvals. Before deployment,
-      record and retain the previous Production image/configuration. On runtime failure, roll back
-      through GitOps and verify recovery. Keep the Issue open and assigned, then make the durable
-      source fix through a reviewable revert or same-Issue remediation. Destructive schema or data
-      recovery always requires PM authorization.
+      Build the exact approved source on the Linode and verify its revision label and tree. Its
+      image digest may differ from Canary's; record the actual Linode image ID. Preserve independent
+      Production secrets, sessions and persistent storage; never copy Canary drafts or approvals.
+      Before deployment, verify the backup mount and fresh native backup, then retain the previous
+      image tag and runtime wrapper. On runtime failure, restore that image reference and verify
+      recovery. Keep the Issue open and assigned, then make the durable source fix through a
+      reviewable revert or same-Issue remediation. Destructive schema or data recovery always
+      requires PM authorization.
+    </p>
+    <p>
+      Homelab <code>cloudflared</code> routes <code>builder.eaglepass.io</code> to Linode before the
+      wildcard rule; the wildcard keeps <code>builder-canary.eaglepass.io</code> in the homelab.
+      Retain the old homelab Production deployment/data as a rollback resource until the PM accepts
+      migration and authorizes retirement. Normal image rollback does not change the Cloudflare
+      route.
     </p>
 
     <h2>Publication incident recovery</h2>
     <p>
       A report that Staging or Production publishing is stuck requires live diagnosis and verified
       recovery. Inspect the affected authenticated Builder with the internal browser, correlate its
-      publication record with the deployed source/tree, Argo image and complete scoped provider
-      evidence, then trace the shared cancellation and scheduled-continuation path. A missing
-      expected run name, run ID, or runner reservation is evidence to explain; it is not a terminal
-      diagnosis.
+      publication record with the deployed source/tree, homelab Argo image for Canary or Linode
+      service/image for Production, and complete scoped provider evidence. Then trace the shared
+      cancellation and scheduled-continuation path. A missing expected run name, run ID, or runner
+      reservation is evidence to explain; it is not a terminal diagnosis.
     </p>
     <p>
       Cancel only an exact identified GitHub Actions run while publication remains safely
@@ -452,6 +465,10 @@
       <li>
         Preserve old builder.pointatx.org and D1 data until retirement or deletion is explicitly
         authorized.
+      </li>
+      <li>
+        Preserve the homelab Builder Production deployment and data until migration acceptance and
+        retirement are explicitly authorized.
       </li>
       <li>
         Issue #70 enables Administrator-authorized publication and rollback from Builder Canary only

@@ -38,7 +38,8 @@
     "test:performance": "npm run build && tsx tests/performance/api-load.mjs && node scripts/verify-budgets.mjs",
     "release:build": "node scripts/release-native.mjs build",
     "release:canary": "node scripts/release-native.mjs canary",
-    "release:production": "node scripts/release-native.mjs production",
+    "release:inspect": "node scripts/release-linode.mjs inspect",
+    "release:production": "node scripts/release-linode.mjs deploy",
     "test:release": "node --test scripts/release-native.test.mjs"
   },
   "dependencies": {
