@@ -123,12 +123,11 @@
     </p>
     <h2>Image rollback</h2>
     <p>
-      Retain the preceding Production image and GitOps configuration. Roll back by digest without
-      rebuilding only when that image understands the current schema. Unknown/changed migrations
-      fail closed; image rollback does not restore data automatically. Rehearse compatibility
-      against disposable copies before publishing a schema-changing candidate. First homelab
-      deployment retains the old Worker/D1 environment as fallback; its state is not a synchronized
-      copy of new homelab drafts.
+      Retain the preceding Linode Production image and timestamped runtime wrapper. Restore its
+      pinned image tag and restart the service only when that image understands the current schema.
+      Unknown or changed migrations fail closed; image rollback does not restore data automatically.
+      Rehearse compatibility against disposable copies before releasing a schema-changing candidate.
+      The old homelab deployment remains a separate rollback resource until migration acceptance.
     </p>
     <h2>Verification evidence</h2>
     <p>
@@ -140,7 +139,7 @@
       the task list.
     </p>
     <section id="native-release">
-      <h2>Local image and GitOps release</h2>
+      <h2>Canary GitOps and Linode Production release</h2>
       <p>
         Run full local QA sequentially and verify current GitHub Quality before release commands.
         Source must be clean and pushed. Build on the Mac's explicitly selected Podman machine with
@@ -150,12 +149,11 @@
         <code>artifacts/native-candidate.json</code> is machine evidence, not PM approval.
       </p>
       <p>
-        Canonical environment preparation lives in the homelab repository at
-        <code>release-preparation/builder-canary</code> and
-        <code>release-preparation/builder-production</code>. These directories are outside Argo's
-        app discovery. Review the four YAML files, storage, 1Password references and cluster health;
-        commit that preparation to canonical Gitea master. Do not commit a zero-digest image into
-        <code>apps/</code>.
+        Canary preparation lives in the homelab repository at
+        <code>release-preparation/builder-canary</code>, outside Argo's app discovery. Review its
+        chart, storage, secret references and cluster health; commit that preparation to canonical
+        Gitea master. Do not commit a zero-digest image into <code>apps/</code>. Linode Production
+        does not use the homelab <code>builder</code> chart.
       </p>
       <p>
         <code>npm run release:canary -- --candidate artifacts/native-candidate.json</code> validates
@@ -165,26 +163,31 @@
         digest, source metadata, OAuth, editing, private assets, restart persistence and NAS backup.
       </p>
       <p>
-        <code
-          >node scripts/release-native.mjs inspect --candidate artifacts/native-candidate.json</code
-        >
-        returns the prepared Production configuration hash for the approval tuple. After Chris
-        explicitly approves the exact source/tree, image, Canary GitOps revision and Production
-        configuration, record his actual message and candidate fields in a private approval JSON
-        receipt. The receipt uses <code>phrase</code>, <code>evidence</code>,
-        <code>sourceRevision</code>, <code>gitTree</code>, <code>imageDigest</code>,
-        <code>canaryRevision</code> and <code>productionConfigHash</code>. Never manufacture this
-        receipt from tests or prior general authorization.
+        <code>npm run release:inspect -- --candidate artifacts/native-candidate.json</code>
+        verifies Canary and the Linode baseline over trusted SSH, then returns a Production
+        configuration hash bound to the target, wrapper and systemd unit. After Chris explicitly
+        approves the exact source/tree, Canary image and GitOps revision, and Linode configuration,
+        record his actual message and candidate fields in a private approval JSON receipt. The
+        receipt uses <code>phrase</code>, <code>evidence</code>, <code>sourceRevision</code>,
+        <code>gitTree</code>, <code>imageDigest</code>, <code>canaryRevision</code> and
+        <code>productionConfigHash</code>. Never manufacture this receipt from tests or prior
+        general authorization.
       </p>
       <p>
         From clean pushed main with the unchanged reviewed tree, run
         <code
           >npm run release:production -- --candidate artifacts/native-candidate.json --approval
           /absolute/path/to/approval.json</code
-        >. The gate checks the healthy running Canary, exact digest and approval; it never rebuilds
-        or copies workspace data. Keep the preceding source-SHA image tag and previous GitOps commit
-        as rollback evidence. On first installation the existing Worker and D1 remain the fallback.
-        Registry cleanup must protect both current and preceding Production images.
+        >. The gate rechecks the healthy running Canary, exact digest, Linode baseline and approval.
+        It takes a fresh native backup, runs <code>npm ci</code> and
+        <code>npm run build:native</code> in a pinned Linode Podman build container, checks
+        <code>dist/release.json</code> against the reviewed tree, then packages the runtime image.
+        The runtime <code>Containerfile</code> only copies build output; never package stale
+        <code>dist</code>. It switches only the pinned image tag, verifies local and external
+        health, and checks a second fresh backup. It never copies workspace data from Canary. Keep
+        the previous Linode image and wrapper for rollback; review service logs and test
+        authenticated workspace state after the command. The legacy
+        <code>scripts/release-native.mjs production</code> action rejects before writing GitOps.
       </p>
     </section>
     <section id="deployment-prerequisites">

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Linode Production Release Contract</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #101417;
+        color: #e8edf0;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 850px;
+        margin: 0 auto;
+        padding: 3rem 1.5rem;
+      }
+      h1,
+      h2 {
+        color: #f2cf8e;
+      }
+      code {
+        color: #a7d9e8;
+      }
+      li {
+        margin-bottom: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Linode Production release contract</h1>
+    <p>
+      The Builder Production command must deploy only to the Linode at 45.33.2.134. Canary remains
+      on homelab GitOps. The old homelab Production command must fail closed.
+    </p>
+    <h2>Release identity and gates</h2>
+    <ol>
+      <li>
+        Use clean, pushed source and passing GitHub Quality. Match the approved Canary Git tree,
+        digest, healthy Argo revision, and recorded approval. A merge commit may differ from the
+        Canary commit only when its Git tree is identical.
+      </li>
+      <li>
+        Bind approval to the Linode target and observed wrapper and service-unit hashes. Recheck
+        those hashes immediately before changing the host.
+      </li>
+      <li>
+        Require trusted SSH host identity, healthy current service, separate mounted backup storage,
+        and a fresh successful native backup before changing source or the wrapper.
+      </li>
+      <li>
+        Build the merged source on Linode for linux/amd64 in a pinned Node build container, verify
+        its native release metadata, then package the runtime image. Change only the pinned image
+        tag, restart, and verify local health, source identity, mounts, recovery, a new backup, and
+        both public routes. Restore the prior tag and restart if a post-switch gate fails.
+      </li>
+    </ol>
+    <h2>Commands and layout</h2>
+    <p>
+      <code>npm run release:build</code> and <code>npm run release:canary</code> retain homelab
+      Canary behavior. <code>npm run release:inspect -- --candidate FILE</code> produces the Linode
+      configuration hash for exact approval.
+      <code>npm run release:production -- --candidate FILE --approval FILE</code> performs the
+      guarded Linode release. The local orchestrator is <code>scripts/release-linode.mjs</code>; the
+      host procedure is <code>scripts/deploy-linode-production.sh</code>.
+    </p>
+    <h2>Verification and limits</h2>
+    <p>
+      Run release contract tests, the skill-alignment audit, and full local QA. A local test cannot
+      prove live Linode access or authenticated workspace behavior. The deploying agent must verify
+      those live gates and report any unavailable evidence. No current application candidate is
+      approved by this infrastructure change.
+    </p>
+  </body>
+</html>

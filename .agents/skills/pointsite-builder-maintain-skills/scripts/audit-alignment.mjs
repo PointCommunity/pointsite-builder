@@ -71,7 +71,9 @@ requireText(policy, 'Backlog, On Hold, In Progress, In Review, Done', policyPath
 requireText(policy, 'Agent-owned Project movement', policyPath);
 requireText(policy, 'Pull request merged', policyPath);
 requireText(policy, 'is disabled', policyPath);
-requireText(policy, 'Homelab Production at', policyPath);
+requireText(policy, 'Linode <code>pointsite-builder</code> at', policyPath);
+requireText(policy, 'Homelab Canary at', policyPath);
+requireText(policy, 'npm run release:production', policyPath);
 requireText(policy, 'Exact Canary approval permits Production promotion', policyPath);
 requireText(policy, 'Production Showcase and PM acceptance', policyPath);
 requireText(policy, 'Approved to complete Issue #&lt;number&gt;', policyPath);
@@ -79,7 +81,8 @@ requireText(agents, 'Exactly one Issue may be active', 'AGENTS.md');
 requireText(agents, 'Never ask the PM to move a Project card', 'AGENTS.md');
 requireText(agents, 'https://builder-canary.eaglepass.io', 'AGENTS.md');
 requireText(agents, 'https://builder.eaglepass.io', 'AGENTS.md');
-requireText(agents, 'promote the exact approved Canary digest without rebuilding', 'AGENTS.md');
+requireText(agents, 'do not claim same-digest promotion', 'AGENTS.md');
+requireText(agents, 'npm run release:production', 'AGENTS.md');
 requireText(agents, 'explicit approval of the exact Canary candidate', 'AGENTS.md');
 requireText(
   agents,
@@ -138,6 +141,19 @@ for (const [skillName, contract] of Object.entries(showcaseContracts)) {
 const publicationRecoverySkill = read(
   '.agents/skills/pointsite-builder-recover-publication/SKILL.md',
 );
+const productionReleaseSkill = read('.agents/skills/pointsite-builder-release-production/SKILL.md');
+for (const contract of [
+  'pointsite-builder.service',
+  '/opt/pointsite-builder/backups/native/',
+  'localhost/pointsite-builder:<COMMIT>',
+  'legacy `scripts/release-native.mjs production` action fails closed',
+]) {
+  requireText(
+    productionReleaseSkill,
+    contract,
+    '.agents/skills/pointsite-builder-release-production/SKILL.md',
+  );
+}
 for (const contract of [
   'Do not report that a publication is merely stuck',
   'complete provider listing proves every run',
