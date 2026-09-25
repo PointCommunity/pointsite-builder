@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { compositionFromLegacy } from '../../src/client/editor/legacy-composition';
+import {
+  canConvertLegacy,
+  compositionFromLegacy,
+} from '../../src/client/editor/legacy-composition';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteElementSchema } from '../../src/site-kit/schema';
 import { areasOverlap } from '../../src/site-kit/grid-layout';
@@ -164,5 +167,46 @@ describe('explicit legacy-to-grid conversion', () => {
     expect(content(compositionFromLegacy(heading, defaultSiteDocument))).toContainEqual(
       expect.objectContaining({ type: 'text', text: 'Subheading', semantic: 'h4' }),
     );
+  });
+
+  it('keeps each Split Feature image, copy, focal point and action as editable parts', () => {
+    const features = defaultSiteDocument.pages
+      .flatMap((page) =>
+        page.blocks.flatMap((section) => section.items.map((item) => item.element)),
+      )
+      .filter(
+        (element): element is Extract<SiteElement, { type: 'splitFeature' }> =>
+          element.type === 'splitFeature',
+      );
+    expect(features.length).toBeGreaterThanOrEqual(3);
+    for (const feature of features) {
+      expect(canConvertLegacy(feature)).toBe(true);
+      const converted = compositionFromLegacy(feature, defaultSiteDocument);
+      const parts = content(converted);
+      expect(parts.find((part) => part.type === 'image')).toMatchObject({
+        mediaId: feature.mediaId,
+        alt: feature.mediaAlt,
+        ...(feature.mediaFocal ? { focal: feature.mediaFocal } : {}),
+      });
+      const copy = parts.filter((part) => part.type === 'text').map((part) => part.text);
+      for (const value of [
+        feature.eyebrow,
+        feature.heading,
+        feature.body,
+        feature.note,
+        feature.calloutLabel,
+        feature.calloutValue,
+      ])
+        if (value) expect(copy).toContain(value);
+      if (feature.action)
+        expect(parts.find((part) => part.type === 'button')).toMatchObject(feature.action);
+      expect(converted!.items.every((item) => item.element.id !== feature.id)).toBe(true);
+    }
+    const rightAligned: SiteElement = { ...features[0], textAlign: 'right' };
+    expect(
+      content(compositionFromLegacy(rightAligned, defaultSiteDocument))
+        .filter((part) => part.type === 'text')
+        .every((part) => part.align === 'right'),
+    ).toBe(true);
   });
 });

@@ -293,7 +293,7 @@ const TextBlockSchema = z.strictObject({
   type: z.literal('text'),
   text: z.string().trim().max(5_000),
   style: z.enum(['body', 'lead', 'eyebrow', 'small', 'title', 'display']),
-  align: z.enum(['left', 'center']),
+  align: z.enum(['left', 'center', 'right']),
   semantic: z.enum(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']).optional(),
 });
 

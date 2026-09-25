@@ -4489,6 +4489,66 @@ test('converts a legacy Hero only on request and saves its independent image and
   expect(geometry.overflow).toBe(0);
 });
 
+test('converts the current Split Feature image and long copy without phone clipping', async ({
+  page,
+}) => {
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    const feature = document.pages
+      .flatMap((entry) => entry.blocks.flatMap((section) => section.items))
+      .map((item) => item.element)
+      .find((element) => element.type === 'splitFeature' && element.variant === 'imageSplit');
+    if (!feature) throw new Error('Missing current Split Feature');
+    const section = structuredClone(document.pages[0].blocks[1]);
+    section.layout = 'grid';
+    section.columns = 12;
+    section.minRows = 30;
+    section.items = [
+      {
+        id: crypto.randomUUID(),
+        span: 12,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 30 },
+          tablet: { column: 1, row: 1, columnSpan: 12, rowSpan: 30 },
+          mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 30 },
+        },
+        element: feature,
+      },
+    ];
+    document.pages[0].blocks = [section];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await canvas.locator('.image-split h2').click();
+  await page.getByRole('button', { name: 'Convert to editable grid' }).click();
+  await expect(canvas.locator('section[aria-label="Split Feature content"] img')).toBeVisible();
+  await canvas.locator('section[aria-label="Split Feature content"] img').click();
+  await expect(canvas.getByRole('button', { name: 'Resize image from south east' })).toBeVisible();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  const group = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0].element;
+  expect(group.type).toBe('composition');
+  if (group.type !== 'composition') throw new Error('Expected editable group');
+  expect(group.items.find((item) => item.element.type === 'image')).toBeDefined();
+  await page.reload();
+  const reopened = page.locator('.visual-editor iframe').contentFrame();
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  await expect.poll(() => reopened.locator('body').evaluate(() => window.innerWidth)).toBe(360);
+  await reopened.locator('html').evaluate((element) => {
+    element.style.fontSize = '200%';
+  });
+  const body = reopened
+    .locator('section[aria-label="Split Feature content"] .point-text--body')
+    .first();
+  const geometry = await body.evaluate((element) => ({
+    contentHeight: element.scrollHeight,
+    placementHeight: element.closest('.point-layout-item--grid')!.getBoundingClientRect().height,
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  expect(geometry.contentHeight).toBeLessThanOrEqual(geometry.placementHeight + 1);
+  expect(geometry.overflow).toBe(0);
+});
+
 test('builds a contact area with independent text and a reusable form', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.schemaVersion = 12;

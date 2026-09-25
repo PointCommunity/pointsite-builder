@@ -1557,6 +1557,7 @@ export function BlockInspector({
             options={[
               { label: 'Left', value: 'left' },
               { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
             ]}
             onChange={(align) => onChange({ ...block, align })}
           />

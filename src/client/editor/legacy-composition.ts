@@ -22,7 +22,7 @@ function text(
   value: string,
   semantic: 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6',
   style: 'body' | 'lead' | 'eyebrow' | 'title' | 'display',
-  align: 'left' | 'center' = 'left',
+  align: 'left' | 'center' | 'right' = 'left',
 ): Child['element'] {
   return { id: crypto.randomUUID(), type: 'text', text: value, semantic, style, align };
 }
@@ -47,7 +47,7 @@ function image(
 
 function button(
   action: { label: string; href: string; style: 'primary' | 'secondary' | 'quiet' },
-  align: 'left' | 'center' = 'left',
+  align: 'left' | 'center' | 'right' = 'left',
 ): Child['element'] {
   return { id: crypto.randomUUID(), type: 'button', ...action, width: 'fit', align };
 }
@@ -55,7 +55,7 @@ function button(
 /** An opt-in content extraction. Existing documents and collection records are never rewritten. */
 export function canConvertLegacy(block: SiteElement): boolean {
   return (
-    ['hero', 'heading', 'form', 'cards'].includes(block.type) ||
+    ['hero', 'heading', 'form', 'cards', 'splitFeature'].includes(block.type) ||
     (block.type === 'people' && block.personIds.length <= 8)
   );
 }
@@ -87,7 +87,7 @@ export function compositionFromLegacy(
     style: 'body' | 'lead' | 'eyebrow' | 'title' | 'display',
     desktop: GridArea,
     mobile: GridArea = desktop,
-    align: 'left' | 'center' = 'left',
+    align: 'left' | 'center' | 'right' = 'left',
   ) => {
     if (value) add(text(value, semantic, style, align), desktop, mobile);
   };
@@ -131,6 +131,90 @@ export function compositionFromLegacy(
     addText(block.text, `h${block.level}`, 'title', area(1, 2, 12, 2), undefined, block.align);
     addText(block.supportingText, 'p', 'body', area(1, 5, 12, 2), undefined, block.align);
     addActions(block.actions ?? [], 8, block.align);
+  } else if (block.type === 'splitFeature') {
+    surface = block.surface;
+    const banner = block.variant === 'photoBanner';
+    const mediaColumn = banner || block.mediaSide === 'left' ? 1 : 7;
+    const copyColumn = banner || block.mediaSide === 'right' ? 2 : 7;
+    const copySpan = banner ? 10 : 6;
+    const copyAlign = block.textAlign ?? 'left';
+    const desktopBodyRows = Math.max(5, Math.ceil(block.body.length / 45));
+    const mobileBodyRows = Math.max(8, Math.ceil(block.body.length / 20));
+    const desktopBodyRow = block.eyebrow ? 7 : 5;
+    const mobileBodyRow = block.eyebrow ? 18 : 16;
+    const desktopNoteRow = desktopBodyRow + desktopBodyRows + 1;
+    const mobileNoteRow = mobileBodyRow + mobileBodyRows + 1;
+    const desktopCalloutRow = desktopNoteRow + (block.note ? 3 : 0);
+    const mobileCalloutRow = mobileNoteRow + (block.note ? 3 : 0);
+    const desktopValueRow = desktopCalloutRow + (block.calloutLabel ? 2 : 0);
+    const mobileValueRow = mobileCalloutRow + (block.calloutLabel ? 2 : 0);
+    const desktopActionRow = desktopValueRow + (block.calloutValue ? 2 : 0) + 1;
+    const mobileActionRow = mobileValueRow + (block.calloutValue ? 2 : 0) + 1;
+    const mediaAlt =
+      block.mediaAlt ?? document.media.find((media) => media.id === block.mediaId)?.alt ?? '';
+    add(
+      {
+        ...image(block.mediaId, mediaAlt, 'cover', block.mediaFocal),
+        ...(banner ? { overlay: 'dark' as const } : {}),
+      },
+      area(mediaColumn, 1, banner ? 12 : 6, Math.max(14, desktopActionRow + 2)),
+      area(1, 1, 12, 8),
+      banner ? -1 : 0,
+    );
+    addText(
+      block.eyebrow,
+      'p',
+      'eyebrow',
+      area(copyColumn, banner ? 2 : 1, copySpan, 1),
+      area(1, 10, 12, 1),
+      copyAlign,
+    );
+    addText(
+      block.heading,
+      'h2',
+      'title',
+      area(copyColumn, block.eyebrow ? 3 : 1, copySpan, 3),
+      area(1, block.eyebrow ? 12 : 10, 12, 5),
+      copyAlign,
+    );
+    addText(
+      block.body,
+      'p',
+      'body',
+      area(copyColumn, desktopBodyRow, copySpan, desktopBodyRows),
+      area(1, mobileBodyRow, 12, mobileBodyRows),
+      copyAlign,
+    );
+    addText(
+      block.note,
+      'p',
+      'body',
+      area(copyColumn, desktopNoteRow, copySpan, 2),
+      area(1, mobileNoteRow, 12, 2),
+      copyAlign,
+    );
+    addText(
+      block.calloutLabel,
+      'p',
+      'eyebrow',
+      area(copyColumn, desktopCalloutRow, copySpan, 1),
+      area(1, mobileCalloutRow, 12, 1),
+      copyAlign,
+    );
+    addText(
+      block.calloutValue,
+      'p',
+      'lead',
+      area(copyColumn, desktopValueRow, copySpan, 1),
+      area(1, mobileValueRow, 12, 1),
+      copyAlign,
+    );
+    if (block.action)
+      add(
+        button(block.action, copyAlign),
+        area(copyColumn, desktopActionRow, banner ? 4 : 6, 2),
+        area(1, mobileActionRow, 12, 2),
+      );
   } else if (block.type === 'form') {
     const [firstLine = '', ...otherLines] = (block.body ?? '').split('\n');
     const emailHref =
