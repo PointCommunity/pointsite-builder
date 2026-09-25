@@ -356,6 +356,38 @@ test('accepts new Pipeliner home and release tools but not arbitrary scripts', (
   }
 });
 
+test('Linode release files qualify only in a focused Pipeliner alignment PR', () => {
+  const files = [
+    { path: 'scripts/release-native.mjs' },
+    { path: 'scripts/release-native.test.mjs' },
+    { path: 'scripts/release-linode.mjs' },
+    { path: 'scripts/deploy-linode-production.sh' },
+    { path: 'specs/linode-production-release/spec.html' },
+    { path: 'tasks/native-operations.html' },
+  ];
+  const audit = (headRefName, body, selected = files) =>
+    auditPipelineSnapshot(
+      baseSnapshot({
+        prs: [{ number: 50, headRefName, baseRefName: 'main', body, files: selected }],
+      }),
+    );
+  assert.deepEqual(
+    audit('codex/align-pipeliner-linode', 'Pipeliner maintenance: alignment').errors,
+    [],
+  );
+  assert.ok(
+    audit('codex/update-pipeliner-linode', 'Pipeliner maintenance: update').errors.some((error) =>
+      error.includes('maintenance scope'),
+    ),
+  );
+  assert.ok(
+    audit('codex/align-pipeliner-linode', 'Pipeliner maintenance: alignment', [
+      ...files,
+      { path: 'src/App.tsx' },
+    ]).errors.some((error) => error.includes('maintenance scope')),
+  );
+});
+
 test('does not exempt unverified or ordinary unlinked PRs', () => {
   for (const headRefName of ['codex/adopt-pipeliner', 'codex/other-work']) {
     const result = auditPipelineSnapshot(

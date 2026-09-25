@@ -67,14 +67,15 @@ test('Builder participant migration keeps Dev distinct from the Human PM and rel
   assert.deepEqual(identityKeys(profile, 'released'), [
     'sourceCommit',
     'gitTree',
-    'imageDigest',
-    'gitopsRevision',
+    'canaryImageDigest',
+    'canaryGitopsRevision',
+    'productionImageId',
   ]);
-  assert.equal(profile.release.strategy, 'immutable-promotion');
+  assert.equal(profile.release.strategy, 'multi-environment');
   assert.equal(profile.release.environments.length, 2);
   assert.equal(profile.release.environments[0].url, 'https://builder-canary.eaglepass.io');
   assert.equal(profile.release.environments[1].url, 'https://builder.eaglepass.io');
-  assert.equal(profile.release.environments[1].promoteWithoutRebuild, true);
+  assert.equal(profile.release.environments[1].promoteWithoutRebuild, false);
   assert.equal(profile.release.environments[1].buildCommand, '');
   assert.equal(
     profile.release.environments[0].approvalPhrase,
@@ -173,8 +174,8 @@ test('adoption preserves only the exact approved Builder phrases and rejects dri
     noApproval.release.environments[0].approvalPhrase = '';
     await assert.rejects(preview(noApproval), /exact PM-preserved Builder contract/);
     const rebuild = structuredClone(profile);
-    rebuild.release.environments[1].promoteWithoutRebuild = false;
-    await assert.rejects(preview(rebuild), /promoteWithoutRebuild true/);
+    rebuild.release.environments[1].promoteWithoutRebuild = true;
+    await assert.rejects(preview(rebuild), /exact PM-preserved Builder contract/);
   } finally {
     await rm(targetRoot, { recursive: true, force: true });
   }

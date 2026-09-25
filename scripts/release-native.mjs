@@ -45,7 +45,7 @@ export function validateApproval(candidate, approval, canaryRevision, production
     throw new Error('EXACT_PM_APPROVAL_REQUIRED');
 }
 
-async function verifyImage(candidate) {
+export async function verifyImage(candidate) {
   const response = await fetch(
     `http://10.0.20.11:32309/v2/pointsite-builder/manifests/${candidate.imageDigest}`,
     {
@@ -80,7 +80,7 @@ async function verifyImage(candidate) {
     throw new Error('IMAGE_SOURCE_MISMATCH');
 }
 
-function quality(revision) {
+export function quality(revision) {
   const checks = JSON.parse(
     command('gh', [
       'api',
@@ -102,20 +102,76 @@ function quality(revision) {
   }
 }
 
+export function validateGitops(transport = 'origin') {
+  if (
+    gitops('remote', 'get-url', 'origin') !== 'git@git.eaglepass.io:ops/homelab.git' ||
+    gitops('branch', '--show-current') !== 'master'
+  )
+    throw new Error('CANONICAL_GITOPS_MASTER_REQUIRED');
+  if (!['origin', 'http://127.0.0.1:23061/ops/homelab.git'].includes(transport))
+    throw new Error('CANONICAL_GITEA_TRANSPORT_REQUIRED');
+  gitops('fetch', transport, 'master:refs/remotes/origin/master');
+  if (
+    gitops('rev-parse', 'HEAD') !== gitops('rev-parse', 'origin/master') ||
+    gitops('status', '--porcelain')
+  )
+    throw new Error('CLEAN_CURRENT_GITOPS_REQUIRED');
+  return gitops('rev-parse', 'HEAD');
+}
+
+export function verifyCanary(candidate) {
+  const argo = JSON.parse(
+    command('kubectl', ['-n', 'argocd', 'get', 'application', 'builder-canary', '-o', 'json']),
+  );
+  if (
+    argo.spec.source.repoURL !== 'http://gitea-http.gitea:3000/ops/homelab' ||
+    argo.spec.source.targetRevision !== 'master' ||
+    argo.spec.source.path !== 'apps/builder-canary'
+  )
+    throw new Error('CANARY_SOURCE_AUTHORITY_REQUIRED');
+  if (argo.status.sync.status !== 'Synced' || argo.status.health.status !== 'Healthy')
+    throw new Error('HEALTHY_CANARY_REQUIRED');
+  const pods = JSON.parse(
+    command('kubectl', [
+      '-n',
+      'builder-canary',
+      'get',
+      'pods',
+      '-l',
+      'app.kubernetes.io/instance=builder-canary',
+      '-o',
+      'json',
+    ]),
+  );
+  if (
+    pods.items.length !== 1 ||
+    pods.items[0].status.containerStatuses?.length !== 1 ||
+    !pods.items[0].status.containerStatuses.every(
+      (status) => status.ready && status.imageID.endsWith('@' + candidate.imageDigest),
+    )
+  )
+    throw new Error('RUNNING_CANARY_DIGEST_REQUIRED');
+  const canaryRevision = argo.status.sync.revision;
+  if (!sha.test(canaryRevision)) throw new Error('CANARY_REVISION_REQUIRED');
+  const canaryValues = gitops('show', `${canaryRevision}:apps/builder-canary/values.yaml`);
+  if (!canaryValues.includes(`digest: ${candidate.imageDigest}`))
+    throw new Error('CANARY_CONFIG_DIGEST_MISMATCH');
+  return canaryRevision;
+}
+
 async function main() {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
       connection: { type: 'string' },
       candidate: { type: 'string' },
-      approval: { type: 'string' },
       'gitops-transport': { type: 'string' },
     },
   });
   const [action] = positionals;
-  if (positionals.length !== 1 || !['build', 'inspect', 'canary', 'production'].includes(action))
+  if (positionals.length !== 1 || !['build', 'canary'].includes(action))
     throw new Error(
-      'Use build --connection NAME, inspect --candidate FILE, or canary|production --candidate FILE [--approval FILE].',
+      'Use build --connection NAME or canary --candidate FILE. Linode Production uses release-linode.mjs.',
     );
   if (git('status', '--porcelain', '--untracked-files=all'))
     throw new Error('CLEAN_SOURCE_REQUIRED');
@@ -169,29 +225,13 @@ async function main() {
   }
   if (!values.candidate) throw new Error('CANDIDATE_FILE_REQUIRED');
   const candidate = validateCandidate(JSON.parse(await readFile(values.candidate, 'utf8')));
-  if (
-    candidate.gitTree !== gitTree ||
-    (action === 'canary' && candidate.sourceRevision !== sourceRevision)
-  )
+  if (candidate.gitTree !== gitTree || candidate.sourceRevision !== sourceRevision)
     throw new Error('CANDIDATE_SOURCE_CHANGED');
   await verifyImage(candidate);
-  if (
-    gitops('remote', 'get-url', 'origin') !== 'git@git.eaglepass.io:ops/homelab.git' ||
-    gitops('branch', '--show-current') !== 'master'
-  )
-    throw new Error('CANONICAL_GITOPS_MASTER_REQUIRED');
-  // Optional authenticated kubectl tunnel to the same Gitea service, never another remote.
   const transport = values['gitops-transport'] ?? 'origin';
-  if (!['origin', 'http://127.0.0.1:23061/ops/homelab.git'].includes(transport))
-    throw new Error('CANONICAL_GITEA_TRANSPORT_REQUIRED');
-  gitops('fetch', transport, 'master:refs/remotes/origin/master');
-  if (
-    gitops('rev-parse', 'HEAD') !== gitops('rev-parse', 'origin/master') ||
-    gitops('status', '--porcelain')
-  )
-    throw new Error('CLEAN_CURRENT_GITOPS_REQUIRED');
-  const name = action === 'canary' ? 'builder-canary' : 'builder';
-  const source = `release-preparation/builder-${action === 'inspect' ? 'production' : action}`;
+  validateGitops(transport);
+  const name = 'builder-canary';
+  const source = 'release-preparation/builder-canary';
   const chart = await readFile(resolve(homelab, source, 'Chart.yaml'), 'utf8');
   const original = await readFile(resolve(homelab, source, 'values.yaml'), 'utf8');
   if ((original.match(/digest: sha256:[a-f0-9]{64}/g) ?? []).length !== 1)
@@ -199,70 +239,7 @@ async function main() {
   const yaml = original
     .replace(/tag: [^\n]+/, `tag: ${candidate.sourceRevision}`)
     .replace(/digest: sha256:[a-f0-9]{64}/, `digest: ${candidate.imageDigest}`);
-  const productionConfigHash = hash(chart + '\0' + yaml);
-  if (action === 'inspect') {
-    console.log(
-      JSON.stringify({
-        ...candidate,
-        productionConfigHash,
-        gitopsRevision: gitops('rev-parse', 'HEAD'),
-      }),
-    );
-    return;
-  }
-  if (action === 'production') {
-    if (
-      git('branch', '--show-current') !== 'main' ||
-      sourceRevision !== git('rev-parse', 'origin/main')
-    )
-      throw new Error('MERGED_SOURCE_REQUIRED');
-    const argo = JSON.parse(
-      command('kubectl', ['-n', 'argocd', 'get', 'application', 'builder-canary', '-o', 'json']),
-    );
-    if (
-      argo.spec.source.repoURL !== 'http://gitea-http.gitea:3000/ops/homelab' ||
-      argo.spec.source.targetRevision !== 'master' ||
-      argo.spec.source.path !== 'apps/builder-canary'
-    )
-      throw new Error('CANARY_SOURCE_AUTHORITY_REQUIRED');
-    if (argo.status.sync.status !== 'Synced' || argo.status.health.status !== 'Healthy')
-      throw new Error('HEALTHY_CANARY_REQUIRED');
-    const pods = JSON.parse(
-      command('kubectl', [
-        '-n',
-        'builder-canary',
-        'get',
-        'pods',
-        '-l',
-        'app.kubernetes.io/instance=builder-canary',
-        '-o',
-        'json',
-      ]),
-    );
-    if (
-      pods.items.length !== 1 ||
-      pods.items[0].status.containerStatuses?.length !== 1 ||
-      !pods.items[0].status.containerStatuses.every(
-        (s) => s.ready && s.imageID.endsWith('@' + candidate.imageDigest),
-      )
-    )
-      throw new Error('RUNNING_CANARY_DIGEST_REQUIRED');
-    if (!values.approval) throw new Error('EXACT_PM_APPROVAL_REQUIRED');
-    // This is an agent-recorded receipt of actual PM approval, never permission inferred by the CLI.
-    validateApproval(
-      candidate,
-      JSON.parse(await readFile(values.approval, 'utf8')),
-      argo.status.sync.revision,
-      productionConfigHash,
-    );
-    const canaryValues = gitops(
-      'show',
-      `${argo.status.sync.revision}:apps/builder-canary/values.yaml`,
-    );
-    if (!canaryValues.includes(`digest: ${candidate.imageDigest}`))
-      throw new Error('CANARY_CONFIG_DIGEST_MISMATCH');
-  }
-  // Agents review storage, backup, auth and cluster preflight before invoking this command.
+  // Canary alone is reconciled by homelab GitOps. Production is built on Linode.
   const directory = resolve(homelab, 'apps', name);
   await mkdir(directory, { recursive: true });
   await writeFile(resolve(directory, 'Chart.yaml'), chart);
@@ -280,7 +257,6 @@ async function main() {
       action,
       previousRevision,
       gitopsRevision: gitops('rev-parse', 'HEAD'),
-      productionConfigHash,
       ...candidate,
       status: 'GitOps dispatched; live verification required',
     }),

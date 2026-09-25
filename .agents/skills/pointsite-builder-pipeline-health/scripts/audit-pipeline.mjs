@@ -44,14 +44,29 @@ function isFrameworkMaintenance(pr) {
   );
 }
 
-function maintenanceFilesAllowed(files) {
+const LINODE_RELEASE_ALIGNMENT_FILES = new Set([
+  'scripts/release-native.mjs',
+  'scripts/release-native.test.mjs',
+  'scripts/release-linode.mjs',
+  'scripts/deploy-linode-production.sh',
+  'specs/linode-production-release/spec.html',
+  'tasks/native-operations.html',
+]);
+
+function maintenanceFilesAllowed(pr) {
+  const releaseAlignment =
+    /^codex\/align-pipeliner(?:-|$)/.test(pr.headRefName ?? '') &&
+    /^Pipeliner maintenance: alignment$/m.test(pr.body ?? '');
+  const files = pr.files;
   return (
     Array.isArray(files) &&
     files.length > 0 &&
-    files.every(({ path }) =>
-      /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|pipeliner\.config\.json|package(?:-lock)?\.json|eslint\.config\.js|\.gitignore|\.prettierignore|\.agents\/.+|\.claude\/skills\/.+|\.github\/.+|blueprints\/.+|schema\/.+|specs\/pipeliner-(?:adoption|refresh)\/.+|scripts\/(?:lib\/.+|(?:audit-project|evaluate-qa|evaluate-release|resolve-home|validate-repository|local-qa|pipeliner-contracts)(?:\.test)?\.mjs))$/.test(
-        path ?? '',
-      ),
+    files.every(
+      ({ path }) =>
+        /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|pipeliner\.config\.json|package(?:-lock)?\.json|eslint\.config\.js|\.gitignore|\.prettierignore|\.agents\/.+|\.claude\/skills\/.+|\.github\/.+|blueprints\/.+|schema\/.+|specs\/pipeliner-(?:adoption|refresh)\/.+|scripts\/(?:lib\/.+|(?:audit-project|evaluate-qa|evaluate-release|resolve-home|validate-repository|local-qa|pipeliner-contracts)(?:\.test)?\.mjs))$/.test(
+          path ?? '',
+        ) ||
+        (releaseAlignment && LINODE_RELEASE_ALIGNMENT_FILES.has(path)),
     )
   );
 }
@@ -80,7 +95,7 @@ export function auditPipelineSnapshot(snapshot) {
       pr.baseRefName !== 'main' ||
       AUTO_CLOSE_PATTERN.test(pr.body ?? '') ||
       refsFrom(pr.body).length ||
-      !maintenanceFilesAllowed(pr.files)
+      !maintenanceFilesAllowed(pr)
     ) {
       errors.push(`PR #${pr.number} has unverified or invalid Pipeliner maintenance scope`);
     }

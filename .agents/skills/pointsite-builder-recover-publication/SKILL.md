@@ -12,7 +12,7 @@ Do not report that a publication is merely stuck or wait for it to resolve itsel
 ## Diagnose the live incident
 
 1. Use the internal browser against the affected Canary or Production Builder. Preserve the authenticated session. Record the draft, destination, visible phase, status text, available actions, and console errors. Do not ask the PM to repeat actions that can be inspected directly.
-2. Read `/api/health`, Argo application revision/health, running image digest, pod readiness, and the exact deployed source/tree. Confirm whether the environment contains the expected fix before changing data or retrying controls.
+2. Read `/api/health` and the exact deployed source/tree. For Canary, verify homelab Argo revision/health, running image digest and pod readiness. For Production, verify the Linode `pointsite-builder.service`, Podman image tag/ID and local health/readiness; do not use the retained homelab `builder` application as Production evidence. Confirm whether the affected environment contains the expected fix before changing data or retrying controls.
 3. Inspect the publication row and its transitions with supported read-only access. Correlate repository, workflow, event, ref, SHA, creation window, reserved run/job IDs, build/result/deployment fields, and authorization state.
 4. Inspect the complete scoped GitHub Actions run listing, including zero-job failures and runs with generic titles. Trace the UI action through the API, cancellation continuation, provider client, scheduler, and atomic database mutation. A missing expected run name or run ID is evidence to explain, not a reason to stop.
 
@@ -31,7 +31,7 @@ Classify the incident before editing:
 - Never send a GitHub cancellation request for an unnamed run. Reconcile a proven terminal pre-reservation failure locally instead.
 - A retry must be bounded and evidence-driven. Do not keep clicking Check or Retry cancellation without a state change or new provider evidence.
 - If source repair is required, continue the owning active Issue. Feedback after a merged PR uses a focused same-Issue remediation PR. Add the narrowest regression test that reproduces the failed state transition.
-- If an approved immutable Canary candidate already contains the repair, use `pointsite-builder-release-production`; require its exact candidate approval and promote the same digest without rebuilding. Do not modify Production directly through Kubernetes.
+- If an approved immutable Canary candidate already contains the repair, use `pointsite-builder-release-production`; require its exact candidate approval and deploy the same approved source/tree to Linode with `npm run release:production`. Do not modify Production through Kubernetes or invoke the legacy `scripts/release-native.mjs production` action.
 
 ## Prove recovery
 
@@ -39,7 +39,7 @@ Deployment is incomplete until the existing stuck record recovers. Allow the sch
 
 Verify all of the following:
 
-- Argo is Synced and Healthy on the intended revision and exact image digest;
+- Canary Argo is Synced and Healthy on the intended revision and exact image digest, or Linode Production runs the intended image tag/ID with `pointsite-builder.service` active;
 - `/api/health`, HTML, and derived assets pass;
 - the authenticated affected workspace loads in the internal browser;
 - the old `Cancelling…`, stale-progress, or retry loop is gone;
@@ -47,6 +47,6 @@ Verify all of the following:
 - no new publication was created and browser console errors/warnings are empty;
 - the durable source path handles restart and scheduled retry, so recovery does not depend on the current browser tab.
 
-Record concise evidence on the owning Issue or PR: root cause, source/tree, tests, exact image/GitOps identity, previous and recovered UI states, and whether a GitHub run was cancelled or a terminal unreserved slot was reconciled. Keep the Issue lifecycle and PM gates unchanged.
+Record concise evidence on the owning Issue or PR: root cause, source/tree, tests, Canary image/GitOps or Production Linode image/service identity, previous and recovered UI states, and whether a GitHub run was cancelled or a terminal unreserved slot was reconciled. Keep the Issue lifecycle and PM gates unchanged.
 
 This skill may cancel only the publication the PM asked to recover. It never authorizes publishing or restoring the public PointSite, destructive data/schema recovery, credential changes, or unrelated GitHub Actions cancellation.
