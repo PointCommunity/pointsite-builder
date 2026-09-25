@@ -13,6 +13,202 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
+  it('offers optional internal and external destinations for a version-12 image', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'image')!;
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <BlockInspector block={block} document={document} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Link image' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: '/' });
+    rerender(
+      <BlockInspector block={{ ...block, href: '/' }} document={document} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText('Internal page'), {
+      target: { value: document.pages[1].route },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: document.pages[1].route });
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'external' } });
+    fireEvent.change(screen.getByLabelText('External URL'), {
+      target: { value: 'https://example.com/visit' },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ ...block, href: 'https://example.com/visit' });
+    rerender(
+      <BlockInspector
+        block={{ ...block, href: 'https://example.com/visit' }}
+        document={document}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Link image' }));
+    expect(onChange).toHaveBeenLastCalledWith(block);
+  });
+
+  it('toggles text wrap for a version-12 image', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'image')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap nearby text' }));
+    expect(onChange).toHaveBeenCalledWith({ ...block, wrap: true });
+  });
+
+  it('allows a version-12 text field to be cleared and assigned H1 semantics', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'text')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, text: '' });
+    fireEvent.change(screen.getByLabelText('Text type'), { target: { value: 'h1' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, semantic: 'h1' });
+  });
+
+  it.each([
+    ['hero', 'Heading', 'heading'],
+    ['heading', 'Heading', 'text'],
+    ['image', 'Alternative text', 'alt'],
+    ['splitFeature', 'Heading', 'heading'],
+    ['cta', 'Heading', 'heading'],
+    ['button', 'Button label', 'label'],
+    ['navigation', 'Navigation label', 'label'],
+    ['map', 'Title', 'title'],
+  ] as const)('clears %s Properties text without a minimum character', (type, label, key) => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === type)!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({ ...block, [key]: '' });
+  });
+
+  it('clears individual card title and body text without removing the card', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'cards')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText('Title')[0], { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) => (index ? item : { ...item, title: '' })),
+    });
+    fireEvent.change(screen.getAllByLabelText('Body')[0], { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) => (index ? item : { ...item, body: '' })),
+    });
+  });
+
+  it('clears FAQ, social, and rich-text copy in version 12', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    for (const [type, label, field] of [
+      ['faq', 'Question', 'question'],
+      ['socialLinks', 'Link label', 'label'],
+      ['richText', 'Paragraph', 'text'],
+    ] as const) {
+      const block: SiteElement =
+        type === 'socialLinks'
+          ? {
+              id: crypto.randomUUID(),
+              type,
+              links: [{ platform: 'other', label: 'Website', url: 'https://example.com' }],
+              align: 'left',
+              appearance: 'labels',
+            }
+          : allBlocks.find((item) => item.type === type)!;
+      const onChange = vi.fn();
+      const { unmount } = render(
+        <BlockInspector block={block} document={document} onChange={onChange} />,
+      );
+      fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value: '' } });
+      if (block.type === 'richText')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          content: block.content.map((item, index) =>
+            index ? item : { type: 'paragraph', children: [{ text: '' }] },
+          ),
+        });
+      else if (block.type === 'faq')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          items: block.items.map((item, index) => (index ? item : { ...item, [field]: '' })),
+        });
+      else if (block.type === 'socialLinks')
+        expect(onChange).toHaveBeenCalledWith({
+          ...block,
+          links: block.links.map((item, index) => (index ? item : { ...item, [field]: '' })),
+        });
+      unmount();
+    }
+  });
+
+  it('sets fit independently for each card image in version 12', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const block = allBlocks.find((item) => item.type === 'cards')!;
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <BlockInspector block={block} document={document} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getAllByLabelText('Image fit')[0], { target: { value: 'stretch' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFit: 'stretch' } : item,
+      ),
+    });
+    fireEvent.change(screen.getAllByLabelText('Image frame')[0], { target: { value: 'square' } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...block,
+      items: block.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFrame: 'square' } : item,
+      ),
+    });
+    const withImage = {
+      ...block,
+      items: block.items.map((item, index) =>
+        index ? item : { ...item, mediaId: document.media[0].id },
+      ),
+    };
+    rerender(<BlockInspector block={withImage} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText('Horizontal focus (%)')[0], {
+      target: { value: '25' },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      ...withImage,
+      items: withImage.items.map((item, index) =>
+        index === 0 ? { ...item, mediaFocal: { x: 25, y: 50 } } : item,
+      ),
+    });
+  });
   it('selects a named design and routes edits to its stable identity in Navigation Designer', () => {
     const document = upgradeNavigation(defaultSiteDocument);
     const first = document.navigationDesigns![0];
@@ -80,6 +276,31 @@ describe('BlockInspector', () => {
     expect(screen.queryByLabelText(/json/i)).not.toBeInTheDocument();
   });
 
+  it('lets a legacy draft clear required Hero copy in Properties', () => {
+    const document = structuredClone(defaultSiteDocument);
+    const hero = document.pages[0].blocks
+      .flatMap((section) => section.items.map((item) => item.element))
+      .find((item) => item.type === 'hero')!;
+    const onChange = vi.fn();
+    render(<BlockInspector block={hero} document={document} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Heading'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ heading: '' }));
+  });
+
+  it('lets a legacy draft clear an independent Text element', () => {
+    const block: SiteElement = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      text: 'Remove me',
+      style: 'body',
+      align: 'left',
+    };
+    const onChange = vi.fn();
+    render(<BlockInspector block={block} document={defaultSiteDocument} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ text: '' }));
+  });
+
   it('adds a FAQ item without drag and drop', () => {
     const document = structuredClone(defaultSiteDocument);
     const block = document.pages
@@ -131,11 +352,48 @@ describe('BlockInspector', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ align: 'end' }));
   });
 
-  it('offers the Point page hero style on the existing Hero element', () => {
+  it('does not offer Point-only styles even before a legacy draft upgrades', () => {
     const hero = allBlocks.find((item) => item.type === 'hero')!;
-    render(<BlockInspector block={hero} document={defaultSiteDocument} onChange={vi.fn()} />);
+    const { rerender } = render(
+      <BlockInspector block={hero} document={defaultSiteDocument} onChange={vi.fn()} />,
+    );
 
-    expect(screen.getByRole('option', { name: 'Point page hero' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Layout style')).toHaveTextContent('Standard hero');
+    expect(screen.queryByRole('option', { name: 'Point page hero' })).not.toBeInTheDocument();
+    rerender(
+      <BlockInspector
+        block={{ ...hero, variant: 'pageHero' }}
+        document={defaultSiteDocument}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('option', { name: 'Legacy: page hero' })).toBeDisabled();
+  });
+
+  it('hides Point-only choices in version 12 while displaying an existing legacy selection', () => {
+    const document = {
+      ...defaultSiteDocument,
+      schemaVersion: 12 as const,
+      rendererVersion: '12.0.0',
+    };
+    const hero = allBlocks.find((item) => item.type === 'hero')!;
+    const { rerender } = render(
+      <BlockInspector block={hero} document={document} onChange={vi.fn()} />,
+    );
+    expect(
+      within(screen.getByLabelText('Layout style'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Standard hero']);
+    rerender(
+      <BlockInspector
+        block={{ ...hero, variant: 'pageHero' }}
+        document={document}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Layout style')).toHaveValue('pageHero');
+    expect(screen.getByRole('option', { name: 'Legacy: page hero' })).toBeDisabled();
   });
 
   it('uses page-aware destinations for action and standalone button links', () => {
@@ -188,21 +446,17 @@ describe('BlockInspector', () => {
   });
 
   it.each([
-    ['hero', 'Layout style', 'homeHero', 'variant'],
-    ['heading', 'Layout style', 'homeIntro', 'variant'],
-    ['richText', 'Layout style', 'prose', 'variant'],
-    ['image', 'Layout style', 'wide', 'variant'],
-    ['splitFeature', 'Layout style', 'imageSplit', 'variant'],
-    ['cta', 'Layout style', 'rental', 'variant'],
-    ['cards', 'Layout style', 'identity', 'variant'],
+    ['hero', 'Alignment', 'center', 'align'],
+    ['heading', 'Width', 'narrow', 'width'],
+    ['richText', 'Text alignment', 'center', 'align'],
+    ['image', 'Image fit', 'contain', 'fit'],
+    ['splitFeature', 'Horizontal alignment', 'right', 'textAlign'],
+    ['cta', 'Background', 'primary', 'surface'],
     ['people', 'Layout style', 'leadership', 'variant'],
-    ['faq', 'Layout style', 'groups', 'variant'],
-    ['form', 'Layout style', 'panel', 'variant'],
-    ['map', 'Layout style', 'gathering', 'variant'],
     ['divider', 'Divider style', 'space', 'style'],
     ['spacer', 'Space size', 'small', 'size'],
   ] as const)(
-    'edits the %s module through its primary presentation control',
+    'edits the %s module through a brand-neutral presentation control',
     (type, label, value, property) => {
       const block = allBlocks.find((item) => item.type === type)!;
       const onChange = vi.fn();
@@ -214,6 +468,21 @@ describe('BlockInspector', () => {
       unmount();
     },
   );
+
+  it.each([
+    ['faq', 'Section heading', 'New section heading', 'heading'],
+    ['form', 'Heading', 'Contact', 'heading'],
+    ['map', 'Title', 'Location', 'title'],
+  ] as const)('edits the %s module without a Point-only style', (type, label, value, property) => {
+    const block = allBlocks.find((item) => item.type === type)!;
+    const onChange = vi.fn();
+    const { unmount } = render(
+      <BlockInspector block={block} document={defaultSiteDocument} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ [property]: value }));
+    unmount();
+  });
 
   it('hides controls that do not apply to fixed editorial presets', () => {
     const photoBanner = {

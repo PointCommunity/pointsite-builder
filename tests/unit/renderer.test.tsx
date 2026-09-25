@@ -6,8 +6,264 @@ import { SiteRenderer } from '../../src/site-kit/SiteRenderer';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import { SiteElementSchema } from '../../src/site-kit/schema';
 import type { SectionBlock } from '../../src/site-kit/types';
+import { independentGridArea } from '../../src/site-kit/grid-layout';
+import { compositionPreset } from '../../src/client/editor/composition-presets';
+import { compositionFromLegacy } from '../../src/client/editor/legacy-composition';
 
 describe('controlled public renderer', () => {
+  it('keeps an unnamed Section accessible without rendering its fallback as content', () => {
+    const section = structuredClone(defaultSiteDocument.pages[0].blocks[0]);
+    section.name = '';
+    const { container } = render(<>{renderSection(section, defaultSiteDocument)}</>);
+    expect(container.querySelector('section[aria-label="Content section"]')).toBeTruthy();
+    expect(container).not.toHaveTextContent('Content section');
+  });
+
+  it('renders a converted Hero with independent display text over an authored image', () => {
+    const source = allBlocks.find((block) => block.type === 'hero')!;
+    if (source.type !== 'hero') throw new Error('Expected Hero fixture');
+    const block = compositionFromLegacy(
+      { ...source, surface: 'image', mediaId: allBlocksDocument.media[0].id },
+      allBlocksDocument,
+    )!;
+    const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+    expect(container.querySelector('.point-composition.point-surface--primary')).toBeTruthy();
+    expect(container.querySelector('.point-text--display')).toHaveTextContent(source.heading);
+    expect(container.querySelector('.point-image--overlay-dark img')).toBeTruthy();
+  });
+
+  it('renders the neutral FAQ starter as an interactive disclosure', () => {
+    const block = compositionPreset('FAQ Item', defaultSiteDocument);
+    const { container } = render(<>{renderBlock(block, defaultSiteDocument)}</>);
+    expect(container.querySelector('details > summary')).toHaveTextContent('Add a question');
+    expect(container.querySelector('details > p')).toHaveTextContent('Add an answer.');
+  });
+
+  it('reserves a responsive footprint for an independently gridded wrapping image', () => {
+    const text = SiteElementSchema.parse({
+      id: crypto.randomUUID(),
+      type: 'text',
+      text: 'Words beside the photo. '.repeat(20),
+      style: 'body',
+      align: 'left',
+    });
+    const image = SiteElementSchema.parse({
+      ...allBlocks.find((block) => block.type === 'image')!,
+      wrap: true,
+    });
+    const section: SectionBlock = {
+      id: crypto.randomUUID(),
+      type: 'section',
+      name: 'Text wrap',
+      layout: 'grid',
+      position: 'flow',
+      columns: 12,
+      gap: 'medium',
+      width: 'site',
+      surface: 'canvas',
+      padding: 'none',
+      minRows: 8,
+      backgroundPosition: 'center',
+      overlay: 'none',
+      items: [
+        {
+          id: crypto.randomUUID(),
+          span: 12,
+          align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+          grid: independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 8 }),
+          element: text,
+        },
+        {
+          id: crypto.randomUUID(),
+          span: 4,
+          align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+          grid: {
+            desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 4 },
+            tablet: { column: 9, row: 1, columnSpan: 4, rowSpan: 4 },
+            mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
+          },
+          element: image,
+        },
+      ],
+    };
+    const { container } = render(<>{renderSection(section, allBlocksDocument)}</>);
+    const textItem = container.querySelector('.point-layout-item--text-wrap');
+    expect(textItem).toHaveStyle({
+      '--point-wrap-desktop-side': 'left',
+      '--point-wrap-desktop-width': 'calc(33.333333% - 0.666667 * var(--point-section-gap))',
+      '--point-wrap-desktop-rows': '4',
+      '--point-wrap-tablet-side': 'right',
+    });
+    expect(textItem).not.toHaveStyle('--point-wrap-mobile-side: left');
+    expect(textItem?.querySelector('.point-text')).toHaveTextContent('Words beside the photo.');
+  });
+
+  it('links an image to an internal page or safe external URL without linking its caption', () => {
+    const source = allBlocks.find((block) => block.type === 'image')!;
+    for (const href of ['/who-we-are', 'https://example.com/photos']) {
+      const block = SiteElementSchema.parse({ ...source, href });
+      const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+      const link = container.querySelector('a.point-image-link');
+      expect(link).toHaveAttribute('href', href);
+      expect(link?.querySelector('img')).toBeTruthy();
+      if (href.startsWith('/')) expect(link).not.toHaveAttribute('target');
+      else expect(link).toHaveAttribute('target', '_blank');
+      expect(link).not.toContainElement(container.querySelector('figcaption'));
+    }
+    expect(SiteElementSchema.safeParse({ ...source, href: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+  });
+
+  it('applies image fit per card without changing legacy card images', () => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const mediaId = allBlocksDocument.media[0].id;
+    const block = SiteElementSchema.parse({
+      ...source,
+      items: [
+        { title: 'Crop', body: 'One', mediaId, mediaFit: 'cover' },
+        { title: 'Stretch', body: 'Two', mediaId, mediaFit: 'stretch' },
+        { title: 'Fit', body: 'Three', mediaId },
+      ],
+    });
+    const { container } = render(<>{renderBlock(block, allBlocksDocument)}</>);
+    expect(
+      [...container.querySelectorAll('img.point-card-media')].map((image) =>
+        image.getAttribute('style'),
+      ),
+    ).toEqual(['object-fit: cover;', 'object-fit: fill;', null]);
+  });
+  it('applies independent card and person image frames and fit', () => {
+    const source = allBlocks.find((block) => block.type === 'cards')!;
+    const people = allBlocks.find((block) => block.type === 'people')!;
+    const document = structuredClone(allBlocksDocument);
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    document.collections.people[0].mediaId = document.media[0].id;
+    document.collections.people[0].mediaFit = 'stretch';
+    document.collections.people[0].mediaFrame = 'square';
+    document.collections.people[0].mediaFocal = { x: 20, y: 40 };
+    document.collections.people.push({
+      ...document.collections.people[0],
+      id: crypto.randomUUID(),
+      name: 'Second person',
+    });
+    document.collections.people[1].mediaFit = 'contain';
+    document.collections.people[1].mediaFrame = 'natural';
+    const cards = SiteElementSchema.parse({
+      ...source,
+      items: [
+        {
+          title: 'Wide',
+          body: '',
+          mediaId: document.media[0].id,
+          mediaFrame: 'landscape',
+          mediaFit: 'cover',
+        },
+        {
+          title: 'Square',
+          body: '',
+          mediaId: document.media[0].id,
+          mediaFrame: 'square',
+          mediaFit: 'stretch',
+        },
+      ],
+    });
+    const { container } = render(
+      <>
+        {renderBlock(cards, document)}
+        {renderBlock(
+          { ...people, personIds: document.collections.people.map((person) => person.id) },
+          document,
+        )}
+      </>,
+    );
+    const cardImages = [...container.querySelectorAll('img.point-card-media')];
+    expect(cardImages.map((image) => image.getAttribute('style'))).toEqual([
+      'object-fit: cover; aspect-ratio: 16 / 9;',
+      'object-fit: fill; aspect-ratio: 1 / 1;',
+    ]);
+    const personImages = [...container.querySelectorAll('.point-people img, .people-grid img')];
+    expect(personImages[0]).toHaveStyle({
+      objectFit: 'fill',
+      aspectRatio: '1 / 1',
+      objectPosition: '20% 40%',
+    });
+    expect(personImages[1]).toHaveStyle({ objectFit: 'contain', aspectRatio: 'auto' });
+  });
+  it('positions the crop on independent, Hero and Card images', () => {
+    const image = allBlocks.find((block) => block.type === 'image')!;
+    const hero = allBlocks.find((block) => block.type === 'hero')!;
+    const cards = allBlocks.find((block) => block.type === 'cards')!;
+    const document = structuredClone(allBlocksDocument);
+    const { container } = render(
+      <>
+        {renderBlock({ ...image, focal: { x: 10, y: 80 } }, document)}
+        {renderBlock(
+          {
+            ...hero,
+            mediaId: document.media[0].id,
+            surface: 'image',
+            mediaFocal: { x: 20, y: 40 },
+          },
+          document,
+        )}
+        {renderBlock(
+          {
+            ...cards,
+            items: [
+              {
+                title: 'Image',
+                body: '',
+                mediaId: document.media[0].id,
+                mediaFocal: { x: 70, y: 30 },
+              },
+            ],
+          },
+          document,
+        )}
+      </>,
+    );
+    expect(container.querySelector('.point-image img')).toHaveStyle({ objectPosition: '10% 80%' });
+    expect(container.querySelector('.point-hero__image')).toHaveStyle({
+      objectPosition: '20% 40%',
+    });
+    expect(container.querySelector('.point-card-media')).toHaveStyle({ objectPosition: '70% 30%' });
+  });
+  it('renders ordered form fields on a responsive grid without changing input semantics', () => {
+    const source = allBlocks.find((block) => block.type === 'form')!;
+    const document = structuredClone(allBlocksDocument);
+    const form = document.forms[0];
+    form.layout = 'grid';
+    form.fields.push({
+      ...form.fields[0],
+      id: crypto.randomUUID(),
+      name: 'second',
+      label: 'Second',
+    });
+    form.fields.forEach((field, index) => {
+      field.grid = independentGridArea({
+        column: index ? 7 : 1,
+        row: 1,
+        columnSpan: 6,
+        rowSpan: 1,
+      });
+    });
+    const { container } = render(<>{renderBlock(source, document)}</>);
+    const fields = [...container.querySelectorAll('.point-form-grid > .field')];
+    expect(fields).toHaveLength(form.fields.length);
+    expect(fields[0]).toHaveAttribute(
+      'style',
+      expect.stringContaining('--point-form-column-desktop: 1'),
+    );
+    expect(fields[1]).toHaveAttribute(
+      'style',
+      expect.stringContaining('--point-form-column-desktop: 7'),
+    );
+    expect(
+      fields.map((field) => field.querySelector('input, textarea, select')?.getAttribute('name')),
+    ).toEqual(form.fields.map((field) => field.name));
+  });
   it.each([
     'standard',
     'splitEditorial',
@@ -311,7 +567,7 @@ describe('controlled public renderer', () => {
   });
 
   it('publishes accessible non-drag structure metadata for every block', () => {
-    expect(Object.keys(blockDefinitions)).toHaveLength(18);
+    expect(Object.keys(blockDefinitions)).toHaveLength(19);
     for (const definition of Object.values(blockDefinitions)) {
       expect(definition.label.length).toBeGreaterThan(0);
       expect(definition.supportsMoveButtons).toBe(true);

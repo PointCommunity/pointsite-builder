@@ -9,11 +9,32 @@ import {
   resolveGridArea,
   resizeGridArea,
   requiredSectionRows,
+  textWrapForItem,
   updateGridArea,
 } from '../../src/site-kit/grid-layout';
 
 describe('responsive grid layout', () => {
   const desktop = { column: 1, row: 1, columnSpan: 6, rowSpan: 4 };
+
+  it('reserves the grid image footprint beside text at each breakpoint', () => {
+    const text = {
+      grid: independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 8 }),
+      element: { type: 'text', text: 'Long paragraph' },
+    };
+    const image = {
+      grid: {
+        desktop: { column: 1, row: 1, columnSpan: 4, rowSpan: 4 },
+        tablet: { column: 9, row: 1, columnSpan: 4, rowSpan: 4 },
+        mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 4 },
+      },
+      element: { type: 'image', wrap: true },
+    };
+    expect(textWrapForItem(text, [text, image])).toEqual({
+      desktop: { side: 'left', columns: 4, textColumns: 12, rows: 4 },
+      tablet: { side: 'right', columns: 4, textColumns: 12, rows: 4 },
+    });
+    expect(textWrapForItem(text, [text, { ...image, element: { type: 'image' } }])).toBeUndefined();
+  });
 
   it('keeps all three breakpoint layouts explicit and independent', () => {
     const grid = {

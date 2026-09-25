@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 91 · Ordered tasks</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #0b100d;
+        color: #eef3ec;
+      }
+      body {
+        max-width: 1040px;
+        margin: auto;
+        padding: 48px 24px 96px;
+      }
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 2.5rem;
+        color: #c3e4ae;
+      }
+      a {
+        color: #b9dafd;
+      }
+      code {
+        color: #f1d394;
+        overflow-wrap: anywhere;
+      }
+      .task {
+        margin: 1rem 0;
+        padding: 1rem 1.25rem;
+        background: #18231b;
+        border: 1px solid #354438;
+        border-radius: 0.5rem;
+      }
+      .task h3 {
+        margin: 0 0 0.5rem;
+      }
+      .task p {
+        margin: 0.35rem 0;
+      }
+      .checkpoint {
+        border-left: 4px solid #a2d782;
+        padding: 0.5rem 1rem;
+        background: #1d2a20;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Issue #91 · Ordered tasks</h1>
+      <p>
+        Implement the <a href="./plan.html">plan</a> against the
+        <a href="./spec.html">approved specification</a>. Each task is a focused slice; listed files
+        are likely touch points, not permission to edit unrelated work. Start each behavior with a
+        failing focused test, then verify green. No task is complete from unit evidence alone when
+        its acceptance includes browser behavior.
+      </p>
+
+      <h2>Foundation and rollback-safe reader</h2>
+      <section class="task">
+        <h3>☑ T01 · Baseline legacy render inventory</h3>
+        <p>
+          <strong>Acceptance:</strong> existing catalog fixture covers registered variants;
+          default-route, header and footer tests preserve current rendering. No new fixture needed.
+        </p>
+        <p>
+          <strong>Verify:</strong>
+          <code
+            >npm test -- --run tests/unit/renderer.test.tsx tests/unit/default-site.test.ts
+            --maxWorkers=4</code
+          >: 46 tests passed on 2026-09-22.
+        </p>
+        <p>
+          <strong>Depends:</strong> none. <strong>Files:</strong> existing
+          <code>tests/fixtures/block-data.tsx</code>, <code>tests/unit/renderer.test.tsx</code>,
+          <code>tests/unit/default-site.test.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T02 · Versioned composed document contract</h3>
+        <p>
+          <strong>Acceptance:</strong> bounded groups, stable child IDs, semantic leaves, responsive
+          grid/layer fields validate; unsafe links and invalid depth fail; v9–v11 remain readable.
+        </p>
+        <p>
+          <strong>Verify:</strong> new RED/GREEN schema tests plus <code>npm run typecheck</code>.
+        </p>
+        <p>
+          <strong>Depends:</strong> T01. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/types.ts</code>,
+          <code>src/site-kit/version.ts</code>, <code>tests/unit/document-versioning.test.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T03 · Deterministic legacy migration</h3>
+        <p>
+          <strong>Acceptance:</strong> repeated migration preserves legacy content and renderer
+          identity, new groups have unique IDs, and previous revisions remain recoverable.
+        </p>
+        <p>
+          <strong>Verify:</strong> migration tests with v9–v11 fixtures and idempotent readback.
+        </p>
+        <p>
+          <strong>Depends:</strong> T02. <strong>Files:</strong>
+          <code>src/site-kit/migrations.ts</code>,
+          <code>tests/unit/document-versioning.test.ts</code>,
+          <code>tests/fixtures/site-documents.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T04 · Shared composed renderer</h3>
+        <p>
+          <strong>Acceptance:</strong> composed children render from logical order with responsive
+          areas and bounded visual layers; unchanged legacy variants retain existing output.
+        </p>
+        <p>
+          <strong>Verify:</strong> renderer tests for semantic text, image, form and overlap;
+          <code>npm run typecheck</code>.
+        </p>
+        <p>
+          <strong>Depends:</strong> T02–T03. <strong>Files:</strong>
+          <code>src/site-kit/registry.tsx</code>, <code>src/site-kit/site.css</code>,
+          <code>tests/unit/renderer.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T05 · Native persistence and rollback reader</h3>
+        <p>
+          <strong>Acceptance:</strong> old and new documents save/reopen/revise without loss; a
+          retained baseline can safely read new data before any authoring write activates.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused memory/native repository upgrade and previous-image
+          rehearsal; migration recovery plan recorded in PR.
+        </p>
+        <p>
+          <strong>Depends:</strong> T03–T04. <strong>Files:</strong>
+          <code>src/server/repositories/d1.ts</code>,
+          <code>src/server/repositories/memory.ts</code>,
+          <code>tests/integration/native-migrations.test.ts</code>,
+          <code>tests/unit/document-versioning.test.ts</code>.
+        </p>
+      </section>
+      <p class="checkpoint">
+        <strong>Checkpoint A:</strong> legacy parity, migration and native rollback tests pass.
+        Qualify and retain the reader-capable Canary image before any new format is writable in
+        Production. The complete candidate still has one PM approval gate after testable Canary.
+      </p>
+
+      <h2>Composed authoring</h2>
+      <section class="task">
+        <h3>☐ T06 · Puck composition round-trip</h3>
+        <p>
+          <strong>Acceptance:</strong> nested group children serialize through Puck, action
+          autosave, checkout, undo/redo and reopen with stable identities.
+        </p>
+        <p>
+          <strong>Verify:</strong> focused Puck data and action tests, then a browser round-trip.
+        </p>
+        <p>
+          <strong>Depends:</strong> T05. <strong>Files:</strong>
+          <code>src/client/editor/VisualEditor.tsx</code>,
+          <code>src/client/editor/puck-grid-data.ts</code>,
+          <code>tests/unit/puck-grid-data.test.ts</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T07 · Nested grid controls</h3>
+        <p>
+          <strong>Acceptance:</strong> children move/resize from edges/corners at each breakpoint;
+          keyboard and touch alternatives work; layer order and collision choices are explicit.
+        </p>
+        <p><strong>Verify:</strong> grid unit tests and browser gesture/keyboard checks.</p>
+        <p>
+          <strong>Depends:</strong> T06. <strong>Files:</strong>
+          <code>src/site-kit/grid-layout.ts</code>, <code>src/client/editor/GridOverlay.tsx</code>,
+          <code>src/client/editor/editor-canvas.css</code>,
+          <code>tests/unit/grid-layout.test.ts</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T08 · Semantic, independent text</h3>
+        <p>
+          <strong>Acceptance:</strong> add two text children to a Hero/group, choose H1–H6 or
+          paragraph, style/position/resize independently and preserve logical reading order.
+        </p>
+        <p>
+          <strong>Verify:</strong> schema/renderer tests plus desktop/tablet/mobile browser edit and
+          refresh.
+        </p>
+        <p>
+          <strong>Depends:</strong> T06–T07. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>tests/unit/renderer.test.tsx</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T09 · Empty Properties text</h3>
+        <p>
+          <strong>Acceptance:</strong> every authored text input/textarea can be cleared and saved;
+          no empty heading, paragraph or button appears; accessible controls retain a name or
+          actionable publish feedback.
+        </p>
+        <p>
+          <strong>Verify:</strong> blank-field schema/inspector tests and
+          select-all/delete/save/reopen/undo browser flow.
+        </p>
+        <p>
+          <strong>Depends:</strong> T08. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>tests/unit/renderer.test.tsx</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <p class="checkpoint">
+        <strong>Checkpoint B:</strong> one complete composed region persists independent text
+        positions at all three widths; legacy pages remain visually unchanged; focused type,
+        renderer, autosave and browser checks pass.
+      </p>
+
+      <h2>Media, forms and site inventory</h2>
+      <section class="task">
+        <h3>☐ T10 · Optional Image hyperlinks</h3>
+        <p>
+          <strong>Acceptance:</strong> no link, Internal page dropdown and External URL input are
+          available; rendered image is link only when selected; unsafe URLs cannot save/publish.
+        </p>
+        <p>
+          <strong>Verify:</strong> link schema/inspector/renderer tests and click-through browser
+          flow.
+        </p>
+        <p>
+          <strong>Depends:</strong> T06. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>src/client/editor/LinkDestinationField.tsx</code>,
+          <code>tests/unit/link-destination-field.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T11 · Independent image appearance</h3>
+        <p>
+          <strong>Acceptance:</strong> image child can resize, cover/crop with focal point, contain
+          or stretch, layer above/below text, overlay and wrap where applicable; meaningful alt
+          remains.
+        </p>
+        <p>
+          <strong>Verify:</strong> mixed-aspect renderer fixtures and browser checks at three widths
+          and 200% zoom.
+        </p>
+        <p>
+          <strong>Depends:</strong> T07, T10. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/site-kit/site.css</code>, <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>tests/unit/renderer.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T12 · Per-Card and per-Person media controls</h3>
+        <p>
+          <strong>Acceptance:</strong> each Card and People image independently chooses
+          fit/crop/stretch and frame; missing/text-only images remain valid and linked collection
+          data survives.
+        </p>
+        <p>
+          <strong>Verify:</strong> mixed-aspect Card/People fixtures plus save/reopen and
+          publication render parity.
+        </p>
+        <p>
+          <strong>Depends:</strong> T11. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/site-kit/site.css</code>, <code>src/client/editor/BlockInspector.tsx</code>,
+          <code>tests/unit/renderer.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T13 · Form field grid</h3>
+        <p>
+          <strong>Acceptance:</strong> Form Designer positions fields on responsive grid without
+          changing labels, required state, validation, submission, privacy or focus order.
+        </p>
+        <p>
+          <strong>Verify:</strong> form unit tests, submit integration test and keyboard browser
+          flow.
+        </p>
+        <p>
+          <strong>Depends:</strong> T07. <strong>Files:</strong>
+          <code>src/site-kit/schema.ts</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/client/settings/FormsEditor.tsx</code>, <code>src/site-kit/site.css</code>,
+          <code>tests/unit/forms-editor.test.tsx</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T14 · Composable contact and repeaters</h3>
+        <p>
+          <strong>Acceptance:</strong> current contact presentation and Cards/People/FAQ can be
+          rebuilt with independent text, links, media, reusable form/collection content; arrangement
+          changes do not lose behavior.
+        </p>
+        <p>
+          <strong>Verify:</strong> isolated browser reconstruction and form/collection regression
+          tests.
+        </p>
+        <p>
+          <strong>Depends:</strong> T08, T11–T13. <strong>Files:</strong>
+          <code>src/client/editor/VisualEditor.tsx</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>src/site-kit/default-site.ts</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <p class="checkpoint">
+        <strong>Checkpoint C:</strong> Cards, People, Form and contact flows pass render,
+        persistence and browser tests without Point-only authoring choices.
+      </p>
+
+      <h2>Presets, direct drops and final parity</h2>
+      <section class="task">
+        <h3>☐ T15 · Brand-neutral layouts and legacy conversion</h3>
+        <p>
+          <strong>Acceptance:</strong> Standard Hero plus generic alternatives insert editable
+          primitives; Point-specific choices are not offered for new content; existing variants
+          remain readable and convert without losing content.
+        </p>
+        <p>
+          <strong>Verify:</strong> fixture conversion tests and screenshot-layout rebuild in an
+          isolated browser draft.
+        </p>
+        <p>
+          <strong>Depends:</strong> T08, T11, T14. <strong>Files:</strong>
+          <code>src/client/editor/VisualEditor.tsx</code>,
+          <code>src/client/editor/BlockInspector.tsx</code>, <code>src/site-kit/registry.tsx</code>,
+          <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T16 · Global header, navigation and footer</h3>
+        <p>
+          <strong>Acceptance:</strong> global content uses the same composed grid controls;
+          navigation and footer remain semantic, keyboard-operable and synchronized across pages.
+        </p>
+        <p>
+          <strong>Verify:</strong> global-region renderer tests and browser navigation/footer
+          editing.
+        </p>
+        <p>
+          <strong>Depends:</strong> T07, T15. <strong>Files:</strong>
+          <code>src/site-kit/registry.tsx</code>, <code>src/site-kit/SiteRenderer.tsx</code>,
+          <code>src/client/editor/VisualEditor.tsx</code>, <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T17 · Direct-page Image container</h3>
+        <p>
+          <strong>Acceptance:</strong> dropping Image outside a section on empty/populated page
+          creates a persisted grid container at pointer position, selects image, exposes handles,
+          and leaves other sections untouched.
+        </p>
+        <p>
+          <strong>Verify:</strong> root-drop intent unit test and browser
+          move/resize/duplicate/delete/save flow at three widths.
+        </p>
+        <p>
+          <strong>Depends:</strong> T06–T07, T11. <strong>Files:</strong>
+          <code>src/client/editor/VisualEditor.tsx</code>,
+          <code>src/client/editor/grid-drag-preview.ts</code>,
+          <code>tests/unit/grid-drag-preview.test.ts</code>,
+          <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T18 · True block phantom</h3>
+        <p>
+          <strong>Acceptance:</strong> prospective text, image, card and form render translucently
+          at actual snapped size/position; direct Image preview includes container; invalid/cancel
+          never mutate document.
+        </p>
+        <p>
+          <strong>Verify:</strong> phantom intent unit tests, browser image/geometry comparisons and
+          cancellation.
+        </p>
+        <p>
+          <strong>Depends:</strong> T15, T17. <strong>Files:</strong>
+          <code>src/client/editor/VisualEditor.tsx</code>,
+          <code>src/client/editor/grid-drag-preview.ts</code>,
+          <code>src/client/editor/editor-canvas.css</code>,
+          <code>tests/unit/grid-drag-preview.test.ts</code>,
+          <code>tests/e2e/authoring.spec.ts</code>.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T19 · Publication renderer parity</h3>
+        <p>
+          <strong>Acceptance:</strong> same saved revision renders equal structure/style in Layout,
+          Preview, generated output and governed publication renderer; safe destinations and asset
+          references survive.
+        </p>
+        <p>
+          <strong>Verify:</strong> renderer-contract test, publication preview integration and
+          isolated generated-output comparison. No public publication from chat.
+        </p>
+        <p>
+          <strong>Depends:</strong> T04–T18. <strong>Files:</strong>
+          <code>src/server/publish/renderer-contract.ts</code>,
+          <code>tests/unit/renderer-contract.test.ts</code>,
+          <code>tests/integration/publish-migration.test.ts</code>,
+          <code>tests/e2e/publishing.spec.ts</code>. Publication counterpart reviewed separately.
+        </p>
+      </section>
+      <section class="task">
+        <h3>☐ T20 · Full QA, Canary and PM handoff</h3>
+        <p>
+          <strong>Acceptance:</strong> all Issue criteria have evidence; exact reviewed source/tree
+          passes local and GitHub gates; healthy Canary matches that candidate; task-owned
+          processes/output are cleaned.
+        </p>
+        <p>
+          <strong>Verify:</strong> <code>node scripts/local-qa.mjs prepare</code>; sequential
+          <code>npm run check</code>, <code>npm run test:performance</code>,
+          <code>npm run test:e2e -- --workers=2</code>; <code>npm run pipeline:health</code>;
+          <code>git diff --check</code>; <code>node scripts/local-qa.mjs cleanup</code> even on
+          failure. The sole PM approval follows testing of the exact healthy Canary candidate;
+          Production Showcase completion needs no second approval.
+        </p>
+        <p>
+          <strong>Depends:</strong> T01–T19. <strong>Files:</strong> no additional application files
+          expected; existing Issue/PR evidence.
+        </p>
+      </section>
+      <p class="checkpoint">
+        <strong>Completion gate:</strong> agent QA is not PM acceptance. Preserve the sole active
+        Issue through exact Canary approval, Production promotion and PM Showcase; close after
+        verified Production and full Issue acceptance without another approval.
+      </p>
+    </main>
+  </body>
+</html>

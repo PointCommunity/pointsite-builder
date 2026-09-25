@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { CSSProperties, HTMLAttributes, Ref } from 'react';
 import type { ElementPlacement, SectionBlock, SiteDocument, SiteElement } from './types';
+import { textWrapForItem, type TextWrapFootprint } from './grid-layout';
 import { youtubeEmbedUrl } from './linked-media';
 
 export const blockDefinitions: Record<
@@ -33,6 +34,7 @@ export const blockDefinitions: Record<
   button: { label: 'Button', supportsMoveButtons: true },
   navigation: { label: 'Navigation', supportsMoveButtons: true },
   socialLinks: { label: 'Social links', supportsMoveButtons: true },
+  composition: { label: 'Group', supportsMoveButtons: true },
 };
 
 function linkAttributes(href: string) {
@@ -48,6 +50,7 @@ function ActionLink({
   action: { label: string; href: string; style: string };
   className?: string;
 }) {
+  if (!action.label) return null;
   return (
     <a
       className={`button point-button point-button--${action.style} ${className}`.trim()}
@@ -95,7 +98,7 @@ function NavigationBlock({
         className={
           open ? 'point-navigation__menu point-navigation__menu--open' : 'point-navigation__menu'
         }
-        aria-label={block.label}
+        aria-label={block.label || 'Site navigation'}
         onClick={() => setOpen(false)}
       >
         {navigation.map((item) => (
@@ -143,7 +146,12 @@ function mediaRecord(document: SiteDocument, id: string) {
   return media;
 }
 
+function focalStyle(point?: { x: number; y: number }): CSSProperties | undefined {
+  return point ? { objectPosition: `${point.x}% ${point.y}%` } : undefined;
+}
+
 function TextLines({ text }: { text: string }) {
+  if (!text) return null;
   return text.split(/\n{2,}/).map((line, index) => (
     <p key={`${line.slice(0, 24)}-${index}`}>
       {line.split('\n').map((part, partIndex) => (
@@ -184,6 +192,13 @@ function HeroTextBox({
 
 type CardItem = Extract<SiteElement, { type: 'cards' }>['items'][number];
 
+const frameRatios = {
+  natural: 'auto',
+  portrait: '4 / 5',
+  square: '1',
+  landscape: '16 / 9',
+} as const;
+
 function CardMedia({
   item,
   document,
@@ -201,6 +216,17 @@ function CardMedia({
       loading="lazy"
       width={1600}
       height={900}
+      style={
+        item.mediaFit || item.mediaFrame || item.mediaFocal
+          ? {
+              ...(item.mediaFit
+                ? { objectFit: item.mediaFit === 'stretch' ? 'fill' : item.mediaFit }
+                : {}),
+              ...(item.mediaFrame ? { aspectRatio: frameRatios[item.mediaFrame] } : {}),
+              ...(item.mediaFocal ? focalStyle(item.mediaFocal) : {}),
+            }
+          : undefined
+      }
     />
   ) : reserve ? (
     <span className="point-card-media" aria-hidden="true" />
@@ -215,8 +241,22 @@ function CardLink({ item }: { item: CardItem }) {
   ) : null;
 }
 
+function formGridStyle(
+  grid?: NonNullable<SiteDocument['forms'][number]['fields'][number]['grid']>,
+): CSSProperties | undefined {
+  if (!grid) return undefined;
+  return Object.fromEntries(
+    (['desktop', 'tablet', 'mobile'] as const).flatMap((breakpoint) => [
+      [`--point-form-column-${breakpoint}`, grid[breakpoint].column],
+      [`--point-form-row-${breakpoint}`, grid[breakpoint].row],
+      [`--point-form-span-${breakpoint}`, grid[breakpoint].columnSpan],
+      [`--point-form-height-${breakpoint}`, grid[breakpoint].rowSpan],
+    ]),
+  );
+}
+
 function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
-  return form.fields.map((field) => {
+  const fields = form.fields.map((field, index) => {
     const describedBy = field.helpText ? `${field.id}-help` : undefined;
     const label = (
       <>
@@ -226,12 +266,17 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     );
     if (field.type === 'textarea') {
       return (
-        <div className={`field field--textarea field--${field.width}`} key={field.id}>
+        <div
+          className={`field field--textarea field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+        >
           <label htmlFor={field.id}>{label}</label>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <textarea
             id={field.id}
             name={field.name}
+            aria-label={field.label ? undefined : `Form field ${index + 1}`}
             required={field.required}
             placeholder={field.placeholder}
             aria-describedby={describedBy}
@@ -242,12 +287,17 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     }
     if (field.type === 'select') {
       return (
-        <div className={`field field--${field.width}`} key={field.id}>
+        <div
+          className={`field field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+        >
           <label htmlFor={field.id}>{label}</label>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <select
             id={field.id}
             name={field.name}
+            aria-label={field.label ? undefined : `Form field ${index + 1}`}
             required={field.required}
             aria-describedby={describedBy}
             defaultValue=""
@@ -264,7 +314,12 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
     }
     if (field.type === 'radio' || field.type === 'checkbox') {
       return (
-        <fieldset className={`field field--${field.type} field--${field.width}`} key={field.id}>
+        <fieldset
+          className={`field field--${field.type} field--${field.width}`}
+          key={field.id}
+          style={formGridStyle(field.grid)}
+          aria-label={field.label ? undefined : `Form field ${index + 1}`}
+        >
           <legend>{label}</legend>
           {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
           <div className="choice-list">
@@ -274,6 +329,7 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
                   type={field.type}
                   name={field.name}
                   value={option}
+                  aria-label={option ? undefined : `Choice ${index + 1}`}
                   required={field.required && field.type === 'radio'}
                   aria-describedby={describedBy}
                 />
@@ -285,13 +341,18 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
       );
     }
     return (
-      <div className={`field field--${field.width}`} key={field.id}>
+      <div
+        className={`field field--${field.width}`}
+        key={field.id}
+        style={formGridStyle(field.grid)}
+      >
         <label htmlFor={field.id}>{label}</label>
         {field.helpText ? <small id={describedBy}>{field.helpText}</small> : null}
         <input
           id={field.id}
           type={field.type}
           name={field.name}
+          aria-label={field.label ? undefined : `Form field ${index + 1}`}
           required={field.required}
           placeholder={field.placeholder}
           aria-describedby={describedBy}
@@ -299,29 +360,32 @@ function FormFields({ form }: { form: SiteDocument['forms'][number] }) {
       </div>
     );
   });
+  return form.layout === 'grid' ? <div className="point-form-grid">{fields}</div> : fields;
 }
 
 function FormPanel({
   form,
   heading,
   supportingText,
+  legacyChrome,
 }: {
   form: SiteDocument['forms'][number];
   heading?: string;
   supportingText?: string;
+  legacyChrome: boolean;
 }) {
   const action = `mailto:${form.recipientEmail}?subject=${encodeURIComponent(form.subject)}`;
   const [status, setStatus] = useState('');
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const lines = form.fields.flatMap((field) => {
+    const lines = form.fields.flatMap((field, index) => {
       const values = data
         .getAll(field.name)
         .map((value) => (typeof value === 'string' ? value : value.name))
         .filter(Boolean)
         .join(', ');
-      return values ? [`${field.label}: ${values}`] : [];
+      return values ? [`${field.label || `Form field ${index + 1}`}: ${values}`] : [];
     });
     setStatus(form.successMessage ?? 'Your email app is opening with this request ready to send.');
     const emailLink = globalThis.document.createElement('a');
@@ -334,8 +398,10 @@ function FormPanel({
   return (
     <section className="form-panel">
       <div className="form-heading">
-        <p className="eyebrow">Get connected</p>
-        <h2>{heading ?? form.heading ?? form.name}</h2>
+        {legacyChrome ? <p className="eyebrow">Get connected</p> : null}
+        {(heading ?? form.heading ?? form.name) ? (
+          <h2>{heading ?? form.heading ?? form.name}</h2>
+        ) : null}
         {supportingText || form.introduction ? <p>{supportingText ?? form.introduction}</p> : null}
       </div>
       <form
@@ -346,13 +412,21 @@ function FormPanel({
         onSubmit={submit}
       >
         <FormFields form={form} />
-        <button className="button button--dark" type="submit">
+        <button
+          className="button button--dark"
+          type="submit"
+          aria-label={form.submitLabel ? undefined : 'Submit form'}
+        >
           {form.submitLabel}
         </button>
-        <p className="form-note">
-          {form.privacyNote ??
-            'Submitting opens your email app so you can review the message before sending it directly to Point ATX.'}
-        </p>
+        {form.privacyNote !== '' ? (
+          <p className="form-note">
+            {form.privacyNote ??
+              (legacyChrome
+                ? 'Submitting opens your email app so you can review the message before sending it directly to Point ATX.'
+                : 'Submitting opens your email app so you can review the message before sending it.')}
+          </p>
+        ) : null}
         <p className="form-status" role="status" aria-live="polite">
           {status}
         </p>
@@ -364,6 +438,19 @@ function FormPanel({
 function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
   return block.content.map((node, index) => {
     const key = `${node.type}-${index}`;
+    if (node.type === 'paragraph' && node.children.every((child) => !child.text)) return null;
+    if (
+      (node.type === 'bulletedList' || node.type === 'numberedList') &&
+      node.items.every((item) => !item)
+    )
+      return null;
+    if (
+      node.type !== 'paragraph' &&
+      node.type !== 'bulletedList' &&
+      node.type !== 'numberedList' &&
+      !node.text
+    )
+      return null;
     if (node.type === 'paragraph')
       return (
         <p key={key}>
@@ -383,17 +470,13 @@ function renderRichContent(block: Extract<SiteElement, { type: 'richText' }>) {
     if (node.type === 'bulletedList')
       return (
         <ul key={key}>
-          {node.items.map((item, itemIndex) => (
-            <li key={itemIndex}>{item}</li>
-          ))}
+          {node.items.map((item, itemIndex) => (item ? <li key={itemIndex}>{item}</li> : null))}
         </ul>
       );
     if (node.type === 'numberedList')
       return (
         <ol key={key}>
-          {node.items.map((item, itemIndex) => (
-            <li key={itemIndex}>{item}</li>
-          ))}
+          {node.items.map((item, itemIndex) => (item ? <li key={itemIndex}>{item}</li> : null))}
         </ol>
       );
     if (node.type === 'quote')
@@ -429,7 +512,9 @@ export function renderBlock(
           <section
             className={`page-hero page-hero--${block.surface}${hasImage ? ' page-hero--image' : ''} point-align--${block.align}`}
           >
-            {hasImage ? <img src={media?.sourcePath} alt="" /> : null}
+            {hasImage ? (
+              <img src={media?.sourcePath} alt="" style={focalStyle(block.mediaFocal)} />
+            ) : null}
             {hasImage ? <div className="hero-shade" aria-hidden="true" /> : null}
             <div className="shell page-hero-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
@@ -438,7 +523,7 @@ export function renderBlock(
                 width={block.headingWidth}
                 resizeHandle={heroResizeHandle}
               >
-                <h1>{block.heading}</h1>
+                {block.heading ? <h1>{block.heading}</h1> : null}
               </HeroTextBox>
               {block.body ? (
                 <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -460,7 +545,7 @@ export function renderBlock(
         return (
           <section className={`home-hero home-hero--${block.align} home-hero--${block.surface}`}>
             {media && block.surface === 'image' ? (
-              <img src={media.sourcePath} alt={media.alt} />
+              <img src={media.sourcePath} alt={media.alt} style={focalStyle(block.mediaFocal)} />
             ) : null}
             {block.surface === 'image' ? <div className="hero-shade" /> : null}
             <div className="home-hero-copy shell">
@@ -470,7 +555,7 @@ export function renderBlock(
                 width={block.headingWidth}
                 resizeHandle={heroResizeHandle}
               >
-                <h1>{block.heading}</h1>
+                {block.heading ? <h1>{block.heading}</h1> : null}
               </HeroTextBox>
               {block.body ? (
                 <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -492,13 +577,18 @@ export function renderBlock(
           className={`point-hero point-surface--${block.surface} point-align--${block.align}`}
         >
           {media && block.surface === 'image' ? (
-            <img src={media.sourcePath} alt={media.alt} className="point-hero__image" />
+            <img
+              src={media.sourcePath}
+              alt={media.alt}
+              className="point-hero__image"
+              style={focalStyle(block.mediaFocal)}
+            />
           ) : null}
           {block.surface === 'image' ? <div className="point-overlay" aria-hidden="true" /> : null}
           <div className="shell point-hero__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             <HeroTextBox kind="heading" width={block.headingWidth} resizeHandle={heroResizeHandle}>
-              <h1>{block.heading}</h1>
+              {block.heading ? <h1>{block.heading}</h1> : null}
             </HeroTextBox>
             {block.body ? (
               <HeroTextBox kind="body" width={block.bodyWidth} resizeHandle={heroResizeHandle}>
@@ -522,14 +612,16 @@ export function renderBlock(
             className={`home-intro home-intro--${block.width} point-align--${block.align} shell`}
           >
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <Heading>
-              {block.text.split('\n').map((line, index) => (
-                <Fragment key={index}>
-                  {index ? ' ' : null}
-                  <span>{line}</span>
-                </Fragment>
-              ))}
-            </Heading>
+            {block.text ? (
+              <Heading>
+                {block.text.split('\n').map((line, index) => (
+                  <Fragment key={index}>
+                    {index ? ' ' : null}
+                    <span>{line}</span>
+                  </Fragment>
+                ))}
+              </Heading>
+            ) : null}
             {block.supportingText ? <p>{block.supportingText}</p> : null}
             <div className="button-row">
               {block.actions?.map((action, index) => (
@@ -543,7 +635,7 @@ export function renderBlock(
           className={`content-section point-heading point-heading--${block.width} point-align--${block.align}`}
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-          <Heading>{block.text}</Heading>
+          {block.text ? <Heading>{block.text}</Heading> : null}
           {block.supportingText ? <p>{block.supportingText}</p> : null}
           {block.actions?.length ? (
             <div className="point-actions">
@@ -572,28 +664,41 @@ export function renderBlock(
       );
     case 'image': {
       const media = mediaRecord(document, block.mediaId);
+      const image = (
+        <img
+          src={media.sourcePath}
+          alt={block.alt}
+          width={block.variant === 'wide' ? '1000' : undefined}
+          height={block.variant === 'wide' ? '668' : undefined}
+          loading="lazy"
+          className={`point-fit--${block.fit}`}
+          style={focalStyle(block.focal)}
+        />
+      );
+      const visual = block.href ? (
+        <a
+          className="point-image-link"
+          href={block.href}
+          aria-label={block.alt ? undefined : block.caption || media.alt || 'Image link'}
+          {...linkAttributes(block.href)}
+        >
+          {image}
+        </a>
+      ) : (
+        image
+      );
       return block.variant === 'wide' ? (
         <section
-          className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}`}
+          className={`content-section wide-photo point-aspect--${block.aspect.replace(':', '-')}${block.overlay && block.overlay !== 'none' ? ` point-image--overlay-${block.overlay}` : ''}`}
         >
-          <img
-            src={media.sourcePath}
-            alt={block.alt}
-            width="1000"
-            height="668"
-            loading="lazy"
-            className={`point-fit--${block.fit}`}
-          />
+          {visual}
           {block.caption ? <p>{block.caption}</p> : null}
         </section>
       ) : (
-        <figure className={`point-image point-aspect--${block.aspect.replace(':', '-')}`}>
-          <img
-            src={media.sourcePath}
-            alt={block.alt}
-            loading="lazy"
-            className={`point-fit--${block.fit}`}
-          />
+        <figure
+          className={`point-image point-aspect--${block.aspect.replace(':', '-')}${block.overlay && block.overlay !== 'none' ? ` point-image--overlay-${block.overlay}` : ''}`}
+        >
+          {visual}
           {block.caption ? <figcaption>{block.caption}</figcaption> : null}
         </figure>
       );
@@ -633,12 +738,17 @@ export function renderBlock(
           <section
             className={`home-feature home-feature--photo point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
           >
-            <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+            <img
+              src={media.sourcePath}
+              alt={block.mediaAlt ?? media.alt}
+              loading="lazy"
+              style={focalStyle(block.mediaFocal)}
+            />
             <div className="feature-shade" />
             <div className="feature-copy shell">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>{block.heading}</h2>
-              <p>{block.body}</p>
+              {block.heading ? <h2>{block.heading}</h2> : null}
+              {block.body ? <p>{block.body}</p> : null}
               {block.note ? (
                 <p>
                   <small>{block.note}</small>
@@ -660,11 +770,16 @@ export function renderBlock(
             className={`home-feature home-feature--split point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface} shell`}
           >
             <div className="feature-image">
-              <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+              <img
+                src={media.sourcePath}
+                alt={block.mediaAlt ?? media.alt}
+                loading="lazy"
+                style={focalStyle(block.mediaFocal)}
+              />
             </div>
             <div className="feature-copy">
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>{block.heading}</h2>
+              {block.heading ? <h2>{block.heading}</h2> : null}
               <TextLines text={block.body} />
               {block.note ? (
                 <p>
@@ -693,18 +808,21 @@ export function renderBlock(
                 width="500"
                 height="624"
                 loading="lazy"
+                style={focalStyle(block.mediaFocal)}
               />
             </div>
             <div>
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>
-                {block.heading.split('\n').map((line, index) => (
-                  <Fragment key={line}>
-                    {index ? <br /> : null}
-                    {line}
-                  </Fragment>
-                ))}
-              </h2>
+              {block.heading ? (
+                <h2>
+                  {block.heading.split('\n').map((line, index) => (
+                    <Fragment key={line}>
+                      {index ? <br /> : null}
+                      {line}
+                    </Fragment>
+                  ))}
+                </h2>
+              ) : null}
               <TextLines text={block.body} />
               {block.note ? (
                 <p>
@@ -726,11 +844,16 @@ export function renderBlock(
           className={`point-feature point-feature--${block.mediaSide} point-feature--${block.proportion} point-align--${block.textAlign ?? 'left'} point-align-vertical--${block.align} point-surface--${block.surface}`}
         >
           <div className="point-feature__media">
-            <img src={media.sourcePath} alt={block.mediaAlt ?? media.alt} loading="lazy" />
+            <img
+              src={media.sourcePath}
+              alt={block.mediaAlt ?? media.alt}
+              loading="lazy"
+              style={focalStyle(block.mediaFocal)}
+            />
           </div>
           <div className="point-feature__content">
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <h2>{block.heading}</h2>
+            {block.heading ? <h2>{block.heading}</h2> : null}
             <TextLines text={block.body} />
             {block.note ? (
               <p>
@@ -759,7 +882,7 @@ export function renderBlock(
         >
           <div>
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-            <h2>{block.heading}</h2>
+            {block.heading ? <h2>{block.heading}</h2> : null}
             {block.body ? <p>{block.body}</p> : null}
           </div>
           <ActionLink action={block.action} />
@@ -777,7 +900,7 @@ export function renderBlock(
               <div key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} reserve={reserveMedia} />
-                <h2>{item.title}</h2>
+                {item.title ? <h2>{item.title}</h2> : null}
                 <TextLines text={item.body} />
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
                 <CardLink item={item} />
@@ -795,8 +918,12 @@ export function renderBlock(
                 <p key={index}>
                   {item.eyebrow ? <span className="eyebrow">{item.eyebrow}</span> : null}
                   <CardMedia item={item} document={document} reserve={reserveMedia} />
-                  <strong>{item.title}</strong>
-                  <br />
+                  {item.title ? (
+                    <>
+                      <strong>{item.title}</strong>
+                      <br />
+                    </>
+                  ) : null}
                   {item.body}
                   {item.supportingText ? (
                     <>
@@ -827,8 +954,8 @@ export function renderBlock(
                   <div>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                     <CardMedia item={item} document={document} reserve={reserveMedia} />
-                    <h2>{item.title}</h2>
-                    <p>{item.body}</p>
+                    {item.title ? <h2>{item.title}</h2> : null}
+                    {item.body ? <p>{item.body}</p> : null}
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
                     <CardLink item={item} />
                   </div>
@@ -852,12 +979,14 @@ export function renderBlock(
                   <article key={index}>
                     {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                     <CardMedia item={item} document={document} reserve={reserveMedia} />
-                    <h2>{item.title}</h2>
-                    <p className="group-time">{schedule}</p>
-                    <p>{location}</p>
-                    <p>
-                      <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
-                    </p>
+                    {item.title ? <h2>{item.title}</h2> : null}
+                    {schedule ? <p className="group-time">{schedule}</p> : null}
+                    {location ? <p>{location}</p> : null}
+                    {leaders ? (
+                      <p>
+                        <strong>Leaders:</strong> {leaders.replace(/^Leaders:\s*/, '')}
+                      </p>
+                    ) : null}
                     {item.supportingText ? <small>{item.supportingText}</small> : null}
                     <CardLink item={item} />
                   </article>
@@ -880,8 +1009,8 @@ export function renderBlock(
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                   <CardMedia item={item} document={document} reserve={reserveMedia} />
-                  <h2>{item.title}</h2>
-                  <p>{item.body}</p>
+                  {item.title ? <h2>{item.title}</h2> : null}
+                  {item.body ? <p>{item.body}</p> : null}
                   {item.supportingText ? <small>{item.supportingText}</small> : null}
                   {item.href ? (
                     <a
@@ -906,8 +1035,8 @@ export function renderBlock(
               <article className="point-card" key={index}>
                 {item.eyebrow ? <p className="eyebrow">{item.eyebrow}</p> : null}
                 <CardMedia item={item} document={document} reserve={reserveMedia} />
-                <h3>{item.title}</h3>
-                <p>{item.body}</p>
+                {item.title ? <h3>{item.title}</h3> : null}
+                {item.body ? <p>{item.body}</p> : null}
                 {item.supportingText ? <small>{item.supportingText}</small> : null}
                 {item.href ? (
                   <a href={item.href} {...linkAttributes(item.href)}>
@@ -944,6 +1073,22 @@ export function renderBlock(
                       width={block.variant === 'horizontal' ? 1600 : 500}
                       height={block.variant === 'horizontal' ? 900 : 625}
                       loading="lazy"
+                      style={
+                        person.mediaFit || person.mediaFrame || person.mediaFocal
+                          ? {
+                              ...(person.mediaFit
+                                ? {
+                                    objectFit:
+                                      person.mediaFit === 'stretch' ? 'fill' : person.mediaFit,
+                                  }
+                                : {}),
+                              ...(person.mediaFrame
+                                ? { aspectRatio: frameRatios[person.mediaFrame] }
+                                : {}),
+                              ...(person.mediaFocal ? focalStyle(person.mediaFocal) : {}),
+                            }
+                          : undefined
+                      }
                     />
                   ) : (
                     <div className="person-placeholder" aria-hidden="true">
@@ -967,12 +1112,14 @@ export function renderBlock(
         >
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
-          {block.items.map((item, index) => (
-            <details key={index} open={item.initiallyOpen}>
-              <summary>{item.question}</summary>
-              <p>{item.answer}</p>
-            </details>
-          ))}
+          {block.items.map((item, index) =>
+            item.question ? (
+              <details key={index} open={item.initiallyOpen}>
+                <summary>{item.question}</summary>
+                {item.answer ? <p>{item.answer}</p> : null}
+              </details>
+            ) : null,
+          )}
         </section>
       );
     case 'form': {
@@ -983,14 +1130,16 @@ export function renderBlock(
           <section className="content-section contact-grid">
             <div>
               {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
-              <h2>
-                {block.heading?.split('\n').map((line, index) => (
-                  <Fragment key={index}>
-                    {index ? <br /> : null}
-                    {line}
-                  </Fragment>
-                ))}
-              </h2>
+              {block.heading ? (
+                <h2>
+                  {block.heading?.split('\n').map((line, index) => (
+                    <Fragment key={index}>
+                      {index ? <br /> : null}
+                      {line}
+                    </Fragment>
+                  ))}
+                </h2>
+              ) : null}
               {block.body
                 ? block.body
                     .split('\n')
@@ -1010,11 +1159,21 @@ export function renderBlock(
                 </a>
               ) : null}
             </div>
-            <FormPanel form={form} heading={form.name} supportingText={block.supportingText} />
+            <FormPanel
+              form={form}
+              heading={form.name}
+              supportingText={block.supportingText}
+              legacyChrome={block.legacyChrome === true || document.schemaVersion < 12}
+            />
           </section>
         );
       const panel = (
-        <FormPanel form={form} heading={block.heading} supportingText={block.supportingText} />
+        <FormPanel
+          form={form}
+          heading={block.heading}
+          supportingText={block.supportingText}
+          legacyChrome={block.legacyChrome === true || document.schemaVersion < 12}
+        />
       );
       return (
         <section
@@ -1038,12 +1197,14 @@ export function renderBlock(
             {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
             {block.heading ? <h2>{block.heading}</h2> : null}
             {block.body ? <TextLines text={block.body} /> : null}
-            <iframe
-              title={block.title}
-              src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
+            {block.query ? (
+              <iframe
+                title={block.title || 'Map'}
+                src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            ) : null}
           </div>
         </section>
       ) : (
@@ -1051,12 +1212,14 @@ export function renderBlock(
           {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
           {block.heading ? <h2>{block.heading}</h2> : null}
           {block.body ? <TextLines text={block.body} /> : null}
-          <iframe
-            title={block.title}
-            src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
+          {block.query ? (
+            <iframe
+              title={block.title || 'Map'}
+              src={`https://www.google.com/maps?q=${encodeURIComponent(block.query)}&output=embed`}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          ) : null}
         </section>
       );
     case 'divider':
@@ -1069,12 +1232,17 @@ export function renderBlock(
       );
     case 'spacer':
       return <div className={`point-spacer point-spacer--${block.size}`} aria-hidden="true" />;
-    case 'text':
+    case 'text': {
+      if (!block.text) return null;
+      const TextElement: ElementType = block.semantic ?? 'p';
       return (
-        <p className={`point-text point-text--${block.style} point-align--${block.align}`}>
+        <TextElement
+          className={`point-text point-text--${block.style} point-align--${block.align}`}
+        >
           {block.text}
-        </p>
+        </TextElement>
       );
+    }
     case 'button':
       return (
         <div
@@ -1096,7 +1264,12 @@ export function renderBlock(
             className={`point-social__links point-social__links--${block.appearance} point-social__links--${block.align}`}
           >
             {block.links.map((link, index) => (
-              <a key={index} href={link.url} {...linkAttributes(link.url)} aria-label={link.label}>
+              <a
+                key={index}
+                href={link.url}
+                {...linkAttributes(link.url)}
+                aria-label={link.label || link.platform}
+              >
                 {block.appearance === 'labels' ? (
                   link.label
                 ) : (
@@ -1112,6 +1285,23 @@ export function renderBlock(
             ))}
           </div>
         </section>
+      );
+    case 'composition':
+      return (
+        <CompositionFrame name={block.name} surface={block.surface}>
+          <div className="point-composition__grid">
+            {block.items.map((item) => (
+              <LayoutItem
+                placement={item}
+                layer={item.layer}
+                wrap={textWrapForItem(item, block.items)}
+                key={item.id}
+              >
+                {renderBlock(item.element, document, onNavigate)}
+              </LayoutItem>
+            ))}
+          </div>
+        </CompositionFrame>
       );
     default:
       throw new Error(`Unsupported block type: ${(block as { type: string }).type}`);
@@ -1131,14 +1321,39 @@ const LayoutContext = createContext<Pick<SectionBlock, 'layout' | 'columns'>>({
   columns: 1,
 });
 
+export function CompositionFrame({
+  name,
+  surface = 'transparent',
+  children,
+}: {
+  name: string;
+  surface?: Extract<SiteElement, { type: 'composition' }>['surface'];
+  children: ReactNode;
+}) {
+  return (
+    <LayoutContext value={{ layout: 'grid', columns: 12 }}>
+      <section
+        className={`point-composition point-surface--${surface}`}
+        aria-label={name || 'Content group'}
+      >
+        {children}
+      </section>
+    </LayoutContext>
+  );
+}
+
 export function LayoutItem({
   placement,
   children,
   dragRef,
+  layer,
+  wrap,
 }: {
   placement: Pick<ElementPlacement, 'grid' | 'align' | 'span'>;
   children: ReactNode;
   dragRef?: Ref<HTMLDivElement>;
+  layer?: number;
+  wrap?: TextWrapFootprint;
 }) {
   const section = useContext(LayoutContext);
   const flow = section.layout === 'flow';
@@ -1158,10 +1373,24 @@ export function LayoutItem({
       ];
     }),
   ) as CSSProperties;
+  if (layer !== undefined) style.zIndex = layer;
+  for (const breakpoint of ['desktop', 'tablet', 'mobile'] as const) {
+    const footprint = wrap?.[breakpoint];
+    if (!footprint) continue;
+    const variables = style as CSSProperties & Record<string, string>;
+    variables[`--point-wrap-${breakpoint}-side`] = footprint.side;
+    const widthPercent = ((footprint.columns / footprint.textColumns) * 100).toFixed(6);
+    const gapShare = ((footprint.textColumns - footprint.columns) / footprint.textColumns).toFixed(
+      6,
+    );
+    variables[`--point-wrap-${breakpoint}-width`] =
+      `calc(${widthPercent}% - ${gapShare} * var(--point-section-gap))`;
+    variables[`--point-wrap-${breakpoint}-rows`] = String(footprint.rows);
+  }
   return (
     <div
       ref={dragRef}
-      className={`point-layout-item point-layout-item--grid${flow ? ` point-layout-item--flow point-layout-item--span-${Math.min(placement.span, section.columns)}` : ''}`}
+      className={`point-layout-item point-layout-item--grid${flow ? ` point-layout-item--flow point-layout-item--span-${Math.min(placement.span, section.columns)}` : ''}${wrap ? ' point-layout-item--text-wrap' : ''}`}
       style={style}
     >
       {children}
@@ -1211,7 +1440,7 @@ export function LayoutSection({
         style={
           section.paddingPixels === undefined ? undefined : { paddingBlock: section.paddingPixels }
         }
-        aria-label={section.name}
+        aria-label={section.name || 'Content section'}
         data-point-section-id={sectionId}
         {...interaction}
       >
@@ -1247,7 +1476,12 @@ export function renderSection(
   return (
     <LayoutSection section={section} document={document}>
       {items.map((placement) => (
-        <LayoutItem placement={placement} key={placement.id}>
+        <LayoutItem
+          placement={placement}
+          layer={placement.layer}
+          wrap={textWrapForItem(placement, items)}
+          key={placement.id}
+        >
           {renderBlock(placement.element, document, onNavigate)}
         </LayoutItem>
       ))}

@@ -43,7 +43,7 @@
     "approvalPhrases": {
       "issueCreation": "Approved to create this exact GitHub Issue",
       "production": "Approved to merge and deploy production",
-      "completion": "Approved to complete Issue #{number}",
+      "completion": "Approved to merge and deploy production",
       "nativeCandidate": "Beta approved"
     },
     "pmTesting": {
@@ -159,7 +159,7 @@
         "developer": "Dev",
         "environment": "local-macos",
         "pm": "brimdor",
-        "approvalPhrase": "Approved to complete Issue #{number}"
+        "approvalPhrase": "Approved to merge and deploy production"
       }
     ]
   }

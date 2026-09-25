@@ -6,10 +6,12 @@ import { useGridBreakpoint } from './GridBreakpointContext';
 export function GridPlacementInspector({
   value,
   occupied = [],
+  allowOverlap = false,
   onChange,
 }: {
   value: ElementPlacement['grid'];
   occupied?: ElementPlacement['grid'][];
+  allowOverlap?: boolean;
   onChange: (value: ElementPlacement['grid']) => void;
 }) {
   const breakpoint = useGridBreakpoint();
@@ -20,7 +22,7 @@ export function GridPlacementInspector({
     const resolved = resolveGridArea(
       areaForBreakpoint(next, breakpoint),
       area,
-      occupied.map((grid) => areaForBreakpoint(grid, breakpoint)),
+      allowOverlap ? [] : occupied.map((grid) => areaForBreakpoint(grid, breakpoint)),
     );
     if (resolved.rejected) {
       setStatus('That position overlaps another element. The previous position was kept.');
@@ -35,7 +37,7 @@ export function GridPlacementInspector({
       <legend>{breakpoint[0].toUpperCase() + breakpoint.slice(1)} grid position</legend>
       <p className="inspector-help">
         This position belongs only to the selected responsive view. Drag on the canvas or enter
-        exact grid values.
+        exact grid values. A nonzero layer permits intentional overlap.
       </p>
       {status ? (
         <p className="inspector-error" role="alert">

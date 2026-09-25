@@ -47,6 +47,13 @@ describe('SectionInspector', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ layout: 'grid', columns: 12 }));
   });
 
+  it('keeps an emptied Section name empty in Properties', () => {
+    const onChange = vi.fn();
+    render(<SectionInspector settings={settings} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Section name'), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: '' }));
+  });
+
   it('hides inapplicable controls for a compatibility section', () => {
     render(
       <SectionInspector settings={{ ...settings, layout: 'compatibility' }} onChange={vi.fn()} />,

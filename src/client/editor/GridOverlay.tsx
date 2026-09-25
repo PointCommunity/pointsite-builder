@@ -215,7 +215,10 @@ export function GridOverlay({
       .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
       .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
     const previous = areaForBreakpoint(currentProps.grid, breakpoint);
-    const resolved = resolveGridArea(nextArea, previous, siblings);
+    const block = currentProps.block as { type?: string; wrap?: boolean } | undefined;
+    const allowOverlap =
+      Number(currentProps.layer ?? 0) !== 0 || (block?.type === 'image' && block.wrap === true);
+    const resolved = resolveGridArea(nextArea, previous, allowOverlap ? [] : siblings);
     if (resolved.rejected) {
       setStatus('Move blocked because elements cannot overlap.');
       return;
@@ -243,7 +246,9 @@ export function GridOverlay({
     event.stopPropagation();
     const ownerDocument = event.currentTarget.ownerDocument;
     const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
-    const surface = source?.closest<HTMLElement>('.point-layout-section__grid');
+    const surface = source?.closest<HTMLElement>(
+      '.point-composition__grid, .point-layout-section__grid',
+    );
     if (!surface) return;
     const rect = surface.getBoundingClientRect();
     const computed = ownerDocument.defaultView?.getComputedStyle(surface);
@@ -327,12 +332,18 @@ export function GridOverlay({
       <div className="point-grid-controls" data-grid-controls={componentType}>
         <button
           type="button"
-          className="point-grid-move-surface"
+          className={`point-grid-move-surface${componentType === 'composition' ? ' point-grid-move-surface--group' : ''}`}
           aria-label={`Move ${componentType} on ${breakpoint} grid`}
-          title="Drag anywhere inside the selected box. Arrow keys move one grid square."
+          title={
+            componentType === 'composition'
+              ? 'Drag this handle or use arrow keys to move the group.'
+              : 'Drag anywhere inside the selected box. Arrow keys move one grid square.'
+          }
           onPointerDown={(event) => begin(event, 'move')}
           onKeyDown={(event) => keyMove(event, 'move')}
-        ></button>
+        >
+          {componentType === 'composition' ? 'Move group' : null}
+        </button>
         {resizeHandles.map((edge) => (
           <button
             type="button"

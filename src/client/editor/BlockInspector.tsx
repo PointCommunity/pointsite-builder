@@ -7,16 +7,24 @@ function Text({
   value,
   onChange,
   area = false,
+  allowEmpty = false,
 }: {
   label: string;
   value?: string;
   onChange: (value: string | undefined) => void;
   area?: boolean;
+  allowEmpty?: boolean;
 }) {
   const control = area ? (
-    <textarea value={value ?? ''} onChange={(event) => onChange(event.target.value || undefined)} />
+    <textarea
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value || (allowEmpty ? '' : undefined))}
+    />
   ) : (
-    <input value={value ?? ''} onChange={(event) => onChange(event.target.value || undefined)} />
+    <input
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value || (allowEmpty ? '' : undefined))}
+    />
   );
   return (
     <label className="inspector-field">
@@ -37,19 +45,26 @@ function Select<T extends string | number>({
   options: readonly { label: string; value: T }[];
   onChange: (value: T) => void;
 }) {
+  const visibleOptions = options.filter(
+    (option) => !option.label.startsWith('Point ') || option.value === value,
+  );
   return (
     <label className="inspector-field">
       <span>{label}</span>
       <select
         value={value}
         onChange={(event) => {
-          const next = options.find((option) => String(option.value) === event.target.value);
+          const next = visibleOptions.find((option) => String(option.value) === event.target.value);
           if (next) onChange(next.value);
         }}
       >
-        {options.map((option) => (
-          <option key={String(option.value)} value={option.value}>
-            {option.label}
+        {visibleOptions.map((option) => (
+          <option
+            key={String(option.value)}
+            value={option.value}
+            disabled={option.label.startsWith('Point ')}
+          >
+            {option.label.startsWith('Point ') ? `Legacy: ${option.label.slice(6)}` : option.label}
           </option>
         ))}
       </select>
@@ -85,6 +100,42 @@ function Media({
   );
 }
 
+type FocalPoint = { x: number; y: number };
+function FocalFields({
+  value,
+  onChange,
+}: {
+  value?: FocalPoint;
+  onChange: (value?: FocalPoint) => void;
+}) {
+  return (
+    <fieldset className="inspector-grid">
+      <legend>Image crop focus</legend>
+      {(['x', 'y'] as const).map((axis) => (
+        <label className="inspector-field" key={axis}>
+          <span>{axis === 'x' ? 'Horizontal focus (%)' : 'Vertical focus (%)'}</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={value?.[axis] ?? 50}
+            onChange={(event) => {
+              const next = event.target.valueAsNumber;
+              if (Number.isInteger(next) && next >= 0 && next <= 100)
+                onChange({ x: value?.x ?? 50, y: value?.y ?? 50, [axis]: next });
+            }}
+          />
+        </label>
+      ))}
+      {value ? (
+        <button type="button" className="button" onClick={() => onChange(undefined)}>
+          Reset crop focus
+        </button>
+      ) : null}
+    </fieldset>
+  );
+}
+
 type Action = Extract<SiteElement, { type: 'hero' }>['actions'][number];
 type RichNode = Extract<SiteElement, { type: 'richText' }>['content'][number];
 function ActionEditor({
@@ -101,7 +152,8 @@ function ActionEditor({
       <Text
         label="Button label"
         value={action.label}
-        onChange={(label) => label && onChange({ ...action, label })}
+        allowEmpty
+        onChange={(label) => label !== undefined && onChange({ ...action, label })}
       />
       <LinkDestinationField
         label="Button link"
@@ -165,6 +217,23 @@ export function BlockInspector({
   onEditNavigation?: (designId: string) => void;
 }) {
   switch (block.type) {
+    case 'composition':
+      return (
+        <div className="block-inspector">
+          <Text
+            label="Group name"
+            value={block.name}
+            onChange={(name) => onChange({ ...block, name: name ?? '' })}
+          />
+          <Select
+            label="Background"
+            value={block.surface ?? 'transparent'}
+            options={[{ label: 'Transparent', value: 'transparent' }, ...surfaceOptions]}
+            onChange={(surface) => onChange({ ...block, surface })}
+          />
+          <p className="field-help">Drag elements into this group and position them on its grid.</p>
+        </div>
+      );
     case 'hero':
       return (
         <div className="block-inspector">
@@ -186,7 +255,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
@@ -201,6 +271,12 @@ export function BlockInspector({
             optional
             onChange={(mediaId) => onChange({ ...block, mediaId })}
           />
+          {document.schemaVersion >= 12 && block.mediaId ? (
+            <FocalFields
+              value={block.mediaFocal}
+              onChange={(mediaFocal) => onChange({ ...block, mediaFocal })}
+            />
+          ) : null}
           <Select
             label="Alignment"
             value={block.align}
@@ -279,7 +355,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.text}
-            onChange={(text) => text && onChange({ ...block, text })}
+            allowEmpty
+            onChange={(text) => text !== undefined && onChange({ ...block, text })}
           />
           <Select
             label="Level"
@@ -444,8 +521,9 @@ export function BlockInspector({
                   label="Paragraph"
                   value={node.children.map((child) => child.text).join('')}
                   area
+                  allowEmpty
                   onChange={(text) =>
-                    text &&
+                    text !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
@@ -460,8 +538,9 @@ export function BlockInspector({
                   label="Address"
                   value={node.text}
                   area
+                  allowEmpty
                   onChange={(text) =>
-                    text &&
+                    text !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
@@ -476,13 +555,14 @@ export function BlockInspector({
                   label="Items (one per line)"
                   value={node.items.join('\n')}
                   area
+                  allowEmpty
                   onChange={(value) =>
-                    value &&
+                    value !== undefined &&
                     onChange({
                       ...block,
                       content: block.content.map((item, itemIndex) =>
                         itemIndex === index
-                          ? { ...node, items: value.split('\n').filter(Boolean) }
+                          ? { ...node, items: value ? value.split('\n').filter(Boolean) : [''] }
                           : item,
                       ),
                     })
@@ -495,8 +575,9 @@ export function BlockInspector({
                     label="Quote"
                     value={node.text}
                     area
+                    allowEmpty
                     onChange={(text) =>
-                      text &&
+                      text !== undefined &&
                       onChange({
                         ...block,
                         content: block.content.map((item, itemIndex) =>
@@ -524,8 +605,9 @@ export function BlockInspector({
                   <Text
                     label="Link text"
                     value={node.text}
+                    allowEmpty
                     onChange={(text) =>
-                      text &&
+                      text !== undefined &&
                       onChange({
                         ...block,
                         content: block.content.map((item, itemIndex) =>
@@ -590,7 +672,8 @@ export function BlockInspector({
           <Text
             label="Alternative text"
             value={block.alt}
-            onChange={(alt) => alt && onChange({ ...block, alt })}
+            allowEmpty
+            onChange={(alt) => alt !== undefined && onChange({ ...block, alt })}
           />
           <Select
             label="Aspect ratio"
@@ -599,6 +682,7 @@ export function BlockInspector({
               { label: 'Natural', value: 'natural' },
               { label: 'Square', value: '1:1' },
               { label: '4:3', value: '4:3' },
+              { label: 'Portrait 4:5', value: '4:5' },
               { label: '16:9', value: '16:9' },
             ]}
             onChange={(aspect) => onChange({ ...block, aspect })}
@@ -607,16 +691,76 @@ export function BlockInspector({
             label="Image fit"
             value={block.fit}
             options={[
-              { label: 'Cover', value: 'cover' },
-              { label: 'Contain', value: 'contain' },
+              { label: 'Crop to fill', value: 'cover' },
+              { label: 'Fit whole image', value: 'contain' },
+              ...(document.schemaVersion >= 12
+                ? [{ label: 'Stretch', value: 'stretch' as const }]
+                : []),
             ]}
             onChange={(fit) => onChange({ ...block, fit })}
           />
+          {document.schemaVersion >= 12 ? (
+            <FocalFields value={block.focal} onChange={(focal) => onChange({ ...block, focal })} />
+          ) : null}
+          {document.schemaVersion >= 12 ? (
+            <Select
+              label="Image overlay"
+              value={block.overlay ?? 'none'}
+              options={[
+                { label: 'None', value: 'none' },
+                { label: 'Light', value: 'light' },
+                { label: 'Dark', value: 'dark' },
+              ]}
+              onChange={(overlay) => onChange({ ...block, overlay })}
+            />
+          ) : null}
+          {document.schemaVersion >= 12 ? (
+            <label className="inspector-field">
+              <span>Wrap nearby text</span>
+              <input
+                type="checkbox"
+                aria-label="Wrap nearby text"
+                checked={block.wrap ?? false}
+                onChange={(event) => onChange({ ...block, wrap: event.target.checked })}
+              />
+              <small>
+                Place this image at a text element’s left or right edge on the same grid row.
+              </small>
+            </label>
+          ) : null}
           <Text
             label="Caption"
             value={block.caption}
             onChange={(caption) => onChange({ ...block, caption })}
           />
+          {document.schemaVersion >= 12 ? (
+            <>
+              <label className="inspector-field">
+                <span>Link image</span>
+                <input
+                  type="checkbox"
+                  checked={block.href !== undefined}
+                  onChange={(event) => {
+                    if (event.target.checked)
+                      onChange({ ...block, href: document.pages[0]?.route ?? '/' });
+                    else {
+                      const next = { ...block };
+                      delete next.href;
+                      onChange(next);
+                    }
+                  }}
+                />
+              </label>
+              {block.href !== undefined ? (
+                <LinkDestinationField
+                  label="Image link"
+                  value={block.href}
+                  pages={document.pages}
+                  onChange={(href) => onChange({ ...block, href })}
+                />
+              ) : null}
+            </>
+          ) : null}
         </div>
       );
     case 'mediaEmbed':
@@ -687,13 +831,15 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
             value={block.body}
             area
-            onChange={(body) => body && onChange({ ...block, body })}
+            allowEmpty
+            onChange={(body) => body !== undefined && onChange({ ...block, body })}
           />
           <Text
             label="Small note"
@@ -707,6 +853,12 @@ export function BlockInspector({
             document={document}
             onChange={(mediaId) => mediaId && onChange({ ...block, mediaId })}
           />
+          {document.schemaVersion >= 12 ? (
+            <FocalFields
+              value={block.mediaFocal}
+              onChange={(mediaFocal) => onChange({ ...block, mediaFocal })}
+            />
+          ) : null}
           <Text
             label="Image alternative text"
             value={block.mediaAlt}
@@ -820,7 +972,8 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
-            onChange={(heading) => heading && onChange({ ...block, heading })}
+            allowEmpty
+            onChange={(heading) => heading !== undefined && onChange({ ...block, heading })}
           />
           <Text
             label="Body"
@@ -862,8 +1015,8 @@ export function BlockInspector({
             onChange={(variant) => onChange({ ...block, variant })}
           />
           <p className="inspector-hint">
-            Images use 16:9 frames and fit fully without cropping. Missing images reserve the same
-            space when other cards have images. Text-only collections have no image frames.
+            Images use 16:9 frames. Missing images reserve the same space when other cards have
+            images. Text-only collections have no image frames.
           </p>
           {block.variant !== 'splitEditorial' && block.variant !== 'splitEditorialTone' ? (
             <>
@@ -919,8 +1072,9 @@ export function BlockInspector({
                 <Text
                   label="Title"
                   value={item.title}
+                  allowEmpty
                   onChange={(title) =>
-                    title &&
+                    title !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -933,8 +1087,9 @@ export function BlockInspector({
                   label="Body"
                   value={item.body}
                   area
+                  allowEmpty
                   onChange={(body) =>
-                    body &&
+                    body !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -969,6 +1124,51 @@ export function BlockInspector({
                     })
                   }
                 />
+                {document.schemaVersion >= 12 ? (
+                  <>
+                    <Select
+                      label="Image fit"
+                      value={item.mediaFit ?? 'contain'}
+                      options={[
+                        { label: 'Fit whole image', value: 'contain' },
+                        { label: 'Crop to fill', value: 'cover' },
+                        { label: 'Stretch', value: 'stretch' },
+                      ]}
+                      onChange={(mediaFit) =>
+                        onChange({
+                          ...block,
+                          items: block.items.map((candidate, itemIndex) =>
+                            itemIndex === index ? { ...candidate, mediaFit } : candidate,
+                          ),
+                        })
+                      }
+                    />
+                    <Select
+                      label="Image frame"
+                      value={item.mediaFrame ?? 'default'}
+                      options={[
+                        { label: 'Layout default', value: 'default' },
+                        { label: 'Natural', value: 'natural' },
+                        { label: 'Portrait 4:5', value: 'portrait' },
+                        { label: 'Square 1:1', value: 'square' },
+                        { label: 'Landscape 16:9', value: 'landscape' },
+                      ]}
+                      onChange={(frame) =>
+                        onChange({
+                          ...block,
+                          items: block.items.map((candidate, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...candidate,
+                                  mediaFrame: frame === 'default' ? undefined : frame,
+                                }
+                              : candidate,
+                          ),
+                        })
+                      }
+                    />
+                  </>
+                ) : null}
                 <Text
                   label="Image alternative text"
                   value={item.mediaAlt}
@@ -981,6 +1181,19 @@ export function BlockInspector({
                     })
                   }
                 />
+                {document.schemaVersion >= 12 && item.mediaId ? (
+                  <FocalFields
+                    value={item.mediaFocal}
+                    onChange={(mediaFocal) =>
+                      onChange({
+                        ...block,
+                        items: block.items.map((candidate, itemIndex) =>
+                          itemIndex === index ? { ...candidate, mediaFocal } : candidate,
+                        ),
+                      })
+                    }
+                  />
+                ) : null}
                 <Text
                   label="Link"
                   value={item.href}
@@ -1105,8 +1318,9 @@ export function BlockInspector({
                 <Text
                   label="Question"
                   value={item.question}
+                  allowEmpty
                   onChange={(question) =>
-                    question &&
+                    question !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -1119,8 +1333,9 @@ export function BlockInspector({
                   label="Answer"
                   value={item.answer}
                   area
+                  allowEmpty
                   onChange={(answer) =>
-                    answer &&
+                    answer !== undefined &&
                     onChange({
                       ...block,
                       items: block.items.map((candidate, itemIndex) =>
@@ -1186,7 +1401,7 @@ export function BlockInspector({
             >
               {document.forms.map((form) => (
                 <option value={form.id} key={form.id}>
-                  {form.name}
+                  {form.name || 'Untitled form'}
                 </option>
               ))}
             </select>
@@ -1194,6 +1409,7 @@ export function BlockInspector({
           <Text
             label="Heading"
             value={block.heading}
+            allowEmpty
             onChange={(heading) => onChange({ ...block, heading })}
           />
           <Text
@@ -1256,12 +1472,14 @@ export function BlockInspector({
           <Text
             label="Title"
             value={block.title}
-            onChange={(title) => title && onChange({ ...block, title })}
+            allowEmpty
+            onChange={(title) => title !== undefined && onChange({ ...block, title })}
           />
           <Text
             label="Location or search"
             value={block.query}
-            onChange={(query) => query && onChange({ ...block, query })}
+            allowEmpty
+            onChange={(query) => query !== undefined && onChange({ ...block, query })}
           />
         </div>
       );
@@ -1301,14 +1519,33 @@ export function BlockInspector({
             label="Text"
             value={block.text}
             area
-            onChange={(text) => text && onChange({ ...block, text })}
+            allowEmpty
+            onChange={(text) => onChange({ ...block, text: text ?? '' })}
           />
+          {document.schemaVersion >= 12 ? (
+            <Select
+              label="Text type"
+              value={block.semantic ?? 'p'}
+              options={[
+                { label: 'Paragraph', value: 'p' },
+                { label: 'Heading 1', value: 'h1' },
+                { label: 'Heading 2', value: 'h2' },
+                { label: 'Heading 3', value: 'h3' },
+                { label: 'Heading 4', value: 'h4' },
+                { label: 'Heading 5', value: 'h5' },
+                { label: 'Heading 6', value: 'h6' },
+              ]}
+              onChange={(semantic) => onChange({ ...block, semantic })}
+            />
+          ) : null}
           <Select
             label="Text style"
             value={block.style}
             options={[
               { label: 'Body', value: 'body' },
               { label: 'Lead', value: 'lead' },
+              { label: 'Title', value: 'title' },
+              { label: 'Display', value: 'display' },
               { label: 'Eyebrow', value: 'eyebrow' },
               { label: 'Small', value: 'small' },
             ]}
@@ -1320,6 +1557,7 @@ export function BlockInspector({
             options={[
               { label: 'Left', value: 'left' },
               { label: 'Center', value: 'center' },
+              { label: 'Right', value: 'right' },
             ]}
             onChange={(align) => onChange({ ...block, align })}
           />
@@ -1331,7 +1569,8 @@ export function BlockInspector({
           <Text
             label="Button label"
             value={block.label}
-            onChange={(label) => label && onChange({ ...block, label })}
+            allowEmpty
+            onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <LinkDestinationField
             label="Button link"
@@ -1434,8 +1673,9 @@ export function BlockInspector({
               <Text
                 label="Link label"
                 value={link.label}
+                allowEmpty
                 onChange={(label) =>
-                  label &&
+                  label !== undefined &&
                   onChange({
                     ...block,
                     links: block.links.map((item, position) =>
@@ -1495,7 +1735,8 @@ export function BlockInspector({
           <Text
             label="Navigation label"
             value={block.label}
-            onChange={(label) => label && onChange({ ...block, label })}
+            allowEmpty
+            onChange={(label) => label !== undefined && onChange({ ...block, label })}
           />
           <Select
             label="Navigation layout"

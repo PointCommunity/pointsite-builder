@@ -20,6 +20,7 @@ import type {
 } from '../../server/repositories/contracts';
 import { checkoutPhase, checkoutRemaining, isGenuineActivity } from '../../shared/draft-checkout';
 import { documentRegions, FOOTER_REGION } from '../../site-kit/document-sections';
+import { canEditDocument } from '../../site-kit/version';
 import {
   clearPropertiesPreference,
   restorePropertiesPreference,
@@ -186,6 +187,7 @@ function Workspace({
     leaseExpiresAt && checkoutPhase(leaseExpiresAt, leaseNow) === 'expired',
   );
   const checkoutUnavailable = leaseLost || leaseExpired || autosave.errorKind === 'authority';
+  const newerDocument = !canEditDocument(document);
   useEffect(() => {
     if (checkoutUnavailable) {
       stopAutosave();
@@ -199,7 +201,8 @@ function Workspace({
     !checkoutUnavailable &&
     autosave.recovery !== 'blocked' &&
     autosave.recovery !== 'clearing' &&
-    autosave.recovery !== 'checking';
+    autosave.recovery !== 'checking' &&
+    !newerDocument;
   const viewState = useCallback(
     (): EditorViewState => ({
       draftId: draft.id,
@@ -468,7 +471,7 @@ function Workspace({
               Retry autosave
             </button>
           ) : null}
-          {canPublish && panel === 'layout' ? (
+          {canPublish && !newerDocument && panel === 'layout' ? (
             <button
               ref={publishButtonRef}
               className="button button--primary"
@@ -480,6 +483,12 @@ function Workspace({
           ) : null}
         </div>
       </header>
+      {newerDocument ? (
+        <p role="status">
+          This draft uses a newer document version. Preview is available; editing requires a Builder
+          version that supports authoring it.
+        </p>
+      ) : null}
       <div className="autosave-recovery-slot">
         {leaseExpiresAt &&
         checkoutPhase(leaseExpiresAt, leaseNow) === 'warning' &&
@@ -607,6 +616,8 @@ function Workspace({
           {editable ? (
             <FormsEditor
               forms={document.forms}
+              schemaVersion={document.schemaVersion}
+              siteEmail={document.site.email}
               usedFormIds={
                 new Set(
                   documentRegions(document).flatMap((page) =>
@@ -623,7 +634,11 @@ function Workspace({
               }
             />
           ) : (
-            <p>Viewer access is read only.</p>
+            <p>
+              {newerDocument
+                ? 'This document version is read only.'
+                : 'Viewer access is read only.'}
+            </p>
           )}
         </main>
       ) : null}
@@ -642,7 +657,11 @@ function Workspace({
               }
             />
           ) : (
-            <p>Viewer access is read only.</p>
+            <p>
+              {newerDocument
+                ? 'This document version is read only.'
+                : 'Viewer access is read only.'}
+            </p>
           )}
         </main>
       ) : null}
@@ -657,7 +676,11 @@ function Workspace({
               }}
             />
           ) : (
-            <p>Viewer access is read only.</p>
+            <p>
+              {newerDocument
+                ? 'This document version is read only.'
+                : 'Viewer access is read only.'}
+            </p>
           )}
         </main>
       ) : null}
@@ -694,7 +717,10 @@ function Workspace({
           <AdminRoute />
         </main>
       ) : null}
-      {publishOpen && canPublish && (role === 'publisher' || role === 'administrator') ? (
+      {publishOpen &&
+      canPublish &&
+      !newerDocument &&
+      (role === 'publisher' || role === 'administrator') ? (
         <div
           className="modal-backdrop"
           role="presentation"

@@ -10,6 +10,50 @@ export const GRID_COLUMNS = 12;
 export const MAX_GRID_ROWS = 1_000;
 export const GRID_BREAKPOINTS = ['desktop', 'tablet', 'mobile'] as const;
 
+type WrapCandidate = {
+  grid: ResponsiveGridArea;
+  element: { type: string; text?: string; wrap?: boolean };
+};
+
+export type TextWrapFootprint = Partial<
+  Record<
+    GridBreakpoint,
+    { side: 'left' | 'right'; columns: number; textColumns: number; rows: number }
+  >
+>;
+
+export function textWrapForItem(
+  text: WrapCandidate,
+  siblings: WrapCandidate[],
+): TextWrapFootprint | undefined {
+  if (text.element.type !== 'text' || !text.element.text) return undefined;
+  const footprint: TextWrapFootprint = {};
+  for (const breakpoint of GRID_BREAKPOINTS) {
+    const area = text.grid[breakpoint];
+    // ponytail: one image wraps each text block; add multiple floats only if a real layout needs them.
+    const image = siblings.find((item) => {
+      if (item.element.type !== 'image' || !item.element.wrap) return false;
+      const candidate = item.grid[breakpoint];
+      return (
+        candidate.row === area.row &&
+        candidate.rowSpan <= area.rowSpan &&
+        candidate.columnSpan < area.columnSpan &&
+        (candidate.column === area.column ||
+          candidate.column + candidate.columnSpan === area.column + area.columnSpan)
+      );
+    });
+    if (!image) continue;
+    const imageArea = image.grid[breakpoint];
+    footprint[breakpoint] = {
+      side: imageArea.column === area.column ? 'left' : 'right',
+      columns: imageArea.columnSpan,
+      textColumns: area.columnSpan,
+      rows: imageArea.rowSpan,
+    };
+  }
+  return Object.keys(footprint).length ? footprint : undefined;
+}
+
 export function independentResponsiveValue<T>(value: T): Record<GridBreakpoint, T> {
   return { desktop: value, tablet: value, mobile: value };
 }
@@ -41,6 +85,7 @@ const defaultRows: Record<SiteElement['type'], number> = {
   button: 2,
   navigation: 2,
   socialLinks: 3,
+  composition: 6,
 };
 
 export function defaultRowSpan(type: SiteElement['type']): number {

@@ -92,7 +92,7 @@ export async function planAdoption({ sourceRoot, targetRoot, profile, reconcilia
   const builderPhrases = {
     issueCreation: 'Approved to create this exact GitHub Issue',
     production: 'Approved to merge and deploy production',
-    completion: 'Approved to complete Issue #{number}',
+    completion: 'Approved to merge and deploy production',
     nativeCandidate: 'Beta approved',
   };
   const preservesBuilder =

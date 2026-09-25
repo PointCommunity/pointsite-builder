@@ -5,6 +5,7 @@ import { api } from '../../src/client/api';
 import { EditorProvider, useEditor } from '../../src/client/editor/EditorProvider';
 import { availableRoute, PageManager } from '../../src/client/editor/PageManager';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import type { DraftRecord } from '../../src/server/repositories/contracts';
 import type { SiteDocument } from '../../src/site-kit/types';
 
@@ -47,6 +48,9 @@ function Harness() {
     <>
       <PageManager pageId={pageId} onPageIdChange={setPageId} />
       <output data-testid="selected-page">{JSON.stringify(page)}</output>
+      <output data-testid="document-errors">
+        {JSON.stringify(SiteDocumentSchema.safeParse(document).error?.issues ?? [])}
+      </output>
     </>
   );
 }
@@ -58,7 +62,7 @@ describe('page management', () => {
     expect(availableRoute('', ['/page', '/page-2'])).toBe('/page-3');
   });
 
-  it('creates a standard page with an editable Hero and no duplicate visual fields', async () => {
+  it('creates a standard page with a neutral editable Hero and inherited header logo', async () => {
     const initialDraft = draft();
     const save = vi.spyOn(api, 'saveDraft').mockResolvedValue(initialDraft);
     render(
@@ -79,15 +83,57 @@ describe('page management', () => {
 
     expect(page.blocks[0]).toMatchObject({
       name: 'Page hero',
-      items: [{ element: { type: 'hero', variant: 'pageHero' } }],
+      layout: 'grid',
+      items: [{ element: { type: 'composition', name: 'Page hero' } }],
     });
     expect(page.blocks[1]).toMatchObject({ name: 'Site header' });
+    expect(screen.getByTestId('document-errors')).toHaveTextContent('[]');
+    const existingHeader = initialDraft.document.pages
+      .flatMap((item) => item.blocks)
+      .find((section) => section.items.some(({ element }) => element.type === 'navigation'));
+    const existingLogo = existingHeader?.items.find(({ element }) => element.type === 'image');
+    expect(
+      page.blocks[1].items.find(({ element }) => element.type === 'image')?.element,
+    ).toMatchObject({
+      mediaId: existingLogo?.element.type === 'image' ? existingLogo.element.mediaId : undefined,
+      alt: initialDraft.document.site.name,
+    });
     expect(
       page.blocks[1].items.find(({ element }) => element.type === 'navigation')?.element,
     ).toMatchObject({
       navigationDesignId: initialDraft.document.navigationDesigns?.[0]?.id,
     });
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    save.mockRestore();
+  });
+
+  it('gives duplicated composition children fresh editor IDs', () => {
+    const initialDraft = draft();
+    const save = vi.spyOn(api, 'saveDraft').mockResolvedValue(initialDraft);
+    render(
+      <EditorProvider initialDraft={initialDraft}>
+        <Harness />
+      </EditorProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    const source = JSON.parse(
+      screen.getByTestId('selected-page').textContent ?? '{}',
+    ) as SiteDocument['pages'][number];
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
+    const copy = JSON.parse(
+      screen.getByTestId('selected-page').textContent ?? '{}',
+    ) as SiteDocument['pages'][number];
+    const childIds = (page: SiteDocument['pages'][number]) =>
+      page.blocks.flatMap((section) =>
+        section.items.flatMap((placement) =>
+          placement.element.type === 'composition'
+            ? placement.element.items.flatMap((item) => [item.id, item.element.id])
+            : [],
+        ),
+      );
+    expect(childIds(source).length).toBeGreaterThan(0);
+    expect(childIds(copy)).not.toEqual(childIds(source));
+    expect(childIds(copy).some((id) => childIds(source).includes(id))).toBe(false);
     save.mockRestore();
   });
 });
