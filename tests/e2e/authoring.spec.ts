@@ -694,12 +694,7 @@ test('edits composed footer Blocks, saves, reloads and previews the same content
 
 test('rebuilds identity, editorial text and footer content from Blocks on an empty page', async ({
   page,
-  browserName,
 }) => {
-  test.skip(
-    browserName === 'webkit',
-    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags; footer editing and renderer parity run in all browsers.',
-  );
   test.setTimeout(90_000);
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
@@ -3691,12 +3686,7 @@ test('keeps the Sections toolbox structural and exposes recipe parts as atomic i
 
 test('shows a snapped phantom while inserting into a grid and resizes from edges', async ({
   page,
-  browserName,
 }) => {
-  test.skip(
-    browserName === 'webkit',
-    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
-  );
   await page.goto('/');
   await page.getByRole('button', { name: 'Open editor' }).click();
   await page.getByRole('button', { name: 'Blocks', exact: true }).click();
@@ -3788,13 +3778,10 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
   expect(first).not.toBeNull();
   expect(second).not.toBeNull();
   expect(second!.x).toBeGreaterThan(first!.x);
+  await expect(grid.locator('[data-puck-line-placeholder]')).toHaveCount(1);
   await page.mouse.up();
 
   await expect(canvas.getByRole('heading', { name: 'Section heading' })).toHaveCount(1);
-  test.skip(
-    browserName === 'firefox',
-    'Playwright Firefox cannot reliably preserve a freshly dropped Puck item for a second cross-frame collision drag.',
-  );
   const occupiedHeading = canvas
     .locator('.point-layout-item--grid')
     .filter({ has: canvas.getByRole('heading', { name: 'Section heading' }) });
@@ -3858,12 +3845,7 @@ test('shows a snapped phantom while inserting into a grid and resizes from edges
 
 test('wraps an image dropped directly on an empty page in a resizable grid container', async ({
   page,
-  browserName,
 }) => {
-  test.skip(
-    browserName === 'webkit',
-    'Puck cross-frame drags are unreliable in Playwright WebKit.',
-  );
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
   });
@@ -3945,13 +3927,8 @@ test('wraps an image dropped directly on an empty page in a resizable grid conta
 
 test('drops a standalone image on a populated page without changing existing sections', async ({
   page,
-  browserName,
 }) => {
-  test.skip(
-    browserName === 'webkit',
-    'Puck cross-frame drags are unreliable in Playwright WebKit.',
-  );
-  const existing = structuredClone(defaultSiteDocument.pages[0].blocks[0]);
+  const existing = structuredClone(defaultSiteDocument.pages[0].blocks[1]);
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [existing];
   });
@@ -3971,7 +3948,7 @@ test('drops a standalone image on a populated page without changing existing sec
   await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
     steps: 4,
   });
-  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 6, { steps: 16 });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 2, { steps: 16 });
   await expect(canvas.locator('.point-root-drop-preview .point-image')).toHaveCount(1);
   await page.mouse.up();
   await expect(canvas.locator('.point-root-drop-preview')).toHaveCount(0);
@@ -3991,14 +3968,7 @@ test('drops a standalone image on a populated page without changing existing sec
   ).toBeVisible();
 });
 
-test('drags a brand-neutral Hero starter with its actual content preview', async ({
-  page,
-  browserName,
-}) => {
-  test.skip(
-    browserName === 'webkit',
-    'Puck cross-frame drags are unreliable in Playwright WebKit.',
-  );
+test('drags a brand-neutral Hero starter with its actual content preview', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
   });
@@ -4055,12 +4025,7 @@ test('drags a brand-neutral Hero starter with its actual content preview', async
 
 test('cancels a root Block drag without keeping the phantom or changing the draft', async ({
   page,
-  browserName,
 }) => {
-  test.skip(
-    browserName === 'webkit',
-    'Puck cross-frame drags are unreliable in Playwright WebKit.',
-  );
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
   });
@@ -4274,14 +4239,7 @@ test('drops the rendered Map phantom into an empty grid', async ({ page, browser
   });
 });
 
-test('composes text inside a nested grid and persists its placement', async ({
-  page,
-  browserName,
-}) => {
-  test.skip(
-    browserName === 'webkit',
-    'Puck cross-frame drags are unreliable in Playwright WebKit.',
-  );
+test('composes text inside a nested grid and persists its placement', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
   });
@@ -4426,7 +4384,9 @@ test('starts a neutral Hero layout with independently editable children', async 
 for (const nested of [false, true]) {
   test(`uses rendered rows for ${nested ? 'nested' : 'section'} image gestures across responsive views`, async ({
     page,
+    browserName,
   }) => {
+    const touch = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
     const controls = await installApi(page, 'administrator', 'admin', (document) => {
       document.schemaVersion = 12;
       document.rendererVersion = '12.0.0';
@@ -4503,7 +4463,31 @@ for (const nested of [false, true]) {
       expect(metrics.row).toBeGreaterThan(0);
       if (view === 'Phone') expect(metrics.row).toBeGreaterThan(metrics.column);
       const gesture = async (name: string, x: number, y: number) => {
-        await canvas.getByRole('button', { name, exact: true }).dispatchEvent('pointerdown', {
+        const handle = canvas.getByRole('button', { name, exact: true });
+        if (touch) {
+          await handle.scrollIntoViewIfNeeded();
+          const bounds = (await handle.boundingBox())!;
+          const scale = await page.locator('.visual-editor iframe').evaluate((frame) => {
+            const iframe = frame as HTMLIFrameElement;
+            return iframe.getBoundingClientRect().width / iframe.contentWindow!.innerWidth;
+          });
+          const start = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+          await touch.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [start],
+          });
+          await touch.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: start.x + (x * scale) / 2, y: start.y + (y * scale) / 2 }],
+          });
+          await touch.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: start.x + x * scale, y: start.y + y * scale }],
+          });
+          await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          return;
+        }
+        await handle.dispatchEvent('pointerdown', {
           pointerId: 91,
           pointerType: 'touch',
           clientX: 0,
@@ -4538,6 +4522,11 @@ for (const nested of [false, true]) {
       if (breakpoint !== 'mobile')
         expect(placement.grid.mobile).toEqual({ column: 2, row: 2, columnSpan: 4, rowSpan: 3 });
     }
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('3');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
+    await expect(page.getByText('All changes saved')).toBeVisible();
     await page.reload();
     const phone = page.getByRole('button', { name: 'Switch to Phone viewport' });
     if (await phone.isEnabled()) await phone.click();
@@ -5073,15 +5062,8 @@ test('reviews image replacement and navigates archived Library items by keyboard
   ]);
 });
 
-test('builds a form and places linked YouTube media without code', async ({
-  page,
-  browserName,
-}) => {
+test('builds a form and places linked YouTube media without code', async ({ page }) => {
   test.setTimeout(60_000);
-  test.skip(
-    browserName === 'webkit',
-    'Playwright WebKit cannot reliably synthesize Puck cross-frame pointer drags.',
-  );
   await page.unroute('**/api/**');
   const controls = await installApi(page);
   await page.goto('/');

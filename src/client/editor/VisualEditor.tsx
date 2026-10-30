@@ -2013,7 +2013,7 @@ function VisualEditorImpl({
               if (SiteDocumentSchema.safeParse(upgraded).success) changed = upgraded;
             }
             queueMicrotask(() => {
-              if (mutation.transient) stageDocument(changed, mutation);
+              if (mutation.transient) stageDocument(changed, mutation, false);
               else {
                 if (insertSelector) pendingSelection.current = { pageId, selector: insertSelector };
                 if (!completeDocument(changed, mutation)) pendingSelection.current = null;
