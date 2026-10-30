@@ -588,7 +588,7 @@ function RootDropPhantom({ document }: { document: ReturnType<typeof useEditor>[
     const measure = () => {
       frame = 0;
       const type = getDraggedElementType();
-      const line = root?.querySelector<HTMLElement>('[data-puck-line-placeholder]');
+      const line = root?.querySelector<HTMLElement>(':scope > [data-puck-line-placeholder]');
       if (
         !type ||
         !line ||

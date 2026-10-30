@@ -4386,6 +4386,7 @@ for (const nested of [false, true]) {
     page,
     browserName,
   }) => {
+    await page.clock.install();
     const touch = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
     const controls = await installApi(page, 'administrator', 'admin', (document) => {
       document.schemaVersion = 12;
@@ -4510,6 +4511,7 @@ for (const nested of [false, true]) {
       await expect(page.getByLabel(`${breakpoint} height in rows`).last()).toHaveValue('4');
       await gesture('Resize image from south', 0, metrics.row);
       await expect(page.getByLabel(`${breakpoint} height in rows`).last()).toHaveValue('5');
+      await page.clock.runFor(300);
       await canvas
         .getByRole('button', { name: `Move image on ${breakpoint} grid` })
         .press('ArrowDown');
@@ -4523,12 +4525,18 @@ for (const nested of [false, true]) {
         expect(placement.grid.mobile).toEqual({ column: 2, row: 2, columnSpan: 4, rowSpan: 3 });
     }
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    const phone = page.getByRole('button', { name: 'Switch to Phone viewport' });
+    if (await phone.isEnabled()) await phone.click();
+    if (!(await canvas.getByRole('button', { name: 'Move image on mobile grid' }).isVisible()))
+      await canvas.getByAltText('Movable image', { exact: true }).click();
     await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('3');
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    if (await phone.isEnabled()) await phone.click();
+    if (!(await canvas.getByRole('button', { name: 'Move image on mobile grid' }).isVisible()))
+      await canvas.getByAltText('Movable image', { exact: true }).click();
     await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
     await expect(page.getByText('All changes saved')).toBeVisible();
     await page.reload();
-    const phone = page.getByRole('button', { name: 'Switch to Phone viewport' });
     if (await phone.isEnabled()) await phone.click();
     await canvas.getByAltText('Movable image', { exact: true }).click();
     await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
