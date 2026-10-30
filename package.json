@@ -71,7 +71,7 @@
     "eslint-plugin-react-refresh": "0.5.2",
     "globals": "16.5.0",
     "jsdom": "30.0.1",
-    "miniflare": "5.20261023.1-beta",
+    "miniflare": "4.20260730.0",
     "prettier": "3.9.6",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
@@ -81,6 +81,10 @@
     "wrangler": "4.154.0"
   },
   "overrides": {
-    "happy-dom": "21.0.4"
+    "happy-dom": "21.0.4",
+    "miniflare": {
+      "sharp": "0.35.5",
+      "undici": "7.30.1"
+    }
   }
 }
