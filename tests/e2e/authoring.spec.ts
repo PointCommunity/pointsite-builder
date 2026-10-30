@@ -4395,7 +4395,7 @@ for (const nested of [false, true]) {
       section.columns = 12;
       section.minRows = 30;
       const area = { column: 2, row: 2, columnSpan: 4, rowSpan: 3 };
-      const image: ElementPlacement = {
+      const image = {
         id: crypto.randomUUID(),
         span: 4,
         layer: 0,
@@ -4409,7 +4409,7 @@ for (const nested of [false, true]) {
           aspect: 'natural',
           fit: 'contain',
         },
-      };
+      } satisfies Extract<ElementPlacement['element'], { type: 'composition' }>['items'][number];
       const groupArea = { column: 1, row: 1, columnSpan: 12, rowSpan: 24 };
       section.items = nested
         ? [
