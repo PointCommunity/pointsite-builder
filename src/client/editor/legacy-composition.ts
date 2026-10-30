@@ -300,13 +300,13 @@ export function compositionFromLegacy(
         'p',
         'body',
         area(column, row + 8, width, 1),
-        area(1, mobileRow + 7, 12, 1),
+        area(1, mobileRow + 7, card.href ? 8 : 12, 1),
       );
       if (card.href)
         add(
           button({ label: card.title || 'Learn more', href: card.href, style: 'quiet' }),
           area(column, row + 9, width, 1),
-          area(1, mobileRow + 8, 12, 1),
+          area(card.supportingText ? 9 : 1, mobileRow + 7, card.supportingText ? 4 : 12, 1),
         );
     });
   } else if (block.type === 'people') {

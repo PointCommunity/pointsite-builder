@@ -4438,6 +4438,7 @@ for (const nested of [false, true]) {
       const image: ElementPlacement = {
         id: crypto.randomUUID(),
         span: 4,
+        layer: 0,
         align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
         grid: { desktop: { ...area }, tablet: { ...area }, mobile: { ...area } },
         element: {

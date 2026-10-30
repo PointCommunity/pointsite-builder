@@ -1,6 +1,21 @@
 import type { SiteElement } from '../../site-kit/types';
 import { areasOverlap, gridAreaFromPoint, type GridArea } from '../../site-kit/grid-layout';
 
+export function measureGrid(surface: HTMLElement) {
+  const view = surface.ownerDocument.defaultView!;
+  const style = view.getComputedStyle(surface);
+  const width = surface.getBoundingClientRect().width;
+  const columnGap = Number.parseFloat(style.columnGap) || 0;
+  const rowGap = Number.parseFloat(style.rowGap) || 0;
+  const rootFontSize =
+    Number.parseFloat(view.getComputedStyle(surface.ownerDocument.documentElement).fontSize) || 16;
+  const minRem = Number.parseFloat(style.getPropertyValue('--point-grid-min-cell')) || 1.5;
+  const cellSize =
+    Number.parseFloat(style.gridTemplateRows) ||
+    Math.max(minRem * rootFontSize, (width - columnGap * 11) / 12);
+  return { width, columnGap, rowGap, cellSize };
+}
+
 export interface GridDropIntent {
   type: SiteElement['type'];
   sectionId?: string;

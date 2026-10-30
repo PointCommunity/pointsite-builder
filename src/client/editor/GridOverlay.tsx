@@ -24,6 +24,7 @@ import { usePointPuck } from './puck-store';
 import { setActiveGridSection } from './grid-interaction-store';
 import { childComponents, siblingComponents } from './puck-grid-data';
 import { setPuckActionIntent } from './puck-action-intent';
+import { measureGrid } from './grid-drag-preview';
 
 function isGrid(value: unknown): value is ElementPlacement['grid'] {
   return Boolean(
@@ -133,10 +134,8 @@ export function GridOverlay({
       const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
       const surface = source?.querySelector<HTMLElement>('.point-layout-section__grid');
       if (!surface) return;
-      const computed = getComputedStyle(surface);
-      const rowStep =
-        (Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24) +
-        (Number.parseFloat(computed.rowGap) || 0);
+      const { cellSize, rowGap } = measureGrid(surface);
+      const rowStep = cellSize + rowGap;
       const startY = event.clientY;
       const startRows = ownSettings.minRows;
       let latest = startRows;
@@ -250,13 +249,9 @@ export function GridOverlay({
       '.point-composition__grid, .point-layout-section__grid',
     );
     if (!surface) return;
-    const rect = surface.getBoundingClientRect();
-    const computed = ownerDocument.defaultView?.getComputedStyle(surface);
-    const columnGap = Number.parseFloat(computed?.columnGap ?? '0') || 0;
-    const rowGap = Number.parseFloat(computed?.rowGap ?? '0') || 0;
-    const cell = (rect.width - columnGap * 11) / 12;
-    const xStep = cell + columnGap;
-    const yStep = cell + rowGap;
+    const { width, columnGap, rowGap, cellSize } = measureGrid(surface);
+    const xStep = (width - columnGap * 11) / 12 + columnGap;
+    const yStep = cellSize + rowGap;
     const startX = event.clientX;
     const startY = event.clientY;
     const startArea = areaForBreakpoint(grid, breakpoint);

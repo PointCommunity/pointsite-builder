@@ -71,6 +71,7 @@ import { consumePuckActionIntent, setPuckActionIntent } from './puck-action-inte
 import {
   getDraggedElementType,
   deriveGridDropIntent,
+  measureGrid,
   getGridDropIntent,
   setGridDropIntent,
   setDraggedElementType,
@@ -725,10 +726,7 @@ function SectionComponent({
       clearDropPreview();
       return;
     }
-    const computed = getComputedStyle(gridRef.current);
-    const columnGap = Number.parseFloat(computed.columnGap) || 0;
-    const rowGap = Number.parseFloat(computed.rowGap) || 0;
-    const cellSize = Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24;
+    const { columnGap, rowGap, cellSize } = measureGrid(gridRef.current);
     lastGridPointer = {
       sectionId: id,
       x: clientX - rect.left,
@@ -936,10 +934,7 @@ function GroupComponent({
     }
     const type = getDraggedElementType();
     if (!type) return;
-    const computed = getComputedStyle(grid);
-    const columnGap = Number.parseFloat(computed.columnGap) || 0;
-    const rowGap = Number.parseFloat(computed.rowGap) || 0;
-    const cellSize = Math.max(24, (bounds.width - columnGap * 11) / 12);
+    const { columnGap, rowGap, cellSize } = measureGrid(grid);
     const intent = deriveGridDropIntent({
       type,
       label: draggedPresetName ?? blockDefinitions[type].label,
