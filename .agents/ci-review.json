@@ -212,8 +212,8 @@
         "blueprints/qa/shared-windows.json": "3d4d47f6128250a05575c82c4fb94b3cd2c269b1e518ac62a276c21786122b25",
         "blueprints/qa/single.json": "a4ef3fceb2b92d916d0a5b8aeabb6406c8702f66d28dc5be3cdab329d891b3cc",
         "blueprints/qa/split-native.json": "d2dc36c993ff01ff685c95e341e05d780fbb8bbf0e8eb08ee8bf5a7df932f96c",
-        "package-lock.json": "8a6f3bcc4a693d505878fd2a57b1c241ef0c7ed46b1d8d343daa38491e057f4b",
-        "package.json": "007d9f3afa110f1372fca21a82cabfe468df6bbd29b996bb9c749fb72eeef37b",
+        "package-lock.json": "1ea0a65541c114a71d33ccfdd138e3138ae8564f3cb7a2c638f26b478c3fb604",
+        "package.json": "d50d19ab6301e11ee59f257813afd5ed5a148fbd85eafeb7281086532edd0dec",
         "pipeliner.config.json": "6c4de1c422539e9dffd5144704a206d5f8fb9e68c2c009531769e04b67a15d6f",
         "scripts/lib/adoption.mjs": "de9ecb456c5e497c7598d7d68f258a2fd9ddea540e45975b448e3305849c3f7b",
 
