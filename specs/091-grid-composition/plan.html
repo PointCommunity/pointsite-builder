@@ -74,6 +74,18 @@
         repair uncovered acceptance gaps, and qualify the complete candidate on Canary. Earlier PR
         evidence does not establish current dependency safety or complete Issue acceptance.
       </aside>
+      <p>
+        Responsive geometry qualification: root and nested grids must use their rendered row height
+        for pointer movement, edge/corner resizing and drop phantoms. Phone layouts and 200% text
+        can have rows taller than columns. Add browser regressions that move exactly one rendered
+        row, resize by one row, preserve other breakpoints, and save/reopen the result; reuse the
+        same measured metrics across pointer callers. Inspect Card conversion for unintended
+        adjacent-item overlap before qualifying its maximum collection size. When a Card has both
+        supporting text and a link, allocate separate columns in its last mobile row; keep the next
+        Card's image clear and retain the bounded 100-row group contract. Extend the existing
+        Layout–Preview–generated-output comparison to a schema-12 catalog of every neutral
+        composition starter, including its global chrome, at all supported widths.
+      </p>
       <ol>
         <li>
           <strong>Inventory and parity baseline.</strong> Capture representative v9–v11 documents,

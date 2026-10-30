@@ -153,6 +153,11 @@ describe('explicit legacy-to-grid conversion', () => {
     expect(
       Math.max(...group!.items.map((item) => item.grid.mobile.row + item.grid.mobile.rowSpan - 1)),
     ).toBeLessThanOrEqual(100);
+    for (let index = 0; index < group!.items.length; index++)
+      for (let other = index + 1; other < group!.items.length; other++)
+        expect(areasOverlap(group!.items[index].grid.mobile, group!.items[other].grid.mobile)).toBe(
+          false,
+        );
   });
 
   it('keeps an existing Heading 4 semantic level', () => {

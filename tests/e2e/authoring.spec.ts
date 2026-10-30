@@ -5,7 +5,9 @@ import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { upgradeNavigation } from '../../src/site-kit/migrations';
 import { legacyFooterDocument } from '../fixtures/legacy-footer';
 import { blockDefinitions } from '../../src/site-kit/registry';
+import type { ElementPlacement } from '../../src/site-kit/types';
 import { blockCatalogDocument } from '../fixtures/block-data';
+import { compositionCatalogDocument } from '../fixtures/composition-catalog';
 import { siteViewports } from '../../src/client/preview/viewports';
 import type * as HeroPublication from '../fixtures/hero-publication';
 import type { PendingJournalState } from '../../src/client/editor/pending-journal';
@@ -2464,10 +2466,15 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
-for (const fixture of ['existing pages', 'every Block variant'] as const)
+for (const fixture of ['existing pages', 'every Block variant', 'composed layouts'] as const)
   test(`matches complete authored ${fixture} in Preview and publication`, async ({ page }) => {
     test.setTimeout(180_000);
-    const source = fixture === 'existing pages' ? defaultSiteDocument : blockCatalogDocument();
+    const source =
+      fixture === 'existing pages'
+        ? defaultSiteDocument
+        : fixture === 'every Block variant'
+          ? blockCatalogDocument()
+          : compositionCatalogDocument();
     await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
     const measure = async (frame: FrameLocator) => {
       await frame.owner().scrollIntoViewIfNeeded();
@@ -2490,7 +2497,7 @@ for (const fixture of ['existing pages', 'every Block variant'] as const)
         );
         return Array.from(
           root.querySelectorAll(
-            'h1,h2,h3,h4,p,a,img,figure,address,video,iframe,.point-layout-item',
+            'h1,h2,h3,h4,h5,h6,p,a,img,figure,address,video,iframe,.point-layout-item',
           ),
         )
           .filter(
@@ -4415,6 +4422,127 @@ test('starts a neutral Hero layout with independently editable children', async 
     }),
   ).toBeVisible();
 });
+
+for (const nested of [false, true]) {
+  test(`uses rendered rows for ${nested ? 'nested' : 'section'} image gestures across responsive views`, async ({
+    page,
+  }) => {
+    const controls = await installApi(page, 'administrator', 'admin', (document) => {
+      document.schemaVersion = 12;
+      document.rendererVersion = '12.0.0';
+      const section = structuredClone(document.pages[0].blocks[1]);
+      section.layout = 'grid';
+      section.columns = 12;
+      section.minRows = 30;
+      const area = { column: 2, row: 2, columnSpan: 4, rowSpan: 3 };
+      const image: ElementPlacement = {
+        id: crypto.randomUUID(),
+        span: 4,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: { desktop: { ...area }, tablet: { ...area }, mobile: { ...area } },
+        element: {
+          id: crypto.randomUUID(),
+          type: 'image',
+          mediaId: document.media[0].id,
+          alt: 'Movable image',
+          aspect: 'natural',
+          fit: 'contain',
+        },
+      };
+      const groupArea = { column: 1, row: 1, columnSpan: 12, rowSpan: 24 };
+      section.items = nested
+        ? [
+            {
+              ...image,
+              id: crypto.randomUUID(),
+              span: 12,
+              grid: {
+                desktop: { ...groupArea },
+                tablet: { ...groupArea },
+                mobile: { ...groupArea },
+              },
+              element: {
+                id: crypto.randomUUID(),
+                type: 'composition',
+                name: 'Image group',
+                items: [image],
+              },
+            },
+          ]
+        : [image];
+      document.pages[0].blocks = [section];
+    });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    const canvas = page.locator('.visual-editor iframe').contentFrame();
+    for (const [view, breakpoint] of [
+      ['Desktop', 'desktop'],
+      ['Tablet', 'tablet'],
+      ['Phone', 'mobile'],
+    ] as const) {
+      await page.getByRole('button', { name: `Switch to ${view} viewport` }).click();
+      if (view === 'Phone')
+        await canvas.locator('html').evaluate((element) => {
+          element.style.fontSize = '200%';
+        });
+      await canvas.getByAltText('Movable image', { exact: true }).click();
+      const metrics = await canvas
+        .getByAltText('Movable image', { exact: true })
+        .evaluate((element) => {
+          const grid = element.closest('.point-composition__grid, .point-layout-section__grid')!;
+          const style = getComputedStyle(grid);
+          return {
+            row: Number.parseFloat(style.gridTemplateRows) + (Number.parseFloat(style.rowGap) || 0),
+            column:
+              Number.parseFloat(style.gridTemplateColumns) +
+              (Number.parseFloat(style.columnGap) || 0),
+          };
+        });
+      expect(metrics.row).toBeGreaterThan(0);
+      if (view === 'Phone') expect(metrics.row).toBeGreaterThan(metrics.column);
+      const gesture = async (name: string, x: number, y: number) => {
+        await canvas.getByRole('button', { name, exact: true }).dispatchEvent('pointerdown', {
+          pointerId: 91,
+          pointerType: 'touch',
+          clientX: 0,
+          clientY: 0,
+        });
+        await canvas.locator('body').dispatchEvent('pointermove', {
+          pointerId: 91,
+          pointerType: 'touch',
+          clientX: x,
+          clientY: y,
+        });
+        await canvas
+          .locator('body')
+          .dispatchEvent('pointerup', { pointerId: 91, pointerType: 'touch' });
+      };
+      await gesture(`Move image on ${breakpoint} grid`, 0, metrics.row);
+      await expect(page.getByLabel(`${breakpoint} row`, { exact: true }).last()).toHaveValue('3');
+      await gesture('Resize image from south east', metrics.column, metrics.row);
+      await expect(page.getByLabel(`${breakpoint} width in columns`).last()).toHaveValue('5');
+      await expect(page.getByLabel(`${breakpoint} height in rows`).last()).toHaveValue('4');
+      await gesture('Resize image from south', 0, metrics.row);
+      await expect(page.getByLabel(`${breakpoint} height in rows`).last()).toHaveValue('5');
+      await canvas
+        .getByRole('button', { name: `Move image on ${breakpoint} grid` })
+        .press('ArrowDown');
+      await expect(page.getByLabel(`${breakpoint} row`, { exact: true }).last()).toHaveValue('4');
+      await expect(page.getByText('All changes saved')).toBeVisible();
+      const item = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0];
+      const placement =
+        nested && item.element.type === 'composition' ? item.element.items[0] : item;
+      expect(placement.grid[breakpoint]).toEqual({ column: 2, row: 4, columnSpan: 5, rowSpan: 5 });
+      if (breakpoint !== 'mobile')
+        expect(placement.grid.mobile).toEqual({ column: 2, row: 2, columnSpan: 4, rowSpan: 3 });
+    }
+    await page.reload();
+    await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+    await canvas.getByAltText('Movable image', { exact: true }).click();
+    await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
+    await expect(page.getByLabel('mobile height in rows').last()).toHaveValue('5');
+  });
+}
 
 test('converts a legacy Hero only on request and saves its independent image and copy', async ({
   page,
