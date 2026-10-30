@@ -66,14 +66,13 @@
       <h2>Decision and dependency order</h2>
       <aside>
         <strong>2026-10-30 resumption:</strong> resume PR #92 at
-        <code>30249d73ac075143e7c8f15a6a0c204e83c7c19e</code>. First repair the
-        dependency audit failure reported by Quality run <code>40327181302</code>:
-        update vulnerable direct packages and transitive pins, regenerate the lockfile,
-        and preserve the high/critical audit gate and installation-script prohibition in CI.
-        Verify compatibility through the existing full local gates before pushing.
-        Then reconcile T02–T20 against implementation and fresh evidence, repair uncovered
-        acceptance gaps, and qualify the complete candidate on Canary. Earlier PR evidence
-        does not establish current dependency safety or complete Issue acceptance.
+        <code>30249d73ac075143e7c8f15a6a0c204e83c7c19e</code>. First repair the dependency audit
+        failure reported by Quality run <code>40327181302</code>: update vulnerable direct packages
+        and transitive pins, regenerate the lockfile, and preserve the high/critical audit gate and
+        installation-script prohibition in CI. Verify compatibility through the existing full local
+        gates before pushing. Then reconcile T02–T20 against implementation and fresh evidence,
+        repair uncovered acceptance gaps, and qualify the complete candidate on Canary. Earlier PR
+        evidence does not establish current dependency safety or complete Issue acceptance.
       </aside>
       <ol>
         <li>
