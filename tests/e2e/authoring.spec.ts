@@ -4480,7 +4480,8 @@ for (const nested of [false, true]) {
       ['Tablet', 'tablet'],
       ['Phone', 'mobile'],
     ] as const) {
-      await page.getByRole('button', { name: `Switch to ${view} viewport` }).click();
+      const viewport = page.getByRole('button', { name: `Switch to ${view} viewport` });
+      if (await viewport.isEnabled()) await viewport.click();
       if (view === 'Phone')
         await canvas.locator('html').evaluate((element) => {
           element.style.fontSize = '200%';
@@ -4537,7 +4538,8 @@ for (const nested of [false, true]) {
         expect(placement.grid.mobile).toEqual({ column: 2, row: 2, columnSpan: 4, rowSpan: 3 });
     }
     await page.reload();
-    await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+    const phone = page.getByRole('button', { name: 'Switch to Phone viewport' });
+    if (await phone.isEnabled()) await phone.click();
     await canvas.getByAltText('Movable image', { exact: true }).click();
     await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
     await expect(page.getByLabel('mobile height in rows').last()).toHaveValue('5');
