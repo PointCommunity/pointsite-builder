@@ -572,7 +572,7 @@ test('keeps external API scripts outside the draft API fixture', async ({ page }
   await installApi(page);
   await page.goto('/');
   await page.addScriptTag({ url: 'https://fixture.example/api/widget.js' });
-  expect(await page.evaluate(() => Reflect.get(window, 'fixtureWidget'))).toBe(true);
+  expect(await page.evaluate(() => Reflect.get(window, 'fixtureWidget') === true)).toBe(true);
 });
 
 test('keeps Properties state only for the current checkout', async ({ page }) => {
