@@ -2475,7 +2475,12 @@ test('preserves authored headings on wider Desktop viewports', async ({ page }) 
   await expect(preview.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
-for (const fixture of ['existing pages', 'every Block variant', 'composed layouts'] as const)
+for (const fixture of [
+  'existing pages',
+  'every Block variant',
+  'composed layouts',
+  'composed Flow layouts',
+] as const)
   test(`matches complete authored ${fixture} in Preview and publication`, async ({ page }) => {
     test.setTimeout(180_000);
     const source =
@@ -2484,6 +2489,12 @@ for (const fixture of ['existing pages', 'every Block variant', 'composed layout
         : fixture === 'every Block variant'
           ? blockCatalogDocument()
           : compositionCatalogDocument();
+    if (fixture === 'composed Flow layouts')
+      source.pages[0].blocks.forEach((section, index) => {
+        section.layout = 'flow';
+        section.columns = 1;
+        section.stackAt = (['smallTablet', 'tablet', 'phone'] as const)[index % 3];
+      });
     await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
     const measure = async (frame: FrameLocator) => {
       await frame.owner().scrollIntoViewIfNeeded();
@@ -2504,6 +2515,15 @@ for (const fixture of ['existing pages', 'every Block variant', 'composed layout
             .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
             .map((animation) => animation.finished.catch(() => {})),
         );
+        const breakpoint = innerWidth <= 520 ? 'mobile' : innerWidth <= 900 ? 'tablet' : 'desktop';
+        for (const item of root.querySelectorAll<HTMLElement>(
+          '.point-composition__grid > .point-layout-item',
+        )) {
+          const style = getComputedStyle(item);
+          const span = item.style.getPropertyValue(`--point-grid-${breakpoint}-column-span`);
+          if (style.gridColumnEnd !== `span ${span}`)
+            throw new Error(`Nested ${breakpoint} grid span ${span} became ${style.gridColumnEnd}`);
+        }
         return Array.from(
           root.querySelectorAll(
             'h1,h2,h3,h4,h5,h6,p,a,img,figure,address,video,iframe,.point-layout-item',
