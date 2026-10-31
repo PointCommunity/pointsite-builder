@@ -72,9 +72,10 @@
         deployment commits explicitly to master; preserve the unrelated canonical checkout. Test
         detached worktrees and rejection of dirty, stale, wrong-branch and wrong-remote checkouts.
         Verify the Linode SSH key against an existing independently trusted record before strict SSH
-        inspection. Never accept an unverified network key. Requalify the exact changed source
-        through local gates and Quality, then deploy Canary; Production retains its exact-candidate
-        PM approval gate.
+        inspection. Never accept an unverified network key. Accept Podman's bare 64-character image
+        IDs as well as prefixed SHA-256 IDs, retaining exact identity comparisons and rejecting
+        truncated IDs. Requalify the exact changed source through local gates and Quality, then
+        deploy Canary; Production retains its exact-candidate PM approval gate.
       </p>
       <aside>
         <strong>2026-10-30 resumption:</strong> resume PR #92 at

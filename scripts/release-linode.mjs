@@ -20,7 +20,7 @@ const target = 'root@45.33.2.134';
 const sha = /^[a-f0-9]{40}$/;
 const hash = /^[a-f0-9]{64}$/;
 const image = /^localhost\/pointsite-builder:[a-f0-9]{40}$/;
-const imageId = /^sha256:[a-f0-9]{64}$/;
+const imageId = /^(?:sha256:)?[a-f0-9]{64}$/;
 const command = (file, args, options = {}) =>
   execFileSync(file, args, {
     encoding: 'utf8',

@@ -120,6 +120,10 @@ test('Linode approval hash binds the observed host configuration and Canary iden
   });
   const current = productionConfigHash(candidate, '2'.repeat(40), inspected);
   assert.match(current, /^[a-f0-9]{64}$/);
+  const podmanInspection = { ...inspected, previousImageId: '1'.repeat(64) };
+  assert.equal(validateInspection(podmanInspection), podmanInspection);
+  assert.notEqual(current, productionConfigHash(candidate, '2'.repeat(40), podmanInspection));
+  assert.throws(() => validateInspection({ ...inspected, previousImageId: '1'.repeat(63) }));
   assert.notEqual(current, productionConfigHash(candidate, '3'.repeat(40), inspected));
   assert.notEqual(
     current,
