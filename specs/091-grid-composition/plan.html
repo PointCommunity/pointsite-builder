@@ -64,6 +64,18 @@
       </p>
 
       <h2>Decision and dependency order</h2>
+      <p>
+        <strong>2026-10-31 release continuation:</strong> the PM authorized a separate clean GitOps
+        worktree. Add an explicit <code>POINTSITE_GITOPS_WORKTREE</code> override shared by Canary
+        and Linode inspection. Require canonical Gitea fetch and push identities, a clean checkout
+        at current <code>origin/master</code>, and either master or a detached HEAD. Push detached
+        deployment commits explicitly to master; preserve the unrelated canonical checkout. Test
+        detached worktrees and rejection of dirty, stale, wrong-branch and wrong-remote checkouts.
+        Verify the Linode SSH key against an existing independently trusted record before strict
+        SSH inspection. Never accept an unverified network key. Requalify the exact changed source
+        through local gates and Quality, then deploy Canary; Production retains its exact-candidate
+        PM approval gate.
+      </p>
       <aside>
         <strong>2026-10-30 resumption:</strong> resume PR #92 at
         <code>30249d73ac075143e7c8f15a6a0c204e83c7c19e</code>. First repair the dependency audit

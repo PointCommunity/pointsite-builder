@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import {
+  gitops,
   quality,
   validateApproval,
   validateCandidate,
@@ -16,7 +17,6 @@ import {
 import { verifyLive } from '../.agents/skills/pointsite-builder-release-production/scripts/verify-live.mjs';
 
 const target = 'root@45.33.2.134';
-const homelab = '/Users/chris/Documents/Github/homelab';
 const sha = /^[a-f0-9]{40}$/;
 const hash = /^[a-f0-9]{64}$/;
 const image = /^localhost\/pointsite-builder:[a-f0-9]{40}$/;
@@ -28,7 +28,6 @@ const command = (file, args, options = {}) =>
     ...options,
   }).trim();
 const git = (...args) => command('git', args);
-const gitops = (...args) => command('git', ['-C', homelab, ...args]);
 
 export function validateRoute(values) {
   const production = values.indexOf("hostname: 'builder.eaglepass.io'");
