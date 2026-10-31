@@ -1920,17 +1920,29 @@ function VisualEditorImpl({
               action.destinationZone === 'root:default-zone' &&
               !sectionTypes.includes(action.componentType as (typeof sectionTypes)[number])
             ) {
+              const rootIntent = dropIntent?.type === action.componentType ? dropIntent : null;
+              const pointerId = lastSectionPointer ?? rootIntent?.sectionId;
+              const targetId = pointerId
+                ? documentComponentId({ type: 'Section', props: { id: pointerId } })
+                : null;
               const target = nextState.data.content.find(
                 (item) =>
                   sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
-                  String(item.props.id) === lastSectionPointer,
+                  documentComponentId(item) === targetId,
               );
               pendingRootDrop.current = target
                 ? {
                     pageId,
                     componentId: String(nextState.data.content[action.destinationIndex]?.props.id),
                     sectionId: documentComponentId(target),
-                    intent: dropIntent?.sectionId === lastSectionPointer ? dropIntent : null,
+                    intent:
+                      rootIntent?.sectionId &&
+                      documentComponentId({
+                        type: 'Section',
+                        props: { id: rootIntent.sectionId },
+                      }) === targetId
+                        ? rootIntent
+                        : null,
                   }
                 : null;
               redirectedSectionId = pendingRootDrop.current?.sectionId;
