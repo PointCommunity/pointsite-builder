@@ -10,6 +10,18 @@ describe('GridPlacementInspector', () => {
 
   afterEach(() => setGridBreakpoint('desktop'));
 
+  it('keeps nested placements within the group row limit before dispatching changes', () => {
+    const onChange = vi.fn();
+    const value = independentGridArea({ column: 1, row: 85, columnSpan: 6, rowSpan: 16 });
+    render(<GridPlacementInspector value={value} maxRows={100} onChange={onChange} />);
+    expect(screen.getByLabelText('desktop row')).toHaveAttribute('max', '85');
+    expect(screen.getByLabelText('desktop height in rows')).toHaveAttribute('max', '16');
+    fireEvent.change(screen.getByLabelText('desktop row'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('desktop height in rows'), { target: { value: '17' } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('100 grid rows');
+  });
+
   it('edits exact desktop coordinates', () => {
     const onChange = vi.fn();
     render(<GridPlacementInspector value={independentGridArea(desktop)} onChange={onChange} />);

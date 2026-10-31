@@ -76,6 +76,7 @@ import {
   setGridDropIntent,
   setDraggedElementType,
   setPointerFeedbackHidden,
+  type GridDropIntent,
 } from './grid-drag-preview';
 import {
   childComponents,
@@ -950,6 +951,7 @@ function GroupComponent({
       },
       columnSpan: 6,
       rowSpan: draggedPreviewRows(type, document, breakpoint),
+      maxRows: 100,
       occupied: childComponents(currentPuckData(), id)
         .map((child) => child.props.grid as SectionBlock['items'][number]['grid'])
         .filter(Boolean)
@@ -1147,6 +1149,14 @@ function GridPlacementField({
   return (
     <GridPlacementInspector
       value={value}
+      maxRows={
+        (
+          (parent?.props as Record<string, unknown> | undefined)?.block as
+            { type?: string } | undefined
+        )?.type === 'composition'
+          ? 100
+          : undefined
+      }
       occupied={occupied}
       allowOverlap={
         Number(selectedProps?.layer ?? 0) !== 0 ||
@@ -1389,6 +1399,12 @@ function VisualEditorImpl({
   const pendingSelection = useRef<{
     pageId: string;
     selector: { zone: string; index: number };
+  } | null>(null);
+  const pendingRootDrop = useRef<{
+    pageId: string;
+    componentId: string;
+    sectionId: string;
+    intent: GridDropIntent | null;
   } | null>(null);
   useEffect(() => {
     const pending = pendingSelection.current;
@@ -1890,11 +1906,42 @@ function VisualEditorImpl({
             if (action.type === 'setUi' && nextState.ui.rightSideBarVisible !== propertiesOpen)
               queueMicrotask(() => onPropertiesChange(nextState.ui.rightSideBarVisible));
             if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
-            const dropIntent = getGridDropIntent();
+            const resolvedRootDrop =
+              action.type === 'replace' &&
+              action.destinationZone === 'root:default-zone' &&
+              pendingRootDrop.current?.pageId === pageId &&
+              pendingRootDrop.current.componentId === String(action.data.props.id)
+                ? pendingRootDrop.current
+                : null;
+            const dropIntent = resolvedRootDrop ? resolvedRootDrop.intent : getGridDropIntent();
+            let redirectedSectionId = resolvedRootDrop?.sectionId;
+            if (
+              action.type === 'insert' &&
+              action.destinationZone === 'root:default-zone' &&
+              !sectionTypes.includes(action.componentType as (typeof sectionTypes)[number])
+            ) {
+              const target = nextState.data.content.find(
+                (item) =>
+                  sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
+                  String(item.props.id) === lastSectionPointer,
+              );
+              pendingRootDrop.current = target
+                ? {
+                    pageId,
+                    componentId: String(nextState.data.content[action.destinationIndex]?.props.id),
+                    sectionId: documentComponentId(target),
+                    intent: dropIntent?.sectionId === lastSectionPointer ? dropIntent : null,
+                  }
+                : null;
+              redirectedSectionId = pendingRootDrop.current?.sectionId;
+            }
+            if (resolvedRootDrop) pendingRootDrop.current = null;
             const rejectedInsert =
-              (action.type === 'insert' &&
+              ((action.type === 'insert' || action.type === 'replace') &&
                 dropIntent?.valid === false &&
-                action.destinationZone === `${dropIntent.sectionId}:content`) ||
+                (action.destinationZone === `${dropIntent.sectionId}:content` ||
+                  (action.destinationZone === 'root:default-zone' &&
+                    (resolvedRootDrop || lastSectionPointer === dropIntent.sectionId)))) ||
               (action.type === 'replace' && action.data.props.gridDropRejected === true);
             if (rejectedInsert) {
               setGridDropIntent(null);
@@ -1936,19 +1983,54 @@ function VisualEditorImpl({
             let content = nextState.data.content as ComponentData[];
             let insertSelector: { zone: string; index: number } | null = null;
             if (
-              action.type === 'insert' &&
+              (action.type === 'insert' || action.type === 'replace') &&
               action.destinationZone === 'root:default-zone' &&
-              lastSectionPointer
+              redirectedSectionId
             ) {
               const inserted = content[action.destinationIndex];
               const target = content.find(
                 (item) =>
                   sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
-                  String(item.props.id) === lastSectionPointer &&
-                  (item.props.settings as SectionSettings).layout === 'flow',
+                  documentComponentId(item) === redirectedSectionId &&
+                  ((item.props.settings as SectionSettings).layout === 'flow' ||
+                    (dropIntent?.valid === true &&
+                      (resolvedRootDrop || dropIntent.sectionId === lastSectionPointer) &&
+                      dropIntent.type === inserted?.type)),
               );
-              if (inserted?.type === action.componentType && target) {
+              const insertedType =
+                action.type === 'insert' ? action.componentType : action.data.type;
+              if (inserted?.type === insertedType && target) {
                 const children = (target.props.content ?? []) as ComponentData[];
+                let placement = inserted;
+                if ((target.props.settings as SectionSettings).layout === 'grid' && dropIntent) {
+                  const span =
+                    target.type === 'TwoColumnSection'
+                      ? 6
+                      : target.type === 'ThreeColumnSection'
+                        ? 4
+                        : 12;
+                  const siblings = children.map((item) => ({
+                    grid: item.props.grid as SectionBlock['items'][number]['grid'],
+                  }));
+                  const rows = defaultRowSpan(inserted.type as SiteElement['type']);
+                  const grid = {
+                    desktop: nextGridArea(siblings, span, rows, 'desktop'),
+                    tablet: nextGridArea(siblings, span, rows, 'tablet'),
+                    mobile: nextGridArea(siblings, span, rows, 'mobile'),
+                  };
+                  placement = {
+                    ...inserted,
+                    props: {
+                      ...inserted.props,
+                      span,
+                      grid: updateGridArea(
+                        grid,
+                        dropIntent.breakpoint ?? getGridBreakpoint(),
+                        dropIntent.area,
+                      ),
+                    },
+                  };
+                }
                 content = content
                   .filter((_, index) => index !== action.destinationIndex)
                   .map((item) =>
@@ -1957,7 +2039,7 @@ function VisualEditorImpl({
                           ...item,
                           props: {
                             ...item.props,
-                            content: [...children, inserted],
+                            content: [...children, placement],
                           },
                         }
                       : item,

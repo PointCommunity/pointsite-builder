@@ -37,7 +37,10 @@ export function placementToData(placement: ElementPlacement, columns: number): C
 }
 
 function elementFromData(child: ComponentData): SiteElement {
-  const block = SiteElementSchema.parse(child.props.block);
+  const parsed = SiteElementSchema.parse(child.props.block);
+  const id = documentComponentId(child);
+  // Puck duplicates component IDs but retains block props; derive a stable new element identity.
+  const block = id === String(child.props.id) ? parsed : { ...parsed, id };
   if (block.type !== 'composition') return block;
   const content = (child.props.content ?? []) as ComponentData[];
   return SiteElementSchema.parse({

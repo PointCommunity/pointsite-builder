@@ -7,11 +7,13 @@ export function GridPlacementInspector({
   value,
   occupied = [],
   allowOverlap = false,
+  maxRows,
   onChange,
 }: {
   value: ElementPlacement['grid'];
   occupied?: ElementPlacement['grid'][];
   allowOverlap?: boolean;
+  maxRows?: number;
   onChange: (value: ElementPlacement['grid']) => void;
 }) {
   const breakpoint = useGridBreakpoint();
@@ -19,6 +21,13 @@ export function GridPlacementInspector({
   const area = areaForBreakpoint(value, breakpoint);
   const set = (change: Partial<typeof area>) => {
     const next = updateGridArea(value, breakpoint, change);
+    const candidate = areaForBreakpoint(next, breakpoint);
+    if (maxRows && candidate.row + candidate.rowSpan - 1 > maxRows) {
+      setStatus(
+        `Group content must fit within ${maxRows} grid rows. The previous position was kept.`,
+      );
+      return;
+    }
     const resolved = resolveGridArea(
       areaForBreakpoint(next, breakpoint),
       area,
@@ -62,7 +71,7 @@ export function GridPlacementInspector({
             aria-label={`${breakpoint} row`}
             type="number"
             min="1"
-            max="1000"
+            max={maxRows ? maxRows - area.rowSpan + 1 : 1000}
             value={area.row}
             onChange={(event) => set({ row: Number(event.target.value) })}
           />
@@ -84,7 +93,7 @@ export function GridPlacementInspector({
             aria-label={`${breakpoint} height in rows`}
             type="number"
             min="1"
-            max="100"
+            max={maxRows ? Math.min(100, maxRows - area.row + 1) : 100}
             value={area.rowSpan}
             onChange={(event) => set({ rowSpan: Number(event.target.value) })}
           />

@@ -42,9 +42,11 @@ export function deriveGridDropIntent(input: {
   columnSpan: number;
   rowSpan: number;
   occupied: GridArea[];
+  maxRows?: number;
 }): GridDropIntent {
   const area = gridAreaFromPoint(input.metrics, input.columnSpan, input.rowSpan);
-  const valid = !input.occupied.some((sibling) => areasOverlap(area, sibling));
+  const outsideRows = Boolean(input.maxRows && area.row + area.rowSpan - 1 > input.maxRows);
+  const valid = !outsideRows && !input.occupied.some((sibling) => areasOverlap(area, sibling));
   const columnSize = (input.metrics.width - input.metrics.columnGap * 11) / 12;
   const columnEnd = area.column + area.columnSpan - 1;
   const rowEnd = area.row + area.rowSpan - 1;
@@ -54,7 +56,7 @@ export function deriveGridDropIntent(input: {
     ...(input.breakpoint ? { breakpoint: input.breakpoint } : {}),
     area,
     valid,
-    label: `${input.label} · columns ${area.column}–${columnEnd}, rows ${area.row}–${rowEnd} · ${valid ? 'valid placement' : 'blocked by another element'}`,
+    label: `${input.label} · columns ${area.column}–${columnEnd}, rows ${area.row}–${rowEnd} · ${outsideRows ? 'outside the group row limit' : valid ? 'valid placement' : 'blocked by another element'}`,
     bounds: {
       left: (area.column - 1) * (columnSize + input.metrics.columnGap),
       top: (area.row - 1) * (input.metrics.cellSize + input.metrics.rowGap),

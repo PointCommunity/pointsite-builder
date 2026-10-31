@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { deriveGridDropIntent } from '../../src/client/editor/grid-drag-preview';
 
 describe('grid insertion intent', () => {
+  it('blocks a nested drop whose content would exceed the group row limit', () => {
+    const intent = deriveGridDropIntent({
+      type: 'text',
+      label: 'Text',
+      metrics: { x: 0, y: 9900, width: 1200, columnGap: 0, rowGap: 0, cellSize: 100 },
+      columnSpan: 6,
+      rowSpan: 3,
+      occupied: [],
+      maxRows: 100,
+    });
+    expect(intent.valid).toBe(false);
+    expect(intent.label).toContain('outside the group row limit');
+  });
   const metrics = {
     x: 610,
     y: 220,

@@ -5,7 +5,11 @@ let latestData: Data | undefined;
 export function documentComponentId(item: ComponentData): string {
   const id = String(item.props.id);
   // Puck prefixes inserted and duplicated component UUIDs with their type.
-  return id.startsWith(`${item.type}-`) ? id.slice(item.type.length + 1) : id;
+  if (id.startsWith(`${item.type}-`)) return id.slice(item.type.length + 1);
+  // Replacing a component's type keeps its Puck ID, including the original type prefix.
+  return (
+    id.match(/^[A-Za-z][A-Za-z0-9]*-([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i)?.[1] ?? id
+  );
 }
 
 export function rememberPuckData(data: Data): void {

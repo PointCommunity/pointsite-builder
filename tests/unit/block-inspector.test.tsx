@@ -5,7 +5,9 @@ import { BlockInspector } from '../../src/client/editor/BlockInspector';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
 import type { SiteElement } from '../../src/site-kit/types';
 import { allBlocks } from '../fixtures/block-data';
-import { upgradeNavigation } from '../../src/site-kit/migrations';
+import { upgradeComposition, upgradeNavigation } from '../../src/site-kit/migrations';
+import { SiteElementSchema } from '../../src/site-kit/schema';
+import { compositionCatalogDocument } from '../fixtures/composition-catalog';
 
 function ControlledInspector({ initial }: { initial: SiteElement }) {
   const [block, setBlock] = useState(initial);
@@ -13,6 +15,61 @@ function ControlledInspector({ initial }: { initial: SiteElement }) {
 }
 
 describe('BlockInspector', () => {
+  it('keeps every authored Properties text control empty across controlled rerenders', () => {
+    const document = upgradeComposition(structuredClone(defaultSiteDocument));
+    const blocks = [
+      ...allBlocks,
+      ...compositionCatalogDocument().pages.flatMap((page) =>
+        page.blocks.flatMap((section) => section.items.map((item) => item.element)),
+      ),
+      SiteElementSchema.parse({
+        id: crypto.randomUUID(),
+        type: 'richText',
+        content: [
+          { type: 'paragraph', children: [{ text: 'Paragraph', bold: true }] },
+          { type: 'bulletedList', items: ['First', 'Second'] },
+          { type: 'numberedList', items: ['First', 'Second'] },
+          { type: 'quote', text: 'Quote', attribution: 'Author' },
+          { type: 'address', text: 'Address' },
+          { type: 'link', text: 'Read more', href: 'https://example.com' },
+        ],
+      }),
+      ...[...document.pages.flatMap((page) => page.blocks), ...document.footer!].flatMap(
+        (section) => section.items.map((item) => item.element),
+      ),
+    ];
+    let checked = 0;
+    for (const block of blocks) {
+      let latest = block;
+      const onChange = (next: SiteElement) => {
+        latest = next;
+        view.rerender(<BlockInspector block={next} document={document} onChange={onChange} />);
+      };
+      const view = render(<BlockInspector block={block} document={document} onChange={onChange} />);
+      const fields = () =>
+        Array.from(
+          view.container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+            'input[type="text"],input:not([type]),textarea',
+          ),
+        ).filter(
+          (field) =>
+            !/^(Link|Link destination|Supporting link destination|Location or search)$/.test(
+              field.closest('label')?.querySelector('span')?.textContent ?? '',
+            ),
+        );
+      const count = fields().length;
+      for (let index = 0; index < count; index++) {
+        fireEvent.change(fields()[index], { target: { value: 'Temporary authored copy' } });
+        fireEvent.change(fields()[index], { target: { value: '' } });
+        expect(fields()[index].value, `${block.type} text control ${index}`).toBe('');
+        expect(SiteElementSchema.safeParse(latest).success, `${block.type} empty draft`).toBe(true);
+        checked++;
+      }
+      view.unmount();
+    }
+    expect(checked).toBeGreaterThan(200);
+  });
+
   it('offers optional internal and external destinations for a version-12 image', () => {
     const document = {
       ...defaultSiteDocument,

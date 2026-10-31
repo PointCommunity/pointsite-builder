@@ -37,6 +37,17 @@ describe('Puck grid data traversal', () => {
     ]);
   });
 
+  it('keeps the placement UUID when an inserted component changes type', () => {
+    const id = '10000000-0000-4000-8000-000000000001';
+    for (const originalType of ['hero', 'heading', 'splitFeature', 'cards', 'people', 'form'])
+      expect(
+        documentComponentId({ type: 'composition', props: { id: `${originalType}-${id}` } }),
+      ).toBe(id);
+    expect(documentComponentId({ type: 'composition', props: { id: 'unknown-not-a-uuid' } })).toBe(
+      'unknown-not-a-uuid',
+    );
+  });
+
   it('finds live siblings for movement and inspector collision checks', () => {
     expect(siblingComponents(data, 'button-1').map((item) => item.props.id)).toEqual([
       'heading-1',

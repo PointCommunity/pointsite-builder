@@ -6,6 +6,42 @@ import { SiteDocumentSchema } from '../../src/site-kit/schema';
 import { dataToSection, sectionToData } from '../../src/client/editor/editor-section-data';
 
 describe('Puck composition round trip', () => {
+  it('gives Puck duplicates distinct stable element identities without changing the original', () => {
+    const section = structuredClone(defaultSiteDocument.pages[0].blocks[1]);
+    const original = section.items[0];
+    if (original.element.type === 'composition') throw new Error('Expected a primitive fixture');
+    const groupId = crypto.randomUUID();
+    const duplicateId = crypto.randomUUID();
+    const child = sectionToData(section).props.content as ComponentData[];
+    section.items = [
+      {
+        ...original,
+        id: groupId,
+        element: {
+          id: crypto.randomUUID(),
+          type: 'composition',
+          name: 'Group',
+          items: [{ ...original, element: original.element, layer: 0 }],
+        },
+      },
+    ];
+    const data = sectionToData(section);
+    const group = (data.props.content as ComponentData[])[0];
+    (group.props.content as ComponentData[]).push({
+      ...child[0],
+      props: { ...child[0].props, id: `${child[0].type}-${duplicateId}` },
+    });
+    const converted = dataToSection(data);
+    expect(converted.items[0].element).toMatchObject({
+      type: 'composition',
+      items: [
+        { element: { id: original.element.id } },
+        { id: duplicateId, element: { id: duplicateId } },
+      ],
+    });
+    expect(dataToSection(data)).toEqual(converted);
+  });
+
   it('preserves nested element identities, layers and responsive placement through edits', () => {
     const section = structuredClone(defaultSiteDocument.pages[0].blocks[1]);
     section.layout = 'grid';

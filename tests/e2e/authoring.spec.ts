@@ -172,6 +172,10 @@ async function installApi(
   }> = [];
   await page.route('**/api/**', async (route) => {
     const request = route.request();
+    if (new URL(request.url()).origin !== new URL(page.url()).origin) {
+      await route.fallback();
+      return;
+    }
     const path = new URL(request.url()).pathname;
     const method = request.method();
     let body: unknown = {};
@@ -560,6 +564,16 @@ async function installApi(
 }
 
 test.beforeEach(async ({ page }) => installApi(page));
+
+test('keeps external API scripts outside the draft API fixture', async ({ page }) => {
+  await page.route('https://fixture.example/api/widget.js', (route) =>
+    route.fulfill({ contentType: 'application/javascript', body: 'window.fixtureWidget = true;' }),
+  );
+  await installApi(page);
+  await page.goto('/');
+  await page.addScriptTag({ url: 'https://fixture.example/api/widget.js' });
+  expect(await page.evaluate(() => Reflect.get(window, 'fixtureWidget'))).toBe(true);
+});
 
 test('keeps Properties state only for the current checkout', async ({ page }) => {
   await page.goto('/');
@@ -4239,6 +4253,75 @@ test('drops the rendered Map phantom into an empty grid', async ({ page, browser
   });
 });
 
+test('keeps a valid grid drop in its section after switching responsive viewports', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  test.skip(browserName !== 'chromium', 'Puck cross-frame drags require Chromium for this flow.');
+  const imageBefore = defaultSiteDocument.pages[0].blocks[0].items.find(
+    (item) => item.element.type === 'image',
+  )!;
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    const header = document.pages[0].blocks[0];
+    header.position = 'flow';
+    header.minRows = 20;
+    header.items = header.items.filter((item) => item.element.type === 'image');
+    document.pages[0].blocks = [header];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  for (const viewport of ['Tablet', 'Phone', 'Desktop']) {
+    await page.getByRole('button', { name: `Switch to ${viewport} viewport`, exact: true }).click();
+  }
+  await expect.poll(() => canvas.locator('body').evaluate(() => window.innerWidth)).toBe(1280);
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const source = page
+    .locator('.page-workspace')
+    .getByRole('button', { name: 'Navigation', exact: true });
+  const target = canvas.locator('[data-puck-dropzone]').nth(1);
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const from = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const frame = (await page.locator('.visual-editor iframe').boundingBox())!;
+  const y = Math.max(to.y, frame.y + 1) + Math.min(to.height, frame.height - 2) / 2;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 9, from.y + from.height / 2 + 9, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, y, { steps: 20 });
+  const phantom = canvas.locator('.point-grid-drop-preview');
+  await expect(phantom).toHaveAttribute('data-drop-valid', 'true');
+  const geometry = (element: Element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.x + scrollX,
+      y: bounds.y + scrollY,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  };
+  const preview = await phantom.evaluate(geometry);
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  await expect
+    .poll(() => controls.saveRequests.at(-1)?.document.pages[0].blocks[0].items.length)
+    .toBe(2);
+  const saved = controls.saveRequests.at(-1)!.document.pages[0].blocks;
+  expect(saved).toHaveLength(1);
+  expect(saved[0].items[0].element.type).toBe('image');
+  expect(saved[0].items[0]).toMatchObject(imageBefore);
+  expect(saved[0].items[1].element.type).toBe('navigation');
+  const navigation = canvas.locator(`[data-puck-component$="${saved[0].items[1].id}"]`);
+  const landed = await navigation.evaluate(geometry);
+  for (const edge of ['x', 'y', 'width', 'height'] as const)
+    expect(Math.abs(landed[edge] - preview[edge]), edge).toBeLessThan(1);
+  await page.reload();
+  await expect(canvas.locator('[data-point-section-id]')).toHaveCount(1);
+  await expect(canvas.locator('.point-navigation')).toHaveCount(1);
+});
+
 test('composes text inside a nested grid and persists its placement', async ({ page }) => {
   const controls = await installApi(page, 'administrator', 'admin', (document) => {
     document.pages[0].blocks = [];
@@ -4541,6 +4624,17 @@ for (const nested of [false, true]) {
     await canvas.getByAltText('Movable image', { exact: true }).click();
     await expect(page.getByLabel('mobile row', { exact: true }).last()).toHaveValue('4');
     await expect(page.getByLabel('mobile height in rows').last()).toHaveValue('5');
+    if (nested) {
+      await page.getByLabel('mobile height in rows').last().fill('97');
+      await expect(page.getByText('All changes saved')).toBeVisible();
+      await canvas
+        .getByRole('button', { name: 'Resize image from south', exact: true })
+        .press('ArrowDown');
+      await expect(page.getByLabel('mobile height in rows').last()).toHaveValue('97');
+      await expect(canvas.getByRole('status').filter({ hasText: '100 grid rows' })).toBeVisible();
+      await page.getByLabel('mobile height in rows').last().fill('5');
+      await expect(page.getByText('All changes saved')).toBeVisible();
+    }
   });
 }
 
@@ -4616,6 +4710,68 @@ test('converts a legacy Hero only on request and saves its independent image and
   expect(geometry.groupHeight).toBeLessThanOrEqual(geometry.sectionItemHeight + 1);
   expect(geometry.overflow).toBe(0);
 });
+
+for (const label of ['Hero', 'Heading', 'Split feature', 'Cards', 'People', 'Form'])
+  test(`converts a newly inserted ${label} without invalidating its placement identity`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const controls = await installApi(page, 'administrator', 'admin', (document) => {
+      document.pages[0].blocks = [
+        { ...document.pages[0].blocks[1], layout: 'flow', columns: 1, items: [] },
+      ];
+    });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+    const canvas = page.locator('.visual-editor iframe').contentFrame();
+    const source = page
+      .locator('.page-workspace')
+      .getByRole('button', { name: label, exact: true });
+    const target = canvas.locator('[data-point-section-id] [data-puck-dropzone]');
+    await source.scrollIntoViewIfNeeded();
+    const from = await source.boundingBox();
+    const to = await target.boundingBox();
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 8, from!.y + from!.height / 2 + 8, {
+      steps: 4,
+    });
+    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 16 });
+    await page.waitForTimeout(200);
+    await page.mouse.up();
+    await expect.poll(() => controls.saveRequests.length).toBeGreaterThan(0);
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    const original = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0];
+    // Commit insertion's separate Puck history entry before testing conversion Undo.
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'Convert to editable grid', exact: true }).click();
+    await expect
+      .poll(() => controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0].element.type)
+      .toBe('composition');
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    const converted = controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0];
+    expect(converted.id).toBe(original.id);
+    expect(converted.element.type).toBe('composition');
+    expect(SiteDocumentSchema.safeParse(controls.saveRequests.at(-1)!.document).success).toBe(true);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect
+      .poll(() => controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0])
+      .toEqual(original);
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    expect(controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0]).toEqual(original);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect
+      .poll(() => controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0])
+      .toEqual(converted);
+    await expect(page.getByText('All changes saved')).toBeVisible();
+    expect(controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[0]).toEqual(converted);
+    await page.reload();
+    await expect(canvas.locator('.point-composition')).toHaveCount(1);
+    await expect(page.getByText('All changes saved')).toBeVisible();
+  });
 
 test('converts the current Split Feature image and long copy without phone clipping', async ({
   page,

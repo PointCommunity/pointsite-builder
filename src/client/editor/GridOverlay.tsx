@@ -214,6 +214,13 @@ export function GridOverlay({
       .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
       .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
     const previous = areaForBreakpoint(currentProps.grid, breakpoint);
+    if (
+      (parentProps?.block as { type?: string } | undefined)?.type === 'composition' &&
+      nextArea.row + nextArea.rowSpan - 1 > 100
+    ) {
+      setStatus('Group content must fit within 100 grid rows. The previous position was kept.');
+      return;
+    }
     const block = currentProps.block as { type?: string; wrap?: boolean } | undefined;
     const allowOverlap =
       Number(currentProps.layer ?? 0) !== 0 || (block?.type === 'image' && block.wrap === true);
