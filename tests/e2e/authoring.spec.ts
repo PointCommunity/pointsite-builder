@@ -4236,7 +4236,7 @@ test('reflows an enlarged header menu without obscuring its neighboring logo', a
   });
   const toggle = canvas.locator('.point-navigation__toggle');
   await expect(toggle).toBeVisible();
-  await canvas.locator('img').evaluate((image) => image.decode());
+  await canvas.locator('img').evaluate((image) => (image as HTMLImageElement).decode());
   const geometry = await toggle.evaluate((button) => {
     const image = button.closest('section')!.querySelector('img')!.getBoundingClientRect();
     const box = button.getBoundingClientRect();

@@ -580,14 +580,14 @@ function DropPhantom({
     const item = grid.ownerDocument.createElement('div');
     item.className = 'point-layout-item point-layout-item--grid';
     item.style.gridArea = `${preview.area.row} / ${preview.area.column} / span ${preview.area.rowSpan} / span ${preview.area.columnSpan}`;
-    item.append(...Array.from(content.current.childNodes, (child) => child.cloneNode(true)));
-    clone.append(item);
+    content.current.childNodes.forEach((child) => item.appendChild(child.cloneNode(true)));
+    clone.appendChild(item);
     clone.querySelectorAll('iframe, video, audio, source').forEach((media) => {
       media.removeAttribute('src');
       media.removeAttribute('srcdoc');
     });
     try {
-      grid.parentElement!.append(clone);
+      grid.parentElement!.appendChild(clone);
       const container = clone.getBoundingClientRect();
       const box = item.getBoundingClientRect();
       setMeasured({

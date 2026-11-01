@@ -9,7 +9,7 @@ describe('grid insertion intent', () => {
       'grid-template-rows:100px 220px;column-gap:10px;row-gap:5px;--point-primary:#123456';
     surface.getBoundingClientRect = () => ({ width: 1310 }) as DOMRect;
     Object.defineProperty(surface, 'clientHeight', { value: 535 });
-    document.body.append(surface);
+    document.body.appendChild(surface);
     try {
       expect(measureGrid(surface).rowSizes).toEqual([100, 220]);
       const image = surface.style.getPropertyValue('--point-grid-track-dots');
