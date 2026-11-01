@@ -7,6 +7,7 @@ import {
 } from './contracts';
 import { canonicalize, checksumDocument } from '../../site-kit/canonicalize';
 import { migrateDocument } from '../../site-kit/migrations';
+import { canEditDocument } from '../../site-kit/version';
 import { checkoutExpiry } from '../../shared/draft-checkout';
 import type { D1DraftAssets } from '../media/draft-assets';
 import { D1LibraryProjection } from '../media/library-projection';
@@ -487,6 +488,10 @@ export class D1DraftRepository implements DraftRepository {
       throw new ConflictError('The draft has a newer revision');
 
     const document = migrateDocument(input.document).document;
+    if (!canEditDocument(current.document) || !canEditDocument(document))
+      throw new ConflictError('This document version is read only in this Builder');
+    if (document.schemaVersion < current.document.schemaVersion)
+      throw new ConflictError('A composed document cannot be downgraded');
     const checksum = await checksumDocument(document);
     const now = new Date().toISOString();
     const checkoutHash = await hashToken(input.checkoutToken);

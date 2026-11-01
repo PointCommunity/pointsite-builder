@@ -1,10 +1,24 @@
 import { z } from 'zod';
-import { CanonicalRouteSchema, SafeHrefSchema, SafeHttpsUrlSchema } from './url-policy';
+import {
+  CanonicalRouteSchema,
+  SafeHrefSchema,
+  SafeHttpsUrlSchema,
+  isSafeExternalHttpUrl,
+  isSafeInternalPath,
+} from './url-policy';
 import { isDirectVideoUrl, youtubeVideoId } from './linked-media';
+import { areasOverlap, GRID_BREAKPOINTS } from './grid-layout';
 
 const uuid = z.uuid();
 const shortText = z.string().trim().min(1).max(120);
 const bodyText = z.string().trim().min(1).max(5_000);
+const editableShortText = z.string().trim().max(120);
+const editableBodyText = z.string().trim().max(5_000);
+const imageFrame = z.enum(['natural', 'portrait', 'square', 'landscape']);
+const focalPoint = z.strictObject({
+  x: z.number().int().min(0).max(100),
+  y: z.number().int().min(0).max(100),
+});
 const optionalBodyText = z.string().trim().max(5_000).optional();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hexadecimal color');
 const responsiveHeroWidth = z.strictObject({
@@ -30,7 +44,7 @@ function contrastRatio(a: string, b: string): number {
 }
 
 const ActionSchema = z.strictObject({
-  label: z.string().trim().min(1).max(60),
+  label: z.string().trim().max(60),
   href: SafeHrefSchema,
   style: z.enum(['primary', 'secondary', 'quiet']),
 });
@@ -38,7 +52,7 @@ const ActionSchema = z.strictObject({
 const BlockBase = { id: uuid } as const;
 const SocialLinkSchema = z.strictObject({
   platform: z.enum(['facebook', 'instagram', 'youtube', 'x', 'other']),
-  label: shortText,
+  label: editableShortText,
   url: SafeHttpsUrlSchema,
 });
 
@@ -46,9 +60,10 @@ const HeroBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('hero'),
   eyebrow: z.string().trim().max(80).optional(),
-  heading: z.string().trim().min(1).max(180),
+  heading: z.string().trim().max(180),
   body: optionalBodyText,
   mediaId: uuid.optional(),
+  mediaFocal: focalPoint.optional(),
   align: z.enum(['left', 'center']),
   surface: z.enum(['canvas', 'primary', 'image']),
   actions: z.array(ActionSchema).max(2).default([]),
@@ -60,7 +75,7 @@ const HeroBlockSchema = z.strictObject({
 const HeadingBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('heading'),
-  text: z.string().trim().min(1).max(240),
+  text: z.string().trim().max(240),
   level: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   align: z.enum(['left', 'center']),
   width: z.enum(['narrow', 'wide']),
@@ -71,7 +86,7 @@ const HeadingBlockSchema = z.strictObject({
 });
 
 const InlineTextSchema = z.strictObject({
-  text: z.string().min(1).max(2_000),
+  text: z.string().max(2_000),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
 });
@@ -81,11 +96,21 @@ const RichTextNodeSchema = z.discriminatedUnion('type', [
     type: z.literal('paragraph'),
     children: z.array(InlineTextSchema).min(1).max(30),
   }),
-  z.strictObject({ type: z.literal('bulletedList'), items: z.array(shortText).min(1).max(30) }),
-  z.strictObject({ type: z.literal('numberedList'), items: z.array(shortText).min(1).max(30) }),
-  z.strictObject({ type: z.literal('quote'), text: bodyText, attribution: shortText.optional() }),
-  z.strictObject({ type: z.literal('address'), text: bodyText }),
-  z.strictObject({ type: z.literal('link'), text: shortText, href: SafeHrefSchema }),
+  z.strictObject({
+    type: z.literal('bulletedList'),
+    items: z.array(editableShortText).min(1).max(30),
+  }),
+  z.strictObject({
+    type: z.literal('numberedList'),
+    items: z.array(editableShortText).min(1).max(30),
+  }),
+  z.strictObject({
+    type: z.literal('quote'),
+    text: editableBodyText,
+    attribution: editableShortText.optional(),
+  }),
+  z.strictObject({ type: z.literal('address'), text: editableBodyText }),
+  z.strictObject({ type: z.literal('link'), text: editableShortText, href: SafeHrefSchema }),
 ]);
 
 const RichTextBlockSchema = z.strictObject({
@@ -102,11 +127,22 @@ const ImageBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('image'),
   mediaId: uuid,
-  alt: z.string().trim().min(1).max(300),
-  aspect: z.enum(['natural', '1:1', '4:3', '16:9']),
-  fit: z.enum(['cover', 'contain']),
+  focal: focalPoint.optional(),
+  alt: z.string().trim().max(300),
+  aspect: z.enum(['natural', '1:1', '4:3', '4:5', '16:9']),
+  fit: z.enum(['cover', 'contain', 'stretch']),
+  wrap: z.boolean().optional(),
+  overlay: z.enum(['none', 'light', 'dark']).optional(),
   caption: z.string().trim().max(500).optional(),
   variant: z.enum(['standard', 'wide']).optional(),
+  href: z
+    .string()
+    .max(2048)
+    .refine(
+      (value) => isSafeInternalPath(value) || isSafeExternalHttpUrl(value),
+      'Image link must be an internal page or HTTP/HTTPS URL',
+    )
+    .optional(),
 });
 
 const MediaEmbedBlockSchema = z.strictObject({
@@ -122,10 +158,11 @@ const SplitFeatureBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('splitFeature'),
   eyebrow: z.string().trim().max(80).optional(),
-  heading: z.string().trim().min(1).max(180),
-  body: bodyText,
+  heading: z.string().trim().max(180),
+  body: editableBodyText,
   mediaId: uuid,
-  mediaAlt: z.string().trim().min(1).max(300).optional(),
+  mediaFocal: focalPoint.optional(),
+  mediaAlt: z.string().trim().max(300).optional(),
   mediaSide: z.enum(['left', 'right']),
   proportion: z.enum(['half', 'mediaWide', 'contentWide']),
   align: z.enum(['start', 'center', 'end']),
@@ -141,7 +178,7 @@ const SplitFeatureBlockSchema = z.strictObject({
 const CtaBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('cta'),
-  heading: z.string().trim().min(1).max(180),
+  heading: z.string().trim().max(180),
   body: optionalBodyText,
   action: ActionSchema,
   surface: z.enum(['canvas', 'surface', 'primary']),
@@ -159,11 +196,14 @@ const CardsBlockSchema = z.strictObject({
     .array(
       z.strictObject({
         eyebrow: z.string().trim().max(80).optional(),
-        title: shortText,
-        body: bodyText,
+        title: editableShortText,
+        body: editableBodyText,
         supportingText: z.string().trim().max(500).optional(),
         mediaId: uuid.optional(),
-        mediaAlt: z.string().trim().min(1).max(300).optional(),
+        mediaAlt: z.string().trim().max(300).optional(),
+        mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
+        mediaFrame: imageFrame.optional(),
+        mediaFocal: focalPoint.optional(),
         href: SafeHrefSchema.optional(),
       }),
     )
@@ -198,8 +238,8 @@ const FaqBlockSchema = z.strictObject({
   items: z
     .array(
       z.strictObject({
-        question: shortText,
-        answer: bodyText,
+        question: editableShortText,
+        answer: editableBodyText,
         initiallyOpen: z.boolean().optional(),
       }),
     )
@@ -220,18 +260,14 @@ const FormBlockSchema = z.strictObject({
   linkLabel: z.string().trim().max(80).optional(),
   linkHref: SafeHrefSchema.optional(),
   variant: z.enum(['standard', 'panel', 'standalone', 'contact']).optional(),
+  legacyChrome: z.boolean().optional(),
 });
 
 const MapBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('map'),
-  query: z
-    .string()
-    .trim()
-    .min(3)
-    .max(300)
-    .refine(isSafePlainText, 'Map query contains unsafe content'),
-  title: z.string().trim().min(1).max(180),
+  query: z.string().trim().max(300).refine(isSafePlainText, 'Map query contains unsafe content'),
+  title: z.string().trim().max(180),
   eyebrow: z.string().trim().max(80).optional(),
   heading: z.string().trim().max(180).optional(),
   body: optionalBodyText,
@@ -255,15 +291,16 @@ const SpacerBlockSchema = z.strictObject({
 const TextBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('text'),
-  text: bodyText,
-  style: z.enum(['body', 'lead', 'eyebrow', 'small']),
-  align: z.enum(['left', 'center']),
+  text: z.string().trim().max(5_000),
+  style: z.enum(['body', 'lead', 'eyebrow', 'small', 'title', 'display']),
+  align: z.enum(['left', 'center', 'right']),
+  semantic: z.enum(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']).optional(),
 });
 
 const ButtonBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('button'),
-  label: z.string().trim().min(1).max(60),
+  label: z.string().trim().max(60),
   href: SafeHrefSchema,
   style: z.enum(['primary', 'secondary', 'quiet']),
   width: z.enum(['fit', 'full']),
@@ -274,7 +311,7 @@ const NavigationBlockSchema = z.strictObject({
   ...BlockBase,
   type: z.literal('navigation'),
   navigationDesignId: uuid.optional(),
-  label: z.string().trim().min(1).max(80),
+  label: z.string().trim().max(80),
   orientation: z.enum(['responsive', 'horizontal', 'vertical']),
   align: z.enum(['left', 'center', 'right']),
   surface: z.enum(['transparent', 'canvas', 'primary']),
@@ -297,7 +334,7 @@ function isSafePlainText(value: string): boolean {
   });
 }
 
-export const SiteElementSchema = z.discriminatedUnion('type', [
+export const PrimitiveSiteElementSchema = z.discriminatedUnion('type', [
   HeroBlockSchema,
   HeadingBlockSchema,
   RichTextBlockSchema,
@@ -347,11 +384,68 @@ const ResponsivePlacementAlignmentSchema = z.strictObject({
   mobile: z.enum(['start', 'center', 'end', 'stretch']),
 });
 
-const ElementPlacementSchema = z.strictObject({
+const PrimitiveElementPlacementSchema = z.strictObject({
   id: uuid,
   span: z.number().int().min(1).max(12),
   align: ResponsivePlacementAlignmentSchema,
   grid: ResponsiveGridAreaSchema,
+  element: PrimitiveSiteElementSchema,
+});
+
+export const ComposedBlockSchema = z
+  .strictObject({
+    ...BlockBase,
+    type: z.literal('composition'),
+    name: z.string().trim().max(80),
+    surface: z.enum(['transparent', 'canvas', 'surface', 'primary']).optional(),
+    items: z
+      .array(
+        z.strictObject({
+          ...PrimitiveElementPlacementSchema.shape,
+          layer: z.number().int().min(-20).max(20),
+        }),
+      )
+      .max(100),
+  })
+  .superRefine((group, context) => {
+    const placementIds = new Set<string>();
+    const elementIds = new Set<string>();
+    group.items.forEach((item, index) => {
+      if (
+        GRID_BREAKPOINTS.some(
+          (breakpoint) => item.grid[breakpoint].row + item.grid[breakpoint].rowSpan - 1 > 100,
+        )
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'grid'],
+          message: 'Group content must fit within 100 grid rows',
+        });
+      if (placementIds.has(item.id))
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'id'],
+          message: 'Duplicate placement ID',
+        });
+      if (elementIds.has(item.element.id))
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'element', 'id'],
+          message: 'Duplicate element ID',
+        });
+      placementIds.add(item.id);
+      elementIds.add(item.element.id);
+    });
+  });
+
+export const SiteElementSchema = z.discriminatedUnion('type', [
+  ...PrimitiveSiteElementSchema.options,
+  ComposedBlockSchema,
+]);
+
+const ElementPlacementSchema = z.strictObject({
+  ...PrimitiveElementPlacementSchema.shape,
+  layer: z.number().int().min(-20).max(20).optional(),
   element: SiteElementSchema,
 });
 
@@ -359,7 +453,7 @@ export const SectionBlockSchema = z
   .strictObject({
     ...BlockBase,
     type: z.literal('section'),
-    name: z.string().trim().min(1).max(80),
+    name: z.string().trim().max(80),
     layout: z.enum(['compatibility', 'flow', 'grid']),
     position: z.enum(['flow', 'overlay']),
     columns: z.union([
@@ -481,65 +575,112 @@ const NavigationDesignSchema = z
     });
   });
 
-const FormSchema = z.strictObject({
-  id: uuid,
-  name: shortText,
-  recipientEmail: z.email(),
-  subject: z.string().trim().min(1).max(180),
-  submitLabel: z.string().trim().min(1).max(60),
-  heading: z.string().trim().max(180).optional(),
-  introduction: z.string().trim().max(1_000).optional(),
-  privacyNote: z.string().trim().max(500).optional(),
-  successMessage: z.string().trim().max(500).optional(),
-  layout: z.enum(['single', 'two-column']).default('two-column'),
-  density: z.enum(['comfortable', 'compact']).default('comfortable'),
-  fields: z
-    .array(
-      z
-        .strictObject({
-          id: uuid,
-          name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
-          label: shortText,
-          type: z.enum([
-            'text',
-            'email',
-            'tel',
-            'url',
-            'number',
-            'date',
-            'time',
-            'textarea',
-            'select',
-            'radio',
-            'checkbox',
-          ]),
-          required: z.boolean(),
-          options: z.array(shortText).min(1).max(30).optional(),
-          placeholder: z.string().trim().max(180).optional(),
-          helpText: z.string().trim().max(300).optional(),
-          width: z.enum(['half', 'full']).default('half'),
-        })
-        .superRefine((field, context) => {
-          const needsOptions = ['select', 'radio', 'checkbox'].includes(field.type);
-          if (needsOptions && !field.options) {
-            context.addIssue({
-              code: 'custom',
-              path: ['options'],
-              message: `${field.type} requires options`,
-            });
-          }
-          if (!needsOptions && field.options) {
-            context.addIssue({
-              code: 'custom',
-              path: ['options'],
-              message: `${field.type} cannot define options`,
-            });
-          }
-        }),
-    )
-    .min(1)
-    .max(30),
-});
+const FormSchema = z
+  .strictObject({
+    id: uuid,
+    name: editableShortText,
+    recipientEmail: z.email(),
+    subject: z.string().trim().max(180),
+    submitLabel: z.string().trim().max(60),
+    heading: z.string().trim().max(180).optional(),
+    introduction: z.string().trim().max(1_000).optional(),
+    privacyNote: z.string().trim().max(500).optional(),
+    successMessage: z.string().trim().max(500).optional(),
+    layout: z.enum(['single', 'two-column', 'grid']).default('two-column'),
+    density: z.enum(['comfortable', 'compact']).default('comfortable'),
+    fields: z
+      .array(
+        z
+          .strictObject({
+            id: uuid,
+            name: z.string().regex(/^[a-z][A-Za-z0-9_]{0,49}$/),
+            label: editableShortText,
+            type: z.enum([
+              'text',
+              'email',
+              'tel',
+              'url',
+              'number',
+              'date',
+              'time',
+              'textarea',
+              'select',
+              'radio',
+              'checkbox',
+            ]),
+            required: z.boolean(),
+            options: z.array(editableShortText).min(1).max(30).optional(),
+            placeholder: z.string().trim().max(180).optional(),
+            helpText: z.string().trim().max(300).optional(),
+            width: z.enum(['half', 'full']).default('half'),
+            grid: ResponsiveGridAreaSchema.optional(),
+          })
+          .superRefine((field, context) => {
+            const needsOptions = ['select', 'radio', 'checkbox'].includes(field.type);
+            if (needsOptions && !field.options) {
+              context.addIssue({
+                code: 'custom',
+                path: ['options'],
+                message: `${field.type} requires options`,
+              });
+            }
+            if (!needsOptions && field.options) {
+              context.addIssue({
+                code: 'custom',
+                path: ['options'],
+                message: `${field.type} cannot define options`,
+              });
+            }
+          }),
+      )
+      .min(1)
+      .max(30),
+  })
+  .superRefine((form, context) => {
+    if (form.layout !== 'grid') {
+      if (form.fields.some((field) => field.grid))
+        context.addIssue({
+          code: 'custom',
+          path: ['fields'],
+          message: 'Field placements require a grid form',
+        });
+      return;
+    }
+    for (const [index, field] of form.fields.entries()) {
+      if (!field.grid) {
+        context.addIssue({
+          code: 'custom',
+          path: ['fields', index, 'grid'],
+          message: 'Grid forms require every field to be placed',
+        });
+        continue;
+      }
+      for (const breakpoint of GRID_BREAKPOINTS) {
+        const current = field.grid[breakpoint];
+        const previous = form.fields[index - 1]?.grid?.[breakpoint];
+        if (
+          previous &&
+          (current.row < previous.row ||
+            (current.row === previous.row && current.column < previous.column))
+        )
+          context.addIssue({
+            code: 'custom',
+            path: ['fields', index, 'grid', breakpoint],
+            message: 'Visual field order must follow keyboard order',
+          });
+        if (
+          form.fields
+            .slice(0, index)
+            .some((other) => other.grid && areasOverlap(current, other.grid[breakpoint]))
+        )
+          context.addIssue({
+            code: 'custom',
+            path: ['fields', index, 'grid', breakpoint],
+            message: 'Form fields cannot overlap',
+          });
+      }
+    }
+  });
 
 const CollectionsSchema = z.strictObject({
   people: z.array(
@@ -550,6 +691,9 @@ const CollectionsSchema = z.strictObject({
       bio: bodyText,
       mediaId: uuid.optional(),
       mediaAlt: z.string().trim().min(1).max(300).optional(),
+      mediaFit: z.enum(['cover', 'contain', 'stretch']).optional(),
+      mediaFrame: imageFrame.optional(),
+      mediaFocal: focalPoint.optional(),
     }),
   ),
   beliefs: z.array(
@@ -601,7 +745,7 @@ const PageSchema = z.strictObject({
 
 export const SiteDocumentSchema = z
   .strictObject({
-    schemaVersion: z.union([z.literal(9), z.literal(10), z.literal(11)]),
+    schemaVersion: z.union([z.literal(9), z.literal(10), z.literal(11), z.literal(12)]),
     rendererVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     site: z.strictObject({
       name: shortText,
@@ -705,12 +849,55 @@ export const SiteDocumentSchema = z
         });
     }
     if (
-      document.schemaVersion === 11 ? document.footer === undefined : document.footer !== undefined
+      document.schemaVersion >= 11 ? document.footer === undefined : document.footer !== undefined
     )
       context.addIssue({
         code: 'custom',
         path: ['footer'],
         message: 'Editable footers require schema 11 and an explicit section list',
+      });
+    if (document.schemaVersion < 12 && document.site.socialLinks.some((link) => !link.label))
+      context.addIssue({
+        code: 'custom',
+        path: ['site', 'socialLinks'],
+        message: 'Empty social link labels require schema version 12',
+      });
+    if (
+      document.schemaVersion < 12 &&
+      document.collections.people.some(
+        (person) => person.mediaFit || person.mediaFrame || person.mediaFocal,
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['collections', 'people'],
+        message: 'Person media controls require schema version 12',
+      });
+    if (
+      document.schemaVersion < 12 &&
+      document.forms.some(
+        (form) => form.layout === 'grid' || form.fields.some((field) => field.grid),
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['forms'],
+        message: 'Form grids require schema version 12',
+      });
+    if (
+      document.schemaVersion < 12 &&
+      document.forms.some(
+        (form) =>
+          !form.name ||
+          !form.subject ||
+          !form.submitLabel ||
+          form.fields.some((field) => !field.label || field.options?.some((option) => !option)),
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['forms'],
+        message: 'Empty form text requires schema version 12',
       });
     const designIds = new Set<string>();
     designs?.forEach((design, index) => {
@@ -745,6 +932,126 @@ export const SiteDocumentSchema = z
           });
         section.items.forEach((item, itemIndex) => {
           const elementPath = [...sectionPath, 'items', itemIndex, 'element'];
+          if (document.schemaVersion < 12 && item.layer !== undefined)
+            context.addIssue({
+              code: 'custom',
+              path: [...sectionPath, 'items', itemIndex, 'layer'],
+              message: 'Page-level layers require schema version 12',
+            });
+          if (document.schemaVersion < 12 && item.element.type === 'composition')
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Composed content requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            item.element.type === 'form' &&
+            item.element.legacyChrome !== undefined
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Legacy form marker requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'text' &&
+              (item.element.semantic !== undefined || item.element.text.length === 0)) ||
+              (item.element.type === 'image' &&
+                (item.element.href !== undefined ||
+                  item.element.overlay !== undefined ||
+                  item.element.wrap !== undefined)))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Independent text and image links require schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'image' && item.element.fit === 'stretch') ||
+              (item.element.type === 'cards' &&
+                item.element.items.some(
+                  (card) =>
+                    card.mediaFit !== undefined ||
+                    card.mediaFrame !== undefined ||
+                    card.mediaFocal !== undefined,
+                )))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Custom image fit requires schema version 12',
+            });
+          if (
+            document.schemaVersion < 12 &&
+            ((item.element.type === 'image' && item.element.focal) ||
+              (item.element.type === 'hero' && item.element.mediaFocal) ||
+              (item.element.type === 'splitFeature' && item.element.mediaFocal))
+          )
+            context.addIssue({
+              code: 'custom',
+              path: elementPath,
+              message: 'Image focal points require schema version 12',
+            });
+          if (document.schemaVersion < 12) {
+            const element = item.element;
+            const required = (() => {
+              switch (element.type) {
+                case 'hero':
+                  return [element.heading, ...element.actions.map((action) => action.label)];
+                case 'heading':
+                  return [element.text, ...(element.actions ?? []).map((action) => action.label)];
+                case 'image':
+                  return [element.alt];
+                case 'splitFeature':
+                  return [
+                    element.heading,
+                    element.body,
+                    ...(element.mediaAlt === undefined ? [] : [element.mediaAlt]),
+                    ...(element.action ? [element.action.label] : []),
+                  ];
+                case 'cta':
+                  return [element.heading, element.action.label];
+                case 'cards':
+                  return element.items.flatMap((card) => [
+                    card.title,
+                    card.body,
+                    ...(card.mediaAlt === undefined ? [] : [card.mediaAlt]),
+                  ]);
+                case 'faq':
+                  return element.items.flatMap((faq) => [faq.question, faq.answer]);
+                case 'map':
+                  return [element.query.length >= 3 ? element.query : '', element.title];
+                case 'button':
+                case 'navigation':
+                  return [element.label];
+                case 'socialLinks':
+                  return element.links.map((link) => link.label);
+                case 'richText':
+                  return element.content.flatMap((node) => {
+                    if (node.type === 'paragraph') return [];
+                    if (node.type === 'bulletedList' || node.type === 'numberedList')
+                      return node.items;
+                    if (node.type === 'quote')
+                      return [
+                        node.text,
+                        ...(node.attribution === undefined ? [] : [node.attribution]),
+                      ];
+                    return [node.text];
+                  });
+                default:
+                  return [];
+              }
+            })();
+            if (required.some((value) => !value))
+              context.addIssue({
+                code: 'custom',
+                path: elementPath,
+                message: 'Empty required legacy text requires schema version 12',
+              });
+          }
           if (
             document.schemaVersion < 11 &&
             (item.element.type === 'socialLinks' ||

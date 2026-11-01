@@ -250,5 +250,6 @@ test('adoption validation requires agent testing instead of a bootstrap PM gate'
     'PM Testing steps are required',
   );
   assert.ok(validateAdoptionContract({ agents, adoptionSkill: regressed }).length > 0);
-  assert.match(agents, /Approved to complete Issue #<number>/);
+  assert.match(agents, /sole product-work approval gate/);
+  assert.doesNotMatch(agents, /Approved to complete Issue #<number>/);
 });

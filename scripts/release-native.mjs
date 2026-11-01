@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
-const homelab = '/Users/chris/Documents/Github/homelab';
+const homelab = resolve(
+  process.env.POINTSITE_GITOPS_WORKTREE ?? '/Users/chris/Documents/Github/homelab',
+);
 const repository = '10.0.20.11:32309/pointsite-builder';
 const sha = /^[a-f0-9]{40}$/;
 const digest = /^sha256:[a-f0-9]{64}$/;
@@ -13,7 +15,7 @@ const hash = (value) => createHash('sha256').update(value).digest('hex');
 const command = (file, args, cwd = process.cwd()) =>
   execFileSync(file, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
 const git = (...args) => command('git', args);
-const gitops = (...args) => command('git', ['-C', homelab, ...args]);
+export const gitops = (...args) => command('git', ['-C', homelab, ...args]);
 
 export function validateCandidate(candidate) {
   if (
@@ -102,21 +104,28 @@ export function quality(revision) {
   }
 }
 
-export function validateGitops(transport = 'origin') {
+export function validateGitopsCheckout(directory = homelab) {
+  const checkout = (...args) => command('git', ['-C', directory, ...args]);
   if (
-    gitops('remote', 'get-url', 'origin') !== 'git@git.eaglepass.io:ops/homelab.git' ||
-    gitops('branch', '--show-current') !== 'master'
+    checkout('remote', 'get-url', 'origin') !== 'git@git.eaglepass.io:ops/homelab.git' ||
+    checkout('remote', 'get-url', '--push', 'origin') !== 'git@git.eaglepass.io:ops/homelab.git' ||
+    !['master', ''].includes(checkout('branch', '--show-current'))
   )
     throw new Error('CANONICAL_GITOPS_MASTER_REQUIRED');
+  if (
+    checkout('rev-parse', 'HEAD') !== checkout('rev-parse', 'origin/master') ||
+    checkout('status', '--porcelain', '--untracked-files=all')
+  )
+    throw new Error('CLEAN_CURRENT_GITOPS_REQUIRED');
+  return checkout('rev-parse', 'HEAD');
+}
+
+export function validateGitops(transport = 'origin') {
+  validateGitopsCheckout();
   if (!['origin', 'http://127.0.0.1:23061/ops/homelab.git'].includes(transport))
     throw new Error('CANONICAL_GITEA_TRANSPORT_REQUIRED');
   gitops('fetch', transport, 'master:refs/remotes/origin/master');
-  if (
-    gitops('rev-parse', 'HEAD') !== gitops('rev-parse', 'origin/master') ||
-    gitops('status', '--porcelain')
-  )
-    throw new Error('CLEAN_CURRENT_GITOPS_REQUIRED');
-  return gitops('rev-parse', 'HEAD');
+  return validateGitopsCheckout();
 }
 
 export function verifyCanary(candidate) {
@@ -251,7 +260,7 @@ async function main() {
   gitops('add', '--', `apps/${name}/Chart.yaml`, `apps/${name}/values.yaml`);
   gitops('diff', '--cached', '--check');
   gitops('commit', '-m', `deploy: ${name} ${candidate.sourceRevision.slice(0, 12)}`);
-  gitops('push', transport, 'master');
+  gitops('push', transport, 'HEAD:refs/heads/master');
   console.log(
     JSON.stringify({
       action,

@@ -11,6 +11,7 @@ export function createEditableHeaderSection(
   pageId: string,
   logoMediaId: string | undefined,
   position: SectionBlock['position'] = 'flow',
+  logoAlt = 'Site logo',
 ): SectionBlock {
   const items: SectionBlock['items'] = [];
 
@@ -28,7 +29,7 @@ export function createEditableHeaderSection(
         id: derivedUuid(pageId, 0x2b2b2b2b),
         type: 'image',
         mediaId: logoMediaId,
-        alt: 'Point Community Church',
+        alt: logoAlt,
         aspect: 'natural',
         fit: 'contain',
       },

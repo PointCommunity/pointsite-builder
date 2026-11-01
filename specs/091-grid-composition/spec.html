@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Issue 91 · Grid-composable site specification</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+        background: #0b100d;
+        color: #eef3ec;
+      }
+      body {
+        max-width: 1040px;
+        margin: auto;
+        padding: 48px 24px 96px;
+      }
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 2.5rem;
+        color: #c3e4ae;
+      }
+      a {
+        color: #b9dafd;
+      }
+      code {
+        color: #f1d394;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.65rem;
+        border: 1px solid #354438;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #18231b;
+      }
+      aside {
+        padding: 1rem 1.25rem;
+        background: #18231b;
+        border-left: 4px solid #a2d782;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Issue #91 · Grid-composable site elements</h1>
+      <p>
+        Specification for
+        <a href="https://github.com/PointCommunity/pointsite-builder/issues/91"
+          >the approved GitHub Issue</a
+        >. The Issue's twelve acceptance criteria and boundaries are authoritative; this document
+        adds the technical contract and verification map without changing its scope.
+      </p>
+      <aside>
+        <strong>Assumptions for review.</strong> Legacy Point content stays intact and visually
+        equivalent. New Point-branded layout options disappear from authoring, but legacy variants
+        remain readable during transition. A composed layout is authored through Builder controls,
+        never arbitrary HTML/CSS/JavaScript. Public-site publication remains an authenticated
+        Administrator action, not part of this task.
+      </aside>
+
+      <h2>Objective and inventory</h2>
+      <p>
+        Any visible page or global region can be rebuilt from brand-neutral, independently placed
+        text, image, button/link, form, media, navigation, and grouping primitives on responsive
+        snapping grids. The inventory includes all registered elements (Hero, Heading, Rich Text,
+        Image, Linked Media, Split Feature, CTA, Cards, People, FAQ, Form, Map, Divider, Spacer,
+        Text, Button, Navigation, Social Links), page sections, editable header and footer, reusable
+        collections, and Form Designer fields. Existing specialized renderers are compatibility
+        inputs, not the only way to obtain those appearances.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Concern</th>
+            <th>Required contract</th>
+            <th>Baseline evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Document</td>
+            <td>
+              Versioned composition groups contain stable child identities, semantic content,
+              responsive grid areas, logical order, and bounded visual layers. A legacy document
+              remains readable; conversion never discards copy, links, media, or form references.
+            </td>
+            <td>
+              <code>src/site-kit/schema.ts</code>, <code>migrations.ts</code>,
+              <code>version.ts</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Grid</td>
+            <td>
+              Desktop, Tablet, and Mobile placements persist independently. Child text/images have
+              edge and corner resize, move, ordering and keyboard/touch equivalents. Deliberate
+              overlap has explicit layer controls; other placements retain collision feedback. Text
+              wrapping and overlays are authored, not inferred.
+            </td>
+            <td>
+              <code>grid-layout.ts</code>, <code>GridOverlay.tsx</code>, <code>site.css</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Text</td>
+            <td>
+              Each child is a free text element with H1–H6 or paragraph/appropriate text semantics
+              and independent styling. Empty authored text stays empty and emits no empty
+              heading/paragraph. Reading order and focus remain meaningful independent of visual
+              stacking.
+            </td>
+            <td><code>BlockInspector.tsx</code> and fixed Hero/Heading fields</td>
+          </tr>
+          <tr>
+            <td>Images</td>
+            <td>
+              Independent media, alt, crop/focal point, contain/cover/stretch, optional safe
+              Internal/External hyperlink, layer, overlay and wrap controls; Cards and People choose
+              fit per image. Direct page drops create a persisted grid container, select the image
+              and expose its handles.
+            </td>
+            <td>
+              <code>registry.tsx</code>, <code>LinkDestinationField.tsx</code>,
+              <code>VisualEditor.tsx</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Forms</td>
+            <td>
+              Reusable forms can coexist with independently placed contact content. Fields have
+              responsive grid placement while labels, required state, validation, submission and
+              privacy remain intact.
+            </td>
+            <td><code>FormsEditor.tsx</code>, <code>registry.tsx</code></td>
+          </tr>
+          <tr>
+            <td>Drop phantom</td>
+            <td>
+              A noninteractive translucent rendering of the actual prospective block/container uses
+              the same content, size and snapped position as the valid result. Invalid targets are
+              clearly marked; cancellation changes no document.
+            </td>
+            <td><code>grid-drag-preview.ts</code>, <code>VisualEditor.tsx</code></td>
+          </tr>
+          <tr>
+            <td>Renderer parity</td>
+            <td>
+              Layout, Preview, generated output and the correct publication renderer use the same
+              document contract. No new public content is published for verification without a
+              separate authenticated action.
+            </td>
+            <td><code>SiteRenderer.tsx</code>, <code>renderer-contract.ts</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Compatibility and recovery</h2>
+      <p>
+        Existing v9–v11 drafts and revisions must load and retain their current appearance.
+        Migration is deterministic and idempotent. New composition data cannot be saved until the
+        retained rollback image can read it; introduce a compatibility-capable baseline before
+        authoring activates, or demonstrate an equivalent rollback-safe sequence. Test upgrade and
+        previous-image reads against representative serialized drafts before Canary. Do not
+        bulk-rewrite Production drafts, erase old variants, or restore data as an application
+        rollback.
+      </p>
+
+      <h2>Success criteria and testing</h2>
+      <p>
+        Use Issue #91 acceptance criteria 1–12 without weakening them. Record an inventory fixture
+        for every legacy block/variant and representative site pages. Test document migration and
+        readback, child coordinates and collision/layers, semantic/empty rendering, image link
+        safety, crop/focal/fit, per-image controls, form field flow, phantom-to-drop geometry,
+        direct-page insertion, autosave/revisions/undo, and Layout–Preview–generated parity.
+        Browser-check desktop, tablet, mobile, 200% zoom, pointer/keyboard/touch, accessibility, and
+        the actual pictured layouts in an isolated draft. Run repository checks sequentially.
+      </p>
+
+      <h2>Commands and structure</h2>
+      <p>
+        Source: <code>src/site-kit/</code> shared schema/renderer,
+        <code>src/client/editor/</code> Puck authoring,
+        <code>src/client/settings/FormsEditor.tsx</code>, <code>src/server/publish/</code>; tests in
+        <code>tests/unit/</code>, <code>tests/integration/</code>, <code>tests/e2e/</code>. Follow
+        strict TypeScript, existing discriminated schemas and CSS tokens; e.g.
+        <code>const next = updateGridArea(item.grid, breakpoint, { row: 2 });</code>. Use
+        <code>npm run check</code>, then <code>npm run test:performance</code>, then
+        <code>npm run test:e2e -- --workers=2</code>, plus focused
+        <code>npx vitest run &lt;test file&gt; --maxWorkers=4</code>,
+        <code>npm run pipeline:health</code> and <code>git diff --check</code>. The repository's
+        fresh-worktree QA prepare/cleanup and exact-candidate release gates also apply.
+      </p>
+
+      <h2>Boundaries</h2>
+      <p>
+        Always preserve unrelated work, legacy content, accessible semantics, safe URL/media
+        validation, authorized checkout/revisions, and correct publication lanes. Ask for PM
+        approval of any Issue-body change, destructive data action, or exact Canary candidate before
+        merge and Production promotion. Production completion needs no second PM approval. Never use
+        arbitrary script/style injection, expose private media or credentials, publish public site
+        content from chat, or claim a passing test that was not run.
+      </p>
+    </main>
+  </body>
+</html>

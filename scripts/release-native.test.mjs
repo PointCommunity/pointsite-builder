@@ -4,8 +4,44 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { validateApproval, validateCandidate } from './release-native.mjs';
+import { validateApproval, validateCandidate, validateGitopsCheckout } from './release-native.mjs';
 import { productionConfigHash, validateInspection, validateRoute } from './release-linode.mjs';
+
+test('GitOps permits a clean detached canonical worktree and rejects drift or other authority', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'builder-gitops-test-'));
+  const git = (...args) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: 'pipe' }).trim();
+  try {
+    git('init', '--initial-branch=master');
+    git('config', 'user.name', 'Release test');
+    git('config', 'user.email', 'release@example.invalid');
+    await writeFile(join(root, 'values.yaml'), 'image: retained\n');
+    git('add', '.');
+    git('commit', '-m', 'fixture');
+    const revision = git('rev-parse', 'HEAD');
+    git('remote', 'add', 'origin', 'git@git.eaglepass.io:ops/homelab.git');
+    git('update-ref', 'refs/remotes/origin/master', revision);
+    assert.equal(validateGitopsCheckout(root), revision);
+    git('checkout', '--detach');
+    assert.equal(validateGitopsCheckout(root), revision);
+    await writeFile(join(root, 'unrelated.txt'), 'preserve\n');
+    assert.throws(() => validateGitopsCheckout(root), /CLEAN_CURRENT_GITOPS_REQUIRED/);
+    await rm(join(root, 'unrelated.txt'));
+    git('checkout', '-b', 'unreviewed');
+    assert.throws(() => validateGitopsCheckout(root), /CANONICAL_GITOPS_MASTER_REQUIRED/);
+    git('checkout', '--detach');
+    git('remote', 'set-url', '--push', 'origin', 'https://example.invalid/ops/homelab');
+    assert.throws(() => validateGitopsCheckout(root), /CANONICAL_GITOPS_MASTER_REQUIRED/);
+    git('config', '--unset', 'remote.origin.pushurl');
+    git('remote', 'set-url', 'origin', 'https://example.invalid/ops/homelab');
+    assert.throws(() => validateGitopsCheckout(root), /CANONICAL_GITOPS_MASTER_REQUIRED/);
+    git('remote', 'set-url', 'origin', 'git@git.eaglepass.io:ops/homelab.git');
+    git('commit', '--allow-empty', '-m', 'unpublished');
+    assert.throws(() => validateGitopsCheckout(root), /CLEAN_CURRENT_GITOPS_REQUIRED/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('Linode release requires approval of the exact clean source, Canary and runtime configuration', () => {
   const candidate = {
@@ -84,6 +120,10 @@ test('Linode approval hash binds the observed host configuration and Canary iden
   });
   const current = productionConfigHash(candidate, '2'.repeat(40), inspected);
   assert.match(current, /^[a-f0-9]{64}$/);
+  const podmanInspection = { ...inspected, previousImageId: '1'.repeat(64) };
+  assert.equal(validateInspection(podmanInspection), podmanInspection);
+  assert.notEqual(current, productionConfigHash(candidate, '2'.repeat(40), podmanInspection));
+  assert.throws(() => validateInspection({ ...inspected, previousImageId: '1'.repeat(63) }));
   assert.notEqual(current, productionConfigHash(candidate, '3'.repeat(40), inspected));
   assert.notEqual(
     current,

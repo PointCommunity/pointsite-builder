@@ -74,9 +74,7 @@ export function SectionInspector({
         <span>Section name</span>
         <input
           value={settings.name}
-          onChange={(event) =>
-            onChange({ ...settings, name: event.target.value || 'Untitled section' })
-          }
+          onChange={(event) => onChange({ ...settings, name: event.target.value })}
         />
       </label>
       <Select

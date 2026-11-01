@@ -332,6 +332,7 @@ const page = (
         id,
         mediaId('/assets/point-logo.png'),
         template === 'home' ? 'overlay' : 'flow',
+        'Point Community Church',
       ),
       ...elements.map(createCompatibilitySection),
     ],

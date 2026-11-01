@@ -5,6 +5,7 @@ import { acquireDraftProof } from '../fixtures/draft-proof';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { defaultSiteDocument } from '../../src/site-kit/default-site';
+import { upgradeComposition } from '../../src/site-kit/migrations';
 import { checksumDocument } from '../../src/site-kit/canonicalize';
 import { D1DraftRepository } from '../../src/server/repositories/d1';
 import { ConflictError, InMemoryRepository } from '../../src/server/repositories/memory';
@@ -77,6 +78,47 @@ afterEach(async () => {
 });
 
 describe('D1 draft repository', () => {
+  it('persists an explicit composition upgrade and refuses a version downgrade', async () => {
+    const { repository } = await repositoryFixture();
+    const actor = 'editor@pointatx.org';
+    const draft = await repository.createDraft({
+      name: 'Composition upgrade',
+      document: defaultSiteDocument,
+      actor,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'create',
+    });
+    const checkout = await repository.acquireCheckout({
+      draftId: draft.id,
+      actor,
+      clientId: 'composition-upgrade-client',
+      requestId: 'checkout',
+    });
+    const save: SaveDraftInput = {
+      draftId: draft.id,
+      actor,
+      document: upgradeComposition(draft.document),
+      expectedRevisionId: draft.latestRevisionId,
+      expectedChecksum: draft.revision.checksum,
+      checkoutToken: checkout.token,
+      idempotencyKey: crypto.randomUUID(),
+      requestId: 'upgrade',
+      action: { category: 'control-change', context: 'draft' },
+    };
+    const upgraded = await repository.saveDraft(save);
+    expect(upgraded.document.schemaVersion).toBe(12);
+    expect((await repository.getDraft(draft.id)).revision.schemaVersion).toBe(12);
+    await expect(
+      repository.saveDraft({
+        ...save,
+        document: defaultSiteDocument,
+        expectedRevisionId: upgraded.latestRevisionId,
+        expectedChecksum: upgraded.revision.checksum,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow('downgraded');
+  });
+
   it('returns only the active checkout owner login and follows role updates and lease expiry', async () => {
     const { database, repository } = await repositoryFixture();
     const owner = 'owner@pointatx.org';

@@ -13,6 +13,8 @@ import {
   requiredSectionRows,
   resolveGridArea,
   resizeGridArea,
+  gridRowOffset,
+  gridRowAtOffset,
   updateGridArea,
   type GridArea,
   type GridResizeHandle,
@@ -24,6 +26,7 @@ import { usePointPuck } from './puck-store';
 import { setActiveGridSection } from './grid-interaction-store';
 import { childComponents, siblingComponents } from './puck-grid-data';
 import { setPuckActionIntent } from './puck-action-intent';
+import { measureGrid } from './grid-drag-preview';
 
 function isGrid(value: unknown): value is ElementPlacement['grid'] {
   return Boolean(
@@ -133,10 +136,7 @@ export function GridOverlay({
       const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
       const surface = source?.querySelector<HTMLElement>('.point-layout-section__grid');
       if (!surface) return;
-      const computed = getComputedStyle(surface);
-      const rowStep =
-        (Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24) +
-        (Number.parseFloat(computed.rowGap) || 0);
+      const metrics = measureGrid(surface);
       const startY = event.clientY;
       const startRows = ownSettings.minRows;
       let latest = startRows;
@@ -147,7 +147,10 @@ export function GridOverlay({
       );
       surface.dataset.gridActive = 'true';
       const move = (nextEvent: globalThis.PointerEvent) => {
-        latest = startRows + Math.round((nextEvent.clientY - startY) / rowStep);
+        measureGrid(surface);
+        latest = Math.round(
+          gridRowAtOffset(metrics, gridRowOffset(metrics, startRows) + nextEvent.clientY - startY),
+        );
         commitSectionRows(latest, false);
       };
       const finish = () => {
@@ -215,7 +218,17 @@ export function GridOverlay({
       .filter((child) => child.props.id !== currentProps.id && isGrid(child.props.grid))
       .map((child) => areaForBreakpoint(child.props.grid as ElementPlacement['grid'], breakpoint));
     const previous = areaForBreakpoint(currentProps.grid, breakpoint);
-    const resolved = resolveGridArea(nextArea, previous, siblings);
+    if (
+      (parentProps?.block as { type?: string } | undefined)?.type === 'composition' &&
+      nextArea.row + nextArea.rowSpan - 1 > 100
+    ) {
+      setStatus('Group content must fit within 100 grid rows. The previous position was kept.');
+      return;
+    }
+    const block = currentProps.block as { type?: string; wrap?: boolean } | undefined;
+    const allowOverlap =
+      Number(currentProps.layer ?? 0) !== 0 || (block?.type === 'image' && block.wrap === true);
+    const resolved = resolveGridArea(nextArea, previous, allowOverlap ? [] : siblings);
     if (resolved.rejected) {
       setStatus('Move blocked because elements cannot overlap.');
       return;
@@ -243,18 +256,18 @@ export function GridOverlay({
     event.stopPropagation();
     const ownerDocument = event.currentTarget.ownerDocument;
     const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
-    const surface = source?.closest<HTMLElement>('.point-layout-section__grid');
+    const surface = source?.closest<HTMLElement>(
+      '.point-composition__grid, .point-layout-section__grid',
+    );
     if (!surface) return;
-    const rect = surface.getBoundingClientRect();
-    const computed = ownerDocument.defaultView?.getComputedStyle(surface);
-    const columnGap = Number.parseFloat(computed?.columnGap ?? '0') || 0;
-    const rowGap = Number.parseFloat(computed?.rowGap ?? '0') || 0;
-    const cell = (rect.width - columnGap * 11) / 12;
-    const xStep = cell + columnGap;
-    const yStep = cell + rowGap;
+    const metrics = measureGrid(surface);
+    const { width, columnGap } = metrics;
+    const xStep = (width - columnGap * 11) / 12 + columnGap;
     const startX = event.clientX;
     const startY = event.clientY;
     const startArea = areaForBreakpoint(grid, breakpoint);
+    const anchorRow = startArea.row - 1 + (mode.includes('south') ? startArea.rowSpan : 0);
+    const anchorOffset = gridRowOffset(metrics, anchorRow);
     let latest = startArea;
     const rawSectionId = parentProps?.id;
     const sectionId =
@@ -265,8 +278,11 @@ export function GridOverlay({
     surface.dataset.gridActive = 'true';
 
     const move = (nextEvent: globalThis.PointerEvent) => {
+      measureGrid(surface);
       const columns = Math.round((nextEvent.clientX - startX) / xStep);
-      const rows = Math.round((nextEvent.clientY - startY) / yStep);
+      const rows = Math.round(
+        gridRowAtOffset(metrics, anchorOffset + nextEvent.clientY - startY) - anchorRow,
+      );
       latest =
         mode === 'move'
           ? moveGridArea(startArea, columns, rows)
@@ -327,12 +343,18 @@ export function GridOverlay({
       <div className="point-grid-controls" data-grid-controls={componentType}>
         <button
           type="button"
-          className="point-grid-move-surface"
+          className={`point-grid-move-surface${componentType === 'composition' ? ' point-grid-move-surface--group' : ''}`}
           aria-label={`Move ${componentType} on ${breakpoint} grid`}
-          title="Drag anywhere inside the selected box. Arrow keys move one grid square."
+          title={
+            componentType === 'composition'
+              ? 'Drag this handle or use arrow keys to move the group.'
+              : 'Drag anywhere inside the selected box. Arrow keys move one grid square.'
+          }
           onPointerDown={(event) => begin(event, 'move')}
           onKeyDown={(event) => keyMove(event, 'move')}
-        ></button>
+        >
+          {componentType === 'composition' ? 'Move group' : null}
+        </button>
         {resizeHandles.map((edge) => (
           <button
             type="button"

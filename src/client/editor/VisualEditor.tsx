@@ -21,19 +21,32 @@ import {
   type PointerEvent,
   type ReactNode,
   type Ref,
+  type RefObject,
 } from 'react';
-import { blockDefinitions, LayoutItem, LayoutSection, renderBlock } from '../../site-kit/registry';
-import { SiteElementSchema } from '../../site-kit/schema';
+import {
+  blockDefinitions,
+  CompositionFrame,
+  LayoutItem,
+  LayoutSection,
+  renderBlock,
+} from '../../site-kit/registry';
+import { SiteDocumentSchema, SiteElementSchema } from '../../site-kit/schema';
+import { upgradeComposition } from '../../site-kit/migrations';
 import {
   areaForBreakpoint,
   defaultRowSpan,
   GRID_COLUMNS,
+  GRID_BREAKPOINTS,
   independentGridArea,
   independentResponsiveValue,
   nextGridArea,
+  requiredSectionRows,
+  textWrapForItem,
   updateGridArea,
+  type GridBreakpoint,
+  type GridArea,
 } from '../../site-kit/grid-layout';
-import type { SectionBlock, SiteElement } from '../../site-kit/types';
+import type { SectionBlock, SiteDocument, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
 import {
   documentRegions,
@@ -60,10 +73,12 @@ import { consumePuckActionIntent, setPuckActionIntent } from './puck-action-inte
 import {
   getDraggedElementType,
   deriveGridDropIntent,
+  measureGrid,
   getGridDropIntent,
   setGridDropIntent,
   setDraggedElementType,
   setPointerFeedbackHidden,
+  type GridDropIntent,
 } from './grid-drag-preview';
 import {
   childComponents,
@@ -72,6 +87,18 @@ import {
   rememberPuckData,
   siblingComponents,
 } from './puck-grid-data';
+import {
+  dataToSection,
+  placementToData,
+  rootElementToSection,
+  sectionToData,
+} from './editor-section-data';
+import {
+  compositionPreset,
+  compositionPresetNames,
+  type CompositionPresetName,
+} from './composition-presets';
+import { canConvertLegacy, compositionFromLegacy } from './legacy-composition';
 import { adjustHeroTextWidth, clampHeroTextWidth, heroTextWidthFromDrag } from './hero-text-resize';
 
 type ElementProps = {
@@ -79,7 +106,10 @@ type ElementProps = {
   span: number;
   align: SectionBlock['items'][number]['align'];
   grid: SectionBlock['items'][number]['grid'];
+  layer?: number;
+  content?: (props?: Record<string, unknown>) => ReactNode;
 };
+type ElementDataProps = Omit<ElementProps, 'content'> & { content?: ComponentData[] };
 type SectionProps = {
   settings: SectionSettings;
   content: (props?: Record<string, unknown>) => ReactNode;
@@ -275,6 +305,13 @@ const sectionLabels: Record<(typeof sectionTypes)[number], string> = {
   FullWidthSection: 'Full-Width',
 };
 const elementTypes = Object.keys(blockDefinitions) as SiteElement['type'][];
+const presetComponents = compositionPresetNames.map((name) => ({
+  name,
+  key: `Preset${name.replaceAll(' ', '')}`,
+}));
+const presetNameByKey = new Map(presetComponents.map(({ key, name }) => [key, name]));
+const paletteTypes = [...elementTypes, ...presetComponents.map(({ key }) => key)];
+let draggedPresetName: CompositionPresetName | null = null;
 const editorViewports: Viewports = Object.values(siteViewports);
 const editorDnd = { behavior: 'auto' as const };
 const editorIframe = { enabled: true, waitForStyles: false, syncHostStyles: false };
@@ -298,8 +335,19 @@ let lastGridPointer:
       columnGap: number;
       rowGap: number;
       cellSize: number;
+      rowSizes: number[];
     }
   | undefined;
+let lastSectionPointer: string | null = null;
+function sectionAtPointer(canvas: Document, x: number, y: number): string | null {
+  const section = Array.from(
+    canvas.querySelectorAll<HTMLElement>('[data-point-section-id]'),
+  ).findLast((candidate) => {
+    const bounds = candidate.getBoundingClientRect();
+    return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+  });
+  return section?.dataset.pointSectionId ?? null;
+}
 function defaultElement<T extends SiteElement['type']>(
   type: T,
   document: ReturnType<typeof useEditor>['document'],
@@ -312,7 +360,7 @@ function defaultElement<T extends SiteElement['type']>(
     hero: {
       id,
       type: 'hero',
-      heading: 'Welcome to Point',
+      heading: 'Welcome',
       body: 'Add a short welcome.',
       align: 'left',
       surface: 'primary',
@@ -396,7 +444,7 @@ function defaultElement<T extends SiteElement['type']>(
       ...(document.schemaVersion >= 10
         ? { navigationDesignId: document.navigationDesigns?.[0]?.id }
         : {}),
-      label: 'Church navigation',
+      label: 'Site navigation',
       orientation: 'responsive',
       align: 'right',
       surface: 'transparent',
@@ -409,8 +457,26 @@ function defaultElement<T extends SiteElement['type']>(
       align: 'center',
       appearance: 'icons',
     },
+    composition: { id, type: 'composition', name: 'Group', items: [] },
   };
   return defaults[type] as Extract<SiteElement, { type: T }>;
+}
+
+function draggedPreviewElement(type: SiteElement['type'], document: SiteDocument): SiteElement {
+  return type === 'composition' && draggedPresetName
+    ? compositionPreset(draggedPresetName, document)
+    : defaultElement(type, document);
+}
+
+function draggedPreviewRows(
+  type: SiteElement['type'],
+  document: SiteDocument,
+  breakpoint: GridBreakpoint,
+): number {
+  const block = draggedPreviewElement(type, document);
+  return block.type === 'composition'
+    ? Math.max(defaultRowSpan(type), requiredSectionRows(1, block.items, breakpoint))
+    : defaultRowSpan(type);
 }
 
 function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
@@ -471,6 +537,201 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
   };
 }
 
+type DropPreview = {
+  type: SiteElement['type'];
+  area: GridArea;
+  bounds: GridDropIntent['bounds'];
+  label: string;
+  valid: boolean;
+  style: CSSProperties;
+};
+
+function DropPhantom({
+  preview,
+  document,
+  gridRef,
+}: {
+  preview: DropPreview;
+  document: ReturnType<typeof useEditor>['document'];
+  gridRef: RefObject<HTMLElement | null>;
+}) {
+  const content = useRef<HTMLDivElement>(null);
+  const [loaded, setLoaded] = useState(0);
+  const [measured, setMeasured] = useState<CSSProperties>();
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !content.current) return;
+    // Measure the future grid: content may expand its tracks after insertion.
+    const clone = grid.cloneNode(true) as HTMLElement;
+    clone
+      .querySelectorAll(
+        '[data-puck-line-placeholder], [data-dnd-placeholder], .point-grid-controls, .point-section-grid-controls',
+      )
+      .forEach((element) => element.remove());
+    Object.assign(clone.style, {
+      position: 'absolute',
+      visibility: 'hidden',
+      pointerEvents: 'none',
+      width: `${grid.getBoundingClientRect().width}px`,
+      height: 'auto',
+    });
+    clone.setAttribute('aria-hidden', 'true');
+    clone.inert = true;
+    const item = grid.ownerDocument.createElement('div');
+    item.className = 'point-layout-item point-layout-item--grid';
+    item.style.gridArea = `${preview.area.row} / ${preview.area.column} / span ${preview.area.rowSpan} / span ${preview.area.columnSpan}`;
+    content.current.childNodes.forEach((child) => item.appendChild(child.cloneNode(true)));
+    clone.appendChild(item);
+    clone.querySelectorAll('iframe, video, audio, source').forEach((media) => {
+      media.removeAttribute('src');
+      media.removeAttribute('srcdoc');
+    });
+    try {
+      grid.parentElement!.appendChild(clone);
+      const container = clone.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
+      setMeasured({
+        left: Number(preview.style.left) - preview.bounds.left + box.left - container.left,
+        top: Number(preview.style.top) - preview.bounds.top + box.top - container.top,
+        width: box.width,
+        height: box.height,
+      });
+    } finally {
+      clone.remove();
+    }
+  }, [gridRef, preview, loaded]);
+  return (
+    <div
+      className={`point-grid-drop-preview point-grid-drop-preview--${preview.valid ? 'valid' : 'invalid'}`}
+      data-drop-valid={preview.valid}
+      style={{ ...preview.style, ...measured }}
+      aria-hidden="true"
+    >
+      <div
+        ref={content}
+        className="point-grid-drop-preview__content"
+        onLoadCapture={() => setLoaded((value) => value + 1)}
+      >
+        {(preview.type === 'image' || preview.type === 'splitFeature') && !document.media.length ? (
+          <div className="point-grid-drop-preview__media">Image</div>
+        ) : preview.type === 'form' && !document.forms.length ? (
+          <div className="point-grid-drop-preview__media">Form</div>
+        ) : (
+          renderBlock(draggedPreviewElement(preview.type, document), document)
+        )}
+      </div>
+      <span>{preview.label}</span>
+    </div>
+  );
+}
+
+function RootDropPhantom({ document }: { document: ReturnType<typeof useEditor>['document'] }) {
+  const marker = useRef<HTMLSpanElement>(null);
+  const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
+  const [preview, setPreview] = useState<{
+    type: SiteElement['type'];
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isDragging) return;
+    const owner = marker.current?.ownerDocument;
+    const view = owner?.defaultView;
+    if (!owner || !view) return;
+    const root = owner.querySelector<HTMLElement>('[data-puck-dropzone="root:default-zone"]');
+    const host = view.frameElement?.ownerDocument;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const type = getDraggedElementType();
+      const line = root?.querySelector<HTMLElement>(':scope > [data-puck-line-placeholder]');
+      if (
+        !type ||
+        !line ||
+        !root ||
+        lastSectionPointer ||
+        host?.documentElement.hasAttribute('data-point-grid-preview')
+      ) {
+        setPreview(null);
+        return;
+      }
+      const target =
+        marker.current?.closest<HTMLElement>('.page-body.shell')?.getBoundingClientRect() ??
+        root.getBoundingClientRect();
+      const top = line.getBoundingClientRect().top;
+      setPreview((previous) =>
+        previous?.type === type &&
+        previous.top === top &&
+        previous.left === target.left &&
+        previous.width === target.width
+          ? previous
+          : { type, top, left: target.left, width: target.width },
+      );
+    };
+    const schedule = () => {
+      if (!frame) frame = view.requestAnimationFrame(measure);
+    };
+    const observer = new MutationObserver(schedule);
+    if (root)
+      observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    owner.addEventListener('pointermove', schedule, true);
+    host?.addEventListener('pointermove', schedule, true);
+    schedule();
+    return () => {
+      observer.disconnect();
+      owner.removeEventListener('pointermove', schedule, true);
+      host?.removeEventListener('pointermove', schedule, true);
+      if (frame) view.cancelAnimationFrame(frame);
+    };
+  }, [isDragging]);
+  const type = preview?.type;
+  const block = type ? draggedPreviewElement(type, document) : null;
+  return (
+    <>
+      <span ref={marker} hidden />
+      {isDragging && preview && block ? (
+        <div
+          className="point-root-drop-preview"
+          style={{ top: preview.top, left: preview.left, width: preview.width }}
+          aria-hidden="true"
+        >
+          <LayoutSection section={sectionDefaults('Section')} document={document}>
+            <LayoutItem
+              placement={{
+                grid: independentGridArea({
+                  column: 1,
+                  row: 1,
+                  columnSpan: 12,
+                  rowSpan: draggedPreviewRows(type!, document, getGridBreakpoint()),
+                }),
+                align: independentResponsiveValue('stretch'),
+                span: 12,
+              }}
+            >
+              {(type === 'image' || type === 'splitFeature') && !document.media.length ? (
+                <div className="point-grid-drop-preview__media">Image</div>
+              ) : type === 'form' && !document.forms.length ? (
+                <div className="point-grid-drop-preview__media">Form</div>
+              ) : (
+                renderBlock(block, document)
+              )}
+            </LayoutItem>
+          </LayoutSection>
+        </div>
+      ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {preview ? `${blockDefinitions[preview.type].label} will land in a new grid section.` : ''}
+      </p>
+    </>
+  );
+}
+
 function SectionComponent({
   id,
   kind,
@@ -486,11 +747,7 @@ function SectionComponent({
   const isGridInteracting = useGridInteraction(id);
   const breakpoint = useGridBreakpoint();
   const gridRef = useRef<HTMLElement | null>(null);
-  const [dropPreview, setDropPreview] = useState<{
-    label: string;
-    valid: boolean;
-    style: CSSProperties;
-  } | null>(null);
+  const [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
   const [dropAnnouncement, setDropAnnouncement] = useState('');
   const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearDropPreview = () => {
@@ -512,10 +769,21 @@ function SectionComponent({
       clearDropPreview();
       return;
     }
-    const computed = getComputedStyle(gridRef.current);
-    const columnGap = Number.parseFloat(computed.columnGap) || 0;
-    const rowGap = Number.parseFloat(computed.rowGap) || 0;
-    const cellSize = Number.parseFloat(computed.getPropertyValue('--point-grid-cell')) || 24;
+    if (
+      Array.from(gridRef.current.querySelectorAll('.point-composition')).some((group) => {
+        const bounds = group.getBoundingClientRect();
+        return (
+          clientX >= bounds.left &&
+          clientX <= bounds.right &&
+          clientY >= bounds.top &&
+          clientY <= bounds.bottom
+        );
+      })
+    ) {
+      clearDropPreview();
+      return;
+    }
+    const { columnGap, rowGap, cellSize, rowSizes } = measureGrid(gridRef.current);
     lastGridPointer = {
       sectionId: id,
       x: clientX - rect.left,
@@ -524,6 +792,7 @@ function SectionComponent({
       columnGap,
       rowGap,
       cellSize,
+      rowSizes,
     };
     const draggedType = getDraggedElementType();
     if (!isDragging || !draggedType) {
@@ -538,7 +807,10 @@ function SectionComponent({
       gridRef.current.querySelectorAll<HTMLElement>('.point-layout-item--grid'),
     )
       .filter(
-        (item) => !item.closest('[data-dnd-dragging]') && !item.closest('[data-dnd-placeholder]'),
+        (item) =>
+          !item.closest('.point-composition__grid') &&
+          !item.closest('[data-dnd-dragging]') &&
+          !item.closest('[data-dnd-placeholder]'),
       )
       .map((item) => {
         const rendered = getComputedStyle(item);
@@ -566,6 +838,9 @@ function SectionComponent({
     setGridDropIntent(intent);
     const sectionRect = gridRef.current.closest('section')?.getBoundingClientRect() ?? rect;
     setDropPreview({
+      type: draggedType,
+      area: intent.area,
+      bounds: intent.bounds,
       label: intent.label,
       valid: intent.valid,
       style: {
@@ -586,8 +861,15 @@ function SectionComponent({
     let animationFrame = 0;
     let lastCell = 0;
     const measure = () => {
-      const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
-      const cell = Math.max(24, (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+      const computed = getComputedStyle(element);
+      const gap = Number.parseFloat(computed.columnGap) || 0;
+      const minRem = Number.parseFloat(computed.getPropertyValue('--point-grid-min-cell')) || 1.5;
+      const rootFontSize =
+        Number.parseFloat(getComputedStyle(element.ownerDocument.documentElement).fontSize) || 16;
+      const cell = Math.max(
+        minRem * rootFontSize,
+        (element.clientWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS,
+      );
       if (Math.abs(cell - lastCell) < 0.01) return;
       lastCell = cell;
       element.style.setProperty('--point-grid-cell', `${cell}px`);
@@ -600,9 +882,16 @@ function SectionComponent({
       animationFrame = requestAnimationFrame(measure);
     });
     observer.observe(element);
+    const MutationObserverClass = element.ownerDocument.defaultView?.MutationObserver;
+    const rootObserver = MutationObserverClass ? new MutationObserverClass(measure) : null;
+    rootObserver?.observe(element.ownerDocument.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    });
     return () => {
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      rootObserver?.disconnect();
     };
   }, [settings.gap, settings.gapPixels, settings.layout]);
   useEffect(() => {
@@ -656,14 +945,7 @@ function SectionComponent({
       controls={
         <>
           {isDragging && dropPreview ? (
-            <div
-              className={`point-grid-drop-preview point-grid-drop-preview--${dropPreview.valid ? 'valid' : 'invalid'}`}
-              data-drop-valid={dropPreview.valid}
-              style={dropPreview.style}
-              aria-hidden="true"
-            >
-              <span>{dropPreview.label}</span>
-            </div>
+            <DropPhantom preview={dropPreview} document={document} gridRef={gridRef} />
           ) : null}
           <p className="sr-only" role="status" aria-live="polite">
             {dropAnnouncement}
@@ -674,10 +956,153 @@ function SectionComponent({
   );
 }
 
-function CanvasBreakpointReporter() {
+function GroupComponent({
+  id,
+  name,
+  surface,
+  content: Content,
+  document,
+}: {
+  id: string;
+  name: string;
+  surface?: Extract<SiteElement, { type: 'composition' }>['surface'];
+  content: NonNullable<ElementProps['content']>;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const isDragging = usePointPuck((state) => state.appState.ui.isDragging);
+  const breakpoint = useGridBreakpoint();
+  const gridRef = useRef<HTMLElement | null>(null);
+  const [preview, setPreview] = useState<DropPreview | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const clear = () => {
+    setPreview(null);
+    setAnnouncement('');
+    if (gridRef.current) setPointerFeedbackHidden(gridRef.current.ownerDocument, false);
+  };
+  const track = (clientX: number, clientY: number) => {
+    const grid = gridRef.current;
+    if (!id || !grid || !isDragging) return;
+    const bounds = grid.getBoundingClientRect();
+    if (
+      clientX < bounds.left ||
+      clientX > bounds.right ||
+      clientY < bounds.top ||
+      clientY > bounds.bottom
+    ) {
+      clear();
+      return;
+    }
+    const type = getDraggedElementType();
+    if (!type) return;
+    const { columnGap, rowGap, cellSize, rowSizes } = measureGrid(grid);
+    const intent = deriveGridDropIntent({
+      type,
+      label: draggedPresetName ?? blockDefinitions[type].label,
+      sectionId: id,
+      breakpoint,
+      metrics: {
+        x: clientX - bounds.left,
+        y: clientY - bounds.top,
+        width: bounds.width,
+        columnGap,
+        rowGap,
+        cellSize,
+        rowSizes,
+      },
+      columnSpan: 6,
+      rowSpan: draggedPreviewRows(type, document, breakpoint),
+      maxRows: 100,
+      occupied: childComponents(currentPuckData(), id)
+        .map((child) => child.props.grid as SectionBlock['items'][number]['grid'])
+        .filter(Boolean)
+        .map((area) => areaForBreakpoint(area, breakpoint)),
+    });
+    setGridDropIntent(intent);
+    const frame = grid.closest('section')?.getBoundingClientRect() ?? bounds;
+    setPreview({
+      type,
+      area: intent.area,
+      bounds: intent.bounds,
+      label: intent.label,
+      valid: intent.valid,
+      style: {
+        left: bounds.left - frame.left + intent.bounds.left,
+        top: bounds.top - frame.top + intent.bounds.top,
+        width: intent.bounds.width,
+        height: intent.bounds.height,
+      },
+    });
+    setAnnouncement(intent.label);
+    setPointerFeedbackHidden(grid.ownerDocument, true);
+  };
+  const forwardPointer = useEffectEvent(track);
+  useEffect(() => {
+    if (!isDragging) {
+      if (gridRef.current) setPointerFeedbackHidden(gridRef.current.ownerDocument, false);
+    }
+  }, [isDragging]);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !isDragging) return;
+    const frameWindow = grid.ownerDocument.defaultView;
+    const frame = frameWindow?.frameElement as HTMLIFrameElement | null;
+    const hostDocument = frame?.ownerDocument;
+    if (!frameWindow || !frame || !hostDocument || hostDocument === grid.ownerDocument) return;
+    const forward = (event: globalThis.PointerEvent) => {
+      const frameRect = frame.getBoundingClientRect();
+      const scale = frameRect.width ? frameWindow.innerWidth / frameRect.width : 1;
+      forwardPointer(
+        (event.clientX - frameRect.left) * scale,
+        (event.clientY - frameRect.top) * scale,
+      );
+    };
+    hostDocument.addEventListener('pointermove', forward, true);
+    return () => hostDocument.removeEventListener('pointermove', forward, true);
+  }, [isDragging]);
+  return (
+    <CompositionFrame name={name} surface={surface}>
+      <Content
+        ref={gridRef}
+        className="point-composition__grid"
+        data-grid-drop-preview={preview ? 'true' : undefined}
+        minEmptyHeight={96}
+        onPointerMoveCapture={(event: PointerEvent<HTMLElement>) =>
+          track(event.clientX, event.clientY)
+        }
+        onPointerLeave={(event: PointerEvent<HTMLElement>) => {
+          const bounds = gridRef.current?.getBoundingClientRect();
+          if (
+            bounds &&
+            (event.clientX < bounds.left ||
+              event.clientX > bounds.right ||
+              event.clientY < bounds.top ||
+              event.clientY > bounds.bottom)
+          )
+            clear();
+        }}
+      />
+      {isDragging && preview ? (
+        <DropPhantom preview={preview} document={document} gridRef={gridRef} />
+      ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {isDragging ? announcement : ''}
+      </p>
+    </CompositionFrame>
+  );
+}
+
+function CanvasBreakpointReporter({
+  restoreSelection,
+}: {
+  restoreSelection?: { zone: string; index: number };
+}) {
   const marker = useRef<HTMLSpanElement>(null);
   const width = usePointPuck((state) => state.appState.ui.viewports.current.width);
   const data = usePointPuck((state) => state.appState.data);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  useEffect(() => {
+    if (restoreSelection) dispatch({ type: 'setUi', ui: { itemSelector: restoreSelection } });
+  }, [dispatch, restoreSelection]);
   useEffect(() => rememberPuckData(data), [data]);
   useEffect(() => {
     if (typeof width === 'number') setGridBreakpoint(breakpointForWidth(width));
@@ -687,6 +1112,12 @@ function CanvasBreakpointReporter() {
     const frame = canvasDocument?.defaultView?.frameElement;
     const canvasRoot = frame?.closest<HTMLElement>('#puck-canvas-root');
     if (!canvasDocument || !canvasRoot) return;
+    const locateSection = (event: globalThis.PointerEvent) => {
+      if (getDraggedElementType())
+        lastSectionPointer = sectionAtPointer(canvasDocument, event.clientX, event.clientY);
+    };
+    canvasDocument.addEventListener('pointermove', locateSection, true);
+    canvasDocument.addEventListener('pointerup', locateSection, true);
     const updateTargetSize = () => {
       const scale = new DOMMatrixReadOnly(canvasRoot.style.transform).a || 1;
       canvasDocument.documentElement.style.setProperty('--point-touch-target', `${44 / scale}px`);
@@ -695,28 +1126,58 @@ function CanvasBreakpointReporter() {
     updateTargetSize();
     const observer = new MutationObserver(updateTargetSize);
     observer.observe(canvasRoot, { attributes: true, attributeFilter: ['style'] });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      canvasDocument.removeEventListener('pointermove', locateSection, true);
+      canvasDocument.removeEventListener('pointerup', locateSection, true);
+    };
   }, []);
   return <span ref={marker} hidden />;
 }
 
 function DrawerDragReporter() {
   useEffect(() => {
+    const locateSection = (event: globalThis.PointerEvent) => {
+      if (!getDraggedElementType()) return;
+      const frame = globalThis.document.querySelector<HTMLIFrameElement>('.visual-editor iframe');
+      const canvas = frame?.contentDocument;
+      const frameRect = frame?.getBoundingClientRect();
+      if (!canvas || !frameRect?.width || !frameRect.height) return;
+      const x =
+        ((event.clientX - frameRect.left) * (frame.contentWindow?.innerWidth ?? 0)) /
+        frameRect.width;
+      const y =
+        ((event.clientY - frameRect.top) * (frame.contentWindow?.innerHeight ?? 0)) /
+        frameRect.height;
+      lastSectionPointer = sectionAtPointer(canvas, x, y);
+    };
     const track = (event: globalThis.PointerEvent) => {
       setGridDropIntent(null);
+      lastSectionPointer = null;
       const target = event.target as HTMLElement | null;
       const drawerItem = target?.closest<HTMLElement>('[data-testid^="drawer-item:"]');
-      const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '') as
-        SiteElement['type'] | undefined;
+      const testedType = drawerItem?.dataset.testid?.replace('drawer-item:', '');
       const buttonLabel = target?.closest('button')?.textContent?.trim();
+      draggedPresetName =
+        presetNameByKey.get(testedType ?? '') ??
+        compositionPresetNames.find((name) => name === buttonLabel) ??
+        null;
       const labeledType = elementTypes.find(
         (candidate) => blockDefinitions[candidate].label === buttonLabel,
       );
-      const type = testedType ?? labeledType;
-      setDraggedElementType(type && elementTypes.includes(type) ? type : null);
+      const type = draggedPresetName
+        ? 'composition'
+        : (elementTypes.find((candidate) => candidate === testedType) ?? labeledType);
+      setDraggedElementType(type ?? null);
     };
     globalThis.document.addEventListener('pointerdown', track, true);
-    return () => globalThis.document.removeEventListener('pointerdown', track, true);
+    globalThis.document.addEventListener('pointermove', locateSection, true);
+    globalThis.document.addEventListener('pointerup', locateSection, true);
+    return () => {
+      globalThis.document.removeEventListener('pointerdown', track, true);
+      globalThis.document.removeEventListener('pointermove', locateSection, true);
+      globalThis.document.removeEventListener('pointerup', locateSection, true);
+    };
   }, []);
   return null;
 }
@@ -732,6 +1193,7 @@ function GridPlacementField({
   const data = usePointPuck((state) => state.appState.data);
   const selectedItem = usePointPuck((state) => state.selectedItem);
   const selectedProps = selectedItem?.props as unknown as Record<string, unknown> | undefined;
+  const selectedBlock = selectedProps?.block as { type?: string; wrap?: boolean } | undefined;
   const rawComponentId = selectedProps?.id;
   const componentId =
     typeof rawComponentId === 'string' || typeof rawComponentId === 'number'
@@ -748,7 +1210,25 @@ function GridPlacementField({
     .filter((item) => String(item.props.id) !== componentId)
     .map((item) => item.props.grid as SectionBlock['items'][number]['grid'])
     .filter(Boolean);
-  return <GridPlacementInspector value={value} occupied={occupied} onChange={onChange} />;
+  return (
+    <GridPlacementInspector
+      value={value}
+      maxRows={
+        (
+          (parent?.props as Record<string, unknown> | undefined)?.block as
+            { type?: string } | undefined
+        )?.type === 'composition'
+          ? 100
+          : undefined
+      }
+      occupied={occupied}
+      allowOverlap={
+        Number(selectedProps?.layer ?? 0) !== 0 ||
+        (selectedBlock?.type === 'image' && selectedBlock.wrap === true)
+      }
+      onChange={onChange}
+    />
+  );
 }
 
 function GridAlignmentField({
@@ -777,92 +1257,173 @@ function GridAlignmentField({
   );
 }
 
-function sectionToData(section: SectionBlock): ComponentData {
-  return {
-    type: 'Section',
-    props: {
-      id: section.id,
-      settings: {
-        name: section.name,
-        layout: section.layout,
-        position: section.position,
-        columns: section.columns,
-        gap: section.gap,
-        width: section.width,
-        surface: section.surface,
-        padding: section.padding,
-        minRows: section.minRows,
-        ...(section.gapPixels === undefined ? {} : { gapPixels: section.gapPixels }),
-        ...(section.paddingPixels === undefined ? {} : { paddingPixels: section.paddingPixels }),
-        ...(section.border === undefined ? {} : { border: section.border }),
-        ...(section.stackAt === undefined ? {} : { stackAt: section.stackAt }),
-        ...(section.backgroundMediaId ? { backgroundMediaId: section.backgroundMediaId } : {}),
-        backgroundPosition: section.backgroundPosition,
-        overlay: section.overlay,
-      },
-      content: section.items.map((placement) => ({
-        type: placement.element.type,
-        props: {
-          id: placement.id,
-          block: placement.element,
-          span:
-            section.layout === 'grid' ? Math.min(placement.span, section.columns) : placement.span,
-          align: placement.align,
-          grid: placement.grid,
-        },
-      })),
-    },
-  };
+function GroupPresetControls({
+  block,
+  document,
+}: {
+  block: Extract<SiteElement, { type: 'composition' }>;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const selectedItem = usePointPuck((state) => state.selectedItem) as ComponentData | null;
+  const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  const componentId = String(selectedItem?.props.id ?? '');
+  const empty = ((selectedItem?.props.content ?? []) as ComponentData[]).length === 0;
+  if (!empty) return null;
+  return (
+    <fieldset className="inspector-group">
+      <legend>Starting layouts</legend>
+      <p className="field-help">Add independent grid elements. Every part stays editable.</p>
+      {compositionPresetNames.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className="button"
+          onClick={() => {
+            const selector = getSelectorForId(componentId);
+            if (!selectedItem || !selector?.zone) return;
+            const preset = compositionPreset(name, document);
+            const currentGrid = selectedItem.props.grid as SectionBlock['items'][number]['grid'];
+            const expandedGrid = GRID_BREAKPOINTS.reduce(
+              (grid, breakpoint) =>
+                updateGridArea(grid, breakpoint, {
+                  rowSpan: Math.max(
+                    areaForBreakpoint(grid, breakpoint).rowSpan,
+                    requiredSectionRows(1, preset.items, breakpoint),
+                  ),
+                }),
+              currentGrid,
+            );
+            setPuckActionIntent({ category: 'add', context: 'page-content' });
+            dispatch({
+              type: 'replace',
+              destinationIndex: selector.index,
+              destinationZone: selector.zone,
+              data: {
+                ...selectedItem,
+                props: {
+                  ...selectedItem.props,
+                  block: { ...preset, id: block.id },
+                  grid: expandedGrid,
+                  content: preset.items.map((item) => {
+                    const child = placementToData(item, 12);
+                    return { ...child, props: { ...child.props, layer: item.layer } };
+                  }),
+                },
+              },
+              recordHistory: true,
+            });
+          }}
+        >
+          {name}
+        </button>
+      ))}
+    </fieldset>
+  );
 }
 
-function dataToSection(item: ComponentData): SectionBlock {
-  const settings = item.props.settings as SectionSettings;
-  const content = (item.props.content ?? []) as ComponentData[];
-  return {
-    id: documentComponentId(item),
-    type: 'section',
-    ...settings,
-    items: content.map((child) => ({
-      id: documentComponentId(child),
-      span: Number(
-        settings.layout === 'flow'
-          ? (child.props.span ?? 1)
-          : ((child.props.grid as SectionBlock['items'][number]['grid'])?.desktop.columnSpan ??
-              child.props.span ??
-              12),
-      ),
-      align: (child.props.align ??
-        independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
-      grid: (child.props.grid ??
-        independentGridArea({
-          column: 1,
-          row: 1,
-          columnSpan: 12,
-          rowSpan: 4,
-        })) as SectionBlock['items'][number]['grid'],
-      element: SiteElementSchema.parse(child.props.block),
-    })),
-  };
+function LegacyConversionControls({
+  block,
+  document,
+}: {
+  block: SiteElement;
+  document: ReturnType<typeof useEditor>['document'];
+}) {
+  const selectedItem = usePointPuck((state) => state.selectedItem) as ComponentData | null;
+  const getSelectorForId = usePointPuck((state) => state.getSelectorForId);
+  const dispatch = usePointPuck((state) => state.dispatch);
+  if (!canConvertLegacy(block)) return null;
+  return (
+    <fieldset className="inspector-group">
+      <legend>Editable grid</legend>
+      <p className="field-help">
+        Convert this block to independently movable text, images, and controls. The original stays
+        unchanged until you convert it.
+        {block.type === 'people'
+          ? ' Person details become editable copies and stop syncing with the People collection.'
+          : null}
+      </p>
+      <button
+        type="button"
+        className="button"
+        onClick={() => {
+          const selector = getSelectorForId(String(selectedItem?.props.id ?? ''));
+          if (!selectedItem || !selector?.zone) return;
+          const group = compositionFromLegacy(block, document);
+          if (!group) return;
+          const currentGrid = selectedItem.props.grid as SectionBlock['items'][number]['grid'];
+          const expandedGrid = GRID_BREAKPOINTS.reduce(
+            (grid, breakpoint) =>
+              updateGridArea(grid, breakpoint, {
+                rowSpan: Math.max(
+                  areaForBreakpoint(grid, breakpoint).rowSpan,
+                  requiredSectionRows(1, group.items, breakpoint),
+                ),
+              }),
+            currentGrid,
+          );
+          setPuckActionIntent({ category: 'replace', context: 'element-settings' });
+          dispatch({
+            type: 'replace',
+            destinationIndex: selector.index,
+            destinationZone: selector.zone,
+            data: {
+              ...selectedItem,
+              type: 'composition',
+              props: {
+                ...selectedItem.props,
+                block: group,
+                grid: expandedGrid,
+                settings: { layout: 'grid', columns: 12 },
+                content: group.items.map((item) => placementToData(item, 12)),
+              },
+            },
+            recordHistory: true,
+          });
+        }}
+      >
+        Convert to editable grid
+      </button>
+    </fieldset>
+  );
 }
 
-function rootElementToSection(item: ComponentData): SectionBlock {
-  return {
-    id: crypto.randomUUID(),
-    type: 'section',
-    ...sectionDefaults('Section'),
-    items: [
-      {
-        id: documentComponentId(item),
-        span: Number(item.props.span ?? 12),
-        align: (item.props.align ??
-          independentResponsiveValue('stretch')) as SectionBlock['items'][number]['align'],
-        grid:
-          (item.props.grid as SectionBlock['items'][number]['grid']) ??
-          independentGridArea({ column: 1, row: 1, columnSpan: 12, rowSpan: 4 }),
-        element: SiteElementSchema.parse(item.props.block),
-      },
-    ],
-  };
+function EditorTextLayoutItem({
+  id,
+  block,
+  grid,
+  align,
+  span,
+  layer,
+  dragRef,
+  children,
+}: {
+  id: string;
+  block: Extract<SiteElement, { type: 'text' }>;
+  grid: ElementProps['grid'];
+  align: ElementProps['align'];
+  span: number;
+  layer?: number;
+  dragRef: Ref<HTMLDivElement>;
+  children: ReactNode;
+}) {
+  const data = usePointPuck((state) => state.appState.data);
+  const siblings = siblingComponents(data, id).flatMap((item) => {
+    const parsed = SiteElementSchema.safeParse(item.props.block);
+    return parsed.success
+      ? [{ grid: item.props.grid as ElementProps['grid'], element: parsed.data }]
+      : [];
+  });
+  return (
+    <LayoutItem
+      dragRef={dragRef}
+      placement={{ grid, align, span }}
+      layer={layer}
+      wrap={textWrapForItem({ grid, element: block }, siblings)}
+    >
+      {children}
+    </LayoutItem>
+  );
 }
 
 function VisualEditorImpl({
@@ -894,6 +1455,36 @@ function VisualEditorImpl({
     [document, draftId],
   );
   const [interactionRevision, setInteractionRevision] = useState(0);
+  const remountSelection = useRef<{
+    revision: number;
+    pageId: string;
+    selector: { zone: string; index: number };
+  } | null>(null);
+  const pendingSelection = useRef<{
+    pageId: string;
+    selector: { zone: string; index: number };
+  } | null>(null);
+  const pendingRootDrop = useRef<{
+    pageId: string;
+    componentId: string;
+    sectionId: string;
+    intent: GridDropIntent | null;
+  } | null>(null);
+  useEffect(() => {
+    const pending = pendingSelection.current;
+    if (!pending || pending.pageId !== pageId) return;
+    const sections =
+      pageId === 'footer'
+        ? document.footer
+        : document.pages.find((page) => page.id === pageId)?.blocks;
+    const section = sections?.find((entry) => `${entry.id}:content` === pending.selector.zone);
+    if (!section || section.items.length <= pending.selector.index) return;
+    pendingSelection.current = null;
+    setInteractionRevision((value) => {
+      remountSelection.current = { revision: value + 1, pageId, selector: pending.selector };
+      return value + 1;
+    });
+  }, [document, pageId]);
   const [touchWorkspace, setTouchWorkspace] = useState(
     () => window.matchMedia('(pointer: coarse)').matches,
   );
@@ -934,7 +1525,7 @@ function VisualEditorImpl({
             onChange: (value: SectionSettings) => void;
           }) => <SectionInspector settings={value} document={document} onChange={onChange} />,
         },
-        content: { type: 'slot', allow: elementTypes },
+        content: { type: 'slot', allow: paletteTypes },
       },
       defaultProps: {
         settings: sectionDefaults(kind),
@@ -957,12 +1548,19 @@ function VisualEditorImpl({
           value: SiteElement;
           onChange: (value: SiteElement) => void;
         }) => (
-          <BlockInspector
-            block={value}
-            document={document}
-            onChange={onChange}
-            onEditNavigation={onEditNavigation}
-          />
+          <>
+            <BlockInspector
+              block={value}
+              document={document}
+              onChange={onChange}
+              onEditNavigation={onEditNavigation}
+            />
+            {value.type === 'composition' ? (
+              <GroupPresetControls block={value} document={document} />
+            ) : (
+              <LegacyConversionControls block={value} document={document} />
+            )}
+          </>
         ),
       },
       span: {
@@ -995,22 +1593,46 @@ function VisualEditorImpl({
           onChange: (value: SectionBlock['items'][number]['align']) => void;
         }) => <GridAlignmentField value={value} onChange={onChange} />,
       },
+      layer: {
+        type: 'select',
+        label: 'Layer',
+        options: Array.from({ length: 41 }, (_, index) => ({
+          label: String(index - 20),
+          value: index - 20,
+        })),
+      },
+      content: {
+        type: 'slot',
+        allow: elementTypes.filter((candidate) => candidate !== 'composition'),
+      },
     };
     components[type] = {
       label: blockDefinitions[type].label,
       inline: true,
-      fields,
+      fields:
+        type === 'composition'
+          ? fields
+          : { block: fields.block, span: fields.span, grid: fields.grid, align: fields.align },
       ...(type === 'mediaEmbed' && document.linkedMedia.length === 0
         ? { permissions: { insert: false } }
         : {}),
       resolveFields: (_data: unknown, { parent }: { parent: ComponentData | null }) => {
+        const groupFields = type === 'composition' ? { content: fields.content } : {};
+        const layerFields =
+          document.schemaVersion >= 12 &&
+          (parent?.type === 'composition' ||
+            presetNameByKey.has(parent?.type ?? '') ||
+            (parent?.props.settings as Partial<SectionSettings> | undefined)?.layout === 'grid')
+            ? { layer: fields.layer }
+            : {};
         const parentProps = parent
           ? (parent.props as unknown as Record<string, unknown>)
           : undefined;
         const parentSettings = parentProps?.settings as Partial<SectionSettings> | undefined;
-        if (parentSettings?.layout === 'compatibility') return { block: fields.block };
+        if (parentSettings?.layout === 'compatibility')
+          return { block: fields.block, ...groupFields };
         if (parentSettings?.layout === 'flow' && document.schemaVersion < 11)
-          return { block: fields.block, align: fields.align };
+          return { block: fields.block, align: fields.align, ...groupFields };
         if (parentSettings?.layout === 'flow') {
           return {
             block: fields.block,
@@ -1026,12 +1648,15 @@ function VisualEditorImpl({
               })),
             },
             align: fields.align,
+            ...groupFields,
           };
         }
         return {
           block: fields.block,
           grid: fields.grid,
           align: fields.align,
+          ...groupFields,
+          ...layerFields,
         };
       },
       defaultProps: {
@@ -1044,12 +1669,21 @@ function VisualEditorImpl({
           columnSpan: 12,
           rowSpan: defaultRowSpan(type),
         }),
+        ...(type === 'composition'
+          ? { settings: { layout: 'grid', columns: 12 }, content: [] }
+          : {}),
+        ...(document.schemaVersion >= 12 ? { layer: 0 } : {}),
       },
       resolveData: (
         data: { props: ElementProps },
         { trigger, parent }: { trigger: string; parent: ComponentData | null },
       ) => {
         if (trigger !== 'insert') return data;
+        if ((data.props as ElementProps & { presetPlacement?: boolean }).presetPlacement) {
+          const props = { ...data.props } as ElementProps & { presetPlacement?: boolean };
+          delete props.presetPlacement;
+          return { props };
+        }
         const parentSettings = parent?.props.settings as Partial<SectionSettings> | undefined;
         const parentId = String(parent?.props.id ?? '');
         const storedParentItems = childComponents(currentPuckData(), parentId);
@@ -1063,7 +1697,13 @@ function VisualEditorImpl({
             grid: item.props.grid as SectionBlock['items'][number]['grid'],
           }));
         const defaultSpan =
-          parent?.type === 'TwoColumnSection' ? 6 : parent?.type === 'ThreeColumnSection' ? 4 : 12;
+          parent?.type === 'TwoColumnSection' ||
+          parent?.type === 'composition' ||
+          presetNameByKey.has(parent?.type ?? '')
+            ? 6
+            : parent?.type === 'ThreeColumnSection'
+              ? 4
+              : 12;
         const startingGrid = {
           desktop: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'desktop'),
           tablet: nextGridArea(parentItems, defaultSpan, defaultRowSpan(type), 'tablet'),
@@ -1099,28 +1739,104 @@ function VisualEditorImpl({
         align,
         grid,
         span,
+        layer,
+        content: Content,
         puck,
       }: ElementProps & { id: string; puck: { dragRef: Ref<HTMLDivElement> } }) => {
         const parsed = SiteElementSchema.safeParse(block);
         const hero = parsed.success && parsed.data.type === 'hero' ? parsed.data : null;
-        return (
-          <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }}>
-            {parsed.success ? (
-              renderBlock(
-                parsed.data,
-                displayDocument,
-                undefined,
-                hero
-                  ? (kind) => (
-                      <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
-                    )
-                  : undefined,
-              )
-            ) : (
-              <p>Configure this element.</p>
-            )}
+        const content = parsed.success ? (
+          parsed.data.type === 'composition' && Content ? (
+            <GroupComponent
+              id={id}
+              name={parsed.data.name}
+              surface={parsed.data.surface}
+              content={Content}
+              document={displayDocument}
+            />
+          ) : (
+            renderBlock(
+              parsed.data,
+              displayDocument,
+              undefined,
+              hero
+                ? (kind) => <HeroTextResizeHandle componentId={id} kind={kind} align={hero.align} />
+                : undefined,
+            )
+          )
+        ) : (
+          <p>Configure this element.</p>
+        );
+        return parsed.success && parsed.data.type === 'text' ? (
+          <EditorTextLayoutItem
+            id={id}
+            block={parsed.data}
+            grid={grid}
+            align={align}
+            span={span}
+            layer={layer}
+            dragRef={puck.dragRef}
+          >
+            {content}
+          </EditorTextLayoutItem>
+        ) : (
+          <LayoutItem dragRef={puck.dragRef} placement={{ grid, align, span }} layer={layer}>
+            {content}
           </LayoutItem>
         );
+      },
+    };
+  }
+
+  const groupComponent = components.composition as Record<string, unknown> & {
+    defaultProps: ElementDataProps;
+    resolveData: (
+      data: { props: ElementDataProps },
+      context: { trigger: string; parent: ComponentData | null },
+    ) => { props: ElementDataProps };
+  };
+  for (const { key, name } of presetComponents) {
+    const initial = compositionPreset(name, document);
+    const presetData = (item: (typeof initial.items)[number]) => {
+      const data = placementToData(item, 12);
+      return { ...data, props: { ...data.props, presetPlacement: true } };
+    };
+    components[key] = {
+      ...groupComponent,
+      label: name,
+      defaultProps: {
+        ...groupComponent.defaultProps,
+        block: initial,
+        content: initial.items.map(presetData),
+      },
+      resolveData: (
+        data: { props: ElementDataProps },
+        context: { trigger: string; parent: ComponentData | null },
+      ) => {
+        if (context.trigger !== 'insert') return groupComponent.resolveData(data, context);
+        const preset = compositionPreset(name, document);
+        const resolved = groupComponent.resolveData(
+          {
+            ...data,
+            props: {
+              ...data.props,
+              block: preset,
+              content: preset.items.map(presetData),
+            },
+          },
+          context,
+        );
+        const grid = GRID_BREAKPOINTS.reduce(
+          (current, breakpoint) =>
+            updateGridArea(current, breakpoint, {
+              rowSpan: Math.max(
+                areaForBreakpoint(current, breakpoint).rowSpan,
+                requiredSectionRows(1, preset.items, breakpoint),
+              ),
+            }),
+          resolved.props.grid,
+        );
+        return { ...resolved, props: { ...resolved.props, grid } };
       },
     };
   }
@@ -1134,15 +1850,32 @@ function VisualEditorImpl({
       },
       content: {
         title: 'Text and buttons',
-        components: ['hero', 'heading', 'text', 'richText', 'button', 'cta'],
+        components: [
+          ...presetComponents.slice(0, 3).map(({ key }) => key),
+          'hero',
+          'heading',
+          'text',
+          'richText',
+          'button',
+          'cta',
+        ],
       },
       media: {
         title: 'Images and media',
         components: ['image', 'mediaEmbed', 'splitFeature'],
       },
-      collections: { title: 'Lists and people', components: ['cards', 'people'] },
-      engagement: { title: 'Interactive', components: ['faq', 'form', 'map'] },
-      spacing: { title: 'Layout helpers', components: ['divider', 'spacer'] },
+      collections: {
+        title: 'Lists and people',
+        components: [...presetComponents.slice(3, 6).map(({ key }) => key), 'cards', 'people'],
+      },
+      engagement: {
+        title: 'Interactive',
+        components: [presetComponents[6].key, 'faq', 'form', 'map'],
+      },
+      spacing: {
+        title: 'Layout helpers',
+        components: ['divider', 'spacer', 'composition'],
+      },
       other: { visible: false },
     },
     components,
@@ -1150,15 +1883,34 @@ function VisualEditorImpl({
       render: ({ children }: { children: ReactNode }) => (
         <>
           <style>{`${siteCss}\n${editorCanvasCss}`}</style>
-          <CanvasBreakpointReporter />
+          <CanvasBreakpointReporter
+            restoreSelection={
+              remountSelection.current?.revision === interactionRevision &&
+              remountSelection.current.pageId === pageId
+                ? remountSelection.current.selector
+                : undefined
+            }
+          />
           <SiteFrame
             document={displayDocument}
             page={page}
             editing
             onEditFooter={editingFooter ? undefined : onEditFooter}
-            footerContent={editingFooter ? children : undefined}
+            footerContent={
+              editingFooter ? (
+                <>
+                  {children}
+                  <RootDropPhantom document={displayDocument} />
+                </>
+              ) : undefined
+            }
           >
-            {editingFooter ? null : children}
+            {editingFooter ? null : (
+              <>
+                {children}
+                <RootDropPhantom document={displayDocument} />
+              </>
+            )}
           </SiteFrame>
         </>
       ),
@@ -1203,7 +1955,13 @@ function VisualEditorImpl({
           key={`${pageId}:${structureRevision}:${interactionRevision}`}
           config={config}
           data={data}
-          ui={{ rightSideBarVisible: propertiesOpen }}
+          ui={{
+            rightSideBarVisible: propertiesOpen,
+            ...(remountSelection.current?.revision === interactionRevision &&
+            remountSelection.current.pageId === pageId
+              ? { itemSelector: remountSelection.current.selector }
+              : {}),
+          }}
           dnd={editorDnd}
           overrides={editorOverrides}
           plugins={editorPlugins}
@@ -1212,8 +1970,54 @@ function VisualEditorImpl({
             if (action.type === 'setUi' && nextState.ui.rightSideBarVisible !== propertiesOpen)
               queueMicrotask(() => onPropertiesChange(nextState.ui.rightSideBarVisible));
             if (['setUi', 'registerZone', 'unregisterZone'].includes(action.type)) return;
+            const resolvedRootDrop =
+              action.type === 'replace' &&
+              action.destinationZone === 'root:default-zone' &&
+              pendingRootDrop.current?.pageId === pageId &&
+              pendingRootDrop.current.componentId === String(action.data.props.id)
+                ? pendingRootDrop.current
+                : null;
+            const dropIntent = resolvedRootDrop ? resolvedRootDrop.intent : getGridDropIntent();
+            let redirectedSectionId = resolvedRootDrop?.sectionId;
+            if (
+              action.type === 'insert' &&
+              action.destinationZone === 'root:default-zone' &&
+              !sectionTypes.includes(action.componentType as (typeof sectionTypes)[number])
+            ) {
+              const rootIntent = dropIntent?.type === action.componentType ? dropIntent : null;
+              const pointerId = lastSectionPointer ?? rootIntent?.sectionId;
+              const targetId = pointerId
+                ? documentComponentId({ type: 'Section', props: { id: pointerId } })
+                : null;
+              const target = nextState.data.content.find(
+                (item) =>
+                  sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
+                  documentComponentId(item) === targetId,
+              );
+              pendingRootDrop.current = target
+                ? {
+                    pageId,
+                    componentId: String(nextState.data.content[action.destinationIndex]?.props.id),
+                    sectionId: documentComponentId(target),
+                    intent:
+                      rootIntent?.sectionId &&
+                      documentComponentId({
+                        type: 'Section',
+                        props: { id: rootIntent.sectionId },
+                      }) === targetId
+                        ? rootIntent
+                        : null,
+                  }
+                : null;
+              redirectedSectionId = pendingRootDrop.current?.sectionId;
+            }
+            if (resolvedRootDrop) pendingRootDrop.current = null;
             const rejectedInsert =
-              (action.type === 'insert' && getGridDropIntent()?.valid === false) ||
+              ((action.type === 'insert' || action.type === 'replace') &&
+                dropIntent?.valid === false &&
+                (action.destinationZone === `${dropIntent.sectionId}:content` ||
+                  (action.destinationZone === 'root:default-zone' &&
+                    (resolvedRootDrop || lastSectionPointer === dropIntent.sectionId)))) ||
               (action.type === 'replace' && action.data.props.gridDropRejected === true);
             if (rejectedInsert) {
               setGridDropIntent(null);
@@ -1252,16 +2056,128 @@ function VisualEditorImpl({
               mutation = mutationForContext('page-content');
             }
 
-            const sections = nextState.data.content.map((item) =>
+            let content = nextState.data.content as ComponentData[];
+            let insertSelector: { zone: string; index: number } | null = null;
+            if (
+              (action.type === 'insert' || action.type === 'replace') &&
+              action.destinationZone === 'root:default-zone' &&
+              redirectedSectionId
+            ) {
+              const inserted = content[action.destinationIndex];
+              const target = content.find(
+                (item) =>
+                  sectionTypes.includes(item.type as (typeof sectionTypes)[number]) &&
+                  documentComponentId(item) === redirectedSectionId &&
+                  ((item.props.settings as SectionSettings).layout === 'flow' ||
+                    (dropIntent?.valid === true &&
+                      (resolvedRootDrop || dropIntent.sectionId === lastSectionPointer) &&
+                      dropIntent.type === inserted?.type)),
+              );
+              const insertedType =
+                action.type === 'insert' ? action.componentType : action.data.type;
+              if (inserted?.type === insertedType && target) {
+                const children = (target.props.content ?? []) as ComponentData[];
+                let placement = inserted;
+                if ((target.props.settings as SectionSettings).layout === 'grid' && dropIntent) {
+                  const span =
+                    target.type === 'TwoColumnSection'
+                      ? 6
+                      : target.type === 'ThreeColumnSection'
+                        ? 4
+                        : 12;
+                  const siblings = children.map((item) => ({
+                    grid: item.props.grid as SectionBlock['items'][number]['grid'],
+                  }));
+                  const rows = defaultRowSpan(inserted.type as SiteElement['type']);
+                  const grid = {
+                    desktop: nextGridArea(siblings, span, rows, 'desktop'),
+                    tablet: nextGridArea(siblings, span, rows, 'tablet'),
+                    mobile: nextGridArea(siblings, span, rows, 'mobile'),
+                  };
+                  placement = {
+                    ...inserted,
+                    props: {
+                      ...inserted.props,
+                      span,
+                      grid: updateGridArea(
+                        grid,
+                        dropIntent.breakpoint ?? getGridBreakpoint(),
+                        dropIntent.area,
+                      ),
+                    },
+                  };
+                }
+                content = content
+                  .filter((_, index) => index !== action.destinationIndex)
+                  .map((item) =>
+                    item === target
+                      ? {
+                          ...item,
+                          props: {
+                            ...item.props,
+                            content: [...children, placement],
+                          },
+                        }
+                      : item,
+                  );
+                insertSelector = {
+                  zone: `${documentComponentId(target)}:content`,
+                  index: children.length,
+                };
+              }
+            }
+            lastSectionPointer = null;
+            const hasRootElement = content.some(
+              (item) => !sectionTypes.includes(item.type as (typeof sectionTypes)[number]),
+            );
+            const previousSections = layoutSections(document, pageId) ?? [];
+            const sections = content.map((item) =>
               sectionTypes.includes(item.type as (typeof sectionTypes)[number])
                 ? dataToSection(item)
-                : rootElementToSection(item),
+                : rootElementToSection(
+                    item,
+                    sectionDefaults('Section'),
+                    previousSections.find(
+                      (section) =>
+                        section.items.length === 1 &&
+                        section.items[0].id === documentComponentId(item),
+                    )?.id,
+                  ),
             );
-            const changed = structuredClone(document);
+            if (
+              !insertSelector &&
+              (action.type === 'insert' || action.type === 'replace') &&
+              action.destinationZone === 'root:default-zone' &&
+              !sectionTypes.includes(
+                content[action.destinationIndex]?.type as (typeof sectionTypes)[number],
+              ) &&
+              (action.type === 'replace' ||
+                content[action.destinationIndex]?.type === action.componentType)
+            )
+              insertSelector = {
+                zone: `${sections[action.destinationIndex].id}:content`,
+                index: 0,
+              };
+            let changed =
+              document.schemaVersion < 12 &&
+              action.type === 'insert' &&
+              action.componentType === 'composition'
+                ? upgradeComposition(document)
+                : structuredClone(document);
             replaceLayoutSections(changed, pageId, sections);
+            if (changed.schemaVersion < 12 && !SiteDocumentSchema.safeParse(changed).success) {
+              const upgraded = upgradeComposition(document);
+              replaceLayoutSections(upgraded, pageId, sections);
+              if (SiteDocumentSchema.safeParse(upgraded).success) changed = upgraded;
+            }
             queueMicrotask(() => {
-              if (mutation.transient) stageDocument(changed, mutation);
-              else completeDocument(changed, mutation);
+              if (mutation.transient) stageDocument(changed, mutation, false);
+              else {
+                if (insertSelector) pendingSelection.current = { pageId, selector: insertSelector };
+                if (!completeDocument(changed, mutation)) pendingSelection.current = null;
+                else if (!insertSelector && hasRootElement)
+                  setInteractionRevision((value) => value + 1);
+              }
             });
           }}
           onPublish={undefined}
