@@ -2480,6 +2480,7 @@ for (const fixture of [
   'every Block variant',
   'composed layouts',
   'composed Flow layouts',
+  'content-expanded grids',
 ] as const)
   test(`matches complete authored ${fixture} in Preview and publication`, async ({ page }) => {
     test.setTimeout(180_000);
@@ -2495,8 +2496,29 @@ for (const fixture of [
         section.columns = 1;
         section.stackAt = (['smallTablet', 'tablet', 'phone'] as const)[index % 3];
       });
+    if (fixture === 'content-expanded grids')
+      source.pages[0].blocks.forEach((section, index) => {
+        if (index > 0) {
+          section.layout = 'flow';
+          section.columns = 1;
+        }
+        for (const item of section.items) {
+          if (item.element.type !== 'composition') continue;
+          for (const child of item.element.items) {
+            if (child.element.type === 'form')
+              child.element.heading = 'Live in community with a mission';
+            if (child.element.type === 'text' && child.element.style === 'body')
+              child.element.text =
+                'Long composed text remains readable at enlarged text sizes. '.repeat(20);
+          }
+        }
+      });
     await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
     const measure = async (frame: FrameLocator) => {
+      if (fixture === 'content-expanded grids')
+        await frame.locator('html').evaluate((root) => {
+          root.style.fontSize = '200%';
+        });
       await frame.owner().scrollIntoViewIfNeeded();
       // Scrolling a surface under the pointer can open a navigation dropdown.
       await page.mouse.move(0, 0);
@@ -2516,6 +2538,17 @@ for (const fixture of [
             .map((animation) => animation.finished.catch(() => {})),
         );
         const breakpoint = innerWidth <= 520 ? 'mobile' : innerWidth <= 900 ? 'tablet' : 'desktop';
+        for (const image of root.querySelectorAll('.point-layout-item--grid > .point-image')) {
+          const frame = image.getBoundingClientRect();
+          const parent = image.parentElement!.getBoundingClientRect();
+          if (
+            frame.left < parent.left - 1 ||
+            frame.right > parent.right + 1 ||
+            frame.top < parent.top - 1 ||
+            frame.bottom > parent.bottom + 1
+          )
+            throw new Error(`Image frame extends outside its grid placement at ${innerWidth}px`);
+        }
         for (const item of root.querySelectorAll<HTMLElement>(
           '.point-composition__grid > .point-layout-item',
         )) {
@@ -2523,6 +2556,15 @@ for (const fixture of [
           const span = item.style.getPropertyValue(`--point-grid-${breakpoint}-column-span`);
           if (style.gridColumnEnd !== `span ${span}`)
             throw new Error(`Nested ${breakpoint} grid span ${span} became ${style.gridColumnEnd}`);
+          if (
+            item.querySelector(
+              ':scope > .point-text, :scope > .point-form-wrapper, :scope > .form-panel, :scope > .point-composition',
+            ) &&
+            (item.scrollHeight > item.clientHeight + 1 || item.scrollWidth > item.clientWidth + 1)
+          )
+            throw new Error(
+              `Composed text clipped at ${innerWidth}px: ${item.textContent?.slice(0, 60)}`,
+            );
         }
         return Array.from(
           root.querySelectorAll(
@@ -4164,6 +4206,142 @@ test('keeps an emptied Section name empty after autosave and reload', async ({ p
   await expect(page.getByLabel('Section name').filter({ visible: true })).toHaveValue('');
 });
 
+test('keeps a tall image inside its authored frame when its width changes', async ({ page }) => {
+  const source = compositionCatalogDocument();
+  source.pages[0].blocks = [source.pages[0].blocks[3]];
+  const group = source.pages[0].blocks[0].items[0].element;
+  if (group.type !== 'composition') throw new Error('Expected Group');
+  const image = group.items[0].element;
+  if (image.type !== 'image') throw new Error('Expected image');
+  image.aspect = 'natural';
+  image.alt = 'Tall frame probe';
+  image.mediaId = source.media[0].id;
+  await installApi(page, 'administrator', 'admin', (document) => Object.assign(document, source));
+  await page.route('**/api/media/asset?*', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="2000"><rect width="100" height="2000" fill="green"/></svg>',
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const title = canvas.getByText('Card title', { exact: true });
+  const measure = () =>
+    title.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const grid = element.closest('.point-composition__grid')!.getBoundingClientRect();
+      return { top: box.top - grid.top, height: box.height };
+    });
+  await expect(title).toBeVisible();
+  const before = await measure();
+  await canvas.getByAltText('Tall frame probe', { exact: true }).click();
+  await page.getByLabel('desktop width in columns').last().fill('6');
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  const after = await measure();
+  expect(after.top).toBeCloseTo(before.top, 1);
+  expect(after.height).toBeCloseTo(before.height, 1);
+});
+
+test('snaps insertion and movement across content-expanded grid rows', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Puck cross-frame insertion uses Chromium.');
+  const controls = await installApi(page, 'administrator', 'admin', (document) => {
+    document.schemaVersion = 12;
+    document.rendererVersion = '12.0.0';
+    const section = structuredClone(document.pages[0].blocks[0]);
+    section.name = 'Expanded grid';
+    section.position = 'flow';
+    section.minRows = 8;
+    section.items = [
+      {
+        id: crypto.randomUUID(),
+        span: 12,
+        align: { desktop: 'stretch', tablet: 'stretch', mobile: 'stretch' },
+        grid: {
+          desktop: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 },
+          tablet: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 },
+          mobile: { column: 1, row: 1, columnSpan: 12, rowSpan: 1 },
+        },
+        element: {
+          id: crypto.randomUUID(),
+          type: 'text',
+          text: 'Long text expands its own grid row without stretching every other row. '.repeat(
+            30,
+          ),
+          style: 'body',
+          semantic: 'p',
+          align: 'left',
+        },
+      },
+    ];
+    document.pages[0].blocks = [section];
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.locator('.visual-editor iframe').contentFrame().locator('.point-text').first().click();
+  await page.getByRole('button', { name: 'Blocks', exact: true }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  const grid = canvas.locator('section[aria-label="Expanded grid"] .point-layout-section__grid');
+  const source = page.getByRole('button', { name: 'Text', exact: true });
+  await source.scrollIntoViewIfNeeded();
+  await grid.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+  const rows = await grid.evaluate((element) =>
+    getComputedStyle(element).gridTemplateRows.split(' ').map(Number.parseFloat),
+  );
+  expect(rows[0]).toBeGreaterThan(rows[1] * 2);
+  const from = (await source.boundingBox())!;
+  const to = (await grid.boundingBox())!;
+  const scale =
+    to.width / (await grid.evaluate((element) => element.getBoundingClientRect().width));
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 9, from.y + from.height / 2 + 9, { steps: 4 });
+  const gap = await grid.evaluate((element) => Number.parseFloat(getComputedStyle(element).rowGap));
+  await page.mouse.move(to.x + 20, to.y + (rows[0] + gap + rows[1] / 2) * scale, { steps: 20 });
+  const phantom = canvas.locator('.point-grid-drop-preview');
+  await expect(phantom).toHaveAttribute('data-drop-valid', 'true');
+  const expected = (await phantom.boundingBox())!;
+  const beforeDrop = (await grid.boundingBox())!;
+  expected.x -= beforeDrop.x;
+  expected.y -= beforeDrop.y;
+  await page.mouse.up();
+  const inserted = grid.locator('.point-layout-item').filter({ hasText: 'Add your text here.' });
+  await expect(inserted).toBeVisible();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  const actual = (await inserted.boundingBox())!;
+  const afterDrop = (await grid.boundingBox())!;
+  actual.x -= afterDrop.x;
+  actual.y -= afterDrop.y;
+  for (const key of ['x', 'y', 'width', 'height'] as const)
+    expect(actual[key], key).toBeCloseTo(expected[key], 0);
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  expect(controls.saveRequests.at(-1)!.document.pages[0].blocks[0].items[1].grid.desktop.row).toBe(
+    2,
+  );
+  const first = grid.locator('.point-text').first();
+  await first.click();
+  const move = canvas.getByRole('button', { name: 'Move text on desktop grid', exact: true });
+  const handle = (await move.boundingBox())!;
+  const delta = rows.slice(0, 4).reduce((sum, size) => sum + size + gap, 0) * scale;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 10 + delta, { steps: 15 });
+  await page.mouse.up();
+  await expect
+    .poll(() => controls.saveRequests.at(-1)?.document.pages[0].blocks[0].items[0].grid.desktop.row)
+    .toBe(5);
+  await page.reload();
+  await expect(
+    page
+      .locator('.visual-editor iframe')
+      .contentFrame()
+      .getByText('Add your text here.', { exact: true }),
+  ).toBeVisible();
+});
+
 test('wraps text around an independently placed image and persists the setting', async ({
   page,
 }) => {
@@ -4221,6 +4399,23 @@ test('wraps text around an independently placed image and persists the setting',
   await canvas.locator('section[aria-label="Wrap test"] .point-image img').click();
   await page.getByRole('checkbox', { name: 'Wrap nearby text' }).check();
   await expect(canvas.locator('.point-layout-item--text-wrap > .point-text')).toHaveCount(1);
+  await canvas.locator('html').evaluate((root) => {
+    root.style.fontSize = '200%';
+  });
+  const wrappedGeometry = await canvas
+    .locator('.point-layout-item--text-wrap > .point-text')
+    .evaluate((text) => ({
+      exclusion:
+        Number.parseFloat(getComputedStyle(text, '::before').height) +
+        Number.parseFloat(getComputedStyle(text).paddingTop),
+      image: text
+        .closest('section')!
+        .querySelector('.point-image')!
+        .parentElement!.getBoundingClientRect().height,
+      clipped: text.parentElement!.scrollHeight > text.parentElement!.clientHeight + 1,
+    }));
+  expect(wrappedGeometry.clipped).toBe(false);
+  expect(wrappedGeometry.exclusion).toBeCloseTo(wrappedGeometry.image, 0);
   await expect
     .poll(() => controls.saveRequests.at(-1)?.document.pages[0].blocks[0].items[1].element)
     .toMatchObject({ type: 'image', wrap: true });

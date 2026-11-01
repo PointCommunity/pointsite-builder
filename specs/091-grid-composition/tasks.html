@@ -417,6 +417,15 @@
       <section class="task">
         <h3>☐ T20 · Full QA, Canary and PM handoff</h3>
         <p>
+          Reconstruction follow-up: long composed text must expand only the rows it occupies,
+          including at 200% text size. Measure rendered tracks for snapping, handles and grid dots;
+          measure a disposable future grid for exact insertion phantom geometry. Preserve image wrap
+          exclusion geometry and remove native figure margins. Recheck all reconstructed routes for
+          clipping as well as renderer parity before the replacement Canary release. Media must stay
+          inside its authored frame without letting intrinsic image size shift neighboring text
+          tracks; cover a tall-image width change with a regression test.
+        </p>
+        <p>
           <strong>Acceptance:</strong> all Issue criteria have evidence; exact reviewed source/tree
           passes local and GitHub gates; healthy Canary matches that candidate; task-owned
           processes/output are cleaned.

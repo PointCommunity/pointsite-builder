@@ -21,6 +21,7 @@ import {
   type PointerEvent,
   type ReactNode,
   type Ref,
+  type RefObject,
 } from 'react';
 import {
   blockDefinitions,
@@ -43,6 +44,7 @@ import {
   textWrapForItem,
   updateGridArea,
   type GridBreakpoint,
+  type GridArea,
 } from '../../site-kit/grid-layout';
 import type { SectionBlock, SiteDocument, SiteElement } from '../../site-kit/types';
 import { SiteFrame } from '../../site-kit/SiteRenderer';
@@ -333,6 +335,7 @@ let lastGridPointer:
       columnGap: number;
       rowGap: number;
       cellSize: number;
+      rowSizes: number[];
     }
   | undefined;
 let lastSectionPointer: string | null = null;
@@ -536,6 +539,8 @@ function sectionDefaults(kind: (typeof sectionTypes)[number]): SectionSettings {
 
 type DropPreview = {
   type: SiteElement['type'];
+  area: GridArea;
+  bounds: GridDropIntent['bounds'];
   label: string;
   valid: boolean;
   style: CSSProperties;
@@ -544,18 +549,69 @@ type DropPreview = {
 function DropPhantom({
   preview,
   document,
+  gridRef,
 }: {
   preview: DropPreview;
   document: ReturnType<typeof useEditor>['document'];
+  gridRef: RefObject<HTMLElement | null>;
 }) {
+  const content = useRef<HTMLDivElement>(null);
+  const [loaded, setLoaded] = useState(0);
+  const [measured, setMeasured] = useState<CSSProperties>();
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !content.current) return;
+    // Measure the future grid: content may expand its tracks after insertion.
+    const clone = grid.cloneNode(true) as HTMLElement;
+    clone
+      .querySelectorAll(
+        '[data-puck-line-placeholder], [data-dnd-placeholder], .point-grid-controls, .point-section-grid-controls',
+      )
+      .forEach((element) => element.remove());
+    Object.assign(clone.style, {
+      position: 'absolute',
+      visibility: 'hidden',
+      pointerEvents: 'none',
+      width: `${grid.getBoundingClientRect().width}px`,
+      height: 'auto',
+    });
+    clone.setAttribute('aria-hidden', 'true');
+    clone.inert = true;
+    const item = grid.ownerDocument.createElement('div');
+    item.className = 'point-layout-item point-layout-item--grid';
+    item.style.gridArea = `${preview.area.row} / ${preview.area.column} / span ${preview.area.rowSpan} / span ${preview.area.columnSpan}`;
+    item.append(...Array.from(content.current.childNodes, (child) => child.cloneNode(true)));
+    clone.append(item);
+    clone.querySelectorAll('iframe, video, audio, source').forEach((media) => {
+      media.removeAttribute('src');
+      media.removeAttribute('srcdoc');
+    });
+    try {
+      grid.parentElement!.append(clone);
+      const container = clone.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
+      setMeasured({
+        left: Number(preview.style.left) - preview.bounds.left + box.left - container.left,
+        top: Number(preview.style.top) - preview.bounds.top + box.top - container.top,
+        width: box.width,
+        height: box.height,
+      });
+    } finally {
+      clone.remove();
+    }
+  }, [gridRef, preview, loaded]);
   return (
     <div
       className={`point-grid-drop-preview point-grid-drop-preview--${preview.valid ? 'valid' : 'invalid'}`}
       data-drop-valid={preview.valid}
-      style={preview.style}
+      style={{ ...preview.style, ...measured }}
       aria-hidden="true"
     >
-      <div className="point-grid-drop-preview__content">
+      <div
+        ref={content}
+        className="point-grid-drop-preview__content"
+        onLoadCapture={() => setLoaded((value) => value + 1)}
+      >
         {(preview.type === 'image' || preview.type === 'splitFeature') && !document.media.length ? (
           <div className="point-grid-drop-preview__media">Image</div>
         ) : preview.type === 'form' && !document.forms.length ? (
@@ -727,7 +783,7 @@ function SectionComponent({
       clearDropPreview();
       return;
     }
-    const { columnGap, rowGap, cellSize } = measureGrid(gridRef.current);
+    const { columnGap, rowGap, cellSize, rowSizes } = measureGrid(gridRef.current);
     lastGridPointer = {
       sectionId: id,
       x: clientX - rect.left,
@@ -736,6 +792,7 @@ function SectionComponent({
       columnGap,
       rowGap,
       cellSize,
+      rowSizes,
     };
     const draggedType = getDraggedElementType();
     if (!isDragging || !draggedType) {
@@ -782,6 +839,8 @@ function SectionComponent({
     const sectionRect = gridRef.current.closest('section')?.getBoundingClientRect() ?? rect;
     setDropPreview({
       type: draggedType,
+      area: intent.area,
+      bounds: intent.bounds,
       label: intent.label,
       valid: intent.valid,
       style: {
@@ -886,7 +945,7 @@ function SectionComponent({
       controls={
         <>
           {isDragging && dropPreview ? (
-            <DropPhantom preview={dropPreview} document={document} />
+            <DropPhantom preview={dropPreview} document={document} gridRef={gridRef} />
           ) : null}
           <p className="sr-only" role="status" aria-live="polite">
             {dropAnnouncement}
@@ -935,7 +994,7 @@ function GroupComponent({
     }
     const type = getDraggedElementType();
     if (!type) return;
-    const { columnGap, rowGap, cellSize } = measureGrid(grid);
+    const { columnGap, rowGap, cellSize, rowSizes } = measureGrid(grid);
     const intent = deriveGridDropIntent({
       type,
       label: draggedPresetName ?? blockDefinitions[type].label,
@@ -948,6 +1007,7 @@ function GroupComponent({
         columnGap,
         rowGap,
         cellSize,
+        rowSizes,
       },
       columnSpan: 6,
       rowSpan: draggedPreviewRows(type, document, breakpoint),
@@ -961,6 +1021,8 @@ function GroupComponent({
     const frame = grid.closest('section')?.getBoundingClientRect() ?? bounds;
     setPreview({
       type,
+      area: intent.area,
+      bounds: intent.bounds,
       label: intent.label,
       valid: intent.valid,
       style: {
@@ -1019,7 +1081,9 @@ function GroupComponent({
             clear();
         }}
       />
-      {isDragging && preview ? <DropPhantom preview={preview} document={document} /> : null}
+      {isDragging && preview ? (
+        <DropPhantom preview={preview} document={document} gridRef={gridRef} />
+      ) : null}
       <p className="sr-only" role="status" aria-live="polite">
         {isDragging ? announcement : ''}
       </p>

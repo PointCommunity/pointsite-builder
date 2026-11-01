@@ -1386,6 +1386,9 @@ export function LayoutItem({
     variables[`--point-wrap-${breakpoint}-width`] =
       `calc(${widthPercent}% - ${gapShare} * var(--point-section-gap))`;
     variables[`--point-wrap-${breakpoint}-rows`] = String(footprint.rows);
+    variables[`--point-wrap-${breakpoint}-ratio`] = String(
+      footprint.rows / placement.grid[breakpoint].rowSpan,
+    );
   }
   return (
     <div

@@ -13,6 +13,8 @@ import {
   requiredSectionRows,
   resolveGridArea,
   resizeGridArea,
+  gridRowOffset,
+  gridRowAtOffset,
   updateGridArea,
   type GridArea,
   type GridResizeHandle,
@@ -134,8 +136,7 @@ export function GridOverlay({
       const source = ownerDocument.querySelector(`[data-puck-component="${componentId}"]`);
       const surface = source?.querySelector<HTMLElement>('.point-layout-section__grid');
       if (!surface) return;
-      const { cellSize, rowGap } = measureGrid(surface);
-      const rowStep = cellSize + rowGap;
+      const metrics = measureGrid(surface);
       const startY = event.clientY;
       const startRows = ownSettings.minRows;
       let latest = startRows;
@@ -146,7 +147,10 @@ export function GridOverlay({
       );
       surface.dataset.gridActive = 'true';
       const move = (nextEvent: globalThis.PointerEvent) => {
-        latest = startRows + Math.round((nextEvent.clientY - startY) / rowStep);
+        measureGrid(surface);
+        latest = Math.round(
+          gridRowAtOffset(metrics, gridRowOffset(metrics, startRows) + nextEvent.clientY - startY),
+        );
         commitSectionRows(latest, false);
       };
       const finish = () => {
@@ -256,12 +260,14 @@ export function GridOverlay({
       '.point-composition__grid, .point-layout-section__grid',
     );
     if (!surface) return;
-    const { width, columnGap, rowGap, cellSize } = measureGrid(surface);
+    const metrics = measureGrid(surface);
+    const { width, columnGap } = metrics;
     const xStep = (width - columnGap * 11) / 12 + columnGap;
-    const yStep = cellSize + rowGap;
     const startX = event.clientX;
     const startY = event.clientY;
     const startArea = areaForBreakpoint(grid, breakpoint);
+    const anchorRow = startArea.row - 1 + (mode.includes('south') ? startArea.rowSpan : 0);
+    const anchorOffset = gridRowOffset(metrics, anchorRow);
     let latest = startArea;
     const rawSectionId = parentProps?.id;
     const sectionId =
@@ -272,8 +278,11 @@ export function GridOverlay({
     surface.dataset.gridActive = 'true';
 
     const move = (nextEvent: globalThis.PointerEvent) => {
+      measureGrid(surface);
       const columns = Math.round((nextEvent.clientX - startX) / xStep);
-      const rows = Math.round((nextEvent.clientY - startY) / yStep);
+      const rows = Math.round(
+        gridRowAtOffset(metrics, anchorOffset + nextEvent.clientY - startY) - anchorRow,
+      );
       latest =
         mode === 'move'
           ? moveGridArea(startArea, columns, rows)

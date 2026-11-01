@@ -135,19 +135,44 @@ export function gridAreaFromPoint(
     columnGap: number;
     rowGap: number;
     cellSize: number;
+    rowSizes?: number[];
   },
   columnSpan: number,
   rowSpan: number,
 ): GridArea {
   const columnStep =
     (metrics.width - metrics.columnGap * (GRID_COLUMNS - 1)) / GRID_COLUMNS + metrics.columnGap;
-  const rowStep = metrics.cellSize + metrics.rowGap;
   return clampGridArea({
     column: Math.floor(Math.max(0, metrics.x) / Math.max(1, columnStep)) + 1,
-    row: Math.floor(Math.max(0, metrics.y) / Math.max(1, rowStep)) + 1,
+    row: Math.floor(gridRowAtOffset(metrics, Math.max(0, metrics.y))) + 1,
     columnSpan,
     rowSpan,
   });
+}
+
+export type GridRowMetrics = { cellSize: number; rowGap: number; rowSizes?: number[] };
+
+/** Zero-based row line, including gaps. Unrendered rows use the minimum cell size. */
+export function gridRowOffset(metrics: GridRowMetrics, line: number): number {
+  const count = Math.max(0, Math.round(line));
+  let offset = 0;
+  for (let row = 0; row < count; row += 1) {
+    offset += (metrics.rowSizes?.[row] ?? metrics.cellSize) + metrics.rowGap;
+  }
+  return offset;
+}
+
+/** Fractional zero-based row coordinate for pointer movement and resizing. */
+export function gridRowAtOffset(metrics: GridRowMetrics, offset: number): number {
+  let remaining = Math.max(0, offset);
+  let row = 0;
+  for (const size of metrics.rowSizes ?? []) {
+    const step = Math.max(1, size + metrics.rowGap);
+    if (remaining < step) return row + remaining / step;
+    remaining -= step;
+    row += 1;
+  }
+  return row + remaining / Math.max(1, metrics.cellSize + metrics.rowGap);
 }
 
 export function requiredSectionRows(
