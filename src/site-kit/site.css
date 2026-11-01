@@ -1482,6 +1482,7 @@ body:has(.point-site) {
 .point-site .point-navigation {
   --point-navigation-panel: var(--point-primary);
   --point-navigation-panel-text: var(--point-on-primary);
+  container-type: inline-size;
   display: flex;
   width: 100%;
   padding: 0.5rem;
@@ -1568,9 +1569,11 @@ body:has(.point-site) {
 .point-site .point-navigation__toggle {
   display: none;
   min-height: 2.75rem;
+  max-width: 100%;
   border: 1px solid currentColor;
   border-radius: 0.25rem;
-  padding-inline: 1rem;
+  padding-inline: clamp(0px, calc((100cqi - 3em) / 2), 1rem);
+  overflow-wrap: anywhere;
   background: transparent;
   color: inherit;
   font: inherit;

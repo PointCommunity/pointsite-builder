@@ -2568,13 +2568,14 @@ for (const fixture of [
         }
         return Array.from(
           root.querySelectorAll(
-            'h1,h2,h3,h4,h5,h6,p,a,img,figure,address,video,iframe,.point-layout-item',
+            'h1,h2,h3,h4,h5,h6,p,a,button,img,figure,address,video,iframe,.point-layout-item',
           ),
         )
           .filter(
             (element) =>
-              !element.closest('.sr-only,[aria-hidden="true"]') &&
-              element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+              !element.closest(
+                '.sr-only,[aria-hidden="true"],.point-grid-controls,.point-section-grid-controls,.point-hero-text-resize,.point-footer-edit',
+              ) && element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
           )
           .map((element) => {
             const bounds = element.getBoundingClientRect();
@@ -4204,6 +4205,55 @@ test('keeps an emptied Section name empty after autosave and reload', async ({ p
     .locator('xpath=ancestor-or-self::*[@data-puck-component][1]')
     .click({ position: { x: 8, y: 8 } });
   await expect(page.getByLabel('Section name').filter({ visible: true })).toHaveValue('');
+});
+
+test('reflows an enlarged header menu without obscuring its neighboring logo', async ({ page }) => {
+  await installApi(page, 'administrator', 'admin', (document) => {
+    const header = document.pages[0].blocks.find((section) =>
+      section.items.some((item) => item.element.type === 'navigation'),
+    )!;
+    const logo = header.items.find((item) => item.element.type === 'image')!;
+    const navigation = header.items.find((item) => item.element.type === 'navigation')!;
+    Object.assign(header, { width: 'shell', gap: 'small', padding: 'small', minRows: 1 });
+    if (logo.element.type === 'image') logo.element.variant = 'wide';
+    logo.grid.mobile = { column: 1, row: 2, columnSpan: 7, rowSpan: 1 };
+    navigation.grid.mobile = { column: 8, row: 1, columnSpan: 5, rowSpan: 3 };
+    document.pages[0].blocks = [header];
+  });
+  await page.route('**/api/media/asset?*', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><rect width="300" height="100" fill="green"/></svg>',
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open editor' }).click();
+  await page.getByRole('button', { name: 'Switch to Phone viewport' }).click();
+  const canvas = page.locator('.visual-editor iframe').contentFrame();
+  await expect.poll(() => canvas.locator('body').evaluate(() => innerWidth)).toBe(360);
+  await canvas.locator('html').evaluate((root) => {
+    root.style.fontSize = '200%';
+  });
+  const toggle = canvas.locator('.point-navigation__toggle');
+  await expect(toggle).toBeVisible();
+  await canvas.locator('img').evaluate((image) => image.decode());
+  const geometry = await toggle.evaluate((button) => {
+    const image = button.closest('section')!.querySelector('img')!.getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    return { gap: box.left - image.right, width: button.clientWidth, scroll: button.scrollWidth };
+  });
+  expect(geometry.gap).toBeGreaterThanOrEqual(-0.1);
+  expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview at phone width' }).click();
+  const preview = page.locator('iframe.preview-frame').contentFrame();
+  await expect.poll(() => preview.locator('body').evaluate(() => innerWidth)).toBe(360);
+  await preview.locator('html').evaluate((root) => {
+    root.style.fontSize = '200%';
+  });
+  const previewToggle = preview.locator('.point-navigation__toggle');
+  await previewToggle.click();
+  await expect(previewToggle).toHaveAttribute('aria-expanded', 'true');
 });
 
 test('keeps a tall image inside its authored frame when its width changes', async ({ page }) => {

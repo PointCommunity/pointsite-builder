@@ -423,7 +423,9 @@
           exclusion geometry and remove native figure margins. Recheck all reconstructed routes for
           clipping as well as renderer parity before the replacement Canary release. Media must stay
           inside its authored frame without letting intrinsic image size shift neighboring text
-          tracks; cover a tall-image width change with a regression test.
+          tracks; cover a tall-image width change with a regression test. At enlarged text size,
+          constrain and reflow the header Menu button within its authored navigation columns so it
+          cannot obscure the adjacent logo.
         </p>
         <p>
           <strong>Acceptance:</strong> all Issue criteria have evidence; exact reviewed source/tree
