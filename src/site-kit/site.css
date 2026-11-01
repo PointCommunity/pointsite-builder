@@ -1947,11 +1947,13 @@ body:has(.point-site) {
   padding-block: 0.1em;
 }
 /* Equal tracks keep a wrapped image and its text exclusion the same height. */
-.point-site .point-layout-section__grid:has(> .point-layout-item--text-wrap) {
-  grid-template-rows: repeat(var(--point-section-min-rows, 1), minmax(var(--point-grid-cell), 1fr));
-}
 .point-site
-  :is(.point-layout-section__grid, .point-composition__grid):has(> .point-layout-item--text-wrap) {
+  .point-layout-section--grid
+  .point-layout-section__grid:has(> .point-layout-item--text-wrap) {
+  grid-template-rows: repeat(var(--point-section-min-rows, 1), minmax(var(--point-grid-cell), 1fr));
+  grid-auto-rows: minmax(var(--point-grid-cell), 1fr);
+}
+.point-site .point-composition__grid:has(> .point-layout-item--text-wrap) {
   grid-auto-rows: minmax(var(--point-grid-cell), 1fr);
 }
 .point-site .point-layout-item--text-wrap > .point-text {
