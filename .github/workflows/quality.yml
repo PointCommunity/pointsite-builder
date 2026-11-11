@@ -52,8 +52,8 @@ jobs:
           cache: npm
 
       - run: npm ci --ignore-scripts
-      - name: Block high and critical dependency advisories
-        run: npm audit --audit-level=high
+      - name: Block moderate, high and critical dependency advisories
+        run: npm audit --audit-level=moderate
 
   secret-security:
     name: Secret security
