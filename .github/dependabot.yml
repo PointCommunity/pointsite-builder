@@ -9,10 +9,14 @@ updates:
       timezone: America/Chicago
     open-pull-requests-limit: 5
     groups:
-      development-dependencies:
-        dependency-type: development
-      production-minor-patch:
-        dependency-type: production
+      security-dependencies:
+        applies-to: security-updates
+        patterns: ['*']
+      runtime-and-tooling:
+        applies-to: version-updates
+        patterns: ['*']
+        # Puck's source-hash-verified history patch needs a separate upgrade review.
+        exclude-patterns: ['@puckeditor/core']
         update-types: [minor, patch]
 
   - package-ecosystem: github-actions
